@@ -824,11 +824,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> then(&if node.variant == :fit_height, do: put_attr(&1, "rows", "1"), else: &1)
       |> tracked_attrs(node, ctx, acc)
 
-    inner =
-      case value do
-        {:static, text} -> escape_textarea(text)
-        {:expr, expr} -> ["{", expr, "}"]
-      end
+    inner = textarea_inner(value, node, ctx, tracked?(node, ctx, acc))
 
     "textarea"
     |> element(node, attrs, inner, ctx, acc)
@@ -2585,9 +2581,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # A tracked input is named for its form (a checkbox sends "true"). Typing
   # (WTF-475) reaches the page 300 ms after the last keystroke, a value
-  # for the page's data and conditions only; leaving the field (or Enter)
-  # commits it (`bubble:commit`), which runs its "An input's value is
-  # changed" workflows. See BubbleWorkflows' "Unverified Bubble behavior".
+  # for the page's data and conditions only; leaving the field commits it
+  # (`bubble:commit`), which runs its "An input's value is changed"
+  # workflows. It shows the value the page keeps (`kept_value/3`). See
+  # BubbleWorkflows' "Unverified Bubble behavior".
   defp tracked_attrs(attrs, node, ctx, acc) do
     cond do
       not tracked?(node, ctx, acc) ->
@@ -2599,7 +2596,18 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       commits_on_blur?(node) ->
         scope = if ctx.surface == :page, do: "", else: {:expr, "@scope"}
 
+        value =
+          case List.keyfind(attrs, "value", 0) do
+            {_, {:raw, "{" <> code}} ->
+              {:raw,
+               "{" <> kept_value(node, ctx, binary_part(code, 0, byte_size(code) - 1)) <> "}"}
+
+            _ ->
+              {:raw, "{" <> kept_value(node, ctx, nil) <> "}"}
+          end
+
         attrs
+        |> then(&if node.kind == :input, do: put_attr(&1, "value", value), else: &1)
         |> put_attr("name", "bubble[value]")
         |> put_attr("phx-debounce", "300")
         |> put_attr("phx-blur", "bubble:commit")
@@ -2613,9 +2621,28 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp commits_on_blur?(node), do: node.kind in [:input, :multiline_input]
 
+  # A tracked textarea shows the value the page keeps, as a text input.
+  defp textarea_inner({:static, text}, _node, _ctx, false), do: escape_textarea(text)
+  defp textarea_inner({:expr, expr}, _node, _ctx, false), do: ["{", expr, "}"]
+
+  defp textarea_inner({:expr, expr}, node, ctx, true),
+    do: ["{", kept_value(node, ctx, expr), "}"]
+
+  defp textarea_inner(_value, node, ctx, true), do: ["{", kept_value(node, ctx, nil), "}"]
+
+  # What a text input shows: the value the page keeps for it (what the
+  # user typed, or a workflow set), so a re-render never puts back its
+  # first value; an initial expression (`initial`) until it has one.
+  defp kept_value(node, ctx, initial) do
+    kept = "Bubble.input(@bubble_inputs, #{scope_var(ctx)}, #{literal(bid(node))})"
+    if initial, do: "#{kept} || (#{initial})", else: kept
+  end
+
   # A tracked input sits in its own form: every change reaches the page
   # (`bubble:change`) with the element and its instance scope. A text
-  # input's says it commits on blur (`bubble[on]`), and Enter commits it.
+  # input's says it commits on blur (`bubble[on]`): only blur commits it,
+  # as Bubble's "An input's value is changed" (Enter is a change, sent as
+  # `phx-submit`, which also keeps the browser from submitting the form).
   defp wrap_input({markup, acc}, node, ctx) do
     if tracked?(node, ctx, acc) do
       id = bid(node)
@@ -2637,12 +2664,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
             ""
         end
 
-      submit = if commits_on_blur?(node), do: "bubble:commit", else: "bubble:change"
-
       {[
          "<form",
          form_id,
-         ~s( phx-change="bubble:change" phx-submit="#{submit}" style="display: contents">),
+         ~s( phx-change="bubble:change" phx-submit="bubble:change" style="display: contents">),
          ~s(<input type="hidden" name="bubble[element]" value="),
          escape_attr(id),
          ~s(">),

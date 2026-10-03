@@ -267,6 +267,7 @@ defmodule <%= @web %>.Bubble do
         destroyed() {
           this.listeners.forEach(([name, listener]) => window.removeEventListener(name, listener))
           clearTimeout(this.noticeTimer)
+          clearTimeout(this.noticeTextTimer)
         },
         notice(text) {
           const region = document.getElementById("bubble-notice")
@@ -275,11 +276,35 @@ defmodule <%= @web %>.Bubble do
           message.className = "rounded bg-rose-50 px-4 py-2 text-sm text-rose-900 shadow"
           message.textContent = text
           this.raiseNotice()
+          // A modal dialog makes the rest of the page inert: its own live
+          // region (visually hidden) announces the notice there too.
+          const modal = document.querySelector("dialog:modal")
+          let echo = null
+          if (modal) {
+            echo = modal.querySelector(":scope > [data-bubble-notice]")
+            if (!echo) {
+              echo = document.createElement("div")
+              echo.setAttribute("data-bubble-notice", "")
+              echo.setAttribute("role", "status")
+              echo.setAttribute("aria-live", "polite")
+              echo.setAttribute("aria-atomic", "true")
+              echo.style.cssText =
+                "position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap"
+              modal.appendChild(echo)
+            }
+          }
           clearTimeout(this.noticeTimer)
-          // The text arrives once the region is back in the tree, so the
-          // live region announces it.
-          requestAnimationFrame(() => region.replaceChildren(message))
-          this.noticeTimer = setTimeout(() => region.replaceChildren(), 6000)
+          clearTimeout(this.noticeTextTimer)
+          // The text arrives a moment after the regions are in the tree
+          // (reopened, or created), so screen readers announce it.
+          this.noticeTextTimer = setTimeout(() => {
+            region.replaceChildren(message)
+            if (echo) echo.textContent = text
+          }, 100)
+          this.noticeTimer = setTimeout(() => {
+            region.replaceChildren()
+            if (echo) echo.textContent = ""
+          }, 6000)
         },
         exec(op) {
           if (op.op === "open") {

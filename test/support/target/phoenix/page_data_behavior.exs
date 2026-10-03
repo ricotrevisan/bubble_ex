@@ -1193,13 +1193,23 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     narrow_flush(socket, page)
   end
 
+  # The page's debounced read: the latest timer (earlier ones are superseded).
   defp narrow_flush(socket, page) do
     assert_receive {:bubble, :data_refresh, ref}, 500
+    ref = latest_refresh(ref)
 
     {:noreply, socket} =
       PhxCheckWeb.BubbleWorkflows.handle_info(socket, page, {:bubble, :data_refresh, ref})
 
     socket
+  end
+
+  defp latest_refresh(ref) do
+    receive do
+      {:bubble, :data_refresh, later} -> latest_refresh(later)
+    after
+      200 -> ref
+    end
   end
 
   defp narrow_click(socket, page, element) do
@@ -1252,39 +1262,43 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert narrow_reads() == [:a, :b, :c, :kept]
   end
 
-  test "typing runs no input workflow; committing (blur, Enter) runs it once per value" do
+  test "typing runs no input workflow; committing (blur) runs it once per value" do
     on()
     socket = narrow_page_typed(NarrowPage, "x")
     assert narrow_reads() == [:a, :b, :c]
     refute_received :narrow_noop
 
-    commit = fn socket, params ->
+    blur = fn socket, value ->
       {:noreply, socket} =
-        PhxCheckWeb.BubbleWorkflows.handle_event(socket, NarrowPage, "bubble:commit", params)
+        PhxCheckWeb.BubbleWorkflows.handle_event(socket, NarrowPage, "bubble:commit", %{
+          "element" => "q",
+          "value" => value
+        })
 
-      socket
+      narrow_flush(socket, NarrowPage)
     end
 
-    # Blur: its scope and element as values (the page's scope is empty).
-    socket = commit.(socket, %{"element" => "q", "value" => "x"})
-    socket = narrow_flush(socket, NarrowPage)
+    # The page's scope is empty: blur sends no `scope` value.
+    socket = blur.(socket, "x")
     assert_received :narrow_noop
     # The value was read while typing: committing it reads nothing more.
     assert narrow_reads() == []
 
-    # Enter, the same value: nothing runs.
-    socket =
-      commit.(socket, %{"bubble" => %{"scope" => "", "element" => "q", "value" => "x"}})
-
-    socket = narrow_flush(socket, NarrowPage)
+    # The same value again: nothing runs.
+    socket = blur.(socket, "x")
     refute_received :narrow_noop
 
-    # A new value committed without typing first: read, then run.
-    _socket =
-      commit.(socket, %{"bubble" => %{"scope" => "", "element" => "q", "value" => "z"}})
-      |> narrow_flush(NarrowPage)
+    # Two other values committed before the page reads: each runs, once.
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, NarrowPage, "bubble:commit", %{
+        "element" => "q",
+        "value" => "y"
+      })
 
+    _socket = blur.(socket, "z")
     assert_received :narrow_noop
+    assert_received :narrow_noop
+    refute_received :narrow_noop
     assert narrow_reads() == [:a, :b, :c]
   end
 

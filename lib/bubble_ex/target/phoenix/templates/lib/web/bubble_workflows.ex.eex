@@ -28,8 +28,10 @@ defmodule <%= @web %>.BubbleWorkflows do
   after the last keystroke (`phx-debounce`): its value for the page's
   data, which reads again only the sources that read it, and for
   conditions. Its "An input's value is changed" workflows run when it is
-  committed, on blur or Enter (`bubble:commit`), once per value that
-  differs from the one last committed or set by a workflow. Checkboxes,
+  committed, on blur (`bubble:commit`), once per value that differs from
+  the one last committed or set by a workflow; Enter is a change. The
+  input shows the value the page keeps, so a re-render never puts back
+  its first value. Checkboxes,
   dropdowns and the other inputs commit on every change.
 
   ## Running a workflow
@@ -323,10 +325,10 @@ defmodule <%= @web %>.BubbleWorkflows do
     end
   end
 
-  # A text input's change (`"on" => "blur"`, sent while typing) is its
-  # value for the page's data and conditions only; its workflows run when
-  # it is committed (`bubble:commit`: blur or Enter). Any other input's
-  # change commits it.
+  # A text input's change (`"on" => "blur"`, sent while typing or on
+  # Enter) is its value for the page's data and conditions only; its
+  # workflows run when it is committed (`bubble:commit`, on blur). Any
+  # other input's change commits it.
   def handle_event(socket, page, "bubble:change", %{"bubble" => %{} = params}) do
     with {:ok, module, scope, element, value} <- input_event(page, params) do
       socket = assign(socket, :bubble_refused, false) |> put_input(scope, element, value)
@@ -341,12 +343,11 @@ defmodule <%= @web %>.BubbleWorkflows do
     end
   end
 
-  # A text input committed: blur (`phx-blur`, the scope and element as
-  # values) or Enter (its form). Its workflows run when its value differs
-  # from the one last committed (or set by a workflow).
+  # A text input committed on blur (`phx-blur`: the scope, empty on the
+  # page itself, and the element as values). Its workflows run when its
+  # value differs from the one last committed (or set by a workflow).
   def handle_event(socket, page, "bubble:commit", %{} = params) do
-    params = Map.get(params, "bubble", params)
-    params = if is_map(params), do: Map.put_new(params, "scope", ""), else: %{}
+    params = Map.put_new(params, "scope", "")
 
     with {:ok, module, scope, element, value} <- input_event(page, params) do
       socket = assign(socket, :bubble_refused, false) |> put_input(scope, element, value)
@@ -433,7 +434,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       # The pending events are input changes: a refused one gets its notice.
       pending = socket.assigns[:bubble_pending_events] || []
       {socket, run} = run_events(socket, page, pending, run)
-      socket = assign(socket, :bubble_pending_events, nil)
+      socket = socket |> assign(:bubble_pending_events, nil) |> assign(:bubble_pending_keys, nil)
       {socket, run} = settle_after_events(socket, page, pending, run)
       {:noreply, socket |> dispatch(run) |> notice()}
     else
@@ -610,16 +611,26 @@ defmodule <%= @web %>.BubbleWorkflows do
         if queued? do
           run = merge_pending(socket.assigns[:bubble_pending_run], run)
 
-          pending =
-            Enum.reduce(runs, socket.assigns[:bubble_pending_events] || [], fn
-              {module, scope, ids, _} = entry, acc ->
-                Enum.reject(acc, fn {m, s, i, _} -> {m, s, i} == {module, scope, ids} end) ++
-                  [entry]
-            end)
+          # The same workflows queued with the same input values run once;
+          # a commit of another value runs again (WTF-475).
+          {pending, keys} =
+            Enum.reduce(
+              runs,
+              {socket.assigns[:bubble_pending_events] || [],
+               socket.assigns[:bubble_pending_keys] || MapSet.new()},
+              fn {module, scope, ids, _} = entry, {acc, keys} ->
+                key = {module, scope, ids, socket.assigns.bubble_inputs}
+
+                if MapSet.member?(keys, key),
+                  do: {acc, keys},
+                  else: {acc ++ [entry], MapSet.put(keys, key)}
+              end
+            )
 
           socket
           |> assign(:bubble_pending_run, run)
           |> assign(:bubble_pending_events, pending)
+          |> assign(:bubble_pending_keys, keys)
           |> BubbleData.defer()
         else
           # No page data to re-read: keep input-only workflows and their
@@ -639,6 +650,7 @@ defmodule <%= @web %>.BubbleWorkflows do
           socket
           |> assign(:bubble_pending_run, nil)
           |> assign(:bubble_pending_events, nil)
+          |> assign(:bubble_pending_keys, nil)
           |> assign(:bubble_data_refresh, nil)
 
         {socket, run} = run_events(socket, page, pending, run)

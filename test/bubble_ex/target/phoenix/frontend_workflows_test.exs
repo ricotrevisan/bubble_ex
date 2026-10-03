@@ -351,17 +351,25 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     assert hook =~ "inset: auto 1rem 1rem auto"
   end
 
-  test "typing is debounced and commits on blur or Enter; checkboxes are not (WTF-475)", %{
-    files: files
-  } do
+  test "typing is debounced and commits on blur, showing the kept value; checkboxes are not (WTF-475)",
+       %{
+         files: files
+       } do
     page = files["lib/shop_web/live/index_live.html.heex"]
     [input] = Regex.run(~r/<input[^>]*data-bubble-id="bIn"[^>]*>/s, page)
     assert input =~ ~s(phx-debounce="300")
     assert input =~ ~s(phx-blur="bubble:commit")
     assert input =~ ~s(phx-value-element="bIn")
 
+    # What the page keeps, never the first value again after a re-render.
+    assert input =~ ~s|value={Bubble.input(@bubble_inputs, "", "bIn")}|
+    [number] = Regex.run(~r/<input[^>]*data-bubble-id="bNum"[^>]*>/s, page)
+    assert number =~ ~s|value={Bubble.input(@bubble_inputs, "", "bNum")}|
+    refute number =~ ~s(value="3")
+
+    # Enter is a change (the form's submit), not a commit.
     [form] = Regex.run(~r/<form\s+id="bubble-input-bIn".*?<\/form>/s, page)
-    assert form =~ ~s(phx-submit="bubble:commit")
+    assert form =~ ~s(phx-submit="bubble:change")
     assert form =~ ~s(<input type="hidden" name="bubble[on]" value="blur" />)
 
     [checkbox] = Regex.run(~r/<input[^>]*type="checkbox"[^>]*>/s, page)
@@ -424,7 +432,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     assert page =~ ~s|phx-click={Bubble.push("click", "", "bBtnState")}|
 
     assert page =~
-             ~r/<form\s+id="bubble-input-bIn"\s+phx-change="bubble:change"\s+phx-submit="bubble:commit"/
+             ~r/<form\s+id="bubble-input-bIn"\s+phx-change="bubble:change"\s+phx-submit="bubble:change"/
 
     assert page =~
              ~r/<input\s+type="hidden"\s+name="bubble\[value\]"\s+value="false"\s*\/><label\s+data-bubble-id="bCheck"/

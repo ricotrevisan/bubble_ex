@@ -67,10 +67,11 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
   end
 
   # WTF-475: typing in a text input (its debounced change) is its value
-  # only; "An input's value is changed" runs when it is committed (blur,
-  # Enter), once per value, as Bubble's fires on blur.
-  test "a text input's workflow runs on blur or Enter, not while typing", %{conn: conn} do
+  # only; "An input's value is changed" runs when it is committed on blur,
+  # once per value, as Bubble's fires on blur. Enter is a change.
+  test "a text input's workflow runs on blur, not while typing or on Enter", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/")
+    num = element(view, ~s(input[data-bubble-id="bNum"]))
 
     render_change(view, "bubble:change", %{
       "bubble" => %{"scope" => "", "element" => "bNum", "value" => "10", "on" => "blur"}
@@ -78,26 +79,32 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
 
     assert label(view) =~ "Label: start"
 
-    view |> element(~s(input[data-bubble-id="bNum"])) |> render_blur(%{"value" => "10"})
-    assert label(view) =~ "Label: big"
-
-    # The same value committed again (Enter) runs nothing.
-    change(view, "bIn", "Ann")
-    assert click(view, "bBtnState") =~ "Label: Ann"
-
-    render_submit(view, "bubble:commit", %{
+    # Enter: the form's submit, a change like typing.
+    render_submit(view, "bubble:change", %{
       "bubble" => %{"scope" => "", "element" => "bNum", "value" => "10", "on" => "blur"}
     })
 
+    assert label(view) =~ "Label: start"
+
+    render_blur(num, %{"value" => "10"})
+    assert label(view) =~ "Label: big"
+
+    # The field shows what the page keeps, not its first value (3): a
+    # re-render (after Enter's submit, say) never puts the stale one back
+    # for the next blur to commit.
+    assert render(num) =~ ~s(value="10")
+
+    # The same value committed again runs nothing.
+    change(view, "bIn", "Ann")
+    assert click(view, "bBtnState") =~ "Label: Ann"
+    render_blur(num, %{"value" => "10"})
     assert label(view) =~ "Label: Ann"
+    assert render(num) =~ ~s(value="10")
 
     # New ones do: the count drops under the condition's 5, then passes it.
-    for value <- ["2", "10"] do
-      render_submit(view, "bubble:commit", %{
-        "bubble" => %{"scope" => "", "element" => "bNum", "value" => value, "on" => "blur"}
-      })
-    end
-
+    render_blur(num, %{"value" => "2"})
+    assert render(num) =~ ~s(value="2")
+    render_blur(num, %{"value" => "10"})
     assert label(view) =~ "Label: big"
   end
 

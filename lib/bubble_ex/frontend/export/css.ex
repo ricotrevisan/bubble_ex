@@ -207,15 +207,25 @@ defmodule BubbleEx.Frontend.Export.Css do
   @doc """
   A z-index as emitted: at most 2147483646, one below CSS's maximum, which
   the generated pages' workflow notice keeps for itself (WTF-474). A
-  number, or text that is one; anything else is returned as it is.
+  number is clamped. Text stays as it is when it is a plain integer within
+  the bound or a keyword (`auto`, the CSS-wide ones); anything else (a
+  larger integer, `calc(...)`, `var(...)`, ...) becomes the bound, keeping
+  `!important`.
   """
   @spec z_index(term()) :: term()
   def z_index(n) when is_number(n), do: min(n, @max_z)
 
   def z_index(text) when is_binary(text) do
-    case Integer.parse(String.trim(text)) do
-      {n, ""} when n > @max_z -> Integer.to_string(@max_z)
-      _ -> text
+    {value, important} =
+      case Regex.run(~r/\A(.*?)\s*(!\s*important)\s*\z/is, text) do
+        [_, value, _] -> {String.trim(value), " !important"}
+        nil -> {String.trim(text), ""}
+      end
+
+    cond do
+      String.downcase(value) in ~w(auto inherit initial unset revert revert-layer) -> text
+      match?({n, ""} when n <= @max_z, Integer.parse(value)) -> text
+      true -> Integer.to_string(@max_z) <> important
     end
   end
 

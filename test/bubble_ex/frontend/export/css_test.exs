@@ -396,6 +396,13 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     assert Css.z_index("183") == "183"
     assert Css.z_index("auto") == "auto"
     assert Css.z_index(-1) == -1
+    assert Css.z_index("inherit") == "inherit"
+
+    # Anything that might be larger becomes the bound.
+    assert Css.z_index("calc(2147483647 + 1)") == "2147483646"
+    assert Css.z_index("var(--top)") == "2147483646"
+    assert Css.z_index("99999999999 !important") == "2147483646 !important"
+    assert Css.z_index("5 !important") == "5 !important"
   end
 
   test "a shared style's z-index, plain or responsive, is clamped (WTF-474)" do

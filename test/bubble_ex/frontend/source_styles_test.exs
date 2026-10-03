@@ -37,13 +37,20 @@ defmodule BubbleEx.Frontend.SourceStylesTest do
       SourceStyles.discover("""
       <html><head><style>
       #footer { z-index: 2147483647; } #header { z-index: 183; }
+      #calc { z-index: calc(2147483647 * 2); } #important { z-index: 99999999999 !important; }
+      #auto { z-index: auto; } #fine { z-index: 7 !important; }
       </style></head></html>
       """)
 
     assert {css, 0} = SourceStyles.compile(styles)
-    assert css =~ "z-index: 2147483646;"
-    assert css =~ "z-index: 183;"
+    assert css =~ ~r/#footer \{\s*z-index: 2147483646;/
+    assert css =~ ~r/#header \{\s*z-index: 183;/
+    assert css =~ ~r/#calc \{\s*z-index: 2147483646;/
+    assert css =~ ~r/#important \{\s*z-index: 2147483646 !important;/
+    assert css =~ ~r/#auto \{\s*z-index: auto;/
+    assert css =~ ~r/#fine \{\s*z-index: 7 !important;/
     refute css =~ "2147483647"
+    refute css =~ "calc("
   end
 
   test "an unterminated comment cannot promote its contents into active rules" do
