@@ -54,7 +54,7 @@ defmodule Mix.Tasks.Bubble.Editor do
     with_cookie(fn cookie ->
       selection = if groups == [], do: :all, else: groups
 
-      with {:ok, target} <- Target.new(appname, version, cookie),
+      with {:ok, target} <- Target.readable(appname, version, cookie),
            {:ok, result} <- Editor.plugin_schemas(target, selection) do
         output(result)
       end
@@ -63,7 +63,7 @@ defmodule Mix.Tasks.Bubble.Editor do
 
   def run(["versions", appname, version]) do
     with_cookie(fn cookie ->
-      with {:ok, target} <- Target.new(appname, version, cookie),
+      with {:ok, target} <- Target.readable(appname, version, cookie),
            {:ok, versions} <- Editor.versions(target) do
         output(versions)
       end
@@ -72,7 +72,7 @@ defmodule Mix.Tasks.Bubble.Editor do
 
   def run(["savepoint-list", appname, version]) do
     with_cookie(fn cookie ->
-      with {:ok, target} <- Target.new(appname, version, cookie),
+      with {:ok, target} <- Target.readable(appname, version, cookie),
            {:ok, history} <- Editor.savepoints(target) do
         output(history)
       end
@@ -91,7 +91,7 @@ defmodule Mix.Tasks.Bubble.Editor do
   def run(["read", appname, version, encoded_path]) do
     with_cookie(fn cookie ->
       with {:ok, path} <- decode_path(encoded_path),
-           {:ok, target} <- Target.new(appname, version, cookie),
+           {:ok, target} <- Target.readable(appname, version, cookie),
            {:ok, snapshot} <- Editor.read(target, [path]) do
         {:ok, value} = Snapshot.fetch(snapshot, path)
 

@@ -14,6 +14,7 @@ defmodule BubbleEx.EditorTest do
       queued([
         ok_versions(),
         read(100, ["Before"]),
+        ok_versions(),
         {:ok, %{"last_change" => "101", "last_change_date" => "1", "id_counter" => "20"}},
         read(101, ["After"])
       ])
@@ -54,6 +55,7 @@ defmodule BubbleEx.EditorTest do
       queued([
         ok_versions(),
         read(100, ["Before"]),
+        ok_versions(),
         {:error, Error.new(:request_failed, "timeout")},
         read(101, ["After"])
       ])
@@ -73,6 +75,7 @@ defmodule BubbleEx.EditorTest do
       queued([
         ok_versions(),
         read(100, ["Before"]),
+        ok_versions(),
         {:error, Error.new(:request_failed, "timeout")},
         read(100, ["Before"])
       ])
@@ -90,6 +93,7 @@ defmodule BubbleEx.EditorTest do
       queued([
         ok_versions(),
         read(100, ["Before", "Old"]),
+        ok_versions(),
         {:error, Error.new(:request_failed, "connection closed")},
         read(101, ["After", "Old"])
       ])
@@ -107,6 +111,7 @@ defmodule BubbleEx.EditorTest do
         ok_versions(),
         read(100, [nil]),
         {:ok, %{"earliest_change_date" => 1, "annotations" => []}},
+        ok_versions(),
         {:ok, %{"last_change" => "101"}},
         read(101, [nil]),
         {:ok,
@@ -166,6 +171,7 @@ defmodule BubbleEx.EditorTest do
         ok_versions(),
         read(100, [nil]),
         {:ok, %{"earliest_change_date" => 1, "annotations" => []}},
+        ok_versions(),
         {:error, Error.new(:parse_failed, "non-object acknowledgement")},
         read(101, [nil]),
         {:ok,
@@ -193,6 +199,7 @@ defmodule BubbleEx.EditorTest do
         ok_versions(),
         read(100, [%{group => "current"}]),
         read(100, ["Before", type, "current"]),
+        ok_versions(),
         {:ok, %{"last_change" => 101}},
         read(101, ["After", type, "current"])
       ])
@@ -247,6 +254,7 @@ defmodule BubbleEx.EditorTest do
         ok_versions(),
         read(100, [%{group => "current"}]),
         read(100, ["Before", type, "current"]),
+        ok_versions(),
         {:error, Error.new(:request_failed, "timeout")},
         read(100, ["Before", type, "current"])
       ])
