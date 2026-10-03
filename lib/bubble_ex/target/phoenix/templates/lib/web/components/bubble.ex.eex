@@ -113,6 +113,18 @@ defmodule <%= @web %>.Bubble do
   def input(_inputs, _scope, _element), do: nil
 
   @doc """
+  What a text input shows (WTF-475): its value, or `shown` (its first
+  value as the page displays it, e.g. `$12.50`) while the value is still
+  `first`.
+  """
+  def input_shown(inputs, scope, element, first, shown) do
+    case input(inputs, scope, element) do
+      ^first -> shown
+      value -> value
+    end
+  end
+
+  @doc """
   The page's data (WTF-420, `<%= @web %>.BubbleData`): what element
   `element` of instance `scope` holds (a page's, group's or instance's
   thing, a repeating group's list), or with `index`, what a group in

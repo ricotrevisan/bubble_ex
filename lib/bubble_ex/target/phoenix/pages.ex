@@ -2596,18 +2596,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       commits_on_blur?(node) ->
         scope = if ctx.surface == :page, do: "", else: {:expr, "@scope"}
 
-        value =
-          case List.keyfind(attrs, "value", 0) do
-            {_, {:raw, "{" <> code}} ->
-              {:raw,
-               "{" <> kept_value(node, ctx, binary_part(code, 0, byte_size(code) - 1)) <> "}"}
-
-            _ ->
-              {:raw, "{" <> kept_value(node, ctx, nil) <> "}"}
-          end
-
         attrs
-        |> then(&if node.kind == :input, do: put_attr(&1, "value", value), else: &1)
+        |> then(
+          &if node.kind == :input, do: put_attr(&1, "value", input_value(&1, node, ctx)), else: &1
+        )
         |> put_attr("name", "bubble[value]")
         |> put_attr("phx-debounce", "300")
         |> put_attr("phx-blur", "bubble:commit")
@@ -2621,6 +2613,23 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp commits_on_blur?(node), do: node.kind in [:input, :multiline_input]
 
+  # A tracked text input's `value`: what the page keeps (kept_value/3).
+  defp input_value(attrs, node, ctx) do
+    code =
+      case List.keyfind(attrs, "value", 0) do
+        {_, {:raw, "{" <> code}} ->
+          kept_value(node, ctx, binary_part(code, 0, byte_size(code) - 1))
+
+        {_, shown} when is_binary(shown) ->
+          shown_value(node, ctx, shown)
+
+        _ ->
+          kept_value(node, ctx, nil)
+      end
+
+    {:raw, "{" <> code <> "}"}
+  end
+
   # A tracked textarea shows the value the page keeps, as a text input.
   defp textarea_inner({:static, text}, _node, _ctx, false), do: escape_textarea(text)
   defp textarea_inner({:expr, expr}, _node, _ctx, false), do: ["{", expr, "}"]
@@ -2629,6 +2638,18 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     do: ["{", kept_value(node, ctx, expr), "}"]
 
   defp textarea_inner(_value, node, ctx, true), do: ["{", kept_value(node, ctx, nil), "}"]
+
+  # A static first value the page displays formatted (a currency, a
+  # percentage): shown as such until the value changes.
+  defp shown_value(node, ctx, shown) do
+    first = first_value(node, ctx.tracked[bid(node)])
+
+    if is_nil(first) or to_string(first) == shown,
+      do: kept_value(node, ctx, nil),
+      else:
+        "Bubble.input_shown(@bubble_inputs, #{scope_var(ctx)}, #{literal(bid(node))}, " <>
+          "#{inspect(first)}, #{literal(shown)})"
+  end
 
   # What a text input shows: the value the page keeps for it (what the
   # user typed, or a workflow set), so a re-render never puts back its
