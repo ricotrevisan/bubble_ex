@@ -6,8 +6,9 @@ defmodule BubbleEx.Target.CompileReportPrivateFixtureTest do
   #
   # `BubbleEx.Target.CompileReport.build/4` counts (no names or IDs) are
   # compared with a committed snapshot, by default the private fixture
-  # app's test version, for each setting of `ignore_empty_constraints` (Bubble's
-  # default for searches that do not state it is not verified). A changed
+  # app's test version, for each setting of `ignore_empty_constraints` (the
+  # default for `:filtered` lists and for searches where it is not known
+  # whether they run on a page or in a backend workflow). A changed
   # count means updating the snapshot, with the reason in the PR:
   #
   #     BUBBLE_EX_UPDATE_COUNTS=1 BUBBLE_EX_PRIVATE_EXPORT=… mix test --only private_fixture

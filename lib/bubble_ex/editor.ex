@@ -1,13 +1,15 @@
 defmodule BubbleEx.Editor do
   @moduledoc """
-  Guarded, branch-scoped editing for a bounded subset of Bubble web app definitions.
+  Native page discovery, explicit version-scoped reads, and guarded editing of
+  a bounded subset of Bubble web app definitions.
 
   This API is experimental because Bubble's editor endpoints are undocumented.
-  It deliberately refuses protected versions, stale plans, automatic write
-  retries, and edits outside the documented support matrix.
+  Reads support test/live/child versions; mutations still refuse protected
+  versions, stale plans, automatic write retries, and edits outside the support
+  matrix. Editor credentials never leave the fixed https://bubble.io origin.
   """
 
-  alias BubbleEx.Editor.{Client, Plan, PluginSchema, Snapshot, Target}
+  alias BubbleEx.Editor.{Client, PageRef, Pages, Plan, PluginSchema, Snapshot, Target}
   alias BubbleEx.Error
 
   @type receipt :: map()
@@ -46,6 +48,9 @@ defmodule BubbleEx.Editor do
         {:ok, acknowledgement} ->
           verify_acknowledged(target, plan, before, version, acknowledgement, opts)
 
+        {:error, %Error{context: %{write_submitted: false}} = error} ->
+          {:error, error}
+
         {:error, %Error{} = write_error} ->
           reconcile(target, plan, before, version, write_error, opts)
       end
@@ -55,8 +60,41 @@ defmodule BubbleEx.Editor do
   @spec read(Target.t(), [Snapshot.path()], keyword()) ::
           {:ok, Snapshot.t()} | {:error, Error.t()}
   def read(target, paths, opts \\ []) do
-    with {:ok, _version} <- Client.resolve_child(target, opts) do
+    with {:ok, _version} <- Client.resolve_readable(target, opts) do
       Client.read(target, paths, opts)
+    end
+  end
+
+  @doc """
+  Discovers web-page references through the anonymous runtime bundle.
+
+  Editor access/version identity is checked first. Neither denial nor parse
+  failure triggers a fallback. `runtime_page:` selects the initial runtime route
+  (default `index`); it never changes the editor origin or forwards the cookie.
+  Discovery describes the runtime's exposed inventory, not a complete editor export.
+  """
+  @spec discover_pages(Target.t(), keyword()) :: {:ok, [PageRef.t()]} | {:error, Error.t()}
+  def discover_pages(target, opts \\ []) do
+    with {:ok, _version} <- Client.resolve_readable(target, opts) do
+      Pages.discover(target, opts)
+    end
+  end
+
+  @doc "Reads exactly one discovered page, rejecting changed or substituted identities."
+  @spec read_page(Target.t(), PageRef.t(), keyword()) ::
+          {:ok, Snapshot.t()} | {:error, Error.t()}
+  def read_page(target, reference, opts \\ []) do
+    with :ok <- PageRef.validate(reference, target),
+         {:ok, snapshot} <- read(target, [reference.path], opts),
+         {:ok, page} <- Snapshot.fetch(snapshot, reference.path) do
+      if PageRef.matches?(reference, page) do
+        {:ok, snapshot}
+      else
+        {:error,
+         Error.new(:invalid_input, "editor page identity changed; rediscover before reading", %{
+           reason: :page_identity_mismatch
+         })}
+      end
     end
   end
 
@@ -66,7 +104,7 @@ defmodule BubbleEx.Editor do
   @spec plugin_schemas(Target.t(), [String.t()] | :all, keyword()) ::
           {:ok, map()} | {:error, Error.t()}
   def plugin_schemas(target, groups \\ :all, opts \\ []) do
-    with {:ok, _version} <- Client.resolve_child(target, opts) do
+    with {:ok, _version} <- Client.resolve_readable(target, opts) do
       PluginSchema.discover(target, groups, opts)
     end
   end
@@ -109,7 +147,7 @@ defmodule BubbleEx.Editor do
 
   @spec savepoints(Target.t(), keyword()) :: {:ok, map()} | {:error, Error.t()}
   def savepoints(target, opts \\ []) do
-    with {:ok, _version} <- Client.resolve_child(target, opts),
+    with {:ok, _version} <- Client.resolve_readable(target, opts),
          {:ok, history} <- Client.restore_history(target, opts) do
       {:ok, sanitize_history(history)}
     end
@@ -137,6 +175,16 @@ defmodule BubbleEx.Editor do
       end
     end
   end
+
+  defp verify_savepoint_result(
+         _target,
+         _message,
+         _before,
+         _before_history,
+         {:error, %Error{context: %{write_submitted: false}} = error},
+         _opts
+       ),
+       do: {:error, error}
 
   defp verify_savepoint_result(target, message, before, before_history, result, opts) do
     with {:ok, readback} <- Client.read(target, [["%p3", "__bubbleex_revision_probe__"]], opts),

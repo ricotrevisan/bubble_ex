@@ -37,6 +37,16 @@ defmodule BubbleEx.Expression.SitesTest do
 
     %{env: trigger} = site(sites, "/api/bW8/properties/condition")
     assert trigger.trigger_type == "custom.task"
+
+    # Where searches run decides what an empty constraint value does (WTF-478).
+    assert env.searches == :page
+    assert trigger.searches == :backend
+
+    # A page workflow's server-side action takes the backend rule.
+    assert Sites.action_env(%{"type" => "DeleteListOfThings"}, env).searches == :backend
+    assert Sites.action_env(%{"type" => "ChangeThing"}, env).searches == :backend
+    assert Sites.action_env(%{"type" => "HideElement"}, env).searches == :page
+    assert Sites.action_env(%{"type" => "HideElement"}, trigger).searches == :backend
   end
 
   test "the compile report counts by stage", %{model: model, project: project} do
@@ -64,7 +74,8 @@ defmodule BubbleEx.Expression.SitesTest do
     expressions = report["expressions"]
     assert expressions["roots"] == 20
     assert expressions["by_kind"] == %{"element" => 14, "workflow" => 6}
-    assert expressions["ir_compiled"] == 17
+    # A page search whose constraint value may be empty compiles (WTF-478).
+    assert expressions["ir_compiled"] == 18
     assert expressions["elixir_compiled"] == 16
 
     # A format the runtime only approximates compiles and is counted (WTF-456).
@@ -78,7 +89,6 @@ defmodule BubbleEx.Expression.SitesTest do
     assert expressions["searches_ash_compiled"] == expressions["searches"]
 
     assert expressions["unsupported"]["ir"] == %{
-             "expr_uncompiled:ignore_empty_constraints" => 1,
              "expr_unresolved_accessor" => 1,
              "expr_untyped_scope:previous_step" => 1
            }
