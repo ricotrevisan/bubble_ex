@@ -19,11 +19,20 @@ defmodule BubbleEx.Expression.Env do
       (`Result of step N`)
     * `subject` / `path` - the diagnostic subject (Bubble IDs) and the
       expression's source path, prefixed to diagnostic pointers
-    * `ignore_empty_constraints` - what a search or `:filtered` that does
-      not state Bubble's `ignore_empty_constraints` does with a constraint
-      whose value is empty: `nil` (unknown, the default: such a constraint
-      is not compiled), `true` (ignored) or `false` (compared). Most
-      searches do not state it and Bubble's default is not verified.
+    * `searches` - where the expression's searches run, which decides what
+      a constraint whose value is empty does (replay, 2026-10-01):
+      `:page` (a page's data source, element or workflow: the constraint
+      matches nothing unless the search states
+      `ignore_empty_constraints: true`, which drops it), `:backend` (a
+      backend workflow: it matches nothing, whatever the search states)
+      or `nil` (not known, the default: `ignore_empty_constraints` below
+      decides)
+    * `ignore_empty_constraints` - what a `:filtered`, or a search where
+      `searches` is nil, that does not state Bubble's
+      `ignore_empty_constraints` does with a constraint whose value is
+      empty: `nil` (unknown, the default: such a constraint is not
+      compiled), `true` (ignored) or `false` (compared). Not verified for
+      `:filtered`.
 
   Build it with `new/2`.
   """
@@ -41,6 +50,7 @@ defmodule BubbleEx.Expression.Env do
             steps: %{},
             subject: %{},
             path: [],
+            searches: nil,
             ignore_empty_constraints: nil
 
   @type t :: %__MODULE__{
@@ -54,8 +64,11 @@ defmodule BubbleEx.Expression.Env do
           steps: %{String.t() => String.t()},
           subject: BubbleEx.Diagnostic.subject(),
           path: [String.t() | integer()],
+          searches: searches(),
           ignore_empty_constraints: boolean() | nil
         }
+
+  @type searches :: :page | :backend | nil
 
   @type option ::
           {:tree, Tree.t()}
@@ -66,6 +79,7 @@ defmodule BubbleEx.Expression.Env do
           | {:steps, map()}
           | {:subject, map()}
           | {:path, list()}
+          | {:searches, searches()}
           | {:ignore_empty_constraints, boolean() | nil}
 
   @doc "An environment for expressions of `model`; see the moduledoc for the options."

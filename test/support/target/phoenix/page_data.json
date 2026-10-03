@@ -226,6 +226,43 @@
             }
           }
         },
+        "bStrict": {
+          "id": "bStrict",
+          "type": "RepeatingGroup",
+          "properties": {
+            "_comment": "WTF-478: the same constraint as bList, with ignore_empty_constraints false: an empty query matches nothing.",
+            "columns": 1,
+            "rows": 3,
+            "order": 8,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "ignore_empty_constraints": false,
+                "sort_field": "title_text",
+                "descending": false,
+                "constraints": {
+                  "0": {
+                    "constraint_type": "text contains string",
+                    "key": "title_text",
+                    "value": {"type": "GetElement", "properties": {"element_id": "bQuery"}, "next": {"type": "Message", "name": "get_data"}}
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bStrictTitle": {
+              "id": "bStrictTitle",
+              "type": "Text",
+              "properties": {"order": 1, "width": 300, "height": 40, "min_height_css": "40px",
+                "text": {"type": "TextExpression", "entries": {"0": "Strict: ", "1": {"type": "CurrentDataItem", "next": {"type": "Message", "name": "title_text"}}}}}
+            }
+          }
+        },
         "bOther": {
           "id": "bOther",
           "properties": {

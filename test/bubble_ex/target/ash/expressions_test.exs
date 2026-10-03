@@ -208,6 +208,115 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
     assert [%{name: "element_state_bi1_get_data", type: "number"}] = expr.arguments
   end
 
+  # WTF-478: a backend workflow's search matches nothing on an empty
+  # constraint value, whatever it states; a page's drops it only when it
+  # states `ignore_empty_constraints: true`.
+  test "an empty constraint value matches nothing, or is dropped", %{project: project} do
+    compile = fn searches, options ->
+      env = env(searches: searches)
+
+      raw =
+        search(
+          "custom.task",
+          [con("estimate_number", "equals", chain(el("bI1"), [msg("get_data")]))],
+          options
+        )
+
+      {:ok, %{ir: ir}} = Compiler.compile(parse!(raw, env), env)
+      {:ok, %{expr: expr, diagnostics: []}} = Expressions.search(ir, project)
+      Source.expr(expr)
+    end
+
+    arg = "^arg(:element_state_bi1_get_data)"
+    nothing = "expr(not is_nil(#{arg}) and is_not_distinct_from(estimate, #{arg}))"
+    dropped = "expr(is_nil(#{arg}) or is_not_distinct_from(estimate, #{arg}))"
+
+    for options <- [
+          %{},
+          %{"ignore_empty_constraints" => false},
+          %{"ignore_empty_constraints" => true}
+        ] do
+      assert compile.(:backend, options) == nothing
+    end
+
+    assert compile.(:page, %{}) == nothing
+    assert compile.(:page, %{"ignore_empty_constraints" => true}) == dropped
+  end
+
+  # WTF-478: on a page that ignores empty constraints, `title = Current
+  # User's name` is dropped for a signed-in user whose name is empty (as
+  # Bubble does). For a logged-out visitor both sides read the actor, which
+  # must be present: neither holds, so the search matches nothing (Bubble's
+  # temporary user would drop it: stricter).
+  test "a current-user field constraint: dropped when empty, nothing when logged out", %{
+    project: project
+  } do
+    env = env(searches: :page)
+
+    raw =
+      search("custom.task", [con("title_text", "equals", chain(cu(), [msg("name_text")]))], %{
+        "ignore_empty_constraints" => true
+      })
+
+    {:ok, %{ir: ir}} = Compiler.compile(parse!(raw, env), env)
+    {:ok, %{expr: expr, diagnostics: []}} = Expressions.search(ir, project)
+
+    # Dropped: the actor is present and its name empty. Otherwise compared,
+    # which holds for no record when there is no actor (`^actor(:name)` is
+    # nil, and `nil != ""` is not true).
+    assert Source.expr(expr) ==
+             ~s|expr(not is_nil(^actor(:id)) and (is_nil(^actor(:name)) or ^actor(:name) == "") | <>
+               ~s|or ^actor(:name) != "" and title == ^actor(:name))|
+  end
+
+  # An empty list value (`[]`) is empty too: a page search that ignores
+  # empty constraints drops `in []`, any other matches nothing.
+  test "a list-valued constraint: [] is an empty value", %{project: project} do
+    compile = fn searches, options ->
+      env = env(searches: searches)
+      list = chain(el("bR1"), [msg("get_list_data")])
+
+      raw = search("custom.task", [con("_id", "in", list)], options)
+      {:ok, %{ir: ir}} = Compiler.compile(parse!(raw, env), env)
+      {:ok, %{expr: expr, diagnostics: []}} = Expressions.search(ir, project)
+      Source.expr(expr)
+    end
+
+    arg = "^arg(:element_state_br1_get_list_data)"
+    empty = "is_nil(#{arg}) or #{arg} == []"
+
+    assert compile.(:page, %{"ignore_empty_constraints" => true}) ==
+             "expr(#{empty} or id in #{arg})"
+
+    for searches <- [:page, :backend], options <- [%{}, %{"ignore_empty_constraints" => false}] do
+      assert compile.(searches, options) == "expr(not (#{empty}) and id in #{arg})"
+    end
+
+    assert compile.(:backend, %{"ignore_empty_constraints" => true}) ==
+             "expr(not (#{empty}) and id in #{arg})"
+  end
+
+  # A backend workflow's text parameter: `""` is empty like nil, so
+  # `title = q` with q = "" matches nothing, whatever the search states.
+  test "a backend search's text parameter: \"\" matches nothing", %{project: project} do
+    env = env(searches: :backend)
+
+    q = %{
+      "type" => "CurrentWorkflowItem",
+      "properties" => %{"btype_id" => "text", "param_id" => "pQ", "param_name" => "q"}
+    }
+
+    for options <- [%{}, %{"ignore_empty_constraints" => true}] do
+      raw = search("custom.task", [con("title_text", "equals", q)], options)
+      {:ok, %{ir: ir}} = Compiler.compile(parse!(raw, env), env)
+      {:ok, %{expr: expr, diagnostics: []}} = Expressions.search(ir, project)
+      arg = "^arg(:parameter_pq_q)"
+
+      assert Source.expr(expr) ==
+               ~s|expr(not (is_nil(#{arg}) or #{arg} == "") and is_not_distinct_from(title, #{arg}))|
+    end
+  end
+
   test "Bubble's random sort compiles to :random; an unknown sort field does not (WTF-452)", %{
     project: project
   } do

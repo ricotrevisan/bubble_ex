@@ -6,6 +6,7 @@ defmodule BubbleEx.PageDataTest do
   use ExUnit.Case, async: true
 
   alias BubbleEx.{Index, Model, PageData}
+  alias BubbleEx.Expression.IR
   alias BubbleEx.PageData.Source
   alias BubbleEx.Target.Elixir.FrontendWorkflows
   alias BubbleEx.Target.Elixir.FrontendWorkflows.Spec
@@ -42,6 +43,11 @@ defmodule BubbleEx.PageDataTest do
 
   defp source(page_data, element), do: Enum.find(page_data.sources, &(&1.element == element))
 
+  defp search_pred(%Source{
+         value: %{ir: %IR{op: :sort, args: [%IR{op: :search, args: [_, p]} | _]}}
+       }),
+       do: p
+
   defp data(spec, element) do
     spec.surfaces
     |> Enum.flat_map(fn {_id, s} -> s.data end)
@@ -66,30 +72,46 @@ defmodule BubbleEx.PageDataTest do
                {:page_thing, %{"page" => "bTaskPage"}}
              ]
 
-      assert PageData.coverage(pd)["sources"] == %{"total" => 8, "native" => 8, "residue" => 0}
+      assert PageData.coverage(pd)["sources"] == %{"total" => 9, "native" => 9, "residue" => 0}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
-    test "a search that does not state ignore_empty_constraints is residue, loudly" do
-      app =
-        update_in(
-          app(),
-          ["pages", "index", "elements", "bList", "properties", "data_source", "properties"],
-          &Map.delete(&1, "ignore_empty_constraints")
-        )
+    # WTF-478, replayed on Bubble (2026-10-01): on a page, an empty
+    # constraint value matches nothing unless the search states
+    # `ignore_empty_constraints: true`, which drops the constraint.
+    test "an empty constraint value: dropped when the search ignores it, else matches nothing" do
+      dropped = fn pd -> search_pred(source(pd, "bList")) end
 
-      {_model, pd} = build(app)
+      {_model, pd} = build(app())
+      assert %IR{op: :or, args: [%IR{op: :is_empty}, %IR{op: :text_contains}]} = dropped.(pd)
 
-      assert [%{reason: :uncompiled_expression, detail: %{constructs: constructs}}] =
-               source(pd, "bList").residue
+      assert %IR{op: :and, args: [%IR{op: :not, args: [%IR{op: :is_empty}]}, _]} =
+               search_pred(source(pd, "bStrict"))
 
-      assert "expr_uncompiled:ignore_empty_constraints" in constructs
-      assert [%{code: :page_data_residue}] = pd.diagnostics
-      assert PageData.residue(pd) == source(pd, "bList").residue
+      for options <- [
+            &Map.delete(&1, "ignore_empty_constraints"),
+            &Map.put(&1, "ignore_empty_constraints", false)
+          ] do
+        app =
+          update_in(
+            app(),
+            ["pages", "index", "elements", "bList", "properties", "data_source", "properties"],
+            options
+          )
 
-      # The caller may supply Bubble's default (not verified).
-      {_model, pd} = build(app, ignore_empty_constraints: true)
-      assert source(pd, "bList").residue == []
+        # Compiled, not residue; the caller's default does not change it.
+        for default <- [nil, true, false] do
+          {_model, pd} = build(app, ignore_empty_constraints: default)
+          assert source(pd, "bList").residue == []
+          assert pd.diagnostics == []
+
+          assert %IR{
+                   op: :and,
+                   args: [%IR{op: :not, args: [%IR{op: :is_empty}]}, %IR{op: :text_contains}]
+                 } =
+                   dropped.(pd)
+        end
+      end
     end
 
     test "a search constrained or sorted on a field a privacy rule keeps out of searches is residue" do
@@ -257,10 +279,21 @@ defmodule BubbleEx.PageDataTest do
       assert Enum.map(Spec.data(spec, "bTaskPage"), & &1.element) == ["bTaskPage", "bProjGroup"]
 
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 8,
-               "wired" => 8,
+               "total" => 9,
+               "wired" => 9,
                "residue" => 0
              }
+
+      # An empty constraint value: dropped in bList, matches nothing in
+      # bStrict (WTF-478). Both read the input and its emptiness as pins.
+      assert %{read: {:query, strict}, residue: []} = data(spec, "bStrict")
+      assert {:or, [{:op, "==", {:pin, "pin_2"}, {:value, true}}, _]} = q.filter.expr
+
+      assert {:and, [{:call, "is_distinct_from", [pin: "pin_2", value: true]}, _]} =
+               strict.filter.expr
+
+      assert [%{var: "pin_1"}, %{var: "pin_2", value: %{source: empty}}] = strict.pins
+      assert empty =~ "Runtime.empty?("
     end
 
     test "Bubble's random sort is a random order, limited by the page size (WTF-452)" do
@@ -329,13 +362,13 @@ defmodule BubbleEx.PageDataTest do
       {spec, _project, _frontend, _app, _model} = spec(app)
       assert %{read: {:value, _}, residue: []} = data(spec, "bFromList")
 
-      # The list is not generated (its search does not say whether it
-      # ignores empty constraints): the group reading it is not either.
+      # The list is not generated (its search has an unmodeled option):
+      # the group reading it is not either.
       app =
         update_in(
           app,
           ["pages", "index", "elements", "bList", "properties", "data_source", "properties"],
-          &Map.delete(&1, "ignore_empty_constraints")
+          &Map.put(&1, "dynamic_sort_field", "x")
         )
 
       {spec, _project, _frontend, _app, _model} = spec(app)
@@ -347,7 +380,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 6
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 7
     end
 
     test "a repeating group in a repeating group's cell is residue" do
