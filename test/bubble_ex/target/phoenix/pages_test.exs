@@ -184,7 +184,8 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       # WTF-372: opening an open overlay does nothing, so its opener is the
       # first one (T5 saved the focus again); an opener hidden since (in a
       # Group Focus the Popup closed) gives way to what opened that one.
-      assert helpers =~ "if (!el.hidden) return"
+      assert helpers =~ "if (!el.hidden) {"
+      assert helpers =~ ~s|if (!overlay) this.js().removeAttribute(el, "hidden")|
       assert helpers =~ "this.openers.set(el, document.activeElement)"
       assert helpers =~ "const closed = opener.closest && opener.closest(OVERLAYS)"
       assert helpers =~ "if (opener && isOpen(opener)) opener.focus()"

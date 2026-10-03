@@ -25,7 +25,9 @@
 #     `mix wtf.task complete` of its workflow tasks (compiles, lint,
 #     step_order) with their tagged tests (frontend_workflows.exs); for
 #     phoenix_index_thing, a typed index page's /index/:bubble_thing route
-#     and "Go to page" data (test/support/target/phoenix/index_thing_behavior.exs)
+#     and "Go to page" data (test/support/target/phoenix/index_thing_behavior.exs);
+#     for phoenix_visibility, visibility conditionals per user and custom
+#     state (test/support/target/phoenix/visibility_behavior.exs)
 #   * the same checks with privacy: :enforced (WTF-423) on the fixtures
 #     with privacy rules, pages and workflows (a second scratch project,
 #     <scratch>_enforced), plus the generated privacy-matrix tests against
@@ -165,6 +167,15 @@ for fixture in $fixtures; do
         test/index_thing_behavior_test.exs
       mix test test/index_thing_behavior_test.exs
       rm test/index_thing_behavior_test.exs
+    fi
+
+    # Visibility conditionals (WTF-477): the hidden attribute per user and
+    # custom state.
+    if [[ "$fixture" == phoenix_visibility ]]; then
+      cp "$root/test/support/target/phoenix/visibility_behavior.exs" \
+        test/visibility_behavior_test.exs
+      mix test test/visibility_behavior_test.exs
+      rm test/visibility_behavior_test.exs
     fi
 
     # Page data (WTF-420): what the generated pages load, and never load.

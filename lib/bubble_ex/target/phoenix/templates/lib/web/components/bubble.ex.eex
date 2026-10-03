@@ -6,7 +6,11 @@ defmodule <%= @web %>.Bubble do
   `Phoenix.LiveView.JS` commands handled by one hook per page
   (`runtime/1`). An overlay or element is closed while it has the `hidden`
   attribute; the hook sets and removes it through LiveView's JS commands,
-  so a later render keeps it.
+  so a later render keeps it. An element's visibility conditionals
+  (WTF-477) render that attribute from the server until a workflow shows,
+  hides or toggles the element: Bubble's actions take precedence over
+  conditions, which take precedence over the visibility on page load, so
+  from then on the step decides, until the page reloads.
 
     * `show/3`, `hide/3`, `toggle/3`, `focus/3`, `scroll_to/3` and
       `reset/3` act on one element of one reusable-element instance
@@ -260,9 +264,14 @@ defmodule <%= @web %>.Bubble do
           )
         },
         show(el) {
-          // Already open: nothing (its opener stays the first one).
-          if (!el.hidden) return
           const overlay = el.getAttribute("data-overlay")
+          // Already open: nothing (its opener stays the first one). Any
+          // other element still keeps the step: a workflow's show or hide
+          // wins over its conditionals until the page reloads (WTF-477).
+          if (!el.hidden) {
+            if (!overlay) this.js().removeAttribute(el, "hidden")
+            return
+          }
           if (overlay === "popup" || overlay === "group_focus") {
             document.querySelectorAll('[data-overlay="group_focus"]').forEach((other) => {
               if (other !== el && !other.hidden) this.hide(other)
@@ -280,7 +289,10 @@ defmodule <%= @web %>.Bubble do
           el.dispatchEvent(new CustomEvent("bubble:overlay-opened", { bubbles: true }))
         },
         hide(el) {
-          if (el.hidden) return
+          if (el.hidden) {
+            if (!el.getAttribute("data-overlay")) this.js().setAttribute(el, "hidden", "")
+            return
+          }
           const hadFocus = el.contains(document.activeElement)
           this.js().setAttribute(el, "hidden", "")
           if (!el.getAttribute("data-overlay")) return
