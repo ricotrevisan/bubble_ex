@@ -26,11 +26,13 @@ defmodule BubbleEx.Expression.Compiler do
   | where | `ignore_empty_constraints` unstated or false | `true` |
   |-------|----------------------------------------------|--------|
   | `:page` (a page's data, elements and workflows) | matches nothing, even a record whose field is empty | dropped |
-  | `:backend` (a backend workflow) | matches nothing | matches nothing (no effect) |
+  | `:backend` (a backend workflow, or a page workflow's server-side action) | matches nothing | matches nothing (no effect) |
 
   "Matches nothing" is `not is_empty(value) and constraint`; "dropped" is
-  `is_empty(value) or constraint`. Either is a filter of the same search,
-  read for the actor like any other, so privacy rules still apply. The
+  `is_empty(value) or constraint`. Only `equals` was replayed, and a page
+  workflow's server-side action was not (`Sites.action_env/2`: it takes
+  the backend rule). Either is a filter of the same search, read for the
+  actor like any other, so privacy rules still apply. The
   Current User itself is never empty: Bubble's logged-out visitor is a
   temporary user (`logged_out_user_is_empty` is refuted), so `X = Current
   User` is not dropped for them. Where `Env.searches` is nil (a privacy

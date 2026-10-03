@@ -37,18 +37,21 @@ public pages without first adding and testing authorization policies**; passing
 `authorize?: true` alone does not enforce privacy.
 
 **A search that ignores empty constraints can return every record.** A
-search stating `ignore_empty_constraints: true` drops each constraint
-whose value is empty, as Bubble does on a page (WTF-478; any other empty
-constraint value matches nothing, see below). For a logged-out visitor
-the current user's fields are empty, so a constraint `X = Current User's
-Workspace` is dropped and the search returns every record of the type,
-up to the page size or `:max_items`. `X = Current User` itself is never
-dropped: Bubble's logged-out visitor is a temporary user, not an empty
-one, so it matches nothing. Under `privacy: :omit`
-nothing stops this: there is no policy to fall back on. Before enabling
-data access, find such searches on pages a logged-out visitor can open
-(or that a signed-out session can reach), and either require a signed-in
-user there or add policies.
+page search stating `ignore_empty_constraints: true` drops each
+constraint whose value is empty, as Bubble does (WTF-478; any other empty
+constraint value matches nothing, see below). A **signed-in** user whose
+referenced field is empty (`X = Current User's Workspace` for a user
+with no workspace), or whose input is blank, gets every record of the
+type the search can read, up to the page size or `:max_items`. A
+logged-out visitor does not: a constraint reading the current user (or
+one of its fields) matches nothing for them, which is stricter than
+Bubble (its temporary user's empty fields would drop the constraint).
+Under `privacy: :omit` nothing stops this: there is no policy to fall
+back on, and requiring sign-in does not help. Before enabling data access, find such searches
+and add policies that limit what each user may read (or generate with
+`privacy: :enforced`), make the referenced field required, or set the
+search's `ignore_empty_constraints` to false in Bubble where a blank
+value should show nothing.
 
 **A search on a field Bubble keeps out of searches is not loaded.** A
 privacy rule can list fields the users it applies to may not search by
@@ -364,6 +367,7 @@ Bubble (WTF-385, 2026-10-01), and depends on where the search runs
 |-------|----------------------------------------------|--------|
 | a page (its data sources, elements and workflows) | matches nothing, even a record whose field is empty | the constraint is dropped |
 | a backend workflow | matches nothing | matches nothing (no effect) |
+| a page workflow's server-side action (create, change, delete, bulk change, schedule, …) | matches nothing | matches nothing (not replayed: the backend rule, so a delete or bulk change with a blank input never reaches every readable record) |
 
 (The Data API drops `equals ""`, `equals null`, `not equal ""` and `text
 contains ""`; nothing here generates Data API searches.) Both forms are a
@@ -384,6 +388,13 @@ where it runs (a privacy rule's condition).
 ## Unverified Bubble behavior and open questions
 
 * **`:filtered` with an empty constraint value.** Not replayed (above).
+* **Server actions in page workflows ignore the flag.** A page workflow's
+  server-side action (`BubbleEx.Index.WorkflowAnalysis`) takes the
+  backend rule; whether Bubble evaluates its searches like a page search
+  or a backend one is not replayed (WTF-358).
+* **Matches nothing for operators other than `equals`.** The replay
+  tried `equals`; that `>`, `contains`, `in` and the others match
+  nothing on an empty value (or are dropped with `true`) is assumed.
 * A page's thing is read from the path segment after the page name; a
   slug is not resolved.
 * A repeating group shows its first page; later pages ("Show next") are

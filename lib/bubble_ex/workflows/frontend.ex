@@ -449,6 +449,7 @@ defmodule BubbleEx.Workflows.Frontend do
   # --- steps -----------------------------------------------------------------------
 
   defp step(action, path, n, env, ctx) when is_map(action) do
+    env = Sites.action_env(action, env)
     type = Source.value(action, ~w(type %x))
     props = map(Source.value(action, ~w(properties %p)))
     bubble_id = text(Source.value(action, ~w(id %id))) || "#{ctx.workflow}/#{List.last(path)}"

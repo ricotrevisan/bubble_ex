@@ -24,7 +24,8 @@ defmodule BubbleEx.Expression.Sites do
       (`trigger_type`), and every step knows the result types of the
       workflow's data steps (`steps`)
     * searches run on a page (`Env.searches: :page`) except in a backend
-      workflow (`:backend`)
+      workflow and in a page workflow's server-side action (`:backend`,
+      `action_env/2`)
 
   `kind` is `:element` or `:workflow`; `subject` has the workflow's Bubble
   ID for workflow sites. Order is by source path.
@@ -32,6 +33,7 @@ defmodule BubbleEx.Expression.Sites do
 
   alias BubbleEx.{Error, Expression}
   alias BubbleEx.Expression.{Env, Tree, Typing}
+  alias BubbleEx.Index.WorkflowAnalysis
   alias BubbleEx.Model
   alias BubbleEx.Workflows.Source
 
@@ -133,9 +135,27 @@ defmodule BubbleEx.Expression.Sites do
 
     sites(event, path, env, :workflow) ++
       Enum.flat_map(actions, fn {key, action} ->
-        sites(action, path ++ [akey, key], env, :workflow)
+        sites(action, path ++ [akey, key], action_env(action, env), :workflow)
       end)
   end
+
+  @doc """
+  The environment of one action of a workflow compiled in `env`. A page
+  workflow's server-side action (`BubbleEx.Index.WorkflowAnalysis`: a
+  create, change, delete, bulk change, schedule, …) runs its searches with
+  the backend rule (`searches: :backend`): an empty constraint value
+  matches nothing, whatever `ignore_empty_constraints` says. Not replayed
+  (WTF-478): it keeps a delete or bulk change with an empty input from
+  reaching every record the user can read.
+  """
+  @spec action_env(term(), Env.t()) :: Env.t()
+  def action_env(action, %Env{searches: :page} = env) when is_map(action) do
+    if WorkflowAnalysis.action_class(Source.value(action, ~w(type %x))) == :server,
+      do: %{env | searches: :backend},
+      else: env
+  end
+
+  def action_env(_action, %Env{} = env), do: env
 
   @doc """
   The `BubbleEx.Expression.Env` the expressions of the workflow `raw` (at

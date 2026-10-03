@@ -41,6 +41,12 @@ defmodule BubbleEx.Expression.SitesTest do
     # Where searches run decides what an empty constraint value does (WTF-478).
     assert env.searches == :page
     assert trigger.searches == :backend
+
+    # A page workflow's server-side action takes the backend rule.
+    assert Sites.action_env(%{"type" => "DeleteListOfThings"}, env).searches == :backend
+    assert Sites.action_env(%{"type" => "ChangeThing"}, env).searches == :backend
+    assert Sites.action_env(%{"type" => "HideElement"}, env).searches == :page
+    assert Sites.action_env(%{"type" => "HideElement"}, trigger).searches == :backend
   end
 
   test "the compile report counts by stage", %{model: model, project: project} do
