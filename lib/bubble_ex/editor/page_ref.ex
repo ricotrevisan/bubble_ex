@@ -45,7 +45,7 @@ defmodule BubbleEx.Editor.PageRef do
   @spec matches?(t(), term()) :: boolean()
   def matches?(ref, page) when is_map(page) do
     matches_fields?(page, ["id", "%id"], ref.id) and
-      matches_fields?(page, ["name", "%nm"], ref.name) and
+      matches_fields?(page, ["name", "%nm", "default_name"], ref.name) and
       matches_fields?(page, ["type", "%x"], "Page")
   end
 

@@ -33,6 +33,32 @@ defmodule BubbleEx.HTTP do
   @default_retry_base_delay 250
   @transient_status_codes [408, 429, 500, 502, 503, 504]
 
+  # Anonymous requests are default-deny: future Req credential/payload options
+  # must not become runtime egress just because they appear in either defaults.
+  @anonymous_options [
+    :timeout,
+    :recv_timeout,
+    :receive_timeout,
+    :pool_timeout,
+    :deadline,
+    :max_body_length,
+    :bounded_body,
+    :decode_body,
+    :raw,
+    :compressed,
+    :retry,
+    :follow_redirect,
+    :redirect,
+    :max_redirects,
+    :finch,
+    :connect_options,
+    :proxy,
+    :resolver,
+    :connect,
+    :plug,
+    :adapter
+  ]
+
   defmodule Response do
     @moduledoc false
     @enforce_keys [:status_code, :headers, :body, :request_url]
@@ -66,7 +92,11 @@ defmodule BubbleEx.HTTP do
   end
 
   @doc """
-  One request. With `bounded_body: true` the body is read in chunks under
+  One request. `anonymous: true` discards credential-generating and payload
+  options from application/process defaults and explicit options, and sends no
+  caller headers or body. Only allowlisted transport/budget options survive.
+
+  With `bounded_body: true` the body is read in chunks under
   `max_body_length` and the deadline; `sink: {acc, fun}` then hands each
   chunk to `fun.(chunk, acc)` (returning `{:ok, acc}` or `{:error,
   reason}`) instead of keeping it, and the response body is the final
@@ -115,6 +145,13 @@ defmodule BubbleEx.HTTP do
       default_options
       |> merge_options(process_options)
       |> merge_options(options)
+
+    {effective_options, headers, body} =
+      if Keyword.get(options, :anonymous, false) do
+        {Keyword.take(effective_options, @anonymous_options), [], nil}
+      else
+        {effective_options, headers, body}
+      end
 
     effective_options =
       effective_options
@@ -317,6 +354,7 @@ defmodule BubbleEx.HTTP do
 
   defp merge_remaining_options(req_options, options) do
     recognized = [
+      :anonymous,
       :follow_redirect,
       :credential_origin,
       :resolver,

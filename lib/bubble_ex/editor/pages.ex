@@ -3,7 +3,7 @@ defmodule BubbleEx.Editor.Pages do
 
   alias BubbleEx.Apps.Parser
   alias BubbleEx.Editor.{PageRef, Target}
-  alias BubbleEx.Index.Structure
+  alias BubbleEx.Workflows.Source
   alias BubbleEx.{Error, HTTP}
 
   @spec discover(Target.t(), keyword()) :: {:ok, [PageRef.t()]} | {:error, Error.t()}
@@ -39,6 +39,7 @@ defmodule BubbleEx.Editor.Pages do
       follow_redirect: false,
       redirect: false,
       auth: nil,
+      anonymous: true,
       decode_body: false,
       bounded_body: true,
       max_body_length: BubbleEx.Config.apps_max_body_length([])
@@ -89,46 +90,39 @@ defmodule BubbleEx.Editor.Pages do
   end
 
   defp references(app, target, url) do
-    # Reuse the canonical structural interpretation without building unrelated
-    # data-model/workflow indexes. Mobile views and reusables are not web pages.
+    # Discovery needs only owner metadata. Do not index/traverse page elements,
+    # workflows or other descendants just to extract an identity.
     refs =
-      app
-      |> Map.take(["%p3", "pages"])
-      |> Structure.build()
-      |> Map.fetch!(:symbols)
-      |> Enum.filter(&(&1.kind == :page))
-      |> Enum.map(fn symbol ->
-        [section, key] =
-          symbol.path
-          |> String.trim_leading("/")
-          |> String.split("/")
-          |> Enum.map(&unescape_pointer/1)
-
-        node = get_in(app, [section, key])
-        id = Map.get(node, "id", Map.get(node, "%id"))
-
-        %PageRef{
-          appname: target.appname,
-          version: target.version,
-          key: key,
-          id: id,
-          name: symbol.name,
-          path: ["%p3", key],
-          source: %{kind: :runtime, url: url, pointer: symbol.path}
-        }
-      end)
-      |> Enum.sort_by(& &1.key)
+      for section <- ["pages", "%p3"],
+          pages = Map.get(app, section, %{}),
+          {key, node} <- if(is_map(pages), do: pages, else: [{nil, nil}]),
+          do: reference(node, section, key, target, url)
 
     if refs != [] and Enum.all?(refs, &(PageRef.validate(&1, target) == :ok)) and
          unique?(refs, :key) and unique?(refs, :id) do
-      {:ok, refs}
+      {:ok, Enum.sort_by(refs, & &1.key)}
     else
       parse_error()
     end
   end
 
-  defp unescape_pointer(segment),
-    do: segment |> String.replace("~1", "/") |> String.replace("~0", "~")
+  defp reference(node, section, key, target, url) when is_map(node) and is_binary(key) do
+    ref = %PageRef{
+      appname: target.appname,
+      version: target.version,
+      key: key,
+      id: Source.value(node, ~w(id %id)),
+      name: Source.value(node, ~w(name %nm default_name)),
+      path: ["%p3", key],
+      source: %{kind: :runtime, url: url, pointer: Source.pointer([section, key])}
+    }
+
+    # The page section identifies the kind when no type is emitted; every
+    # explicit type/ID/name field must still agree, including both key forms.
+    if PageRef.matches?(ref, Map.put_new(node, "type", "Page")), do: ref
+  end
+
+  defp reference(_node, _section, _key, _target, _url), do: nil
 
   defp unique?(refs, field) do
     values = Enum.map(refs, &Map.fetch!(&1, field))

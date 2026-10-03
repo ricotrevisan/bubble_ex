@@ -205,6 +205,42 @@ defmodule BubbleEx.Editor.PagesTest do
     end
   end
 
+  test "discovery rejects conflicting or malformed native/readable identity fields", %{
+    target: target
+  } do
+    post = fn _, _, _, _ -> {:ok, %{"test" => %{}}} end
+    page = %{"id" => "id", "name" => "index", "type" => "Page"}
+
+    for {key, value} <- [
+          {"%id", "other"},
+          {"%id", nil},
+          {"%nm", "other"},
+          {"%nm", 42},
+          {"default_name", "other"},
+          {"%x", "Group"}
+        ] do
+      assert {:error, %Error{kind: :parse_failed}} =
+               Editor.discover_pages(target,
+                 post_fun: post,
+                 runtime_get_fun: runtime_get(%{"pages" => %{"key" => Map.put(page, key, value)}})
+               )
+    end
+  end
+
+  test "discovery reads only shallow page metadata, not element descendants", %{target: target} do
+    child = Enum.reduce(1..2000, %{}, fn _, node -> %{"%el" => %{"child" => node}} end)
+    page = %{"id" => "id", "%id" => "id", "%nm" => "index", "name" => "index", "%el" => child}
+
+    assert {:ok, [ref]} =
+             Editor.discover_pages(target,
+               post_fun: fn _, _, _, _ -> {:ok, %{"test" => %{}}} end,
+               runtime_get_fun: runtime_get(%{"%p3" => %{"key" => page}})
+             )
+
+    assert ref.id == "id"
+    assert ref.name == "index"
+  end
+
   test "bundle denial and parsing failure expose neither payload nor fallback", %{target: target} do
     post = fn _, _, _, _ -> {:ok, %{"test" => %{}}} end
 

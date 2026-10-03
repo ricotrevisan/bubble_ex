@@ -81,9 +81,14 @@ a secret store, never from request params. Do not serialize target structs.
 
 `discover_pages/2` verifies authenticated editor access/version first, then
 fetches the anonymous app runtime HTML and dynamic bundle with **no editor
-cookie or authorization header**. It reuses `Apps.Parser` (including native
-`Object.assign` page patches) and the canonical `Index.Structure` page
-interpretation. All requests are bounded, GET-only on the runtime, and refuse
+cookie or authorization header**. Enforced anonymous HTTP mode allowlists
+transport/budget configuration and discards credential-generating options
+(including AWS signing), arbitrary headers, query params and request payloads
+from both application and process defaults. It reuses `Apps.Parser` (including
+native `Object.assign` page patches), then reads only shallow page metadata;
+element/workflow descendants are not indexed for discovery. All present native
+and readable ID/name fields must agree. All requests are bounded, GET-only on
+the runtime, and refuse
 redirects. Editor/runtime denial or malformed input stops the operation: no
 fallback to another endpoint, version, cookie-bearing runtime request, or guessed
 page path. The default initial runtime route is `index`; an explicitly selected
