@@ -33,7 +33,8 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   `raw?: true`, that folds the states in Bubble's order from the
   element's visibility on page load: the last state whose condition is
   true decides; an empty condition is false. `visibility` is
-  `%{states, initial}`. Anything else conditionals set (colors, text…) is
+  `%{states, initial, constant?}` (`constant?`: every state sets the
+  visibility on page load, so the result never changes). Anything else conditionals set (colors, text…) is
   not compiled here.
 
   A visibility conditional that does not compile (a condition with no IR
@@ -69,7 +70,11 @@ defmodule BubbleEx.Target.Elixir.Frontend do
           required(:file?) => boolean(),
           optional(:file) => %{source: String.t(), bindings: [map()]},
           optional(:raw?) => boolean(),
-          optional(:visibility) => %{states: pos_integer(), initial: boolean()}
+          optional(:visibility) => %{
+            states: pos_integer(),
+            initial: boolean(),
+            constant?: boolean()
+          }
         }
 
   @spec compile(map(), Model.t(), Project.t(), Normalized.t(), keyword()) ::
@@ -159,7 +164,13 @@ defmodule BubbleEx.Target.Elixir.Frontend do
         approximated: [],
         file?: false,
         raw?: true,
-        visibility: %{states: length(states), initial: initial}
+        visibility: %{
+          states: length(states),
+          initial: initial,
+          # Every state sets the visibility it has on page load: whatever
+          # holds, nothing changes.
+          constant?: Enum.all?(states, fn {_condition, visible?} -> visible? == initial end)
+        }
       }
     else
       _ -> nil

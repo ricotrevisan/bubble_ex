@@ -1963,6 +1963,17 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp conditional_visibility(node, nil, states, static, _ctx, acc),
     do: {static, mark_visibility(acc, node, states, "it does not compile")}
 
+  # Conditionals that only ever set the visibility on page load.
+  defp conditional_visibility(
+         _node,
+         %{visibility: %{constant?: true}},
+         states,
+         static,
+         _ctx,
+         acc
+       ),
+       do: {static, count(acc, "visibility_conditions_compiled", states)}
+
   # Every input of a condition must be what the page keeps (the current
   # user, its loaded data, custom states, input values): a value nothing
   # sets would decide the visibility as if empty.

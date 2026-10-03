@@ -107,6 +107,11 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
   test "a condition reads a custom state through the page's state map", %{files: files} do
     template = files["lib/shop_web/live/index_live.html.heex"]
 
+    # bStyle's one visibility state sets what it has on page load: nothing
+    # to evaluate (Elixir 1.20 warns on a constant helper).
+    refute tag(template, "bStyle") =~ "hidden"
+    refute files["lib/shop_web/live/index_live.ex"] =~ "visible_bstyle"
+
     assert tag(template, "bFlagged") =~
              ~s|hidden={!visible_bflagged(Bubble.state(@bubble_states, "", "bVis", "custom.flag_"))}|
   end
