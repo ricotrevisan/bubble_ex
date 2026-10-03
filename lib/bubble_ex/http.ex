@@ -34,7 +34,7 @@ defmodule BubbleEx.HTTP do
   @transient_status_codes [408, 429, 500, 502, 503, 504]
 
   # Anonymous requests are default-deny: future Req credential/payload options
-  # must not become runtime egress just because they appear in either defaults.
+  # must not become runtime egress just because they appear in defaults.
   @anonymous_options [
     :timeout,
     :recv_timeout,
@@ -93,8 +93,9 @@ defmodule BubbleEx.HTTP do
 
   @doc """
   One request. `anonymous: true` discards credential-generating and payload
-  options from application/process defaults and explicit options, and sends no
-  caller headers or body. Only allowlisted transport/budget options survive.
+  options from BubbleEx application/process defaults and explicit options, and
+  sends no caller headers or body. Only allowlisted transport/budget options
+  survive. Req's global defaults are not used for anonymous requests.
 
   With `bounded_body: true` the body is read in chunks under
   `max_body_length` and the deadline; `sink: {acc, fun}` then hands each
@@ -184,7 +185,7 @@ defmodule BubbleEx.HTTP do
     try do
       request =
         req_options
-        |> Req.new()
+        |> new_request(Keyword.get(options, :anonymous, false))
         |> Req.Request.append_request_steps(
           public_destination: fn request ->
             adapter =
@@ -218,6 +219,17 @@ defmodule BubbleEx.HTTP do
         {:error, build_error(exception)}
     end
   end
+
+  defp new_request(options, true) do
+    # Req.new/1 merges :req, :default_options after our allowlist. Start from
+    # its bare request + standard steps instead, so global auth, payloads and
+    # plugins cannot reintroduce credentials. Trusted options remain explicit.
+    Req.Request.new()
+    |> Req.Steps.attach()
+    |> Req.merge(options)
+  end
+
+  defp new_request(options, _anonymous), do: Req.new(options)
 
   defp build_request_options(options) do
     follow_redirect = Keyword.get(options, :follow_redirect, true)
