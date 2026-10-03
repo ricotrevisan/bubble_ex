@@ -74,6 +74,7 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   alias BubbleEx.{CanonicalJson, Error}
   alias BubbleEx.Target.ApiClients.Spec
   alias BubbleEx.Target.Ash.Project
+  alias BubbleEx.Target.Phoenix.IndexSnapshots
 
   @path ".wtf/generated.json"
   @version 1
@@ -88,7 +89,8 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
           stale: [String.t()],
           unrouted: [String.t()],
           extensions_unlisted: [String.t()],
-          images_unserved: [String.t()]
+          images_unserved: [String.t()],
+          index_snapshots_stale: [String.t()]
         }
 
   # Where the Bubble page images are generated (and the owned endpoint's
@@ -227,6 +229,13 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   `Plug.Static` at `from: {:app, "priv/bubble_images"}` and remove those
   files.
 
+  `index_snapshots_stale` lists the latest AshPostgres resource snapshots
+  that record a generated index hint as not concurrent (migrations
+  generated before WTF-418), including those the task must skip: the
+  next `mix ash.codegen` would drop and rebuild those indexes. A warning, not a hand edit: run `mix
+  bubble.concurrent_index_snapshots --root <project>` first
+  (`BubbleEx.Target.Phoenix.IndexSnapshots`).
+
   `unrouted` lists the Bubble pages (by Bubble ID) that have no route:
   the owned router exists but never calls the generated routes (see
   `routes` above). Such pages need their route before they are verified
@@ -260,7 +269,8 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
          stale: stale,
          unrouted: unrouted(manifest, read),
          extensions_unlisted: extensions_unlisted(manifest, read),
-         images_unserved: images_unserved(manifest, read) ++ list.(@legacy_images_dir)
+         images_unserved: images_unserved(manifest, read) ++ list.(@legacy_images_dir),
+         index_snapshots_stale: IndexSnapshots.stale(manifest, read, list)
        }}
     end
   end

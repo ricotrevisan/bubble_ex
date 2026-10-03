@@ -43,6 +43,8 @@ defmodule BubbleEx.Db.OneInterpretationTest do
     "lib/bubble_ex/target/phoenix/pages.ex" =>
       "element properties and HTML attributes of the normalized frontend (`value`), not the data model",
     "lib/bubble_ex/target/phoenix/tailwind.ex" => "CSS `display`",
+    "lib/bubble_ex/target/phoenix/index_snapshots.ex" =>
+      "AshPostgres resource snapshots' own index members (`fields`, `value`), not the data model",
     "lib/bubble_ex/workflows/node.ex" => "classifies a JSON pointer's section (`user_types`)",
     "lib/bubble_ex/workflows/explanation.ex" =>
       "workflow action parameters' own `key`/`value` members, not fields",
