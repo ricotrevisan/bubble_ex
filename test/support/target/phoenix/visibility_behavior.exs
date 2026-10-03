@@ -10,11 +10,29 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
   import Phoenix.LiveViewTest
 
   @u1 "1700000000000x100000000000000001"
+  @p1 "1700000000000x200000000000000001"
+  @t1 "1700000000000x300000000000000001"
+  @t2 "1700000000000x300000000000000002"
 
   setup do
     on_exit(fn -> Application.delete_env(:phx_check, PhxCheckWeb.BubbleWorkflows) end)
-    %{user: Ash.Seed.seed!(PhxCheck.User, %{id: @u1, email: "one@example.com"})}
+    Ash.Seed.seed!(PhxCheck.Project, %{id: @p1, name: "Apollo"})
+    Ash.Seed.seed!(PhxCheck.Task, %{id: @t1, title: "Alpha", project_id: @p1})
+    Ash.Seed.seed!(PhxCheck.Task, %{id: @t2, title: "Bravo"})
+    %{user: Ash.Seed.seed!(PhxCheck.User, %{id: @u1, email: "one@example.com", role: "admin"})}
   end
+
+  # With privacy: :enforced the User's role is a field no one may view
+  # (its privacy rules show only the email).
+  defp enforced? do
+    privacy = Module.concat(PhxCheck, Privacy)
+
+    Code.ensure_loaded?(privacy) and function_exported?(privacy, :mode, 0) and
+      apply(privacy, :mode, []) == :enforced
+  end
+
+  defp data_access_on,
+    do: Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: true)
 
   defp sign_in(conn, user) do
     {:ok, token, _claims} = AshAuthentication.Jwt.token_for_user(user)
@@ -32,9 +50,11 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
   # Whether the element renders with the `hidden` attribute.
   defp hidden?(view, id, scope \\ nil) do
     selector =
-      if scope,
-        do: ~s([data-bubble-scope="#{scope}"] [data-bubble-id="#{id}"]),
-        else: ~s([data-bubble-id="#{id}"])
+      case scope do
+        nil -> ~s([data-bubble-id="#{id}"])
+        {:cell, thing} -> ~s(#bubble-cell--bTasks-t-#{thing} [data-bubble-id="#{id}"])
+        scope -> ~s([data-bubble-scope="#{scope}"] [data-bubble-id="#{id}"])
+      end
 
     html = view |> element(selector) |> render()
     [open] = Regex.run(~r/\A<[^>]*>/s, html)
@@ -80,5 +100,48 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     {:ok, view, _html} = live(conn, "/")
     assert hidden?(view, "bBad")
     refute hidden?(view, "bWidth")
+  end
+
+  test "the current user is read afresh: a role change takes effect at the next event",
+       %{conn: conn, user: user} do
+    {:ok, view, _html} = live(sign_in(conn, user), "/")
+
+    # A field the user may not view reads as empty, as in Bubble.
+    assert hidden?(view, "bAdmin") == enforced?()
+
+    Ash.Seed.update!(user, %{role: "guest"})
+    click(view, "bUnflag")
+    assert hidden?(view, "bAdmin")
+  end
+
+  test "a cell's condition reads its thing's relationship, loaded with the list",
+       %{conn: conn} do
+    data_access_on()
+    {:ok, view, _html} = live(conn, "/")
+    assert hidden?(view, "bCellNoProject", {:cell, @t1})
+    refute hidden?(view, "bCellNoProject", {:cell, @t2})
+  end
+
+  test "a group's condition reads its thing's relationship, loaded with the group",
+       %{conn: conn} do
+    data_access_on()
+    {:ok, view, _html} = live(conn, "/task/#{@t1}")
+    refute hidden?(view, "bHasProject")
+    {:ok, view, _html} = live(conn, "/task/#{@t2}")
+    assert hidden?(view, "bHasProject")
+  end
+
+  test "a relationship a condition reads is never decided on unloaded" do
+    task = Ash.get!(PhxCheck.Task, @t1, authorize?: false)
+    assert %Ash.NotLoaded{} = task.project
+
+    assert_raise ArgumentError,
+                 ~r/project is read by a visibility condition but not loaded/,
+                 fn ->
+                   PhxCheckWeb.Bubble.loaded!(task, [["project"]])
+                 end
+
+    loaded = Ash.load!(task, :project, authorize?: false)
+    assert PhxCheckWeb.Bubble.loaded!(loaded, [["project"]]) == loaded
   end
 end

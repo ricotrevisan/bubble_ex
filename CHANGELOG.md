@@ -43,6 +43,18 @@ All notable changes to this project are documented here.
   The frontend report counts `visibility_conditions_compiled`,
   `visibility_conditions_marked` and `conditions_other_properties`
   (states setting colors, text and other properties, not lowered yet).
+  The relationships a condition reads load with the page's data (as a
+  dynamic text's do), and a condition helper raises rather than decide
+  on one that was not loaded. With workflows, conditions read the current
+  user from `@bubble_viewer`: `<Web>.BubbleWorkflows.refresh_viewer/1`
+  reads it afresh at mount, page load and every event (a changed role
+  takes effect), as the user themself, so with `privacy: :enforced` a
+  field they may not view reads as empty. Repeating group cells carry
+  their item's DOM ID (`<Web>.Bubble.cell_id/4`), so a kept step follows
+  its item. The compact payload's `"%s"` states are conditionals too,
+  except the ones lowered as breakpoint rules.
+  `scripts/visibility_browser_check.sh` drives the steps in Chrome
+  (browserq; not in CI).
 
 - **Bubble page images move out of `priv/static`** (WTF-455). Stored
   images (`asset_store:`, the exporter's `assets:`) are generated as

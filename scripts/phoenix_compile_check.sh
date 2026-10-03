@@ -200,7 +200,7 @@ done
 # policies too; and test/support/target/phoenix/enforced_behavior.exs,
 # which must pass here and fail without policies (above).
 enforced_scratch="${scratch}_enforced"
-enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows phoenix_index_thing workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
+enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows phoenix_index_thing phoenix_visibility workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
 mkdir -p "$enforced_scratch"
 first=1
 
@@ -237,6 +237,7 @@ for fixture in $enforced_fixtures; do
       phoenix_page_data) behavior=test/support/target/phoenix/page_data_behavior.exs ;;
       phoenix_frontend_workflows) behavior=test/support/target/phoenix/frontend_workflows_behavior.exs ;;
       phoenix_index_thing) behavior=test/support/target/phoenix/index_thing_behavior.exs ;;
+      phoenix_visibility) behavior=test/support/target/phoenix/visibility_behavior.exs ;;
     esac
 
     if [[ -n "$behavior" ]]; then

@@ -247,8 +247,36 @@ defmodule BubbleEx.Frontend.Normalize do
           children:
             apply_breakpoints(node.children, Payload.elements(raw), breakpoints, layout_mode(raw))
       }
+      |> drop_breakpoint_conditions(raw, breakpoints)
     end)
   end
+
+  # Compact states lowered as breakpoint rules are not conditionals.
+  defp drop_breakpoint_conditions(
+         %Node{bindings: %{"condition" => %{payload: payload} = binding}} = node,
+         raw,
+         breakpoints
+       )
+       when is_map(payload) do
+    keys = BubbleEx.Frontend.Responsive.breakpoint_keys(raw, breakpoints)
+
+    case {keys, Map.drop(payload, keys)} do
+      {[], _payload} ->
+        node
+
+      {_keys, empty} when map_size(empty) == 0 ->
+        %{
+          node
+          | bindings: Map.delete(node.bindings, "condition"),
+            content: node.content && Map.delete(node.content, "condition")
+        }
+
+      {_keys, rest} ->
+        %{node | bindings: Map.put(node.bindings, "condition", %{binding | payload: rest})}
+    end
+  end
+
+  defp drop_breakpoint_conditions(node, _raw, _breakpoints), do: node
 
   defp duplicate_collapse?(
          %{"media" => %{"operator" => "<=", "width" => width}, "paint" => paint},
@@ -2285,8 +2313,10 @@ defmodule BubbleEx.Frontend.Normalize do
     {Map.merge(src_slots, alt_slots), Map.merge(src_bindings, alt_bindings)}
   end
 
+  # Editor JSON's `states`, else the compact form's `%s` (the ones a
+  # breakpoint rule lowers leave it in apply_breakpoints/4, WTF-477).
   defp condition_slot(raw, exporter_id) do
-    states = raw["states"] || raw["%st"] || Payload.prop(raw, "states")
+    states = raw["states"] || raw["%st"] || Payload.prop(raw, "states") || raw["%s"]
 
     if is_map(states) and map_size(states) > 0 do
       binding = %{

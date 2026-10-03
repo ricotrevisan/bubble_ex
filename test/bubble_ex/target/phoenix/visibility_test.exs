@@ -31,11 +31,14 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     {:ok, backend} =
       BubbleEx.Target.Ash.Workflows.map(backend_lowered, project, namespace: "Shop")
 
+    {:ok, page_data} = BubbleEx.PageData.build(app, model)
+
     {:ok, spec} =
       FrontendWorkflows.map(lowered, project,
         namespace: "Shop",
         frontend: frontend,
-        backend: backend
+        backend: backend,
+        page_data: page_data
       )
 
     opts = [
@@ -76,8 +79,8 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     template = files["lib/shop_web/live/index_live.html.heex"]
     live = files["lib/shop_web/live/index_live.ex"]
 
-    assert tag(template, "bOut") =~ "hidden={!visible_bout(@current_user)}"
-    assert tag(template, "bIn") =~ "hidden={!visible_bin(@current_user)}"
+    assert tag(template, "bOut") =~ "hidden={!visible_bout(@bubble_viewer)}"
+    assert tag(template, "bIn") =~ "hidden={!visible_bin(@bubble_viewer)}"
     # Never a fixed `hidden` class.
     refute tag(template, "bOut") =~ ~r/class="[^"]*\bhidden\b/
 
@@ -118,14 +121,14 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
 
   test "in a reusable element, the condition's inputs are attributes", %{files: files} do
     card = files["lib/shop_web/components/reusables/card.ex"]
-    assert card =~ "attr :current_user, :any, default: nil"
+    assert card =~ "attr :bubble_viewer, :any, default: nil"
     assert card =~ "defp visible_bcardt(current_user) do"
 
     assert files["lib/shop_web/components/reusables/card.html.heex"] =~
-             "hidden={!visible_bcardt(@current_user)}"
+             "hidden={!visible_bcardt(@bubble_viewer)}"
 
     assert tag(files["lib/shop_web/live/index_live.html.heex"], "bMember") =~
-             "current_user={@current_user}"
+             "bubble_viewer={@bubble_viewer}"
   end
 
   test "not visible on page load is the hidden attribute, which workflow steps change", %{
@@ -184,11 +187,12 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
   } do
     {:ok, report} = Phoenix.frontend_report(project, Keyword.delete(opts, :frontend_workflows))
 
-    # Without the workflows the page keeps no custom state: bFlagged's
-    # conditional is marked too.
+    # Without the workflows the page keeps no custom state and loads no
+    # data: bFlagged's, bCellNoProject's and bHasProject's conditionals are
+    # marked too.
     assert %{
-             "visibility_conditions_compiled" => 7,
-             "visibility_conditions_marked" => 3,
+             "visibility_conditions_compiled" => 8,
+             "visibility_conditions_marked" => 5,
              "conditions_other_properties" => 2
            } = report
   end
@@ -295,5 +299,42 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
 
     assert template =~
              "TODO(bubble:bOut) visibility: 1 conditional not lowered (a breakpoint also shows it)"
+  end
+
+  test "a condition reads the current user as the runtime refreshes it", %{files: files} do
+    template = files["lib/shop_web/live/index_live.html.heex"]
+    assert tag(template, "bAdmin") =~ "hidden={!visible_badmin(@bubble_viewer)}"
+    refute files["lib/shop_web/live/index_live.ex"] =~ "assign(:bubble_viewer"
+
+    helpers = files["lib/shop_web/components/bubble.ex"]
+    assert helpers =~ "def viewer_loads, do: []"
+
+    runtime = files["lib/shop_web/bubble_workflows.ex"]
+    assert runtime =~ "def refresh_viewer(socket)"
+    assert runtime =~ "Ash.get(resource, id, actor: actor, not_found_error?: false)"
+    assert runtime =~ "defp unforbidden(%Ash.ForbiddenField{}), do: nil"
+  end
+
+  test "the relationships a condition reads are loaded with the page data", %{files: files} do
+    index = files["lib/shop_web/live/index_live/workflows.ex"]
+    assert index =~ ~r/element: "bTasks",.*?loads: \[\["project"\]\]/s
+
+    task = files["lib/shop_web/live/task_live/workflows.ex"]
+    assert task =~ ~r/element: "bTaskGroup",.*?loads: \[\["project"\]\]/s
+
+    # ... and a condition helper refuses a relationship that was not.
+    live = files["lib/shop_web/live/index_live.ex"]
+    assert live =~ ~s|Bubble.loaded!(cell_thing_btasks, [["project"]])|
+
+    assert files["lib/shop_web/live/task_live.ex"] =~
+             ~s|Bubble.loaded!(element_state_btaskgroup_get_group_data, [["project"]])|
+
+    assert files["lib/shop_web/components/bubble.ex"] =~
+             "defp loaded_path!(%Ash.NotLoaded{}, _rest, path)"
+  end
+
+  test "repeating group cells are keyed by their item", %{files: files} do
+    assert files["lib/shop_web/live/index_live.html.heex"] =~
+             ~s|id={Bubble.cell_id("", "bTasks", cell_btasks, cell_btasks_i)}|
   end
 end

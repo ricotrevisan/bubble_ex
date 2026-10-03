@@ -55,6 +55,48 @@
         }
       },
       "elements": {
+        "bAdmin": {
+          "id": "bAdmin",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 14,
+            "text": {
+              "entries": {
+                "0": "Admin tools"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "role_text",
+                  "next": {
+                    "args": {
+                      "entries": {
+                        "0": "admin"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "name": "equals",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
         "bBad": {
           "id": "bBad",
           "properties": {
@@ -374,6 +416,92 @@
           },
           "type": "Text"
         },
+        "bTasks": {
+          "elements": {
+            "bCellNoProject": {
+              "id": "bCellNoProject",
+              "properties": {
+                "height": 40,
+                "is_visible": false,
+                "min_height_css": "40px",
+                "order": 2,
+                "text": {
+                  "entries": {
+                    "0": "No project"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "states": {
+                "0": {
+                  "condition": {
+                    "next": {
+                      "name": "project_custom_project",
+                      "next": {
+                        "name": "name_text",
+                        "next": {
+                          "name": "is_empty",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "CurrentDataItem"
+                  },
+                  "properties": {
+                    "is_visible": true
+                  },
+                  "type": "State"
+                }
+              },
+              "type": "Text"
+            },
+            "bCellTitle": {
+              "id": "bCellTitle",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Task: ",
+                    "1": {
+                      "next": {
+                        "name": "title_text",
+                        "type": "Message"
+                      },
+                      "type": "CurrentDataItem"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bTasks",
+          "properties": {
+            "columns": 1,
+            "data_source": {
+              "properties": {
+                "descending": false,
+                "sort_field": "title_text",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.task",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 15,
+            "rows": 3,
+            "width": 300
+          },
+          "type": "RepeatingGroup"
+        },
         "bUnflag": {
           "id": "bUnflag",
           "properties": {
@@ -519,15 +647,122 @@
           "type": "ButtonClicked"
         }
       }
+    },
+    "task": {
+      "elements": {
+        "bTaskGroup": {
+          "elements": {
+            "bHasProject": {
+              "id": "bHasProject",
+              "properties": {
+                "height": 40,
+                "is_visible": false,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Has a project"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "states": {
+                "0": {
+                  "condition": {
+                    "next": {
+                      "name": "project_custom_project",
+                      "next": {
+                        "name": "name_text",
+                        "next": {
+                          "name": "is_not_empty",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "ElementParent"
+                  },
+                  "properties": {
+                    "is_visible": true
+                  },
+                  "type": "State"
+                }
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bTaskGroup",
+          "properties": {
+            "data_source": {
+              "type": "CurrentPageItem"
+            },
+            "group_type": "custom.task",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "width": 300
+          },
+          "type": "Group"
+        }
+      },
+      "id": "bTaskPage",
+      "name": "task",
+      "properties": {
+        "page_item_type": "custom.task",
+        "title": "Task"
+      },
+      "type": "Page"
     }
   },
   "user_types": {
+    "project": {
+      "display": "Project",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      }
+    },
+    "task": {
+      "display": "Task",
+      "fields": {
+        "project_custom_project": {
+          "display": "Project",
+          "value": "custom.project"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      }
+    },
     "user": {
       "display": "User",
       "fields": {
         "email": {
           "display": "email",
           "value": "text"
+        },
+        "role_text": {
+          "display": "Role",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": [
+              "email"
+            ]
+          }
         }
       }
     }

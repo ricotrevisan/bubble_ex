@@ -36,4 +36,71 @@ defmodule BubbleEx.Frontend.ConditionsTest do
     assert Conditions.visibility(%{}) == []
     assert Conditions.other_properties("x") == 0
   end
+
+  describe "the compact form's \"%s\" states (WTF-477)" do
+    defp width_state do
+      %{
+        "%x" => "State",
+        "%p" => %{"%fs" => 24},
+        "%c" => %{
+          "%x" => "PageData",
+          "%p" => %{"%nm" => "Current Page Width"},
+          "%n" => %{
+            "%x" => "Message",
+            "%nm" => "less_than",
+            "%a" => %{"%x" => "Breakpoint", "%p" => %{"breakpoint_id" => "mobile"}}
+          }
+        }
+      }
+    end
+
+    defp logged_in_state do
+      %{
+        "%x" => "State",
+        "%p" => %{"%iv" => true},
+        "%c" => %{"%x" => "CurrentUser", "%n" => %{"%x" => "Message", "%nm" => "logged_in"}}
+      }
+    end
+
+    defp compact(states) do
+      payload = %{
+        "_id" => "compact-conditions",
+        "settings" => %{
+          "client_safe" => %{"responsive_breakpoints" => %{"mobile" => %{"size" => 768}}}
+        },
+        "pages" => %{
+          "index" => %{
+            "type" => "Page",
+            "elements" => %{
+              "label" => %{
+                "id" => "label",
+                "%x" => "Text",
+                "%p" => %{"%3" => "Label", "%iv" => false},
+                "%s" => states
+              }
+            }
+          }
+        }
+      }
+
+      {:ok, model} = BubbleEx.Frontend.normalize(payload)
+      [%{children: [label]}] = model.pages
+      label
+    end
+
+    test "are conditionals, except the ones lowered as breakpoint rules" do
+      label = compact(%{"0" => width_state(), "1" => logged_in_state()})
+
+      assert [%{"media" => %{"operator" => "<", "width" => 768}}] = label.responsive
+      assert %{kind: :condition, payload: payload} = label.bindings["condition"]
+      assert Map.keys(payload) == ["1"]
+      assert [{%{"%x" => "CurrentUser"}, true}] = Conditions.visibility(payload)
+    end
+
+    test "only breakpoint states leave no conditional" do
+      label = compact(%{"0" => width_state()})
+      refute Map.has_key?(label.bindings, "condition")
+      refute Map.has_key?(label.content || %{}, "condition")
+    end
+  end
 end
