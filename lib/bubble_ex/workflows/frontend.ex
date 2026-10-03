@@ -558,15 +558,9 @@ defmodule BubbleEx.Workflows.Frontend do
     target = text(props["element_id"])
 
     {page, residue} =
-      cond do
-        is_binary(target) and String.match?(target, ~r/\s/) ->
-          {:current, []}
-
-        page = target && ctx.pages[target] ->
-          {bubble(page), []}
-
-        true ->
-          {nil, [Residue.entry(id, :unresolved_reference, %{reference: "page"})]}
+      case navigate_target(target, ctx) do
+        {:ok, page} -> {page, []}
+        :error -> {nil, [Residue.entry(id, :unresolved_reference, %{reference: "page"})]}
       end
 
     params =
@@ -879,6 +873,27 @@ defmodule BubbleEx.Workflows.Frontend do
   defp step_path(w, subject), do: Enum.find_value(w.steps, w.path, &(&1.id == subject && &1.path))
 
   # --- helpers -------------------------------------------------------------------------
+
+  # "Go to page"'s target (WTF-429): Bubble's "Current page" (the exact
+  # value its editor stores) or a page of the app. Anything else (an
+  # unknown or deleted page's ID, an empty one, a path, any other text with
+  # a space) is unresolved, so the workflow refuses to run rather than go
+  # somewhere else. A page whose own ID is "Current page" would make the
+  # literal ambiguous: unresolved too.
+  @current_page "Current page"
+
+  defp navigate_target(@current_page, ctx) do
+    if Map.has_key?(ctx.pages, @current_page), do: :error, else: {:ok, :current}
+  end
+
+  defp navigate_target(target, ctx) when is_binary(target) do
+    case ctx.pages[target] do
+      nil -> :error
+      page -> {:ok, bubble(page)}
+    end
+  end
+
+  defp navigate_target(_target, _ctx), do: :error
 
   # "Go to page"'s data to send (WTF-378): the path segment after the
   # page's own. To a page with a type of content it is the page's thing
