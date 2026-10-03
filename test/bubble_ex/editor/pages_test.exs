@@ -187,6 +187,34 @@ defmodule BubbleEx.Editor.PagesTest do
     assert ref.source.pointer == "/pages/native_key"
   end
 
+  test "collection length metadata is not a page in either source key form", %{target: target} do
+    page = %{"id" => "id", "name" => "index", "type" => "Page"}
+
+    for section <- ["pages", "%p3"], count <- [0, 1] do
+      assert {:ok, [ref]} =
+               Editor.discover_pages(target,
+                 post_fun: fn _, _, _, _ -> {:ok, %{"test" => %{}}} end,
+                 runtime_get_fun: runtime_get(%{section => %{"length" => count, "key" => page}})
+               )
+
+      assert ref.key == "key"
+      assert ref.id == "id"
+      assert ref.source.pointer == "/#{section}/key"
+    end
+  end
+
+  test "malformed collection length metadata still fails closed", %{target: target} do
+    page = %{"id" => "id", "name" => "index", "type" => "Page"}
+
+    for section <- ["pages", "%p3"], count <- [-1, 1.0, "1", nil, %{}] do
+      assert {:error, %Error{kind: :parse_failed}} =
+               Editor.discover_pages(target,
+                 post_fun: fn _, _, _, _ -> {:ok, %{"test" => %{}}} end,
+                 runtime_get_fun: runtime_get(%{section => %{"length" => count, "key" => page}})
+               )
+    end
+  end
+
   test "malformed inventories cannot invent IDs from names or map keys", %{target: target} do
     post = fn _, _, _, _ -> {:ok, %{"test" => %{}}} end
 

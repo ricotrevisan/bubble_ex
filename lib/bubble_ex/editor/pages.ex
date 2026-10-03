@@ -95,7 +95,7 @@ defmodule BubbleEx.Editor.Pages do
     refs =
       for section <- ["pages", "%p3"],
           pages = Map.get(app, section, %{}),
-          {key, node} <- if(is_map(pages), do: pages, else: [{nil, nil}]),
+          {key, node} <- if(is_map(pages), do: Source.entries(pages), else: [{nil, nil}]),
           do: reference(node, section, key, target, url)
 
     if refs != [] and Enum.all?(refs, &(PageRef.validate(&1, target) == :ok)) and
