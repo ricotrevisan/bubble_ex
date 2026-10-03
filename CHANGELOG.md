@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **"Go to page" to an unknown page no longer goes to the current page**
+  (WTF-429). Lowering took any target with whitespace for "Current
+  page", so a page ID with a space or newline (hostile, or not a Bubble
+  ID at all) became a navigation to the page the user was on, even when
+  a page had that ID. Only Bubble's exact `Current page` is the current
+  page now; a page of the app is that page; anything else (an unknown or
+  deleted page's ID, an empty one, a path, other text, unicode included)
+  is `:unresolved_reference` residue with a `frontend_workflow_residue`
+  diagnostic, so the workflow refuses to run. Private fixture counts are
+  unchanged: no target there has a space but `Current page`.
+
 ### Changed
 
 - **Bubble page images move out of `priv/static`** (WTF-455). Stored

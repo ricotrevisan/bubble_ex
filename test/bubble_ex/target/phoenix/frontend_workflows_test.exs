@@ -509,7 +509,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     # characters and spaces are percent-encoded, not replaced.
     workflows = markers(files)
     # The page and reusable-element workflows and the backend workflow they schedule.
-    assert map_size(workflows) == 29
+    assert map_size(workflows) == 30
     assert Enum.all?(Map.values(workflows), &match?([_], &1))
 
     # The test tags are the plan's subjects, as data.
@@ -523,5 +523,25 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
       end)
 
     assert BubbleEx.Index.Symbol.id(:workflow, HostileIds.hostile("wState")) in tags
+
+    # A page ID with a space and a newline is still that page, never the
+    # current one (WTF-429): wNav goes to /other, only wUrl to :current.
+    module = files["lib/shop_web/live/index_live/workflows.ex"]
+    assert module =~ ~s|BubbleWorkflows.navigate(ctx, "/other", [{"q", "hello"}]|
+    assert length(String.split(module, "BubbleWorkflows.navigate(ctx, :current")) == 2
+  end
+
+  test "go to a page that is gone is residue: the workflow refuses to run (WTF-429)", %{
+    files: files,
+    spec: spec
+  } do
+    gone = FrontendWorkflows.Spec.workflow(spec, "bHome", "wNavGone")
+    refute FrontendWorkflows.Spec.native?(gone)
+
+    assert [%{residue: []}, %{residue: [%{reason: :unresolved_reference}]}] = gone.steps
+
+    # Only wUrl goes to the current page; wNavGone goes nowhere.
+    module = files["lib/shop_web/live/index_live/workflows.ex"]
+    assert length(String.split(module, "BubbleWorkflows.navigate(ctx, :current")) == 2
   end
 end
