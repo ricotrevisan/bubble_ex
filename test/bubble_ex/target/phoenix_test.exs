@@ -365,6 +365,36 @@ defmodule BubbleEx.Target.PhoenixTest do
       # the Ash target alone (no identity) keeps it
       {:ok, source} = Source.render(project)
       assert source =~ ~s(index [:email], name: "user_email_index")
+
+      # an index names columns: an email attribute stored in a column of
+      # another name is matched by its column
+      project = %{
+        project
+        | resources:
+            Enum.map(project.resources, fn
+              %{source: %{type: "user"}} = r ->
+                %{
+                  r
+                  | attributes:
+                      Enum.map(r.attributes, fn
+                        %{name: "email"} = a -> %{a | column: "email_address"}
+                        a -> a
+                      end),
+                    indexes: [
+                      index.("user_email_address_index", :btree, ["email_address"]),
+                      index.("user_slug_index", :btree, ["slug"])
+                    ]
+                }
+
+              r ->
+                r
+            end)
+      }
+
+      user = render!(project)["lib/acme_import/user.ex"]
+      assert user =~ "identity :unique_email, [:email]"
+      refute user =~ "user_email_address_index"
+      assert user =~ ~s(index [:slug], name: "user_slug_index")
     end
 
     test "pins the Ash versions and the framework without PicoSAT" do

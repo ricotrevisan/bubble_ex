@@ -10,7 +10,7 @@ defmodule BubbleEx.Target.Phoenix.Checks do
 
   | criterion | Phoenix binding |
   |-----------|-----------------|
-  | `generated_unchanged` | `BubbleEx.Target.Phoenix.check_manifest/3` of `.wtf/generated.json` against the files: no hand-edited or missing generated file, and nothing the owned files leave undone: no `unrouted` page, no `extensions_unlisted`, no `images_unserved` (the manifest itself is unsigned) |
+  | `generated_unchanged` | `BubbleEx.Target.Phoenix.check_manifest/3` of `.wtf/generated.json` against the files: no hand-edited or missing generated file, and nothing the owned files leave undone: no `unrouted` page, no `extensions_unlisted`, no `images_unserved` (the manifest itself is unsigned); `index_snapshots_stale` is a warning in the detail |
   | `compiles` | `mix compile --warnings-as-errors`: undefined and deprecated calls are compiler warnings, so they fail it |
   | `lint` | `mix format --check-formatted`, and `mix credo --strict` when the project has Credo (`deps/credo`) |
   | `traceability` | every listed element is a `data-bubble-id="<id>"` attribute in `lib/` outside comments (Elixir, `<%!-- --%>`, `<%# %>` and HTML comments are removed first), and every listed page or reusable is rendered by its tagged tests (see Tagged tests; the generated LiveView tests assert each `data-bubble-id` with `has_element?`). With no page or reusable listed, only the source is checked (`source_only: true`: a weaker binding) |
@@ -683,9 +683,24 @@ defmodule BubbleEx.Target.Phoenix.Checks do
         Enum.map(report.images_unserved, &"image not served safely #{&1}")
 
     if changes == [],
-      do: pass(binding, "#{length(report.unchanged)} generated files unchanged"),
-      else: fail(binding, summary(changes))
+      do:
+        pass(
+          binding,
+          "#{length(report.unchanged)} generated files unchanged" <> snapshots_warning(report)
+        ),
+      else: fail(binding, summary(changes) <> snapshots_warning(report))
   end
+
+  # Snapshots recording the index hints as not concurrent (WTF-418): a
+  # warning, the next `mix ash.codegen` would drop and rebuild them.
+  defp snapshots_warning(%{index_snapshots_stale: [_ | _] = paths}) do
+    "; warning: #{length(paths)} resource snapshot(s) record generated indexes as not " <>
+      "concurrent, so mix ash.codegen would drop and rebuild them: first run mix " <>
+      "bubble.concurrent_index_snapshots --root <project> from bubble_ex (" <>
+      summary(paths) <> ")"
+  end
+
+  defp snapshots_warning(_report), do: ""
 
   # --- helpers -----------------------------------------------------------------------
 
