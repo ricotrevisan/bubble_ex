@@ -214,6 +214,97 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
         )
   end
 
+  # What an input change reads again (WTF-475), source by source: each
+  # reports its read. `a` reads input `q`, `b` reads `a` (a group reading a
+  # group), `c` reads `b`; `kept` reads no input.
+  defmodule NarrowPage do
+    def __bubble__(:instances), do: []
+
+    def __bubble__(:surface),
+      do: %{
+        states: %{{"x", "s"} => nil},
+        inputs: %{"q" => {:text, nil}, "other" => {:text, nil}},
+        loaded: [],
+        intervals: [],
+        clicks: %{"set_input" => ["set_input"], "both" => ["both"], "noop" => ["noop"]},
+        changes: %{"q" => ["noop"]},
+        conditions: []
+      }
+
+    def __bubble__(:data),
+      do: [
+        source("a", ["q"], []),
+        source("b", [], ["a"]),
+        source("c", [], ["b"]),
+        source("kept", [], [])
+      ]
+
+    def __bubble__(:workflows),
+      do: %{
+        "set_input" => %{condition: nil, run: :set_input, blocked: [], data: false},
+        "both" => %{condition: nil, run: :both, blocked: [], data: false},
+        "noop" => %{condition: nil, run: :noop, blocked: [], data: false}
+      }
+
+    def source(element, inputs, reads),
+      do: %{
+        element: element,
+        instance: nil,
+        fun: String.to_atom("read_" <> element),
+        read: :value,
+        cell: nil,
+        loads: [],
+        cell_loads: [],
+        topic: nil,
+        inputs: inputs,
+        reads: reads,
+        blocked: []
+      }
+
+    def read_a(ctx), do: report(:a, PhxCheckWeb.BubbleWorkflows.input(ctx, [], "q"))
+    def read_b(ctx), do: report(:b, {:b, PhxCheckWeb.BubbleWorkflows.data(ctx, [], "a")})
+    def read_c(ctx), do: report(:c, {:c, PhxCheckWeb.BubbleWorkflows.data(ctx, [], "b")})
+    def read_kept(_ctx), do: report(:kept, :kept)
+
+    # A workflow setting the input (as "Reset relevant inputs" does).
+    def set_input(ctx), do: {:done, %{ctx | inputs: Map.put(ctx.inputs, {"", "q"}, "set")}}
+
+    # A custom state and the input in one event.
+    def both(ctx) do
+      {:cont, ctx} = PhxCheckWeb.BubbleWorkflows.set_state(ctx, "set", [{[], "x", "s", 1}])
+      set_input(ctx)
+    end
+
+    def noop(ctx) do
+      send(self(), :narrow_noop)
+      {:done, ctx}
+    end
+
+    defp report(name, value) do
+      send(self(), {:narrow_read, name})
+      value
+    end
+  end
+
+  # NarrowPage scaffolded before WTF-475: `kept` lists no `inputs`.
+  defmodule UnlistedPage do
+    def __bubble__(:instances), do: []
+    def __bubble__(:surface), do: NarrowPage.__bubble__(:surface)
+    def __bubble__(:workflows), do: NarrowPage.__bubble__(:workflows)
+
+    def __bubble__(:data) do
+      Enum.map(NarrowPage.__bubble__(:data), fn
+        %{element: "kept"} = source -> Map.drop(source, [:inputs, :reads])
+        source -> source
+      end)
+    end
+
+    defdelegate read_a(ctx), to: NarrowPage
+    defdelegate read_b(ctx), to: NarrowPage
+    defdelegate read_c(ctx), to: NarrowPage
+    defdelegate read_kept(ctx), to: NarrowPage
+  end
+
   # Read budgets (post-audit of WTF-420): one source (the page's thing,
   # one query per read); `task/1` reports each read.
   defmodule BudgetPage do
@@ -522,6 +613,72 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     queries = flush_queries(view.pid)
     IO.puts("page data: six input changes caused #{queries} view queries")
     assert queries < 24
+  end
+
+  test "an input change reads again only the sources reading the input (WTF-475)", %{
+    conn: conn
+  } do
+    on()
+    {:ok, view, _html} = live(conn, "/")
+    handler = "page-data-narrow-#{System.unique_integer([:positive])}"
+    parent = self()
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:phx_check, :repo, :query],
+        fn _, _, meta, _ -> send(parent, {:page_data_sql, self(), meta.query}) end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    # A whole read: a change notification of the type every source searches.
+    send(view.pid, {:bubble, :data_changed, PhxCheck.Bubble.Changes.topic("Task")})
+    Process.sleep(150)
+    _ = render(view)
+    whole = sql(view.pid)
+
+    # Only bList reads bQuery (and its cells' group reads bList): the two
+    # instances' searches, bFirstOpen and bRandom are not read again.
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bQuery", "value" => "ea", "on" => "blur"}
+    })
+
+    Process.sleep(200)
+    narrowed = render(view)
+    queries = sql(view.pid)
+
+    IO.puts(
+      "page data: a whole read took #{length(whole)} queries, an input change #{length(queries)}"
+    )
+
+    assert cells(narrowed) == ["Clean"]
+
+    # Each source's own query, told apart by what it asks: bRandom's MD5
+    # order, bFirstOpen's `done` constraint, bCard2's descending title,
+    # bCard1's plain one (as bList's with an empty input), bList's
+    # `contains` once typed.
+    random? = &(&1 =~ "md5(")
+    first_open? = &(&1 =~ ~r/WHERE \(t0\."done"/)
+    card2? = &(&1 =~ ~r/ORDER BY t0\."title" DESC LIMIT/)
+    plain? = &(&1 =~ ~r/FROM "task" AS t0 ORDER BY t0\."title" LIMIT/)
+    list? = &(&1 =~ ~r/strpos|like/i)
+
+    for {source?, n} <- [{random?, 1}, {first_open?, 1}, {card2?, 1}, {plain?, 2}, {list?, 0}],
+        do: assert(Enum.count(whole, source?) == n)
+
+    for {source?, n} <- [{random?, 0}, {first_open?, 0}, {card2?, 0}, {plain?, 0}, {list?, 1}],
+        do: assert(Enum.count(queries, source?) == n)
+  end
+
+  defp sql(pid, acc \\ []) do
+    receive do
+      {:page_data_sql, ^pid, query} -> sql(pid, [query | acc])
+      {:page_data_sql, _other, _query} -> sql(pid, acc)
+    after
+      0 -> Enum.reverse(acc)
+    end
   end
 
   test "an input is a search constraint; an empty one is ignored", %{conn: conn} do
@@ -1008,6 +1165,141 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
       IO.puts("page data: a click that writes (#{element}) read #{reads} times")
       assert reads == 1
     end
+  end
+
+  defp narrow_socket(page) do
+    socket = %Phoenix.LiveView.Socket{transport_pid: self()}
+    socket = PhxCheckWeb.BubbleWorkflows.mount(socket, page)
+    socket = PhxCheckWeb.BubbleWorkflows.handle_params(socket, page, %{}, "http://localhost/")
+    assert narrow_reads() == [:a, :b, :c, :kept]
+    socket
+  end
+
+  defp narrow_reads(acc \\ []) do
+    receive do
+      {:narrow_read, name} -> narrow_reads([name | acc])
+    after
+      0 -> Enum.sort(acc)
+    end
+  end
+
+  # Typing: the debounced change of a text input, then the page's read.
+  defp narrow_type(socket, page, value) do
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, page, "bubble:change", %{
+        "bubble" => %{"scope" => "", "element" => "q", "value" => value, "on" => "blur"}
+      })
+
+    narrow_flush(socket, page)
+  end
+
+  # The page's debounced read: the latest timer (earlier ones are superseded).
+  defp narrow_flush(socket, page) do
+    assert_receive {:bubble, :data_refresh, ref}, 500
+    ref = latest_refresh(ref)
+
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_info(socket, page, {:bubble, :data_refresh, ref})
+
+    socket
+  end
+
+  defp latest_refresh(ref) do
+    receive do
+      {:bubble, :data_refresh, later} -> latest_refresh(later)
+    after
+      200 -> ref
+    end
+  end
+
+  defp narrow_click(socket, page, element) do
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, page, "bubble:click", %{
+        "scope" => "",
+        "element" => element
+      })
+
+    socket
+  end
+
+  test "typing reads again the sources reading the input, through groups reading groups" do
+    on()
+    socket = narrow_page_typed(NarrowPage, "x")
+    assert narrow_reads() == [:a, :b, :c]
+    assert socket.assigns.bubble_data[{"", "c"}] == {:c, {:b, "x"}}
+    assert socket.assigns.bubble_data[{"", "kept"}] == :kept
+
+    # Another input, read by no source: nothing is read.
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, NarrowPage, "bubble:change", %{
+        "bubble" => %{"scope" => "", "element" => "other", "value" => "y", "on" => "blur"}
+      })
+
+    _socket = narrow_flush(socket, NarrowPage)
+    assert narrow_reads() == []
+  end
+
+  defp narrow_page_typed(page, value) do
+    page |> narrow_socket() |> narrow_type(page, value)
+  end
+
+  test "a source that does not list its inputs reads the whole page on any input change" do
+    on()
+    _socket = narrow_page_typed(UnlistedPage, "x")
+    assert narrow_reads() == [:a, :b, :c, :kept]
+  end
+
+  test "an input a workflow sets reads again only the sources reading it" do
+    on()
+    socket = narrow_click(narrow_socket(NarrowPage), NarrowPage, "set_input")
+    assert narrow_reads() == [:a, :b, :c]
+    assert socket.assigns.bubble_data[{"", "a"}] == "set"
+  end
+
+  test "a custom state and an input changed in one event read the whole page" do
+    on()
+    _socket = narrow_click(narrow_socket(NarrowPage), NarrowPage, "both")
+    assert narrow_reads() == [:a, :b, :c, :kept]
+  end
+
+  test "typing runs no input workflow; committing (blur) runs it once per value" do
+    on()
+    socket = narrow_page_typed(NarrowPage, "x")
+    assert narrow_reads() == [:a, :b, :c]
+    refute_received :narrow_noop
+
+    blur = fn socket, value ->
+      {:noreply, socket} =
+        PhxCheckWeb.BubbleWorkflows.handle_event(socket, NarrowPage, "bubble:commit", %{
+          "element" => "q",
+          "value" => value
+        })
+
+      narrow_flush(socket, NarrowPage)
+    end
+
+    # The page's scope is empty: blur sends no `scope` value.
+    socket = blur.(socket, "x")
+    assert_received :narrow_noop
+    # The value was read while typing: committing it reads nothing more.
+    assert narrow_reads() == []
+
+    # The same value again: nothing runs.
+    socket = blur.(socket, "x")
+    refute_received :narrow_noop
+
+    # Two other values committed before the page reads: each runs, once.
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, NarrowPage, "bubble:commit", %{
+        "element" => "q",
+        "value" => "y"
+      })
+
+    _socket = blur.(socket, "z")
+    assert_received :narrow_noop
+    assert_received :narrow_noop
+    refute_received :narrow_noop
+    assert narrow_reads() == [:a, :b, :c]
   end
 
   test "a custom state a workflow changes makes the next workflow read again" do
