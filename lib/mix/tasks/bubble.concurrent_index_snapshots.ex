@@ -19,6 +19,12 @@ defmodule Mix.Tasks.Bubble.ConcurrentIndexSnapshots do
   `BubbleEx.Target.Phoenix.IndexSnapshots`.
 
   Options: `--root DIR` (required), `--dry-run` (report, write nothing).
+  It exits non-zero when it skips a snapshot it cannot rewrite safely
+  (fix that one by hand), and when the resources were not regenerated yet
+  (they still declare their indexes without `concurrently: true`). It
+  warns about what it does not look at: a symbolically linked
+  `priv/resource_snapshots` (or repo or table directory), and `_dev`
+  snapshots.
   """
   use Mix.Task
 
@@ -42,28 +48,47 @@ defmodule Mix.Tasks.Bubble.ConcurrentIndexSnapshots do
     end
   end
 
-  defp print(%{changes: changes, skipped: skipped}, dry_run?) do
+  defp print(report, dry_run?) do
     verb = if dry_run?, do: "Would record", else: "Recorded"
 
-    for %{path: path, indexes: indexes} <- changes,
+    for %{path: path, indexes: indexes} <- report.changes,
         do: Mix.shell().info("#{verb} as concurrent in #{path}: #{Enum.join(indexes, ", ")}")
 
-    for %{path: path, reason: reason} <- skipped,
+    for warning <- report.warnings, do: Mix.shell().error("Warning: " <> warning)
+
+    for %{path: path, reason: reason} <- report.skipped,
         do: Mix.shell().error("Skipped #{path}: #{reason}")
 
-    count = changes |> Enum.map(&length(&1.indexes)) |> Enum.sum()
+    conclude(report, dry_run?)
+  end
 
-    Mix.shell().info(
-      cond do
-        changes == [] ->
-          "No snapshot records a generated index as not concurrent."
-
-        dry_run? ->
-          "#{count} index(es) in #{length(changes)} snapshot(s); nothing written (--dry-run)."
-
-        true ->
-          "#{count} index(es) in #{length(changes)} snapshot(s). Now run mix ash.codegen."
-      end
+  defp conclude(%{skipped: [_ | _] = skipped} = report, dry_run?) do
+    Mix.raise(
+      "#{length(skipped)} snapshot(s) skipped: fix them as said above before mix " <>
+        "ash.codegen, or it drops and rebuilds their indexes (#{done(report)} " <>
+        if(dry_run?, do: "to record)", else: "recorded)")
     )
+  end
+
+  defp conclude(%{changes: [], not_concurrent: n}, _dry_run?) when n > 0 do
+    Mix.raise(
+      "The generated resources declare #{n} index(es) without concurrently: true: " <>
+        "regenerate the project with this bubble_ex first, then run this task again " <>
+        "(before mix ash.codegen)."
+    )
+  end
+
+  defp conclude(%{changes: []}, _dry_run?),
+    do: Mix.shell().info("No snapshot records a generated index as not concurrent.")
+
+  defp conclude(report, true),
+    do: Mix.shell().info(done(report) <> "; nothing written (--dry-run).")
+
+  defp conclude(report, false),
+    do: Mix.shell().info(done(report) <> ". Now run mix ash.codegen.")
+
+  defp done(%{changes: changes}) do
+    count = changes |> Enum.map(&length(&1.indexes)) |> Enum.sum()
+    "#{count} index(es) in #{length(changes)} snapshot(s)"
   end
 end

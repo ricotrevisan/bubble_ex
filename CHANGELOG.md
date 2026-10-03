@@ -35,9 +35,14 @@ All notable changes to this project are documented here.
   /path/to/project` (try `--dry-run` first): in each table's latest
   snapshot it records the generated resources' custom indexes as
   concurrent (only those whose table, name, fields and method match;
-  never an identity, a unique index or an index of the owner's; running
-  it again changes nothing), so codegen sees no change for them and the
-  database keeps its indexes. `check_manifest/3` lists the snapshots that
+  never an identity, a unique index or an index of the owner's, nor
+  older, `_dev` or tenant snapshots; running it again changes nothing),
+  so codegen sees no change for them and the database keeps its indexes.
+  It tolerates whitespace-only differences from AshPostgres' layout
+  (keeping a trailing newline), writes each file atomically, warns about
+  a symbolically linked snapshot directory and `_dev` snapshots, and
+  exits non-zero when it must skip a snapshot (other key order, invalid
+  JSON: fix it by hand) or when the resources were not regenerated yet. `check_manifest/3` lists the snapshots that
   still need it (`index_snapshots_stale`); the task CLI's
   `generated_unchanged` check warns about them, and `mix wtf.verify`'s
   failing `migrations_in_sync` says to run it. One index is dropped

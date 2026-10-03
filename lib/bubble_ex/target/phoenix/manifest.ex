@@ -231,8 +231,8 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
 
   `index_snapshots_stale` lists the latest AshPostgres resource snapshots
   that record a generated index hint as not concurrent (migrations
-  generated before WTF-418): the next `mix ash.codegen` would drop and
-  rebuild those indexes. A warning, not a hand edit: run `mix
+  generated before WTF-418), including those the task must skip: the
+  next `mix ash.codegen` would drop and rebuild those indexes. A warning, not a hand edit: run `mix
   bubble.concurrent_index_snapshots --root <project>` first
   (`BubbleEx.Target.Phoenix.IndexSnapshots`).
 

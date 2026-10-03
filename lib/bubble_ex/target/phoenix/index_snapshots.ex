@@ -18,9 +18,13 @@ defmodule BubbleEx.Target.Phoenix.IndexSnapshots do
   same name, same fields and access method, declared `concurrently: true`
   in the resource, not unique, recorded `"concurrently": false`. Identities
   (unique indexes) are never touched, nor indexes the owner declared, nor
-  older or `_dev` snapshots. A snapshot whose JSON would not be written
-  back byte for byte (apart from the flag) is skipped with a reason. Run
-  again, it changes nothing.
+  older or `_dev` snapshots, nor tenant snapshots (`<repo>/tenants/`). A
+  snapshot is rewritten in AshPostgres' layout, keeping its trailing
+  whitespace; one whose JSON differs from that layout by more than
+  whitespace (key order, duplicate keys), or is not valid JSON, is
+  `skipped` with a reason, and still counts as `stale` (codegen would
+  rebuild its indexes). Each file is written atomically (a temporary file
+  in its directory, then renamed). Run again, it changes nothing.
 
   `mix bubble.concurrent_index_snapshots` runs it; `check_manifest/3`
   lists the snapshots that need it (`index_snapshots_stale`).
@@ -32,68 +36,124 @@ defmodule BubbleEx.Target.Phoenix.IndexSnapshots do
   @snapshots "priv/resource_snapshots"
 
   @type change :: %{path: String.t(), table: String.t(), indexes: [String.t()]}
-  @type skipped :: %{path: String.t(), reason: String.t()}
-  @type report :: %{changes: [change()], skipped: [skipped()], written?: boolean()}
+  @type skipped :: %{path: String.t(), table: String.t(), reason: String.t()}
+  @type report :: %{
+          changes: [change()],
+          skipped: [skipped()],
+          warnings: [String.t()],
+          not_concurrent: non_neg_integer(),
+          written?: boolean()
+        }
 
   @doc """
   Records the generated resources' concurrent indexes as concurrent in the
   latest snapshots of the project at `root`. With `dry_run: true`, only
   reports what it would change.
+
+  The report's `skipped` snapshots need a hand fix (they keep their
+  non-concurrent indexes); `warnings` name what it does not look at (a
+  symbolically linked snapshot directory, `_dev` snapshots);
+  `not_concurrent` counts the custom indexes the generated resources
+  still declare without `concurrently: true` (resources generated before
+  WTF-418: regenerate first). A failed write stops at that file, leaving
+  it unchanged: `{:error, error}` with `error.context.written`.
   """
   @spec fix(Path.t(), keyword()) :: {:ok, report()} | {:error, Error.t()}
   def fix(root, opts \\ []) do
     dry_run? = Keyword.get(opts, :dry_run, false)
+    rename = Keyword.get(opts, :rename, &File.rename/2)
 
     with :ok <- dir(root),
          {:ok, json} <- read_manifest(root),
-         {:ok, manifest} <- Manifest.decode(json) do
-      {changes, skipped} = plan(manifest, reader(root), lister(root))
-
-      unless dry_run?, do: write(root, changes)
-
+         {:ok, manifest} <- Manifest.decode(json),
+         {changes, skipped} = plan(manifest, reader(root), lister(root)),
+         :ok <- if(dry_run?, do: :ok, else: write(root, changes, rename)) do
       {:ok,
        %{
          changes: Enum.map(changes, &Map.delete(&1, :content)),
          skipped: skipped,
+         warnings: warnings(root, manifest),
+         not_concurrent: not_concurrent(manifest, reader(root)),
          written?: not dry_run? and changes != []
        }}
     end
   end
 
-  defp write(root, changes) do
-    for %{path: path, content: content} <- changes,
-        do: File.write!(Path.join(root, path), content)
+  defp write(root, changes, rename) do
+    Enum.reduce_while(changes, {:ok, []}, fn %{path: path, content: content}, {:ok, written} ->
+      case atomic_write(Path.join(root, path), content, rename) do
+        :ok ->
+          {:cont, {:ok, [path | written]}}
+
+        {:error, reason} ->
+          {:halt,
+           {:error,
+            Error.new(
+              :invalid_input,
+              "could not write #{path}: #{inspect(reason)} (left unchanged)",
+              %{
+                path: path,
+                written: Enum.reverse(written)
+              }
+            )}}
+      end
+    end)
+    |> case do
+      {:ok, _} -> :ok
+      error -> error
+    end
+  end
+
+  # A temporary file in the same directory, renamed over the snapshot: a
+  # reader sees the old file or the new one, never a part.
+  defp atomic_write(file, content, rename) do
+    tmp =
+      Path.join(
+        Path.dirname(file),
+        ".#{Path.basename(file)}.#{System.unique_integer([:positive])}.tmp"
+      )
+
+    with :ok <- File.write(tmp, content, [:exclusive]),
+         :ok <- rename.(tmp, file) do
+      :ok
+    else
+      error ->
+        File.rm(tmp)
+        error
+    end
   end
 
   @doc false
-  # The latest snapshots that record a generated concurrent index as not
-  # concurrent (Manifest.check/3); `read` and `list` read project paths.
+  # The latest snapshots whose generated indexes the next `mix
+  # ash.codegen` would rebuild: those to fix and those skipped
+  # (Manifest.check/3); `read` and `list` read project paths.
   @spec stale(map(), (String.t() -> binary() | nil), (String.t() -> [String.t()])) ::
           [String.t()]
   def stale(manifest, read, list) do
-    {changes, _skipped} = plan(manifest, read, list)
-    Enum.map(changes, & &1.path)
+    {changes, skipped} = plan(manifest, read, list)
+    (changes ++ skipped) |> Enum.map(& &1.path) |> Enum.sort()
   end
 
   # {changes with the new content, skipped}
   defp plan(manifest, read, list) do
     indexes = generated_indexes(manifest, read)
 
+    snapshots = if indexes == %{}, do: [], else: latest(list.(@snapshots))
+
     outcomes =
-      if indexes == %{},
-        do: [],
-        else:
-          for(
-            {table, path} <- latest(list.(@snapshots)),
-            wanted = Map.get(indexes, table),
-            wanted != nil,
-            outcome = snapshot_change(path, read.(path), wanted),
-            outcome != nil,
-            do: {table, path, outcome}
-          )
+      for {table, path} <- snapshots,
+          wanted = Map.get(indexes, table),
+          wanted != nil,
+          outcome = snapshot_change(path, read.(path), wanted),
+          outcome != nil,
+          do: {table, path, outcome}
 
     changes = for {table, _path, %{} = change} <- outcomes, do: Map.put(change, :table, table)
-    skipped = for {_table, path, {:skip, reason}} <- outcomes, do: %{path: path, reason: reason}
+
+    skipped =
+      for {table, path, {:skip, reason}} <- outcomes,
+          do: %{path: path, table: table, reason: reason}
+
     {changes, skipped}
   end
 
@@ -121,35 +181,51 @@ defmodule BubbleEx.Target.Phoenix.IndexSnapshots do
   defp snapshot_change(_path, nil, _wanted), do: nil
 
   defp snapshot_change(path, content, wanted) do
-    with {:ok, %{"custom_indexes" => indexes} = snapshot} when is_list(indexes) <-
-           Jason.decode(content),
-         true <- encode(snapshot) == content || {:skip, "not in AshPostgres' JSON layout"} do
-      repo = snapshot["repo"]
+    case Jason.decode(content) do
+      {:ok, %{"custom_indexes" => indexes} = snapshot} when is_list(indexes) ->
+        repo = snapshot["repo"]
 
-      flipped =
-        for %{"name" => name} = index <- indexes,
-            index["concurrently"] == false,
-            index["unique"] in [false, nil],
-            Enum.any?(wanted, &same_index?(&1, index, repo)),
-            do: name
+        flipped =
+          for %{"name" => name} = index <- indexes,
+              index["concurrently"] == false,
+              index["unique"] in [false, nil],
+              Enum.any?(wanted, &same_index?(&1, index, repo)),
+              do: name
 
-      if flipped == [] do
+        cond do
+          flipped == [] ->
+            nil
+
+          not layout?(content, snapshot) ->
+            {:skip,
+             "its JSON differs from AshPostgres' layout by more than whitespace (key order or " <>
+               "duplicate keys); set \"concurrently\": true by hand on " <>
+               Enum.join(flipped, ", ")}
+
+          true ->
+            indexes = Enum.map(indexes, &flip(&1, flipped))
+            new = encode(%{snapshot | "custom_indexes" => indexes}) <> trailing(content)
+            %{path: path, indexes: flipped, content: new}
+        end
+
+      {:ok, _} ->
         nil
-      else
-        indexes = Enum.map(indexes, &flip(&1, flipped))
 
-        %{
-          path: path,
-          indexes: flipped,
-          content: encode(%{snapshot | "custom_indexes" => indexes})
-        }
-      end
-    else
-      {:skip, reason} -> {:skip, reason}
-      {:error, _} -> {:skip, "not valid JSON"}
-      _ -> nil
+      {:error, _} ->
+        {:skip, "not valid JSON: AshPostgres cannot read it either"}
     end
   end
+
+  # The content is AshPostgres' encoding up to whitespace: the same keys
+  # in the same (sorted) order, no duplicates, the same values.
+  defp layout?(content, snapshot) do
+    case Jason.decode(content, objects: :ordered_objects) do
+      {:ok, ordered} -> Jason.encode!(ordered) == Jason.encode!(snapshot)
+      {:error, _} -> false
+    end
+  end
+
+  defp trailing(content), do: hd(Regex.run(~r/\s*\z/, content))
 
   defp flip(%{"name" => name, "concurrently" => false} = index, flipped),
     do: if(name in flipped, do: %{index | "concurrently" => true}, else: index)
@@ -171,6 +247,53 @@ defmodule BubbleEx.Target.Phoenix.IndexSnapshots do
   defp field(value) when is_binary(value), do: value
   defp field(other), do: inspect(other)
 
+  # --- what fix/2 does not look at ---------------------------------------------------
+
+  defp warnings(root, manifest) do
+    tables = manifest |> generated_indexes(reader(root)) |> Map.keys()
+    symlinked(root) ++ dev_snapshots(root, tables)
+  end
+
+  defp symlinked(root) do
+    dirs =
+      [@snapshots] ++
+        for repo <- ls(root, [@snapshots]),
+            dir = Path.join(@snapshots, repo),
+            table <- [nil | ls(root, [dir])],
+            do: if(table, do: Path.join(dir, table), else: dir)
+
+    for dir <- dirs,
+        match?({:ok, %File.Stat{type: :symlink}}, File.lstat(Path.join(root, dir))),
+        do: "#{dir} is a symbolic link: not followed; run against the directory it points to"
+  end
+
+  defp dev_snapshots(root, tables) do
+    for repo <- ls(root, [@snapshots]),
+        table <- ls(root, [@snapshots, repo]),
+        table in tables,
+        file <- ls(root, [@snapshots, repo, table]),
+        String.ends_with?(file, "_dev.json"),
+        do:
+          "#{Path.join([@snapshots, repo, table, file])} is a `mix ash.codegen --dev` " <>
+            "snapshot: not changed; generate named migrations (without --dev) before upgrading"
+  end
+
+  # The custom indexes the generated resources declare without
+  # `concurrently: true` (not unique): resources from before WTF-418.
+  defp not_concurrent(%{"generated" => generated}, read) do
+    for {path, _hash} <- generated,
+        String.starts_with?(path, "lib/") and String.ends_with?(path, ".ex"),
+        content = read.(path),
+        is_binary(content),
+        {:ok, ast} <- [Code.string_to_quoted(content, emit_warnings: false)],
+        {_table, _repo, _indexes, old} <- postgres_blocks(ast),
+        reduce: 0 do
+      n -> n + old
+    end
+  end
+
+  defp not_concurrent(_manifest, _read), do: 0
+
   # --- the generated resources' indexes --------------------------------------------
 
   # table => [%{name, fields, using, repo}]: the custom indexes the
@@ -181,7 +304,7 @@ defmodule BubbleEx.Target.Phoenix.IndexSnapshots do
         content = read.(path),
         is_binary(content),
         {:ok, ast} <- [Code.string_to_quoted(content, emit_warnings: false)],
-        {table, repo, indexes} <- postgres_blocks(ast),
+        {table, repo, indexes, _old} <- postgres_blocks(ast),
         index <- indexes,
         reduce: %{} do
       acc ->
@@ -199,7 +322,7 @@ defmodule BubbleEx.Target.Phoenix.IndexSnapshots do
         node, acc -> {node, acc}
       end)
 
-    for {table, repo, indexes} <- blocks, is_binary(table), do: {table, repo, indexes}
+    for {table, _repo, _indexes, _old} = block <- blocks, is_binary(table), do: block
   end
 
   defp postgres(block) do
@@ -217,19 +340,19 @@ defmodule BubbleEx.Target.Phoenix.IndexSnapshots do
         _ -> nil
       end)
 
-    indexes =
+    declared =
       for {:custom_indexes, _, [[do: inner]]} <- entries,
           {:index, _, [fields, opts]} <- block(inner),
           is_list(fields) and Keyword.keyword?(opts),
-          opts[:concurrently] == true and opts[:unique] != true,
+          opts[:unique] != true,
           is_binary(opts[:name]),
-          do: %{
-            name: opts[:name],
-            fields: Enum.map(fields, &to_string/1),
-            using: opts[:using]
-          }
+          do: {opts[:concurrently] == true, fields, opts}
 
-    {table, repo, indexes}
+    indexes =
+      for {true, fields, opts} <- declared,
+          do: %{name: opts[:name], fields: Enum.map(fields, &to_string/1), using: opts[:using]}
+
+    {table, repo, indexes, Enum.count(declared, &(not elem(&1, 0)))}
   end
 
   defp block({:__block__, _, entries}), do: entries
