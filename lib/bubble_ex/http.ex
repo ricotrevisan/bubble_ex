@@ -33,6 +33,32 @@ defmodule BubbleEx.HTTP do
   @default_retry_base_delay 250
   @transient_status_codes [408, 429, 500, 502, 503, 504]
 
+  # Isolated requests are default-deny: future Req credential/payload options
+  # must not become egress just because they appear in defaults.
+  @isolated_options [
+    :timeout,
+    :recv_timeout,
+    :receive_timeout,
+    :pool_timeout,
+    :deadline,
+    :max_body_length,
+    :bounded_body,
+    :decode_body,
+    :raw,
+    :compressed,
+    :retry,
+    :follow_redirect,
+    :redirect,
+    :max_redirects,
+    :finch,
+    :connect_options,
+    :proxy,
+    :resolver,
+    :connect,
+    :plug,
+    :adapter
+  ]
+
   defmodule Response do
     @moduledoc false
     @enforce_keys [:status_code, :headers, :body, :request_url]
@@ -66,7 +92,14 @@ defmodule BubbleEx.HTTP do
   end
 
   @doc """
-  One request. With `bounded_body: true` the body is read in chunks under
+  One request. `anonymous: true` discards credential-generating and payload
+  options from BubbleEx application/process defaults and explicit options, and
+  sends no caller headers or body. Only allowlisted transport/budget options
+  survive. `isolated: true` applies the same option isolation while retaining
+  only the headers/body supplied directly to this function (e.g. an editor
+  cookie and native JSON body). Neither mode uses Req's global defaults/plugins.
+
+  With `bounded_body: true` the body is read in chunks under
   `max_body_length` and the deadline; `sink: {acc, fun}` then hands each
   chunk to `fun.(chunk, acc)` (returning `{:ok, acc}` or `{:error,
   reason}`) instead of keeping it, and the response body is the final
@@ -116,6 +149,16 @@ defmodule BubbleEx.HTTP do
       |> merge_options(process_options)
       |> merge_options(options)
 
+    anonymous? = Keyword.get(options, :anonymous, false)
+    isolated? = anonymous? || Keyword.get(options, :isolated, false)
+
+    effective_options =
+      if isolated?,
+        do: Keyword.take(effective_options, @isolated_options),
+        else: effective_options
+
+    {headers, body} = if anonymous?, do: {[], nil}, else: {headers, body}
+
     effective_options =
       effective_options
       |> Keyword.put_new(:deadline, System.monotonic_time(:millisecond) + 30_000)
@@ -147,7 +190,7 @@ defmodule BubbleEx.HTTP do
     try do
       request =
         req_options
-        |> Req.new()
+        |> new_request(isolated?)
         |> Req.Request.append_request_steps(
           public_destination: fn request ->
             adapter =
@@ -181,6 +224,18 @@ defmodule BubbleEx.HTTP do
         {:error, build_error(exception)}
     end
   end
+
+  defp new_request(options, true) do
+    # Req.new/1 merges :req, :default_options after our allowlist. Start from
+    # its bare request + standard steps instead, so global auth, payloads and
+    # plugins cannot reintroduce credentials in either isolated mode. Trusted
+    # transport options and deliberate caller headers/body remain explicit.
+    Req.Request.new()
+    |> Req.Steps.attach()
+    |> Req.merge(options)
+  end
+
+  defp new_request(options, _isolated), do: Req.new(options)
 
   defp build_request_options(options) do
     follow_redirect = Keyword.get(options, :follow_redirect, true)
@@ -317,6 +372,8 @@ defmodule BubbleEx.HTTP do
 
   defp merge_remaining_options(req_options, options) do
     recognized = [
+      :anonymous,
+      :isolated,
       :follow_redirect,
       :credential_origin,
       :resolver,
