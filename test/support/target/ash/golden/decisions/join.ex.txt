@@ -482,7 +482,7 @@ defmodule MyApp.ProjectTasks do
     end
 
     custom_indexes do
-      index [:task_id], name: "project_tasks_task_id_index"
+      index [:task_id], name: "project_tasks_task_id_index", concurrently: true
     end
   end
 
@@ -544,7 +544,7 @@ defmodule MyApp.FavoriteProject do
     end
 
     custom_indexes do
-      index [:user_id], name: "favorite_project_user_id_index"
+      index [:user_id], name: "favorite_project_user_id_index", concurrently: true
     end
   end
 

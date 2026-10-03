@@ -6,6 +6,46 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **Index hints build concurrently** (WTF-418). `Target.Ash` declares
+  every custom index `concurrently: true`, so `mix ash.codegen` writes the
+  indexes it adds as a migration of their own (index additions only),
+  `CREATE INDEX CONCURRENTLY` with `@disable_ddl_transaction true` and
+  `@disable_migration_lock true`, after the transactional migration with
+  the tables and columns. An index a re-publish adds to a loaded table no
+  longer locks its writes while it builds. `scripts/ash_compile_check.sh`
+  checks the generated migrations (`index_migrations.exs`) and runs them.
+  **Existing projects:** the snapshots record the old indexes as not
+  concurrent, so the first `mix ash.codegen` after regenerating drops each
+  of them (in the transactional migration) and builds it again
+  concurrently: a brief lock for the drop, then a rebuild that does not
+  block writes. To keep the existing indexes instead, delete from that
+  migration's `up` each `drop_if_exists index(...)` whose name the
+  concurrent migration creates again (and its `create index(...)` from
+  `down`), and the matching `create index(...)` from the concurrent
+  migration's `up` (and its `drop_if_exists` from `down`); keep the
+  snapshots. If a concurrent build fails, PostgreSQL leaves an `INVALID`
+  index: `DROP INDEX CONCURRENTLY <name>;` and migrate again. The
+  generated README says so.
+- **A stale SAT solver build after switching to `privacy: :enforced`
+  is explained** (WTF-460). Regenerating an `:omit` project with
+  `:enforced` adds `picosat_elixir`; `mix deps.get` marks crux (its
+  parent, which picks the solver at compile time) to rebuild in every
+  `_build/<env>`, but Mix 1.19+ marks it by removing
+  `.mix/compile.elixir_scm` while Mix 1.18 and older read
+  `.mix/compile.fetch`. So with `deps.get` under 1.19+ and a build
+  directory last built by 1.18 (the WTF-378 slice: the test env), crux
+  is not rebuilt and Ash fails with `No SAT solver available, although
+  one was loaded`. One Elixir version (1.18, 1.19 or 1.20) rebuilds it
+  correctly. The task CLI's and `wtf.verify`'s mix checks now append the
+  fix to their failure (`MIX_ENV=<env> mix deps.compile crux --force`),
+  and the generated README says so in both privacy sections.
+- **No duplicate index on the User's email** (WTF-418).
+  `Target.Phoenix` gives the email a unique identity (citext); an
+  `email equals` search hint's btree index over the email alone
+  duplicated its unique index and is no longer created. Wider indexes
+  starting with the email are kept, and `Target.Ash` alone (no identity)
+  still creates it.
+
 - **Bubble page images move out of `priv/static`** (WTF-455). Stored
   images (`asset_store:`, the exporter's `assets:`) are generated as
   `priv/bubble_images/<sha256>.<ext>` (was

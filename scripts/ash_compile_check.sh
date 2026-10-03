@@ -8,7 +8,10 @@
 #     (WTF-391: no repeated field, association or foreign key)
 #   * mix ash.codegen --dry-run: migration generation needs no database; it
 #     must create no foreign keys and store lists of dates at microsecond
-#     precision
+#     precision; scripts/ash_compile_check/index_migrations.exs: the custom
+#     indexes are built in index-only migrations, concurrently, outside a
+#     transaction and the migration lock (WTF-418), which the migrate
+#     below runs
 #   * scripts/ash_compile_check/filters.exs: every compiled privacy-rule
 #     condition (rendered as expr(...) into <namespace>.PrivacyFilters and
 #     compiled above) builds an AshPostgres query, logged out and with a
@@ -91,7 +94,8 @@ cp "$root/scripts/ash_compile_check/mix.lock" "$root/scripts/ash_compile_check/r
   "$root/scripts/ash_compile_check/policies.exs" \
   "$root/scripts/ash_compile_check/ecto_migrate.exs" \
   "$root/scripts/ash_compile_check/decisions.exs" \
-  "$root/scripts/ash_compile_check/loaded.exs" "$scratch/"
+  "$root/scripts/ash_compile_check/loaded.exs" \
+  "$root/scripts/ash_compile_check/index_migrations.exs" "$scratch/"
 cp "$root/test/support/expression/expectations/privacy.json" "$scratch/expectations.json"
 cp "$root/test/support/target/ash/expectations/policies.json" "$scratch/policy_expectations.json"
 
@@ -146,6 +150,9 @@ echo "ash compile check passed: generated migrations create $tables tables"
 mix run filters.exs
 
 mix ash.codegen compile_check >/dev/null
+# The index additions are index-only concurrent migrations (WTF-418); the
+# migrate below runs them.
+elixir index_migrations.exs priv
 mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true
 mix ecto.create --quiet
 mix ecto.migrate --quiet
@@ -192,7 +199,8 @@ omit="${scratch}_omit"
 mkdir -p "$omit"
 cp "$root/scripts/check_db.exs" "$root/scripts/ash_compile_check/mix.lock" \
   "$root/scripts/ash_compile_check/runtime.exs" "$root/scripts/ash_compile_check/omit.exs" \
-  "$root/scripts/ash_compile_check/decisions.exs" "$omit/"
+  "$root/scripts/ash_compile_check/decisions.exs" \
+  "$root/scripts/ash_compile_check/index_migrations.exs" "$omit/"
 
 cd "$root"
 MIX_ENV=test mix run scripts/ash_compile_check/render.exs "$omit" omit
@@ -218,6 +226,7 @@ tables="$(grep -c "create table(" <<<"$codegen" || true)"
 echo "ash compile check passed (privacy: :omit): generated migrations create $tables tables"
 
 mix ash.codegen compile_check >/dev/null
+elixir index_migrations.exs priv
 mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true
 mix ecto.create --quiet
 mix ecto.migrate --quiet

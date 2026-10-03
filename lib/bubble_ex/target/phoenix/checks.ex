@@ -695,7 +695,29 @@ defmodule BubbleEx.Target.Phoenix.Checks do
 
     if status == 0,
       do: pass(binding, nil),
-      else: %{fail(binding, "exit status #{status}") | output: tail(output)}
+      else: %{fail(binding, "exit status #{status}" <> hint(output, env)) | output: tail(output)}
+  end
+
+  # A stale build of crux, the SAT solver wrapper Ash policies use
+  # (WTF-460): built before `picosat_elixir` was added (privacy switched
+  # from `:omit` to `:enforced`) and not rebuilt, e.g. when `mix deps.get`
+  # ran under Elixir 1.19+ and the build under an older Elixir, whose Mix
+  # keeps another marker of what needs recompiling.
+  @stale_sat "No SAT solver available, although one was loaded"
+
+  defp hint(output, env) do
+    mix_env =
+      case List.keyfind(env, "MIX_ENV", 0) do
+        {_, value} when is_binary(value) -> value
+        _ -> System.get_env("MIX_ENV") || "dev"
+      end
+
+    if String.contains?(output, @stale_sat),
+      do:
+        "; crux, the SAT solver wrapper, was built without picosat_elixir: run " <>
+          "`MIX_ENV=#{mix_env} mix deps.compile crux --force` " <>
+          "in the project (and for each other MIX_ENV it built), with one Elixir version",
+      else: ""
   end
 
   defp tail(output),
