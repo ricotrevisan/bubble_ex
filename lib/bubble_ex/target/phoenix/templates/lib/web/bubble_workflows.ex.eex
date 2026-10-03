@@ -222,6 +222,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_data, %{})
     |> assign(:bubble_data_stale, false)
     |> assign(:bubble_thing, nil)
+    |> refresh_viewer()
   end
 
   @doc """
@@ -265,6 +266,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> handle_params(params, uri)
     |> assign(:bubble_thing, BubbleData.thing_id(params, URI.parse(uri).path))
     |> assign(:bubble_takes_thing, takes_thing?(page))
+    |> refresh_viewer()
     |> BubbleData.load(page)
   end
 
@@ -359,6 +361,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   def handle_info(socket, page, {:bubble, :data_refresh, ref}) do
     if BubbleData.pending?(socket, ref) do<%= if @enforced? do %>
       socket = refresh_actor(socket)<% end %>
+      socket = refresh_viewer(socket)
       run = socket.assigns[:bubble_pending_run] || start(socket, nil)
 
       socket =
@@ -416,7 +419,68 @@ defmodule <%= @web %>.BubbleWorkflows do
     end
   end
 
-<% end %>  @doc "The page itself (scope \"\") and the reusable-element instances it renders."
+<% end %>  @doc """
+  Reads the current user as the page's visibility conditionals see it
+  (WTF-477) into `@bubble_viewer`, at mount, every page load and event: a
+  changed role is never served stale.<%= if @viewer? do %> Read with the user as the actor<%= if @enforced? do %>,
+  so the privacy rules apply: a field the user may not view reads as
+  empty (nil), as in Bubble<% end %>; the relationships the conditionals read
+  (`Bubble.viewer_loads/0`) are loaded with data access on and empty
+  without it. Nil when logged out; when the user may not read their own
+  record, only their ID (logged in, every field empty).<% else %> No
+  visibility conditional reads the user: the session's, read nowhere.<% end %>
+  """
+<%= if @viewer? do %>  def refresh_viewer(socket), do: assign(socket, :bubble_viewer, viewer(socket))
+
+  defp viewer(socket) do
+    case socket.assigns[:current_user] do
+      nil ->
+        nil
+
+      %{id: id} ->
+        actor = <%= if @enforced? do %>current_actor(socket)<% else %>socket.assigns[:current_user]<% end %>
+        resource = <%= @module %>.Accounts.Resources.user()
+
+        case Ash.get(resource, id, actor: actor, not_found_error?: false) do
+          {:ok, %{} = viewer} -> viewer |> viewer_loads(actor) |> unforbidden()
+          _ -> resource |> struct(id: id) |> empty_loads(Bubble.viewer_loads())
+        end
+    end
+  end
+
+  defp viewer_loads(viewer, actor) do<%= if @viewer_loads? do %>
+    if BubbleData.data_access?(),
+      do: BubbleData.load_value(viewer, Bubble.viewer_loads(), %{actor: actor}),
+      else: empty_loads(viewer, Bubble.viewer_loads())<% else %>
+    _ = actor
+    viewer<% end %>
+  end
+
+  # Relationships not read read as empty, never as `%Ash.NotLoaded{}`.
+  defp empty_loads(record, loads) do
+    Enum.reduce(loads, record, fn [name | _], acc ->
+      key = String.to_existing_atom(name)
+
+      if match?(%Ash.NotLoaded{}, Map.get(acc, key)), do: Map.put(acc, key, nil), else: acc
+    end)
+  end
+
+  defp unforbidden(%Ash.ForbiddenField{}), do: nil
+  defp unforbidden(list) when is_list(list), do: Enum.map(list, &unforbidden/1)
+
+  defp unforbidden(%{__struct__: module} = record) do
+    if Ash.Resource.Info.resource?(module),
+      do:
+        Enum.reduce(Map.from_struct(record), record, fn {k, v}, acc ->
+          Map.put(acc, k, unforbidden(v))
+        end),
+      else: record
+  end
+
+  defp unforbidden(value), do: value
+<% else %>  def refresh_viewer(socket), do: assign(socket, :bubble_viewer, socket.assigns[:current_user])
+<% end %>
+  @doc "The page itself (scope \"\") and the reusable-element instances it renders."
   def surfaces(page), do: [{"", page} | page.__bubble__(:instances)]
 
   defp surface(page, ""), do: {:ok, page}
@@ -526,6 +590,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   # that changes none of that reads nothing.
   defp event(socket, page, runs, budget \\ nil, reload \\ :immediate) do<%= if @enforced? do %>
     socket = refresh_actor(socket)<% end %>
+    socket = refresh_viewer(socket)
     run = start(socket, budget)
 
     case reload do

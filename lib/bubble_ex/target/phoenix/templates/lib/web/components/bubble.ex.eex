@@ -8,6 +8,24 @@ defmodule <%= @web %>.Bubble do
   attribute; the hook sets and removes it through LiveView's JS commands,
   so a later render keeps it.
 
+  Visibility (WTF-477). The server renders an element's `hidden`
+  attribute from its visibility conditionals, else as on page load. Once
+  a workflow step has shown, hidden or toggled the element, the step's
+  result is kept on that DOM element and later renders no longer change
+  it: in Bubble, actions take precedence over conditions, which take
+  precedence over the visibility on page load. A step is kept even when
+  the element already looked that way. What keeps it, and what does not:
+
+    * a render or a `push_patch` (a "Go to page" to the current page)
+      keeps it
+    * a LiveView reconnect (a dropped connection) keeps it, but the page
+      mounts again: its custom states and input values start over, so
+      conditionals that read them may change
+    * a full page load (a reload, a navigation to another page) forgets it
+    * a repeating group's cell is the item's (`cell_id/4`), so a kept step
+      follows its item when the list changes order; a cell removed from
+      the list takes its steps with it
+
     * `show/3`, `hide/3`, `toggle/3`, `focus/3`, `scroll_to/3` and
       `reset/3` act on one element of one reusable-element instance
       (`scope`, see `nest/2`; `""` for the page's own elements, and a nil
@@ -124,6 +142,58 @@ defmodule <%= @web %>.Bubble do
     do: Map.get(data, {scope, element, index})
 
   def data(_data, _scope, _element, _index), do: nil
+
+  @doc """
+  The DOM ID of a repeating group's cell: its item's ID when it is a
+  thing, else its index. Morphdom matches cells by it, so what a workflow
+  step did to an element in a cell (shown, hidden) follows the item when
+  the list changes order (WTF-477).
+  """
+  def cell_id(scope, element, item, index) do
+    key =
+      case item do
+        %{id: id} when is_binary(id) or is_integer(id) -> "t-" <> segment(id)
+        _ -> "i-" <> Integer.to_string(index)
+      end
+
+    Enum.join(["bubble-cell", segment(scope), segment(element), key], "-")
+  end
+
+  @doc """
+  The relationships the visibility conditionals read from the current
+  user (`<%= @web %>.BubbleWorkflows.refresh_viewer/1`, WTF-477).
+  """
+  def viewer_loads, do: <%= @viewer_loads %>
+
+  @doc """
+  `value` once every relationship path in `paths` (names) is loaded
+  through it. A visibility conditional never decides on a relationship
+  that was not loaded: it would read as empty, silently (WTF-477). Raises
+  `ArgumentError` instead: the page did not load what its conditions read.
+  """
+  def loaded!(value, paths) do
+    Enum.each(paths, &loaded_path!(value, &1, &1))
+    value
+  end
+
+  defp loaded_path!(%Ash.NotLoaded{}, _rest, path),
+    do:
+      raise(
+        ArgumentError,
+        "bubble: #{Enum.join(path, ".")} is read by a visibility condition but not loaded"
+      )
+
+  defp loaded_path!(_value, [], _path), do: :ok
+  defp loaded_path!(list, rest, path) when is_list(list), do: Enum.each(list, &loaded_path!(&1, rest, path))
+
+  defp loaded_path!(%{__struct__: _} = record, [name | rest], path) do
+    case Map.fetch(record, String.to_existing_atom(name)) do
+      {:ok, value} -> loaded_path!(value, rest, path)
+      :error -> :ok
+    end
+  end
+
+  defp loaded_path!(_value, _rest, _path), do: :ok
 
   @doc "A repeating group's items with their 1-based index (none when not loaded)."
   def cells(data, scope, element) do
@@ -260,9 +330,14 @@ defmodule <%= @web %>.Bubble do
           )
         },
         show(el) {
-          // Already open: nothing (its opener stays the first one).
-          if (!el.hidden) return
           const overlay = el.getAttribute("data-overlay")
+          // Already open: nothing (its opener stays the first one). Any
+          // other element still keeps the step: a workflow's show or hide
+          // wins over its conditionals until the page reloads (WTF-477).
+          if (!el.hidden) {
+            if (!overlay) this.js().removeAttribute(el, "hidden")
+            return
+          }
           if (overlay === "popup" || overlay === "group_focus") {
             document.querySelectorAll('[data-overlay="group_focus"]').forEach((other) => {
               if (other !== el && !other.hidden) this.hide(other)
@@ -280,7 +355,10 @@ defmodule <%= @web %>.Bubble do
           el.dispatchEvent(new CustomEvent("bubble:overlay-opened", { bubbles: true }))
         },
         hide(el) {
-          if (el.hidden) return
+          if (el.hidden) {
+            if (!el.getAttribute("data-overlay")) this.js().setAttribute(el, "hidden", "")
+            return
+          }
           const hadFocus = el.contains(document.activeElement)
           this.js().setAttribute(el, "hidden", "")
           if (!el.getAttribute("data-overlay")) return
