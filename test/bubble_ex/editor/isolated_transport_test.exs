@@ -83,6 +83,24 @@ defmodule BubbleEx.Editor.IsolatedTransportTest do
     end
   end
 
+  test "explicit false isolation retains ordinary HTTP default behavior" do
+    Application.put_env(:req, :default_options, auth: {:bearer, "ordinary-token"})
+    Application.put_env(:bubble_ex, :req_options, timeout: 4321)
+
+    HTTP.put_process_options(
+      adapter: fn request ->
+        assert Req.Request.get_header(request, "authorization") == ["Bearer ordinary-token"]
+        assert Req.Request.get_private(request, :bubble_ex_transport)[:timeout] == 4321
+        {request, %Req.Response{status: 200, body: "ordinary"}}
+      end
+    )
+
+    for opts <- [[], [isolated: false]] do
+      assert {:ok, %HTTP.Response{body: "ordinary"}} =
+               HTTP.get("https://public.example/", [], opts)
+    end
+  end
+
   test "native GETs ignore Req defaults/plugins while retaining deliberate cookie and query", %{
     target: target
   } do

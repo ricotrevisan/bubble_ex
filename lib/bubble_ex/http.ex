@@ -373,6 +373,7 @@ defmodule BubbleEx.HTTP do
   defp merge_remaining_options(req_options, options) do
     recognized = [
       :anonymous,
+      :isolated,
       :follow_redirect,
       :credential_origin,
       :resolver,
