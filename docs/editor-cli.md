@@ -79,6 +79,13 @@ end
 Both keep the cookie redacted in `Inspect`. Supply `cookie` from environment or
 a secret store, never from request params. Do not serialize target structs.
 
+All native editor requests use isolated shared HTTP construction: only the
+explicit editor cookie/headers and native body are retained. Ambient credential,
+header, query and payload options are discarded from BubbleEx application/process
+defaults, and Req global defaults/plugins are not merged. Trusted transport/budget
+configuration and test adapters remain supported; unrelated ordinary HTTP calls
+keep their existing defaults behavior.
+
 `discover_pages/2` verifies authenticated editor access/version first, then
 fetches the anonymous app runtime HTML and dynamic bundle with **no editor
 cookie or authorization header**. Enforced anonymous HTTP mode allowlists

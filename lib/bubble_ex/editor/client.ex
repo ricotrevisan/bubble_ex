@@ -263,6 +263,7 @@ defmodule BubbleEx.Editor.Client do
 
   defp request_options(cookie) do
     [
+      isolated: true,
       retry: false,
       max_retries: 0,
       follow_redirect: false,
