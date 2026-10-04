@@ -30,6 +30,10 @@ defmodule BubbleEx.PageData do
   | a property a reusable-element instance sets (WTF-493) | `:param` | its value, computed where the instance is (`holder`: the reusable element; `param`: `"param_<id>"`) |
   | a reusable element property's default value | `:param` | computed inside the reusable element (`element` and `holder` are the reusable element), for the instances that do not set it |
 
+  An instance in a repeating group's cell lists every property its
+  reusable element declares, with a nil `value` for one it does not set
+  (the target cannot pass any of them there yet).
+
   A property set to a static value is that value as the property's type
   (`"true"` as a yes/no, `"1.5"` as a number); one the instance does not
   set, with no default, is empty. Bubble has no action that changes a
@@ -324,9 +328,12 @@ defmodule BubbleEx.PageData do
     holder = node && node.instance_of
     declared = declared(holder, ctx)
 
+    # In a repeating group's cell the instance is not a surface of its own
+    # yet: every property it declares is listed, set or not, so the
+    # binding marks each one (none is passed there).
     for {param, type} <- Enum.sort(declared),
         key = "param_" <> param,
-        Map.has_key?(props, key) do
+        props[key] != nil or at.cell != nil do
       param_source(%{
         element: id,
         holder: holder,
@@ -350,7 +357,7 @@ defmodule BubbleEx.PageData do
       params when is_map(params) ->
         for {key, %{"param_id" => param} = raw} <- Enum.sort(params),
             is_map_key(declared, param),
-            Map.has_key?(raw, "default_value") do
+            raw["default_value"] != nil do
           param_source(%{
             element: id,
             holder: id,
@@ -381,7 +388,7 @@ defmodule BubbleEx.PageData do
   end
 
   defp param_source(p) do
-    expr = param_value(p.raw, p.type, p.vpath, p.env)
+    expr = if p.raw == nil, do: nil, else: param_value(p.raw, p.type, p.vpath, p.env)
 
     %Source{
       id: p.symbol,
@@ -488,18 +495,8 @@ defmodule BubbleEx.PageData do
 
   defp listed(type), do: Type.listed(type)
 
-  # A repeating group with a fixed number of rows shows rows × columns
-  # items a page; one showing all its items (or without rows) has none.
-  defp page_size(props) do
-    rows = positive(props["rows"] || props["%rs"])
-    columns = positive(props["columns"] || props["%cs"]) || 1
-
-    if rows && props["show_all_items"] != true, do: rows * columns
-  end
-
-  defp positive(n) when is_integer(n) and n > 0, do: n
-  defp positive(n) when is_float(n) and n >= 1, do: trunc(n)
-  defp positive(_), do: nil
+  # A repeating group's page (rows × columns), as the element tree reads it.
+  defp page_size(props), do: Tree.page_size(props)
 
   defp props_key(raw) do
     case Json.get(raw, ~w(properties %p)) do

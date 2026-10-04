@@ -1,6 +1,19 @@
 {
   "_id": "page-data-fixture",
   "element_definitions": {
+    "panel": {
+      "elements": {
+        "bPanelGroup": {"elements": {"bPanelTitle": {"id": "bPanelTitle", "properties": {"height": 40, "min_height_css": "40px", "order": 1, "text": {"entries": {"0": "Panel: ", "1": {"next": {"name": "title_text", "type": "Message"}, "type": "ElementParent"}}, "type": "TextExpression"}, "width": 300}, "type": "Text"}}, "id": "bPanelGroup", "properties": {"group_type": "custom.task", "height": 40, "order": 2, "width": 300}, "type": "Group"},
+        "bPanelOwn": {"id": "bPanelOwn", "properties": {"height": 40, "min_height_css": "40px", "order": 1, "text": {"entries": {"0": "Panel own: ", "1": {"next": {"name": "title_text", "type": "Message"}, "type": "ElementParent"}}, "type": "TextExpression"}, "width": 300}, "type": "Text"}
+      },
+      "id": "bPanel",
+      "name": "Panel",
+      "properties": {"group_type": "custom.task", "height": 120, "width": 300},
+      "type": "CustomDefinition",
+      "workflows": {
+        "wPanelShow": {"actions": {"0": {"id": "aPanelShow1", "properties": {"data_source": {"properties": {"btype_id": "custom.task", "param_id": "pTask"}, "type": "CurrentWorkflowItem"}, "element_id": "bPanelGroup"}, "type": "DisplayGroupData"}}, "id": "wPanelShow", "properties": {"event_name": "show", "parameters": {"0": {"btype_id": "custom.task", "is_list": false, "optional": false, "param_id": "pTask", "param_name": "task"}}}, "type": "CustomEvent"}
+      }
+    },
     "card": {
       "id": "bCard",
       "name": "Task card",
@@ -28,6 +41,50 @@
     }
   },
   "pages": {
+    "shown": {
+      "elements": {
+        "bOuter": {"id": "bOuter", "type": "Group", "properties": {"_comment": "WTF-492: an outer group whose reset clears the displayed group inside it.", "order": 18, "width": 300, "height": 40}, "elements": {"bInner": {"id": "bInner", "type": "Group", "properties": {"order": 1, "width": 300, "height": 40, "group_type": "custom.task"}, "elements": {"bInnerTitle": {"id": "bInnerTitle", "type": "Text", "properties": {"order": 1, "width": 300, "height": 40, "min_height_css": "40px", "text": {"type": "TextExpression", "entries": {"0": "Inner: ", "1": {"type": "ElementParent", "next": {"type": "Message", "name": "title_text"}}}}}}}}}},
+        "bShowInner": {"id": "bShowInner", "type": "Button", "properties": {"order": 19, "width": 300, "height": 40, "min_height_css": "40px", "text": {"type": "TextExpression", "entries": {"0": "Show inner"}}}},
+        "bResetOuter": {"id": "bResetOuter", "type": "Button", "properties": {"order": 20, "width": 300, "height": 40, "min_height_css": "40px", "text": {"type": "TextExpression", "entries": {"0": "Reset outer"}}}},
+        "bChain": {"id": "bChain", "type": "Button", "properties": {"order": 21, "width": 300, "height": 40, "min_height_css": "40px", "text": {"type": "TextExpression", "entries": {"0": "Chain"}}}},
+        "bOpenPop": {"id": "bOpenPop", "properties": {"height": 40, "min_height_css": "40px", "order": 13, "text": {"entries": {"0": "Open popup"}, "type": "TextExpression"}, "width": 300}, "type": "Button"},
+        "bOverride": {"id": "bOverride", "properties": {"height": 40, "min_height_css": "40px", "order": 11, "text": {"entries": {"0": "Override A"}, "type": "TextExpression"}, "width": 300}, "type": "Button"},
+        "bPanel1": {"id": "bPanel1", "properties": {"_comment": "WTF-492: an instance with no data source.", "custom_id": "bPanel", "group_type": "custom.task", "height": 40, "order": 7, "width": 300}, "type": "CustomElement"},
+        "bPop": {"elements": {"bPopTitle": {"id": "bPopTitle", "properties": {"height": 40, "min_height_css": "40px", "order": 1, "text": {"entries": {"0": "Popup: ", "1": {"next": {"name": "title_text", "type": "Message"}, "type": "ElementParent"}}, "type": "TextExpression"}, "width": 300}, "type": "Text"}}, "id": "bPop", "properties": {"_comment": "WTF-492: Display data, then Show.", "group_type": "custom.task", "height": 200, "order": 5, "width": 300}, "type": "Popup"},
+        "bResetPanel": {"id": "bResetPanel", "properties": {"height": 40, "min_height_css": "40px", "order": 17, "text": {"entries": {"0": "Reset panel"}, "type": "TextExpression"}, "width": 300}, "type": "Button"},
+        "bResetShown": {"id": "bResetShown", "properties": {"height": 40, "min_height_css": "40px", "order": 10, "text": {"entries": {"0": "Reset shown"}, "type": "TextExpression"}, "width": 300}, "type": "Button"},
+        "bResetSrc": {"id": "bResetSrc", "properties": {"height": 40, "min_height_css": "40px", "order": 12, "text": {"entries": {"0": "Reset A"}, "type": "TextExpression"}, "width": 300}, "type": "Button"},
+        "bShowA": {"id": "bShowA", "properties": {"height": 40, "min_height_css": "40px", "order": 8, "text": {"entries": {"0": "Show A"}, "type": "TextExpression"}, "width": 300}, "type": "Button"},
+        "bShowB": {"id": "bShowB", "properties": {"height": 40, "min_height_css": "40px", "order": 9, "text": {"entries": {"0": "Show B"}, "type": "TextExpression"}, "width": 300}, "type": "Button"},
+        "bShowCard": {"id": "bShowCard", "properties": {"height": 40, "min_height_css": "40px", "order": 15, "text": {"entries": {"0": "Show card"}, "type": "TextExpression"}, "width": 300}, "type": "Button"},
+        "bShowList": {"id": "bShowList", "properties": {"height": 40, "min_height_css": "40px", "order": 14, "text": {"entries": {"0": "Show list"}, "type": "TextExpression"}, "width": 300}, "type": "Button"},
+        "bShowPanel": {"id": "bShowPanel", "properties": {"height": 40, "min_height_css": "40px", "order": 16, "text": {"entries": {"0": "Show panel"}, "type": "TextExpression"}, "width": 300}, "type": "Button"},
+        "bShown": {"elements": {"bShownProj": {"elements": {"bShownProjName": {"id": "bShownProjName", "properties": {"height": 40, "min_height_css": "40px", "order": 1, "text": {"entries": {"0": "Shown project: ", "1": {"next": {"name": "name_text", "type": "Message"}, "type": "ElementParent"}}, "type": "TextExpression"}, "width": 300}, "type": "Text"}}, "id": "bShownProj", "properties": {"data_source": {"next": {"name": "project_custom_project", "type": "Message"}, "type": "ElementParent"}, "group_type": "custom.project", "height": 40, "order": 2, "width": 300}, "type": "Group"}, "bShownTitle": {"id": "bShownTitle", "properties": {"height": 40, "min_height_css": "40px", "order": 1, "text": {"entries": {"0": "Shown: ", "1": {"next": {"name": "title_text", "type": "Message"}, "type": "ElementParent"}}, "type": "TextExpression"}, "width": 300}, "type": "Text"}}, "id": "bShown", "properties": {"_comment": "WTF-492: no data source; a Display data step sets it.", "group_type": "custom.task", "height": 40, "order": 4, "width": 300}, "type": "Group"},
+        "bShownList": {"elements": {"bShownListTitle": {"id": "bShownListTitle", "properties": {"height": 40, "min_height_css": "40px", "order": 1, "text": {"entries": {"0": "Listed: ", "1": {"next": {"name": "title_text", "type": "Message"}, "type": "CurrentDataItem"}}, "type": "TextExpression"}, "width": 300}, "type": "Text"}}, "id": "bShownList", "properties": {"_comment": "WTF-492: no data source; a Display list step sets it.", "columns": 1, "group_type": "custom.task", "height": 40, "order": 6, "rows": 1, "width": 300}, "type": "RepeatingGroup"},
+        "bSrcA": {"elements": {"bSrcATitle": {"id": "bSrcATitle", "properties": {"height": 40, "min_height_css": "40px", "order": 1, "text": {"entries": {"0": "SrcA: ", "1": {"next": {"name": "title_text", "type": "Message"}, "type": "ElementParent"}}, "type": "TextExpression"}, "width": 300}, "type": "Text"}}, "id": "bSrcA", "properties": {"data_source": {"next": {"name": "first_element", "type": "Message"}, "properties": {"descending": false, "sort_field": "title_text", "type_to_find": "custom.task"}, "type": "Search"}, "group_type": "custom.task", "height": 40, "order": 1, "width": 300}, "type": "Group"},
+        "bSrcB": {"elements": {"bSrcBTitle": {"id": "bSrcBTitle", "properties": {"height": 40, "min_height_css": "40px", "order": 1, "text": {"entries": {"0": "SrcB: ", "1": {"next": {"name": "title_text", "type": "Message"}, "type": "ElementParent"}}, "type": "TextExpression"}, "width": 300}, "type": "Text"}}, "id": "bSrcB", "properties": {"data_source": {"next": {"name": "first_element", "type": "Message"}, "properties": {"descending": true, "sort_field": "title_text", "type_to_find": "custom.task"}, "type": "Search"}, "group_type": "custom.task", "height": 40, "order": 2, "width": 300}, "type": "Group"},
+        "bSrcList": {"elements": {"bSrcListTitle": {"id": "bSrcListTitle", "properties": {"height": 40, "min_height_css": "40px", "order": 1, "text": {"entries": {"0": "Src list: ", "1": {"next": {"name": "title_text", "type": "Message"}, "type": "CurrentDataItem"}}, "type": "TextExpression"}, "width": 300}, "type": "Text"}}, "id": "bSrcList", "properties": {"_comment": "WTF-492: the list a Display list step shows elsewhere.", "columns": 1, "data_source": {"properties": {"descending": false, "sort_field": "title_text", "type_to_find": "custom.task"}, "type": "Search"}, "group_type": "custom.task", "height": 40, "order": 3, "rows": 2, "width": 300}, "type": "RepeatingGroup"}
+      },
+      "id": "bShownPage",
+      "name": "shown",
+      "properties": {"title": "Shown"},
+      "type": "Page",
+      "workflows": {
+        "wShowInner": {"id": "wShowInner", "type": "ButtonClicked", "properties": {"element_id": "bShowInner"}, "actions": {"0": {"id": "aShowInner1", "type": "DisplayGroupData", "properties": {"element_id": "bInner", "data_source": {"type": "GetElement", "properties": {"element_id": "bSrcA"}, "next": {"type": "Message", "name": "get_group_data"}}}}}},
+        "wResetOuter": {"id": "wResetOuter", "type": "ButtonClicked", "properties": {"element_id": "bResetOuter"}, "actions": {"0": {"id": "aResetOuter1", "type": "ResetGroup", "properties": {"element_id": "bOuter"}}}},
+        "wChain": {"id": "wChain", "type": "ButtonClicked", "properties": {"element_id": "bChain"}, "actions": {"0": {"id": "aChain1", "type": "DisplayGroupData", "properties": {"element_id": "bShown", "data_source": {"type": "GetElement", "properties": {"element_id": "bSrcB"}, "next": {"type": "Message", "name": "get_group_data"}}}}, "1": {"id": "aChain2", "type": "DisplayGroupData", "properties": {"element_id": "bPop", "data_source": {"type": "GetElement", "properties": {"element_id": "bShown"}, "next": {"type": "Message", "name": "get_group_data"}}}}}},
+        "wOpenPop": {"actions": {"0": {"id": "aOpenPop1", "properties": {"data_source": {"next": {"name": "get_group_data", "type": "Message"}, "properties": {"element_id": "bSrcB"}, "type": "GetElement"}, "element_id": "bPop"}, "type": "DisplayGroupData"}, "1": {"id": "aOpenPop2", "properties": {"element_id": "bPop"}, "type": "ShowElement"}}, "id": "wOpenPop", "properties": {"element_id": "bOpenPop"}, "type": "ButtonClicked"},
+        "wOverride": {"actions": {"0": {"id": "aOverride1", "properties": {"data_source": {"next": {"name": "get_group_data", "type": "Message"}, "properties": {"element_id": "bSrcB"}, "type": "GetElement"}, "element_id": "bSrcA"}, "type": "DisplayGroupData"}}, "id": "wOverride", "properties": {"element_id": "bOverride"}, "type": "ButtonClicked"},
+        "wResetPanel": {"actions": {"0": {"id": "aResetPanel1", "properties": {"element_id": "bPanel1"}, "type": "ResetGroup"}}, "id": "wResetPanel", "properties": {"element_id": "bResetPanel"}, "type": "ButtonClicked"},
+        "wResetShown": {"actions": {"0": {"id": "aResetShown1", "properties": {"element_id": "bShown"}, "type": "ResetGroup"}}, "id": "wResetShown", "properties": {"element_id": "bResetShown"}, "type": "ButtonClicked"},
+        "wResetSrc": {"actions": {"0": {"id": "aResetSrc1", "properties": {"element_id": "bSrcA"}, "type": "ResetGroup"}}, "id": "wResetSrc", "properties": {"element_id": "bResetSrc"}, "type": "ButtonClicked"},
+        "wShowA": {"actions": {"0": {"id": "aShowA1", "properties": {"data_source": {"next": {"name": "get_group_data", "type": "Message"}, "properties": {"element_id": "bSrcA"}, "type": "GetElement"}, "element_id": "bShown"}, "type": "DisplayGroupData"}}, "id": "wShowA", "properties": {"element_id": "bShowA"}, "type": "ButtonClicked"},
+        "wShowB": {"actions": {"0": {"id": "aShowB1", "properties": {"data_source": {"next": {"name": "get_group_data", "type": "Message"}, "properties": {"element_id": "bSrcB"}, "type": "GetElement"}, "element_id": "bShown"}, "type": "DisplayGroupData"}}, "id": "wShowB", "properties": {"element_id": "bShowB"}, "type": "ButtonClicked"},
+        "wShowCard": {"actions": {"0": {"id": "aShowCard1", "properties": {"data_source": {"next": {"name": "get_group_data", "type": "Message"}, "properties": {"element_id": "bSrcB"}, "type": "GetElement"}, "element_id": "bPanel1"}, "type": "DisplayGroupData"}}, "id": "wShowCard", "properties": {"element_id": "bShowCard"}, "type": "ButtonClicked"},
+        "wShowList": {"actions": {"0": {"id": "aShowList1", "properties": {"data_source": {"next": {"name": "get_list_data", "type": "Message"}, "properties": {"element_id": "bSrcList"}, "type": "GetElement"}, "element_id": "bShownList"}, "type": "DisplayListData"}}, "id": "wShowList", "properties": {"element_id": "bShowList"}, "type": "ButtonClicked"},
+        "wShowPanel": {"actions": {"0": {"id": "aShowPanel1", "properties": {"arguments": {"0": {"arg_value": {"next": {"name": "get_group_data", "type": "Message"}, "properties": {"element_id": "bSrcA"}, "type": "GetElement"}, "param_id": "pTask"}}, "custom_event": "wPanelShow", "element_id": "bPanel1"}, "type": "TriggerCustomEventFromReusable"}}, "id": "wShowPanel", "properties": {"element_id": "bShowPanel"}, "type": "ButtonClicked"}
+      }
+    },
     "index": {
       "elements": {
         "bFirstOpen": {

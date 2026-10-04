@@ -171,6 +171,7 @@ element (not a mobile view):
 | a reusable-element instance's data source | `:instance` | the reusable element's thing for that instance (`Parent group` inside it) |
 | a property a reusable-element instance sets (WTF-493) | `:param` | its value, computed where the instance is, kept under the instance (`This Reusable's <property>` inside it) |
 | a reusable element property's default value | `:param` | computed inside the reusable element, for an instance that sets no value |
+| a group, popup, repeating group or instance with no data source that a "Display data" / "Display list" step sets (WTF-492) | its kind | what the step showed (`read: :displayed`), read again as the current user; nothing before a step |
 
 A **search** (with its constraints, its sort, optionally under `first
 item`, `item #n`, `items until #n` or `count`) is an Ash query: its filter
@@ -199,6 +200,17 @@ the search fields check sees the sort, and no field policy is involved
 (no `:search_field_hidden`). Any other sort field that maps to no
 attribute leaves the search uncompiled (residue).
 
+**Display data (WTF-492).** An element a "Display data in a group /
+popup" or "Display list in a repeating group" step sets shows what the
+step showed until a reset or the page's next load, in place of its own
+data source (`docs/frontend-workflows.md`). The page keeps a thing's
+unique ID only (`@bubble_displayed`) and reads it again, as the current
+user through Ash, at every read of its data: a workflow never shows
+what the user may not read. Its entry in `__bubble__(:data)` says so
+(`display: %{page_size: ...}`); one with no source of its own has no
+function (`read: :displayed`, `fun: nil`, nothing `blocked`). Only an
+element a step that runs sets is listed.
+
 ## Reusable element properties (WTF-493)
 
 An instance's properties are page data. Each value it sets in the editor
@@ -209,9 +221,12 @@ scope, like the instance's own data source. A property it does not set
 takes its default, a source of the reusable element computed inside it
 (a default may read the reusable element's thing, its other properties,
 its elements), read only for the instances that set no value; with no
-default it is empty. Values are kept under the instance's scope (`{scope,
-"param_<id>"}` in `@bubble_data`, the component's `bubble_data`
-attribute), so `This Reusable's <property>` reads the value of the
+default it is empty; a default reading its own property is a cycle
+(`:unresolved_reference`). Values are kept under the instance's scope
+(`{scope, "param_<id>/<reusable id>"}` in `@bubble_data`, the component's
+`bubble_data` attribute: property IDs are unique only within a reusable
+element, so keys, relationship loads and input-change reloads name
+both), so `This Reusable's <property>` reads the value of the
 instance being rendered, in texts, visibility conditions, data sources
 (a group whose data source is the property) and workflows, and nested
 reusables pass theirs down the same way. A page may read an instance's
@@ -232,12 +247,15 @@ the instance is marked `TODO(bubble:<id>) its property param_<id> is not
 passed (<reasons>)`.
 
 An instance in a repeating group's cell is not rendered as a surface of
-its own yet (WTF-476): its values are residue (`:page_data_in_cell`),
-marked on the instance, and do not block the reads for the other
-instances.
+its own yet (WTF-476): every property its reusable element declares, set
+or not, is residue (`:page_data_in_cell`), marked on the instance, and
+does not block the reads for the other instances.
 
 Bubble has no workflow action that changes a property (in the private
-fixture app, no action names one): properties are read only.
+fixture app, no action names one): properties are read only. A "Display
+data" step on an instance sets the instance's own thing (`Parent group`
+inside it, WTF-492), not its properties: they stay the values computed in
+the parent's scope.
 
 A group inside a repeating group's cell holds a value per cell. A
 repeating group, a reusable instance or a search inside a cell is residue
@@ -443,3 +461,9 @@ where it runs (a privacy rule's condition).
   not loaded.
 * Reusable element properties in a repeating group's cell are not passed
   (above).
+* A property an instance sets to a value that is empty at run time stays
+  empty; whether Bubble shows the property's default then is not replayed
+  (WTF-387).
+* "Display data" over a group's own data source: the step's value wins
+  until a reset or the page's next load, even when what the source reads
+  changes (WTF-492; to replay, WTF-358).

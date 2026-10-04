@@ -38,6 +38,8 @@ defmodule BubbleEx.Expression.Tree do
         one
       * `params` - a reusable's parameters: parameter ID => type descriptor
       * `instance_of` - for a reusable instance, the reusable's Bubble ID
+      * `page_size` - for a repeating group, the items a page of it shows
+        (rows × columns; nil when it shows them all), see `page_size/1`
     """
     defstruct [
       :id,
@@ -48,6 +50,7 @@ defmodule BubbleEx.Expression.Tree do
       :parent,
       :owner,
       :instance_of,
+      :page_size,
       states: %{},
       defaults: %{},
       params: %{}
@@ -62,6 +65,7 @@ defmodule BubbleEx.Expression.Tree do
             parent: String.t() | nil,
             owner: String.t() | nil,
             instance_of: String.t() | nil,
+            page_size: pos_integer() | nil,
             states: %{String.t() => String.t()},
             defaults: %{String.t() => term()},
             params: %{String.t() => String.t()}
@@ -188,13 +192,31 @@ defmodule BubbleEx.Expression.Tree do
       owner: owner,
       states: states(raw),
       defaults: defaults(raw),
-      instance_of: if(type == "CustomElement", do: text(props["custom_id"]))
+      instance_of: if(type == "CustomElement", do: text(props["custom_id"])),
+      page_size: if(type == "RepeatingGroup", do: page_size(props))
     }
 
     [node | children(raw, id, owner)]
   end
 
   defp element(_key, _raw, _parent, _owner), do: []
+
+  @doc """
+  The items a page of a repeating group shows, from its properties: a
+  fixed number of rows shows rows × columns; one showing all its items
+  (or without rows) has none (nil).
+  """
+  @spec page_size(map()) :: pos_integer() | nil
+  def page_size(props) when is_map(props) do
+    rows = positive(props["rows"] || props["%rs"])
+    columns = positive(props["columns"] || props["%cs"]) || 1
+
+    if rows && props["show_all_items"] != true, do: rows * columns
+  end
+
+  defp positive(n) when is_integer(n) and n > 0, do: n
+  defp positive(n) when is_float(n) and n >= 1, do: trunc(n)
+  defp positive(_), do: nil
 
   defp value_type(type, props) when type in ~w(Input MultiLineInput),
     do: Map.get(@input_formats, props["content_format"] || "text")

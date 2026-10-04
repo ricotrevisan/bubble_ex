@@ -36,10 +36,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   | an input's value | the page's input map, per instance: the page tracks every `Input` and `MultiLineInput` of text or number, `Checkbox` and text `Dropdown` it renders (not in a runtime container's template) |
   | a URL parameter (`Get data from page URL`) | the page's URL query, as text |
 
-  Anything else (a page's or a cell's thing, a group's data, an element's
+  With `:page_data`, a page's thing, a group's, instance's or repeating
+  group's data and a cell's thing are what the page loads; an element a
+  "Display data" / "Display list" step sets (WTF-492) holds what the step
+  showed, re-read as the current user. Anything else (an element's
   built-in states such as `is visible`, other page data) is
   `:unavailable_input` residue: the generated pages do not load or track
-  it (T5's rule: a mount loads no data).
+  it.
 
   ## Residue added here
 
@@ -58,6 +61,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     * `:unresolved_reference` (`detail.target` `"ash"`) - a data type or
       field the Ash project does not map
     * `:unsupported_option` - a list change on a field that is not a list
+    * `:page_data_in_cell` (`detail.kind` `"display"`, `"list"`,
+      `"instance"`) - a "Display data" step into a repeating group's cell
+      from outside it, or a list or an instance there
 
   ## Coverage
 
@@ -103,6 +109,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   @dynamic_slots ~w(value checked choices)
 
   @unwired_events [:popup_opened, :popup_closed, :logged_in, :logged_out]
+
+  @display_ops [:display_data, :display_list]
 
   @doc """
   Binds `lowered` to `project` (`BubbleEx.Target.Ash.map/3` of the same
@@ -181,23 +189,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       # The page's data (WTF-420): its sources are bound against every
       # source that lowered, then only what loads is read by the rest.
       page_data = Keyword.get(opts, :page_data)
-      optimistic = Data.index(page_data)
 
-      data =
-        Data.bind(page_data, set_data(ctx, optimistic), %{
-          compile: &compile/3,
-          bind: &bind/2
-        })
-
-      ctx = set_data(ctx, Data.wired_index(data))
-
-      bound =
-        lowered.workflows
-        |> Enum.group_by(&bubble(&1.surface))
-        |> Map.new(fn {surface, ws} ->
-          {surface, ws |> names() |> Enum.map(fn {w, fun} -> workflow(w, fun, surface, ctx) end)}
-        end)
-        |> block(ctx.backend)
+      # What "Display data" steps show (WTF-492): the elements they set,
+      # held as page data (with no source of their own, read from what
+      # the step showed). Only the elements a step the runtime starts
+      # (whole) shows data in: the others stay unloaded, loudly.
+      {ctx, data, bound} =
+        bind_data_and_workflows(displayed(lowered.workflows, ctx), lowered, page_data, ctx)
 
       surfaces =
         Map.new(kinds, fn {id, kind} ->
@@ -238,6 +236,48 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
          :invalid_input,
          "expected a BubbleEx.Workflows.Frontend, a BubbleEx.Target.Ash.Project and options"
        )}
+
+  # Binds the page data and the workflows with the elements `displayed`
+  # holds, until every one of them has a display step that runs.
+  defp bind_data_and_workflows(displayed, lowered, page_data, ctx) do
+    ctx = Map.put(ctx, :displayed, displayed)
+
+    data =
+      Data.bind(page_data, set_data(ctx, Data.index(page_data, displayed)), %{
+        compile: &compile/3,
+        bind: &bind/2
+      })
+
+    ctx = set_data(ctx, Data.wired_index(data))
+
+    bound =
+      lowered.workflows
+      |> Enum.group_by(&bubble(&1.surface))
+      |> Map.new(fn {surface, ws} ->
+        {surface, ws |> names() |> Enum.map(fn {w, fun} -> workflow(w, fun, surface, ctx) end)}
+      end)
+      |> block(ctx.backend)
+
+    shown =
+      for {_surface, ws} <- bound,
+          w <- ws,
+          Spec.native?(w) and not w.disabled?,
+          %{op: op, residue: []} = step <- w.steps,
+          op in @display_ops,
+          into: MapSet.new(),
+          do: step_element(step, w)
+
+    kept = Map.filter(displayed, fn {element, _} -> MapSet.member?(shown, element) end)
+
+    if map_size(kept) == map_size(displayed),
+      do: {ctx, data, bound},
+      else: bind_data_and_workflows(kept, lowered, page_data, ctx)
+  end
+
+  # The element a bound display step sets: the instance for an instance's
+  # thing.
+  defp step_element(%{args: %{key: %{path: [instance]}}}, _w), do: instance
+  defp step_element(%{args: %{key: %{element: element}}}, _w), do: element
 
   @doc "Generated-code coverage. See `Spec.coverage/1`."
   defdelegate coverage(spec), to: Spec
@@ -685,9 +725,50 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     do: Enum.any?(bindings, &match?({kind, _} when kind in [:data, :cell, :cell_data], &1.bind))
 
   defp args(op, %{element: element}, id, ctx)
-       when op in [:show, :hide, :toggle, :focus, :scroll_to, :reset_group] do
+       when op in [:show, :hide, :toggle, :focus, :scroll_to] do
     case target(element, ctx) do
       {:ok, target} -> {%{target: target}, []}
+      {:error, entry} -> {%{}, [entry.(id)]}
+    end
+  end
+
+  # "Display data" / "Display list" (WTF-492): what the element shows,
+  # kept by the page per instance (and cell) and re-read as the current
+  # user whenever the page reads its data, never shown as the workflow
+  # read it.
+  defp args(op, %{element: element} = args, id, ctx) when op in @display_ops do
+    case display_holder(op, args, ctx.workflow, ctx.surface, ctx) do
+      {:ok, holder} ->
+        {value, residue} = compile(args.value, id, ctx)
+        resource = Data.resource_of_type(holder.type, ctx)
+
+        unmapped =
+          if resource == nil and data_type?(holder.type),
+            do: [unmapped(id, "data_type")],
+            else: []
+
+        key =
+          if holder.kind == :instance,
+            do: %{path: [element], element: holder.holder},
+            else: %{path: [], element: element}
+
+        {%{
+           key: key,
+           cell?: holder.cell != nil,
+           list?: op == :display_list,
+           page_size: holder.page_size,
+           resource: resource,
+           value: value
+         }, residue ++ unmapped}
+
+      {:error, entry} ->
+        {%{}, [entry.(id)]}
+    end
+  end
+
+  defp args(:reset_group, %{element: element}, id, ctx) do
+    case target(element, ctx) do
+      {:ok, target} -> {%{target: target, clears: clears(element, target, ctx)}, []}
       {:error, entry} -> {%{}, [entry.(id)]}
     end
   end
@@ -869,6 +950,154 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       {%{key => Map.fetch!(entry, key), value: value}, acc ++ r}
     end)
   end
+
+  # --- displayed data (WTF-492) ------------------------------------------------------------
+
+  # The elements "Display data" steps set, by Bubble ID: `%{kind, surface,
+  # cell, holder, type, page_size}` (page data holders, see
+  # `Data.index/2`). Only steps the lowering lowered, into an element the
+  # page renders that holds that kind of data.
+  defp displayed(workflows, ctx) do
+    for w <- workflows,
+        %Step{op: op, residue: [], args: args} <- w.steps,
+        op in @display_ops,
+        surface = bubble(w.surface),
+        {:ok, holder} <- [display_holder(op, args, w, surface, ctx)],
+        reduce: %{} do
+      acc -> Map.put_new(acc, args.element, holder)
+    end
+  end
+
+  # What a display step's element holds, or why the page cannot keep it:
+  # a group (popup, floating group, group focus) holds a thing, a
+  # reusable-element instance its reusable element's thing (as does the
+  # reusable element itself, seen from inside), a repeating group a list.
+  # In a repeating group's cell only a group, from a workflow of the same
+  # cell (per cell).
+  defp display_holder(op, %{element: element, cell: cell}, w, surface, ctx) do
+    raw = ctx.raw_elements[element]
+    el = ctx.elements[element]
+
+    with :ok <- display_element(raw, el, surface),
+         :ok <- display_place(op, element, el, cell, w, surface, ctx) do
+      {:ok, holder(op, element, el, raw, surface, cell, ctx)}
+    end
+  end
+
+  defp display_element(raw, %{surface: surface}, surface) when raw != nil, do: :ok
+
+  defp display_element(_raw, _el, _surface),
+    do: {:error, &Residue.entry(&1, :unresolved_reference, %{reference: "element"})}
+
+  # A cell's elements render in its template, per cell (when the page
+  # loads the list): only a group there, set from the same cell.
+  defp display_place(op, _element, el, cell, _w, _surface, _ctx)
+       when is_binary(cell) and (op == :display_list or is_binary(el.instance_of)),
+       do:
+         {:error,
+          &Residue.entry(&1, :page_data_in_cell, %{
+            kind: if(op == :display_list, do: "list", else: "instance")
+          })}
+
+  defp display_place(_op, _element, _el, cell, w, _surface, ctx) when is_binary(cell) do
+    if trigger_cell(w, ctx) == cell,
+      do: :ok,
+      else: {:error, &Residue.entry(&1, :page_data_in_cell, %{kind: "display"})}
+  end
+
+  defp display_place(_op, surface, _el, nil, _w, surface, _ctx), do: :ok
+
+  defp display_place(_op, element, _el, nil, _w, _surface, ctx) do
+    if rendered?(element, ctx),
+      do: :ok,
+      else: {:error, &Residue.entry(&1, :target_not_rendered, %{element: "element:" <> element})}
+  end
+
+  defp holder(:display_list, _element, _el, raw, surface, cell, _ctx),
+    do: %{
+      kind: :list,
+      surface: surface,
+      cell: cell,
+      holder: nil,
+      type: raw.content && Type.listed(raw.content),
+      page_size: Map.get(raw, :page_size)
+    }
+
+  # A thing has no page: a group's or instance's page size is nil.
+  defp holder(:display_data, _element, %{instance_of: definition}, _raw, surface, cell, ctx)
+       when is_binary(definition) do
+    content = Map.get(ctx.raw_elements[definition] || %{}, :content)
+
+    %{
+      kind: :instance,
+      surface: surface,
+      cell: cell,
+      holder: definition,
+      type: content,
+      page_size: nil
+    }
+  end
+
+  defp holder(:display_data, _element, _el, raw, surface, cell, _ctx),
+    do: %{
+      kind: :group,
+      surface: surface,
+      cell: cell,
+      holder: nil,
+      type: raw.content,
+      page_size: nil
+    }
+
+  # The repeating group whose cell holds a workflow's triggering element
+  # (in its surface), or nil.
+  defp trigger_cell(%{element: element}, ctx) when is_binary(element),
+    do: cell_of(ctx.raw_elements[element], ctx, 0)
+
+  defp trigger_cell(_w, _ctx), do: nil
+
+  defp cell_of(nil, _ctx, _depth), do: nil
+  defp cell_of(_el, _ctx, depth) when depth > 256, do: nil
+
+  defp cell_of(%{parent: parent}, ctx, depth) do
+    case ctx.raw_elements[parent] do
+      %{kind: :element, type: type} when type in ["RepeatingGroup", "Table"] -> parent
+      %{kind: :element} = p -> cell_of(p, ctx, depth + 1)
+      _ -> nil
+    end
+  end
+
+  # The data a reset clears: what display steps showed in the element and
+  # the elements inside it (in its surface, not inside a reusable
+  # instance, whose own scope a reset of the instance clears).
+  defp clears(_element, %{element: :root}, _ctx), do: :all
+
+  defp clears(element, _target, ctx) do
+    for {e, holder} <- Enum.sort(ctx.displayed),
+        holder.kind != :instance,
+        holder.surface == ctx.surface,
+        e == element or inside?(e, element, ctx, 0),
+        do: e
+  end
+
+  defp inside?(_e, _outer, _ctx, depth) when depth > 256, do: false
+
+  defp inside?(e, outer, ctx, depth) do
+    case ctx.raw_elements[e] do
+      %{parent: ^outer} ->
+        true
+
+      %{parent: parent, kind: :element} when is_binary(parent) ->
+        inside?(parent, outer, ctx, depth + 1)
+
+      _ ->
+        false
+    end
+  end
+
+  defp data_type?(type) when is_binary(type),
+    do: match?({%Type{kind: :ref}, _}, Type.classify(type))
+
+  defp data_type?(_type), do: false
 
   # --- elements --------------------------------------------------------------------------
 

@@ -28,12 +28,48 @@
             "width": 300
           },
           "type": "Text"
+        },
+        "bBadgeTask": {
+          "id": "bBadgeTask",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "text": {
+              "entries": {
+                "0": "Badge task: ",
+                "1": {
+                  "next": {
+                    "name": "param_pTask",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bBadgeDef"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bChip": {
+          "id": "bChip",
+          "properties": {
+            "custom_id": "bChipDef",
+            "height": 40,
+            "order": 3,
+            "width": 300
+          },
+          "type": "CustomElement"
         }
       },
       "id": "bBadgeDef",
       "name": "Badge",
       "properties": {
-        "height": 40,
+        "height": 120,
         "parameters": {
           "0": {
             "btype_id": "text",
@@ -42,6 +78,20 @@
             "optional": true,
             "param_id": "pLabel",
             "param_name": "Label"
+          },
+          "1": {
+            "btype_id": "text",
+            "default_value": {
+              "entries": {
+                "0": "Badge task"
+              },
+              "type": "TextExpression"
+            },
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pTask",
+            "param_name": "Task text"
           }
         },
         "width": 300
@@ -200,6 +250,70 @@
           },
           "type": "Text"
         },
+        "bFound": {
+          "elements": {
+            "bFoundT": {
+              "id": "bFoundT",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Found: ",
+                    "1": {
+                      "next": {
+                        "name": "title_text",
+                        "type": "Message"
+                      },
+                      "type": "ElementParent"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bFound",
+          "properties": {
+            "data_source": {
+              "next": {
+                "name": "first_element",
+                "type": "Message"
+              },
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "text contains string",
+                    "key": "title_text",
+                    "value": {
+                      "next": {
+                        "name": "param_pQuery",
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "element_id": "bCard"
+                      },
+                      "type": "GetElement"
+                    }
+                  }
+                },
+                "descending": false,
+                "ignore_empty_constraints": false,
+                "sort_field": "title_text",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.task",
+            "height": 40,
+            "order": 16,
+            "width": 300
+          },
+          "type": "Group"
+        },
         "bGroup": {
           "elements": {
             "bGroupT": {
@@ -323,6 +437,89 @@
           },
           "type": "Text"
         },
+        "bOwn": {
+          "id": "bOwn",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 13,
+            "text": {
+              "entries": {
+                "0": "Own: ",
+                "1": {
+                  "next": {
+                    "name": "title_text",
+                    "type": "Message"
+                  },
+                  "type": "ElementParent"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bProject": {
+          "id": "bProject",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 14,
+            "text": {
+              "entries": {
+                "0": "Project: ",
+                "1": {
+                  "next": {
+                    "name": "param_pTask",
+                    "next": {
+                      "name": "project_custom_project",
+                      "next": {
+                        "name": "name_text",
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCard"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bQueryT": {
+          "id": "bQueryT",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 15,
+            "text": {
+              "entries": {
+                "0": "Query: ",
+                "1": {
+                  "next": {
+                    "name": "param_pQuery",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCard"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
         "bTaskT": {
           "id": "bTaskT",
           "properties": {
@@ -413,7 +610,8 @@
       "id": "bCard",
       "name": "Card",
       "properties": {
-        "height": 520,
+        "group_type": "custom.task",
+        "height": 760,
         "parameters": {
           "0": {
             "btype_id": "text",
@@ -500,6 +698,14 @@
             "optional": true,
             "param_id": "pHeading",
             "param_name": "Heading"
+          },
+          "8": {
+            "btype_id": "text",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pQuery",
+            "param_name": "Query"
           }
         },
         "width": 300
@@ -539,6 +745,59 @@
           "type": "ButtonClicked"
         }
       }
+    },
+    "chip": {
+      "elements": {
+        "bChipT": {
+          "id": "bChipT",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Chip: ",
+                "1": {
+                  "next": {
+                    "name": "param_pChip",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bChipDef"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bChipDef",
+      "name": "Chip",
+      "properties": {
+        "height": 40,
+        "parameters": {
+          "0": {
+            "btype_id": "text",
+            "default_value": {
+              "entries": {
+                "0": "Chip default"
+              },
+              "type": "TextExpression"
+            },
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pChip",
+            "param_name": "Chip"
+          }
+        },
+        "width": 300
+      },
+      "type": "CustomDefinition"
     }
   },
   "pages": {
@@ -564,6 +823,16 @@
                 "0": "Custom heading"
               },
               "type": "TextExpression"
+            },
+            "param_pQuery": {
+              "next": {
+                "name": "get_data",
+                "type": "Message"
+              },
+              "properties": {
+                "element_id": "bQuery"
+              },
+              "type": "GetElement"
             },
             "param_pTask": {
               "type": "CurrentPageItem"
@@ -677,6 +946,33 @@
             "width": 300
           },
           "type": "Text"
+        },
+        "bQuery": {
+          "id": "bQuery",
+          "properties": {
+            "content_format": "text",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 6,
+            "width": 300
+          },
+          "type": "Input"
+        },
+        "bShowB": {
+          "id": "bShowB",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 5,
+            "text": {
+              "entries": {
+                "0": "Show in B"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
         }
       },
       "id": "bTaskPage",
@@ -685,10 +981,40 @@
         "page_item_type": "custom.task",
         "title": "Task"
       },
-      "type": "Page"
+      "type": "Page",
+      "workflows": {
+        "wShowB": {
+          "actions": {
+            "0": {
+              "id": "aShowB1",
+              "properties": {
+                "data_source": {
+                  "type": "CurrentPageItem"
+                },
+                "element_id": "bCardB"
+              },
+              "type": "DisplayGroupData"
+            }
+          },
+          "id": "wShowB",
+          "properties": {
+            "element_id": "bShowB"
+          },
+          "type": "ButtonClicked"
+        }
+      }
     }
   },
   "user_types": {
+    "project": {
+      "display": "Project",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      }
+    },
     "task": {
       "display": "Task",
       "fields": {
@@ -699,6 +1025,10 @@
         "owner_user": {
           "display": "Owner",
           "value": "user"
+        },
+        "project_custom_project": {
+          "display": "Project",
+          "value": "custom.project"
         },
         "title_text": {
           "display": "Title",

@@ -16,17 +16,20 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
   import Phoenix.LiveViewTest
 
   @u1 "1700000000000x100000000000000001"
+  @p1 "1700000000000x200000000000000001"
   @t1 "1700000000000x300000000000000001"
   @t2 "1700000000000x300000000000000002"
 
   setup do
     on_exit(fn -> Application.delete_env(:phx_check, PhxCheckWeb.BubbleWorkflows) end)
     user = Ash.Seed.seed!(PhxCheck.User, %{id: @u1, email: "one@example.com"})
+    Ash.Seed.seed!(PhxCheck.Project, %{id: @p1, name: "Apollo"})
 
     Ash.Seed.seed!(PhxCheck.Task, %{
       id: @t1,
       title: "Alpha",
       owner_id: @u1,
+      project_id: @p1,
       due: ~U[2026-10-01 12:00:00.000000Z]
     })
 
@@ -109,6 +112,39 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
     assert view |> element(~s([data-bubble-id="bOutside"])) |> render() =~ "Outside: Hello A"
   end
 
+  test "properties nest: a reusable two levels down takes its default; IDs are per reusable",
+       %{conn: conn, user: user} do
+    data_access_on()
+    {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+
+    assert text(view, "bCardA-bBadge-bChip", "bChipT") == "Chip: Chip default"
+    assert text(view, "bCardB-bBadge-bChip", "bChipT") == "Chip: Chip default"
+    # Badge's own Task (text) is not Card's Task (a thing) of the same ID.
+    assert text(view, "bCardA-bBadge", "bBadgeTask") == "Badge task: Badge task"
+    # A relationship read through Card's Task.
+    assert text(view, "bCardA", "bProject") == "Project: Apollo"
+  end
+
+  test "typing into an input a property reads re-reads what reads the property",
+       %{conn: conn, user: user} do
+    data_access_on()
+    {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+    assert text(view, "bCardA", "bQueryT") == "Query:"
+    # An empty constraint value matches nothing (WTF-478).
+    assert text(view, "bCardA", "bFoundT") == "Found:"
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bQuery", "value" => "Alp", "on" => "blur"}
+    })
+
+    Process.sleep(250)
+    assert text(view, "bCardA", "bQueryT") == "Query: Alp"
+    assert text(view, "bCardA", "bFoundT") == "Found: Alpha"
+    # bCardB sets no Query: unchanged.
+    assert text(view, "bCardB", "bQueryT") == "Query:"
+    assert text(view, "bCardB", "bTitle") == "Title: Hello B"
+  end
+
   test "a workflow inside the reusable reads its instance's value", %{conn: conn} do
     data_access_on()
     {:ok, view, _html} = live(conn, "/task/#{@t1}")
@@ -119,6 +155,22 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
 
     render_click(view, "bubble:click", %{"scope" => "bCardB", "element" => "bBump"})
     assert text(view, "bCardB", "bN") == "N: 8"
+  end
+
+  test "Display data sets an instance's own thing, not its properties",
+       %{conn: conn, user: user} do
+    data_access_on()
+    {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+    assert text(view, "bCardB", "bOwn") == "Own:"
+
+    render_click(view, "bubble:click", %{"scope" => "", "element" => "bShowB"})
+
+    assert text(view, "bCardB", "bOwn") == "Own: Alpha"
+    # Its properties stay the values the page computed for it.
+    assert text(view, "bCardB", "bTitle") == "Title: Hello B"
+    assert text(view, "bCardB", "bTaskT") == "Task:"
+    assert text(view, "bCardB", "bGroupT") == "Group:"
+    assert text(view, "bCardA", "bOwn") == "Own:"
   end
 
   test "a thing property is read with the actor's policies", %{conn: conn} do

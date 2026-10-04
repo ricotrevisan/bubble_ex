@@ -115,7 +115,7 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       # No default, no source.
       refute param(pd, "bCard", "param_pTitle")
 
-      assert %{"by_kind" => %{"param" => %{"total" => 16, "native" => 16}}} =
+      assert %{"by_kind" => %{"param" => %{"total" => 26, "native" => 26}}} =
                PageData.coverage(pd)
     end
 
@@ -136,14 +136,15 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       end
 
       assert read.("bCard", "bCard", "param_pTitle") ==
-               {:data, %{path: [], element: "param_pTitle"}}
+               {:data, %{path: [], element: "param_pTitle/bCard"}}
 
       # Set by no instance, with no default: still read (empty).
-      assert read.("bCard", "bCard", "param_pDue") == {:data, %{path: [], element: "param_pDue"}}
+      assert read.("bCard", "bCard", "param_pDue") ==
+               {:data, %{path: [], element: "param_pDue/bCard"}}
 
       # An instance's value, from where the instance is.
       assert read.("bTaskPage", "bCardA", "param_pTitle") ==
-               {:data, %{path: ["bCardA"], element: "param_pTitle"}}
+               {:data, %{path: ["bCardA"], element: "param_pTitle/bCard"}}
 
       # Not set by that instance (its default is computed inside it).
       assert read.("bTaskPage", "bCardB", "param_pTask") == nil
@@ -153,13 +154,13 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
 
     test "values load in order: a default after what it reads, a source after a property",
          %{spec: spec} do
-      assert %{key: %{path: ["bCardA"], element: "param_pTask"}, residue: []} =
+      assert %{key: %{path: ["bCardA"], element: "param_pTask/bCard"}, residue: []} =
                bound(spec, "bTaskPage", "bCardA", "param_pTask")
 
-      assert %{key: %{path: [], element: "param_pHeading"}, residue: []} =
+      assert %{key: %{path: [], element: "param_pHeading/bCard"}, residue: []} =
                bound(spec, "bCard", "bCard", "param_pHeading")
 
-      assert %{reads: [{:data, %{path: [], element: "param_pTask"}}], residue: []} =
+      assert %{reads: [{:data, %{path: [], element: "param_pTask/bCard"}}], residue: []} =
                Enum.find(Spec.data(spec, "bCard"), &(&1.element == "bGroup"))
 
       assert %{residue: [%{reason: :page_data_in_cell}]} =
@@ -201,6 +202,66 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
     end
   end
 
+  describe "with Display data (WTF-492)" do
+    test "a step sets the instance's own thing; its properties stay sources of the page",
+         %{spec: spec, files: files} do
+      assert %{read: :displayed, kind: :instance, displayed?: true} =
+               Enum.find(
+                 Spec.data(spec, "bTaskPage"),
+                 &(&1.element == "bCardB" and &1.param == nil)
+               )
+
+      for p <- ~w(param_pTitle param_pCount param_pFlag param_pNote) do
+        assert %{displayed?: false, residue: []} = bound(spec, "bTaskPage", "bCardB", p)
+      end
+
+      page = files["lib/shop_web/live/task_live/workflows.ex"]
+      refute page =~ ~r/element: "param_pTitle\/bCard",[^}]*display:/s
+    end
+  end
+
+  describe "property IDs" do
+    test "are keyed with their reusable element: two may share an ID", %{spec: spec, files: files} do
+      # Card's Task (a thing) and Badge's (text) share the ID pTask.
+      assert %{key: %{element: "param_pTask/bCard"}} =
+               bound(spec, "bTaskPage", "bCardA", "param_pTask")
+
+      assert %{key: %{element: "param_pTask/bBadgeDef"}} =
+               bound(spec, "bBadgeDef", "bBadgeDef", "param_pTask")
+
+      # The project, read through Card's Task, is loaded with Card's value
+      # only, never with Badge's text.
+      page = files["lib/shop_web/live/task_live/workflows.ex"]
+      assert page =~ ~r/element: "param_pTask\/bCard",[^}]*loads: \[\["project"\]\]/s
+
+      badge = files["lib/shop_web/components/reusables/badge/workflows.ex"]
+      assert badge =~ ~r/element: "param_pTask\/bBadgeDef",[^}]*loads: \[\],/s
+    end
+
+    test "a default reading its own property is a cycle" do
+      app =
+        put_in_app(
+          app(),
+          ~w(element_definitions card properties parameters 6 default_value),
+          %{
+            "type" => "TextExpression",
+            "entries" => %{
+              "0" => %{
+                "type" => "GetElement",
+                "properties" => %{"element_id" => "bCard"},
+                "next" => %{"type" => "Message", "name" => "param_pNote"}
+              }
+            }
+          }
+        )
+
+      %{spec: spec} = build(app)
+
+      assert %{residue: [%{reason: :unresolved_reference, detail: %{reference: "data_source"}}]} =
+               bound(spec, "bCard", "bCard", "param_pNote")
+    end
+  end
+
   describe "binding, across surfaces" do
     test "a value that lowers but does not load blocks what reads the property" do
       # bCardB's Task: bCardC's, which a cell keeps (not passed).
@@ -236,41 +297,44 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
     test "the component reads its properties from the page's data, by scope", %{files: files} do
       template = files["lib/shop_web/components/reusables/card.html.heex"]
 
-      assert template =~ ~s|Bubble.data(@bubble_data, @scope, "param_pTitle")|
+      assert template =~ ~s|Bubble.data(@bubble_data, @scope, "param_pTitle/bCard")|
 
       assert template =~
-               ~s|hidden={!visible_bflagt(Bubble.data(@bubble_data, @scope, "param_pFlag"))}|
+               ~s|hidden={!visible_bflagt(Bubble.data(@bubble_data, @scope, "param_pFlag/bCard"))}|
 
       assert template =~ ~s|bubble_data={@bubble_data}|
 
       badge = files["lib/shop_web/components/reusables/badge.html.heex"]
-      assert badge =~ ~s|Bubble.data(@bubble_data, @scope, "param_pLabel")|
+      assert badge =~ ~s|Bubble.data(@bubble_data, @scope, "param_pLabel/bBadgeDef")|
 
       page = files["lib/shop_web/live/task_live.html.heex"]
-      assert page =~ ~s|Bubble.data(@bubble_data, "bCardA", "param_pTitle")|
+      assert page =~ ~s|Bubble.data(@bubble_data, "bCardA", "param_pTitle/bCard")|
 
-      assert page =~
-               "TODO(bubble:bCardC) its property param_pTask is not passed (page_data_in_cell)"
+      # In a cell, every property is marked, set or not.
+      for p <- ~w(pTitle pFlag pCount pTask pTasks pDue pNote pHeading) do
+        assert page =~
+                 "TODO(bubble:bCardC) its property param_#{p} is not passed (page_data_in_cell)"
+      end
     end
 
     test "values and defaults are data sources of their surfaces", %{files: files} do
       page = files["lib/shop_web/live/task_live/workflows.ex"]
-      assert page =~ ~s|element: "param_pTitle",|
+      assert page =~ ~s|element: "param_pTitle/bCard",|
       assert page =~ ~s|instance: "bCardA",|
       assert page =~ "# bubble:data bCardA param_pTitle\n"
       assert page =~ ~s|BubbleData.records(ctx, nil, true, false, nil)|
 
       card = files["lib/shop_web/components/reusables/card/workflows.ex"]
       assert card =~ "# bubble:data bCard param_pNote\n"
-      assert card =~ ~r/element: "param_pNote",.*?default: true/s
-      assert card =~ ~s|BubbleWorkflows.data(ctx, [], "param_pCount")|
+      assert card =~ ~r/element: "param_pNote\/bCard",.*?default: true/s
+      assert card =~ ~s|BubbleWorkflows.data(ctx, [], "param_pCount/bCard")|
 
       loader = files["lib/shop_web/bubble_data.ex"]
       assert loader =~ "Map.get(source, :default, false)"
     end
 
     test "the data coverage counts the properties", %{spec: spec} do
-      assert %{"by_kind" => %{"param" => %{"total" => 16, "wired" => 14}}} =
+      assert %{"by_kind" => %{"param" => %{"total" => 26, "wired" => 17}}} =
                FrontendWorkflows.data_coverage(spec)
     end
   end

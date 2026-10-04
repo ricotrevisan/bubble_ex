@@ -72,7 +72,8 @@ defmodule BubbleEx.PageDataTest do
                {:page_thing, %{"page" => "bTaskPage"}}
              ]
 
-      assert PageData.coverage(pd)["sources"] == %{"total" => 9, "native" => 9, "residue" => 0}
+      # The shown page's four (WTF-492) included.
+      assert PageData.coverage(pd)["sources"] == %{"total" => 13, "native" => 13, "residue" => 0}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -278,9 +279,11 @@ defmodule BubbleEx.PageDataTest do
       # The group after the page's thing it reads.
       assert Enum.map(Spec.data(spec, "bTaskPage"), & &1.element) == ["bTaskPage", "bProjGroup"]
 
+      # With the shown page's (WTF-492): its four sources and the six
+      # elements its "Display data" steps set.
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 9,
-               "wired" => 9,
+               "total" => 19,
+               "wired" => 19,
                "residue" => 0
              }
 
@@ -380,7 +383,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 7
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 17
     end
 
     test "a repeating group in a repeating group's cell is residue" do
@@ -548,5 +551,267 @@ defmodule BubbleEx.PageDataTest do
     assert template =~ "TODO(bubble:bProjName) text: reads page data that is not loaded"
     # Every page takes a path segment (WTF-466); this one reads nothing there.
     assert files["lib/shop_web/bubble_routes.ex"] =~ ~s(live "/task/:bubble_thing")
+  end
+
+  # WTF-492: "Display data in a group / popup" and "Display list in a
+  # repeating group". The generated app's behavior is
+  # page_data_behavior.exs (and enforced_behavior.exs for privacy).
+  describe "Display data" do
+    defp shown_workflow(app, id, actions),
+      do: put_in(app, ["pages", "shown", "workflows", id, "actions"], actions)
+
+    defp steps(spec, surface) do
+      for w <- spec.surfaces[surface].workflows,
+          step <- w.steps,
+          into: %{},
+          do: {step.bubble_id, step}
+    end
+
+    test "lowers to a step setting the element's data, stack-neutrally" do
+      {:ok, model} = Model.build(app())
+      {:ok, index} = Index.build(app(), model: model)
+      {:ok, lowered} = Frontend.build(app(), model, index)
+      steps = for w <- lowered.workflows, s <- w.steps, into: %{}, do: {s.bubble_id, s}
+
+      assert %{op: :display_data, residue: [], args: %{element: "bShown", cell: nil, value: v}} =
+               steps["aShowA1"]
+
+      assert %IR{op: :input, args: [:element_state, %{"element" => "bSrcA"}]} = v.ir
+
+      assert %{op: :display_list, residue: [], args: %{element: "bShownList"}} =
+               steps["aShowList1"]
+
+      assert %{op: :display_data, residue: [], args: %{element: "bPanel1"}} = steps["aShowCard1"]
+      assert %{op: :reset_group, residue: []} = steps["aResetShown1"]
+
+      # A list into a group, or data into a text: the element holds no such data.
+      app =
+        app()
+        |> shown_workflow("wShowA", %{
+          "0" => %{
+            "id" => "aBad1",
+            "type" => "DisplayListData",
+            "properties" => %{"element_id" => "bShown"}
+          },
+          "1" => %{
+            "id" => "aBad2",
+            "type" => "DisplayGroupData",
+            "properties" => %{"element_id" => "bShowA"}
+          }
+        })
+
+      {:ok, model} = Model.build(app)
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, lowered} = Frontend.build(app, model, index)
+      steps = for w <- lowered.workflows, s <- w.steps, into: %{}, do: {s.bubble_id, s}
+
+      for id <- ["aBad1", "aBad2"],
+          do:
+            assert(
+              [%{reason: :unsupported_option, detail: %{options: ["element_id"]}}] =
+                steps[id].residue
+            )
+    end
+
+    test "an element with no data source holds what the step shows; one with a source is overridden" do
+      {spec, _project, _frontend, _app, _model} = spec(app())
+
+      for {element, kind} <- [
+            {"bShown", :group},
+            {"bPop", :group},
+            {"bShownList", :list},
+            {"bPanelGroup", :group}
+          ],
+          do:
+            assert(
+              %{read: :displayed, kind: ^kind, displayed?: true, resource: "Task", residue: []} =
+                data(spec, element)
+            )
+
+      assert %{read: :displayed, kind: :instance, holder: "bPanel", key: %{path: ["bPanel1"]}} =
+               data(spec, "bPanel1")
+
+      assert %{read: {:query, _}, displayed?: true} = data(spec, "bSrcA")
+      assert %{read: {:query, _}, displayed?: false} = data(spec, "bSrcB")
+
+      # What reads it is page data: the group inside, and the page's
+      # bindings (Spec.read/4).
+      assert %{read: {:value, %{bindings: [%{bind: {:data, %{element: "bShown"}}}]}}, residue: []} =
+               data(spec, "bShownProj")
+
+      assert Spec.read(
+               spec,
+               "bShownPage",
+               {:element_state, %{"element" => "bShown", "state" => "get_group_data"}}
+             ) == {:data, %{path: [], element: "bShown"}}
+
+      steps = steps(spec, "bShownPage")
+
+      assert %{
+               residue: [],
+               args: %{
+                 key: %{path: [], element: "bShown"},
+                 cell?: false,
+                 list?: false,
+                 resource: "Task",
+                 value: %{bindings: [%{bind: {:data, %{element: "bSrcA"}}}]}
+               }
+             } = steps["aShowA1"]
+
+      assert %{args: %{key: %{path: ["bPanel1"], element: "bPanel"}}} = steps["aShowCard1"]
+      assert %{args: %{list?: true, page_size: 1}} = steps["aShowList1"]
+      assert %{page_size: 1} = data(spec, "bShownList")
+      # An outer group's reset clears the displayed group inside it.
+      assert %{args: %{clears: ["bInner"]}} = steps["aResetOuter1"]
+      # A later step reads what the first just set.
+      assert %{args: %{value: %{bindings: [%{bind: {:data, %{element: "bShown"}}}]}}} =
+               steps["aChain2"]
+
+      assert %{args: %{clears: ["bShown"]}} = steps["aResetShown1"]
+      assert %{args: %{clears: :all}} = steps["aResetPanel1"]
+
+      # The reusable element's own custom event shows its parameter.
+      assert %{args: %{value: %{bindings: [%{bind: {:param, "pTask"}}]}}} =
+               steps(spec, "bPanel")["aPanelShow1"]
+    end
+
+    test "an element only a step that never runs would show stays unloaded, loudly" do
+      residue = %{"id" => "aMail", "type" => "SendEmail", "properties" => %{}}
+
+      app =
+        app()
+        |> update_in(
+          ["pages", "shown", "workflows", "wShowA", "actions"],
+          &Map.put(&1, "1", residue)
+        )
+        |> update_in(
+          ["pages", "shown", "workflows", "wShowB", "actions"],
+          &Map.put(&1, "1", residue)
+        )
+        |> update_in(
+          ["pages", "shown", "workflows", "wChain", "actions"],
+          &Map.put(&1, "2", residue)
+        )
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+
+      # bShown has no source and no running step: it is not page data, and
+      # what reads it is not loaded either.
+      refute data(spec, "bShown")
+
+      assert %{read: nil, residue: [%{reason: :unavailable_input}]} = data(spec, "bShownProj")
+      # The popup's step still runs.
+      assert %{read: :displayed} = data(spec, "bPop")
+    end
+
+    test "in a repeating group's cell, only a group, from a workflow of that cell" do
+      group = %{
+        "id" => "bCellShown",
+        "type" => "Group",
+        "properties" => %{"group_type" => "custom.task", "width" => 300, "height" => 40}
+      }
+
+      app =
+        app()
+        |> put_in(["pages", "shown", "elements", "bSrcList", "elements", "bCellShown"], group)
+        |> shown_workflow("wShowA", %{
+          "0" => %{
+            "id" => "aCell1",
+            "type" => "DisplayGroupData",
+            "properties" => %{
+              "element_id" => "bCellShown",
+              "data_source" => %{
+                "type" => "GetElement",
+                "properties" => %{"element_id" => "bSrcA"},
+                "next" => %{"type" => "Message", "name" => "get_group_data"}
+              }
+            }
+          }
+        })
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+
+      assert %{residue: [%{reason: :page_data_in_cell, detail: %{kind: "display"}}]} =
+               steps(spec, "bShownPage")["aCell1"]
+
+      refute data(spec, "bCellShown")
+
+      # From a button of the same cell, the step keeps it per cell; the
+      # workflow does not run yet (a trigger in a cell's template), so the
+      # group is not loaded either.
+      button = %{"id" => "bCellBtn", "type" => "Button", "properties" => %{"width" => 30}}
+
+      app =
+        app
+        |> put_in(["pages", "shown", "elements", "bSrcList", "elements", "bCellBtn"], button)
+        |> put_in(
+          ["pages", "shown", "workflows", "wShowA", "properties", "element_id"],
+          "bCellBtn"
+        )
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+
+      assert %{residue: [], args: %{cell?: true, key: %{element: "bCellShown"}}} =
+               steps(spec, "bShownPage")["aCell1"]
+
+      assert %{residue: [%{reason: :trigger_in_runtime_template}]} =
+               Enum.find(spec.surfaces["bShownPage"].workflows, &(&1.workflow == "wShowA"))
+
+      refute data(spec, "bCellShown")
+    end
+  end
+
+  describe "Display data, printed" do
+    test "the step keeps the element's data per instance; the loader reads it as the user" do
+      {spec, project, frontend, app, model} = spec(app())
+
+      {:ok, compiled} =
+        BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend,
+          runtime: "Shop.Bubble.Runtime",
+          namespace: "Shop"
+        )
+
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, backend} = BubbleEx.Workflows.Backend.build(app, model, index)
+      {:ok, workflows} = BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "Shop")
+
+      {:ok, files} =
+        Phoenix.render(project,
+          name: "Shop",
+          frontend: frontend,
+          expressions: compiled,
+          workflows: workflows,
+          frontend_workflows: spec
+        )
+
+      shown = files["lib/shop_web/live/shown_live/workflows.ex"]
+
+      assert shown =~
+               ~r/BubbleWorkflows.display\(\s*ctx,\s*"aShowA1",\s*\[\],\s*"bShown",\s*false,\s*Shop.Task,\s*false,/
+
+      assert shown =~
+               ~r/BubbleWorkflows.display\(\s*ctx,\s*"aShowCard1",\s*\["bPanel1"\],\s*"bPanel",/
+
+      assert shown =~ ~s|BubbleWorkflows.reset(ctx, [], "bShown", [], ["bShown"])|
+      assert shown =~ ~s|BubbleWorkflows.reset(ctx, ["bPanel1"], nil, [], :all)|
+      assert shown =~ ~r/element: "bShown",\s+fun: nil,\s+read: :displayed,/
+      assert shown =~ ~r/element: "bSrcA",.*?display: %\{page_size: nil\}/s
+
+      template = files["lib/shop_web/live/shown_live.html.heex"]
+      assert template =~ ~s|Bubble.data(@bubble_data, "", "bShown")|
+      refute template =~ "TODO(bubble:bShown"
+
+      runtime = files["lib/shop_web/bubble_workflows.ex"]
+
+      assert runtime =~
+               "def display(ctx, step, path, element, cell?, resource, list?, value, page_size \\\\ nil)"
+
+      # A list keeps its repeating group's page size (one row here).
+      assert shown =~
+               ~r/"aShowList1",.*?"bShownList",\s*false,\s*Shop.Task,\s*true,.*?,\s*1\s*\)/s
+
+      assert files["lib/shop_web/bubble_data.ex"] =~
+               "def show(ctx, {resource, list?, value}, page_size)"
+    end
   end
 end

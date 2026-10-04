@@ -253,7 +253,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsTest do
     assert coverage["data"] == 3
 
     assert coverage["residue_reasons"] == %{
-             "unsupported_action" => 2,
+             "unsupported_action" => 1,
+             "unsupported_option" => 1,
              "unresolved_reference" => 1
            }
 
