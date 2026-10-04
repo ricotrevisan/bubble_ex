@@ -610,7 +610,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp data_meta(d, s) do
     fun = if d.residue == [] and d.read != :displayed, do: ":" <> data_fun(d), else: "nil"
 
-    loads = Map.get(Map.get(s, :loads, %{}), d.holder || d.element, [])
+    loads = Map.get(Map.get(s, :loads, %{}), data_key_element(d), [])
     topic = if d.resource && d.residue == [], do: literal(d.resource), else: "nil"
 
     "%{element: #{literal(data_key_element(d))}, fun: #{fun}, read: #{data_read_kind(d.read)}, " <>
@@ -619,7 +619,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       "loads: #{source(loads)}, cell_loads: #{source(cell_loads(d.read))}, topic: #{topic}, " <>
       "inputs: #{source(data_inputs(d.read))}, reads: #{source(data_reads(d))}, " <>
       "blocked: #{source(Enum.uniq(Enum.map(d.residue, & &1.subject)))}" <>
-      "#{display_meta(d)}}"
+      "#{display_meta(d)}#{data_default(d)}}"
   end
 
   # An element a "Display data" step sets (WTF-492): what the step showed
@@ -629,6 +629,11 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     do: ", display: %{page_size: #{inspect(d.page_size)}}"
 
   defp display_meta(_d), do: ""
+
+  # A reusable element property's default (WTF-493): read only where the
+  # instance sets no value.
+  defp data_default(%{kind: :param, element: e, holder: e}), do: ", default: true"
+  defp data_default(_d), do: ""
 
   # The input elements a source's value or search constraints read.
   defp data_inputs(read) do
@@ -669,6 +674,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp data_read_kind(_), do: ":value"
 
   defp data_instance(%{kind: :instance, element: element}), do: literal(element)
+  defp data_instance(%{kind: :param, element: e, holder: h}) when e != h, do: literal(e)
   defp data_instance(_), do: "nil"
 
   defp cell_loads({:value, %{bindings: bindings}}),
@@ -680,9 +686,15 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   # reusable element (see `BubbleWorkflows.data/3`), the others under
   # their element.
   defp data_key_element(%{kind: :instance, holder: holder}) when is_binary(holder), do: holder
+  defp data_key_element(%{kind: :param, key: %{element: key}}), do: key
   defp data_key_element(d), do: d.element
 
+  defp data_fun(%{kind: :param} = d), do: "data_" <> fun_part(d.element <> " " <> d.param)
   defp data_fun(d), do: "data_" <> fun_part(d.element)
+
+  # A property's value is marked with its element and property (WTF-493).
+  defp data_marker(%{kind: :param, element: e, param: p}), do: marker(e) <> " " <> marker(p)
+  defp data_marker(d), do: marker(d.element)
 
   defp fun_part(id) do
     id
@@ -700,7 +712,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     reasons = d.residue |> Enum.map(&Atom.to_string(&1.reason)) |> Enum.uniq() |> Enum.join(", ")
 
     """
-    # bubble:data #{marker(d.element)}
+    # bubble:data #{data_marker(d)}
     # TODO(bubble:#{comment(d.symbol)}) not loaded: #{reasons}
     """
   end
@@ -730,7 +742,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     arg = if String.contains?(body, "ctx"), do: "ctx", else: "_ctx"
 
     """
-    # bubble:data #{marker(d.element)}
+    # bubble:data #{data_marker(d)}
     @doc false
     def #{data_fun(d)}(#{arg}) do
       #{body}

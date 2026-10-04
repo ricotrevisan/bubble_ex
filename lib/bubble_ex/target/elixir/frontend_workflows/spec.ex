@@ -43,7 +43,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
             surfaces: %{},
             elements: %{},
             diagnostics: [],
-            data_index: %{elements: %{}, roots: MapSet.new()}
+            data_index: %{elements: %{}, roots: MapSet.new(), params: %{}, set: %{}}
 
   @type t :: %__MODULE__{}
 
@@ -160,6 +160,19 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     end
   end
 
+  # A reusable element's property (WTF-493).
+  def read(
+        %__MODULE__{} = spec,
+        surface,
+        {:element_state, %{"state" => "param_" <> _}} = input,
+        cell
+      ) do
+    case data_read(spec.data_index, surface, cell, input) do
+      {:ok, bind} -> bind
+      {:error, _} -> nil
+    end
+  end
+
   def read(%__MODULE__{} = spec, surface, {kind, _} = input, cell)
       when kind in [:page_thing, :cell_thing, :cell_index] do
     case data_read(spec.data_index, surface, cell, input) do
@@ -206,6 +219,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     * `{:cell, rg}`, `{:cell_index, rg}` - the current cell's thing and
       index, in the cell of `rg`
     * `{:cell_data, group}` - a group's thing computed in the current cell
+
+  A reusable element's property (`"param_<id>"`, WTF-493) is
+  `{:data, %{path: [], element: key}}` read in the reusable element (when
+  every value of it loads, see `index.params`), or `{:data, %{path:
+  [instance], element: key}}` read where an instance setting it is, `key`
+  being `param_key/2`.
   """
   @spec data_read(map(), String.t(), String.t() | nil, term()) ::
           {:ok, term()} | {:error, String.t()}
@@ -241,6 +260,27 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     end
   end
 
+  def data_read(
+        index,
+        surface,
+        _cell,
+        {:element_state, %{"element" => e, "state" => "param_" <> _ = state}}
+      )
+      when is_binary(e) do
+    key = param_key(e, state)
+
+    cond do
+      e == surface and Map.get(Map.get(index, :params, %{}), key, true) ->
+        {:ok, {:data, %{path: [], element: key}}}
+
+      match?(%{surface: ^surface}, Map.get(Map.get(index, :set, %{}), {e, state})) ->
+        {:ok, {:data, %{path: [e], element: index.set[{e, state}].key}}}
+
+      true ->
+        {:error, "element_state:param"}
+    end
+  end
+
   def data_read(index, surface, cell, {kind, %{"element" => rg}})
       when kind in [:cell_thing, :cell_index] and is_binary(cell) and rg == cell do
     case index.elements[rg] do
@@ -256,6 +296,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     do: {:error, Atom.to_string(kind)}
 
   def data_read(_index, _surface, _cell, _input), do: {:error, "unknown"}
+
+  @doc """
+  Where the page keeps property `param` (`"param_<id>"`) of reusable
+  element `reusable` (WTF-493): property IDs are unique only within a
+  reusable element, so the key names both.
+  """
+  @spec param_key(String.t(), String.t()) :: String.t()
+  def param_key(reusable, param), do: param <> "/" <> reusable
 
   @doc "The data sources the page loads for surface `id` (WTF-420), in order."
   @spec data(t(), String.t()) :: [map()]

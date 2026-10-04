@@ -19,6 +19,28 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **Reusable element properties are passed down** (WTF-493, part of
+  WTF-476). `This Reusable's <property>` was `:unavailable_input`
+  residue everywhere, so data sources, texts, visibility conditionals
+  and workflows reading one were not loaded or rendered. Each value an
+  instance sets is now a page data source (`BubbleEx.PageData` kind
+  `:param`): a static value as the property's type, an expression
+  computed where the instance is; a property it does not set takes its
+  default, computed inside the reusable element, or is empty. Values are
+  kept under the instance's scope in `@bubble_data`, so the reads resolve
+  per instance, nested reusables included; things are read through Ash
+  with the actor like any other source. A property is read only when
+  every instance's value of it (outside a repeating group's cell) loads;
+  an instance in a cell is marked for every property it declares
+  (`:page_data_in_cell`). Keys name the reusable element and the property
+  (`param_<id>/<reusable id>`: property IDs are unique only within a
+  reusable element). A "Display data" step into an instance sets its own
+  thing, never its properties. Bubble has no action that changes a
+  property. On the private fixture app (against main with Display data):
+  data sources loaded 1,016 → 1,217 (those blocked on a property 177 →
+  42), elements under a source that is not loaded 2,373 → 1,918,
+  visibility conditionals rendered 344 → 569, compiled bindings 455 →
+  483, native page workflows 692 → 737.
 - **Generated pages render visibility conditionals** (WTF-477). An
   element's conditional states that set `is_visible` were kept by the
   normalizer but never compiled, rendered or counted, so an element not

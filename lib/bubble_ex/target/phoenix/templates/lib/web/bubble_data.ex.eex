@@ -2,7 +2,8 @@ defmodule <%= @web %>.BubbleData do
   @moduledoc """
   The data the pages scaffolded from Bubble show (WTF-420): a page's
   "Type of content" (its thing, from the URL), the data sources of its
-  groups, repeating groups and reusable-element instances. The page's
+  groups, repeating groups and reusable-element instances, and the
+  properties each instance sets (or their defaults, WTF-493). The page's
   `Workflows` module (and each reusable element's) lists them in
   `__bubble__(:data)` with one function per source, in the order they read
   each other; this module runs them, keeps what they return in the
@@ -469,13 +470,19 @@ defmodule <%= @web %>.BubbleData do
         key_scope = if source.instance, do: BubbleWorkflows.scope(ctx, [source.instance]), else: scope
         key = {key_scope, source.element}
 
-        case value(socket, module, source, key, ctx) do
-          {:ok, value} ->
-            {Map.put(data, key, value),
-             Map.put(by_source, source_id(scope, source), topics(MapSet.new(), source, value))}
+        # A reusable element property's default is for the instances that
+        # set no value (theirs is read first, where they are).
+        if Map.get(source, :default, false) and Map.has_key?(data, key) do
+          {data, Map.delete(by_source, source_id(scope, source))}
+        else
+          case value(socket, module, source, key, ctx) do
+            {:ok, value} ->
+              {Map.put(data, key, value),
+               Map.put(by_source, source_id(scope, source), topics(MapSet.new(), source, value))}
 
-          :none ->
-            {data, Map.put(by_source, source_id(scope, source), MapSet.new())}
+            :none ->
+              {data, Map.put(by_source, source_id(scope, source), MapSet.new())}
+          end
         end
       end)
 

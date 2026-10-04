@@ -1747,30 +1747,44 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       Enum.any?(node.children, &node_reads_data?(&1, surface, by_ref, seen, flows, expressions))
   end
 
-  # A binding input the page's data supplies (WTF-420).
+  # A binding input the page's data supplies (WTF-420), a reusable
+  # element's property included (WTF-493).
+  defp data_input?({:element_state, %{"state" => "param_" <> _}}), do: true
+
   defp data_input?({:element_state, %{"state" => s}}),
     do: s in ["get_group_data", "get_list_data"]
 
   defp data_input?({kind, _}), do: kind in [:page_thing, :cell_thing, :cell_index]
   defp data_input?(_), do: false
 
-  # The elements whose data source the page does not load, with why.
+  # The elements whose data source (or, for an instance, a property it
+  # sets, WTF-493) the page does not load, with why.
   defp data_blocked(nil), do: %{}
 
   defp data_blocked(%FlowSpec{surfaces: surfaces}) do
     for {_id, s} <- surfaces,
         d <- Map.get(s, :data, []),
         d.residue != [],
-        into: %{},
-        do: {d.element, d.residue |> Enum.map(&Atom.to_string(&1.reason)) |> Enum.uniq()}
+        reduce: %{} do
+      acc -> Map.update(acc, d.element, [blocked_text(d)], &(&1 ++ [blocked_text(d)]))
+    end
+  end
+
+  defp blocked_text(d) do
+    reasons = d.residue |> Enum.map(&Atom.to_string(&1.reason)) |> Enum.uniq() |> Enum.join(", ")
+
+    case d do
+      %{kind: :param, param: param} -> "its property #{param} is not passed (#{reasons})"
+      _ -> "its data source is not loaded (#{reasons})"
+    end
   end
 
   # An element whose data source is not loaded is marked, loudly (WTF-420).
   defp mark_data(acc, node, ctx) do
-    case Map.get(ctx, :data_blocked, %{})[bid(node)] do
-      nil -> acc
-      reasons -> mark(acc, node, "its data source is not loaded (#{Enum.join(reasons, ", ")})")
-    end
+    ctx
+    |> Map.get(:data_blocked, %{})
+    |> Map.get(bid(node), [])
+    |> Enum.reduce(acc, &mark(&2, node, &1))
   end
 
   defp interactive?(_node, _by_ref, _seen, nil), do: false

@@ -16,7 +16,9 @@
 # fixture, every frozen fidelity case's payload (`fidelity_<case>`, with its
 # pages) and the owner decision fixtures (BubbleEx.Test.DecidedFixture), three
 # frontends with hostile Bubble IDs (`hostile_ids`, `hostile_overlays`,
-# `hostile_workflows`, `hostile_drop`: owner drops, WTF-422), plus `private_app` and `private_cut3` (every cut-2
+# `hostile_workflows`, `hostile_drop`: owner drops, WTF-422,
+# `hostile_reusable_params`: reusable element properties, WTF-493),
+# plus `private_app` and `private_cut3` (every cut-2
 # and cut-3 finding accepted) when BUBBLE_EX_PRIVATE_EXPORT is set (never
 # committed). An
 # app with a frontend renders its pages (WTF-370), with the bindings the
@@ -199,6 +201,25 @@ fixtures =
 
       app
       |> BubbleEx.Test.HostileIds.rename(BubbleEx.Test.HostileIds.ids(app))
+      |> app_fixture.()
+    end,
+    # The reusable element properties fixture (WTF-493) with every ID
+    # hostile, the properties' too: data keys, markers and reads must
+    # quote them.
+    "hostile_reusable_params" => fn ->
+      app =
+        "test/support/target/phoenix/reusable_params.json"
+        |> File.read!()
+        |> Jason.decode!()
+
+      params =
+        for {_, d} <- app["element_definitions"],
+            {_, p} <- get_in(d, ["properties", "parameters"]) || %{},
+            do: p["param_id"]
+
+      app
+      |> BubbleEx.Test.HostileIds.rename(BubbleEx.Test.HostileIds.ids(app) -- params)
+      |> BubbleEx.Test.HostileIds.rename_params(params)
       |> app_fixture.()
     end,
     # Owner drops (WTF-422) over the cut-1 export: a dropped type, fields
