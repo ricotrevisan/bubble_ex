@@ -111,14 +111,16 @@ or an input value read the page's maps too, so they update when a workflow
 sets them.
 
 With `page_data:` (WTF-420, `docs/page-data.md`), the page's thing, a
-group's or reusable instance's thing and a repeating group's list are
-what the page loads, and workflows read them; a workflow that does is a
-data workflow (it runs only with the data-access opt-in).
+group's or reusable instance's thing, a repeating group's list and a
+reusable element's properties (WTF-493) are what the page loads, and
+workflows read them; a workflow that does is a data workflow (it runs
+only with the data-access opt-in). Bubble has no action that changes a
+reusable element's property: workflows only read it.
 
 Anything the generated page does not keep is `:unavailable_input` residue,
 never a silent empty value: data the page does not load, a cell's thing
 (workflows in a cell's template are not wired yet), a reusable element's
-parameters, an element's built-in states (`is visible`, `is hovered`),
+property some instance's value of which is not loaded, an element's built-in states (`is visible`, `is hovered`),
 other page data, the value of an input the page does not track (a
 placeholder, a date input, one whose first value is dynamic).
 

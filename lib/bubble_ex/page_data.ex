@@ -27,6 +27,13 @@ defmodule BubbleEx.PageData do
   | a Group's, Popup's, Floating Group's or Group Focus's data source | `:group` | the thing (or value) it holds |
   | a Repeating Group's data source | `:list` | its list (a search with constraints and sort, a list field, option values, …); `page_size` the items a page of it shows (rows × columns), nil when it shows them all |
   | a reusable-element instance's data source | `:instance` | the reusable element's thing, for that instance (`holder`: the reusable element) |
+  | a property a reusable-element instance sets (WTF-493) | `:param` | its value, computed where the instance is (`holder`: the reusable element; `param`: `"param_<id>"`) |
+  | a reusable element property's default value | `:param` | computed inside the reusable element (`element` and `holder` are the reusable element), for the instances that do not set it |
+
+  A property set to a static value is that value as the property's type
+  (`"true"` as a yes/no, `"1.5"` as a number); one the instance does not
+  set, with no default, is empty. Bubble has no action that changes a
+  property: workflows only read it.
 
   `cell` is the repeating group whose cell holds the element (nil outside
   one): its value is computed per cell. Other elements' data sources (a
@@ -199,7 +206,7 @@ defmodule BubbleEx.PageData do
     own =
       case kind do
         :page -> page_thing(id, props, path, ctx)
-        :reusable -> []
+        :reusable -> defaults(id, props, path ++ [props_key(raw)], ctx)
       end
 
     own ++ elements(raw, path, %{surface: id, surface_kind: kind, cell: nil}, ctx)
@@ -266,8 +273,13 @@ defmodule BubbleEx.PageData do
           [source(kind, id, props, value, path ++ [props_key(raw), prop], at, ctx)]
       end
 
+    params =
+      if type == "CustomElement",
+        do: instance_params(id, props, path ++ [props_key(raw)], at, ctx),
+        else: []
+
     inner = if type in @repeating, do: %{at | cell: id}, else: at
-    own ++ elements(raw, path, inner, ctx)
+    own ++ params ++ elements(raw, path, inner, ctx)
   end
 
   defp element(_raw, _path, _key, _at, _ctx), do: []
@@ -302,6 +314,117 @@ defmodule BubbleEx.PageData do
       path: Diagnostic.pointer(vpath)
     }
   end
+
+  # --- reusable element properties (WTF-493) ------------------------------------------
+
+  # The properties an instance sets, each computed where the instance is
+  # (its parent's scope, a cell's when in one).
+  defp instance_params(id, props, ppath, at, ctx) do
+    node = Tree.node(ctx.env.tree, id)
+    holder = node && node.instance_of
+    declared = declared(holder, ctx)
+
+    for {param, type} <- Enum.sort(declared),
+        key = "param_" <> param,
+        Map.has_key?(props, key) do
+      param_source(%{
+        element: id,
+        holder: holder,
+        param: key,
+        type: type,
+        raw: props[key],
+        vpath: ppath ++ [key],
+        symbol: Symbol.id(:element, id),
+        env: %{ctx.env | host: id},
+        at: at,
+        model: ctx.model
+      })
+    end
+  end
+
+  # A reusable element's property defaults, computed inside it.
+  defp defaults(id, props, ppath, ctx) do
+    declared = declared(id, ctx)
+
+    case props["parameters"] do
+      params when is_map(params) ->
+        for {key, %{"param_id" => param} = raw} <- Enum.sort(params),
+            is_map_key(declared, param),
+            Map.has_key?(raw, "default_value") do
+          param_source(%{
+            element: id,
+            holder: id,
+            param: "param_" <> param,
+            type: declared[param],
+            raw: raw["default_value"],
+            vpath: ppath ++ ["parameters", key, "default_value"],
+            symbol: Symbol.id(:reusable, id),
+            env: %{ctx.env | host: id},
+            at: %{surface: id, surface_kind: :reusable, cell: nil},
+            model: ctx.model
+          })
+        end
+
+      _ ->
+        []
+    end
+  end
+
+  # A reusable element's properties: ID => type (a list's `list.` type).
+  defp declared(nil, _ctx), do: %{}
+
+  defp declared(id, ctx) do
+    case Tree.node(ctx.env.tree, id) do
+      %Tree.Node{params: params} -> params
+      nil -> %{}
+    end
+  end
+
+  defp param_source(p) do
+    expr = param_value(p.raw, p.type, p.vpath, p.env)
+
+    %Source{
+      id: p.symbol,
+      element: p.element,
+      surface: p.at.surface,
+      surface_kind: p.at.surface_kind,
+      kind: :param,
+      holder: p.holder,
+      param: p.param,
+      type: p.type,
+      value: expr,
+      cell: p.at.cell,
+      residue: Lowering.expr_residue(p.symbol, [expr]) ++ search_fields(p.symbol, expr, p.model),
+      path: Diagnostic.pointer(p.vpath)
+    }
+  end
+
+  # A static value is the property's type: the editor keeps yes/no and
+  # numbers as text.
+  defp param_value(raw, type, vpath, env) when is_binary(raw) do
+    case static(raw, type) do
+      {:ok, value} -> Lowering.expr(value, vpath, env)
+      :error -> %Lowering.Expr{path: Diagnostic.pointer(vpath), constructs: ["static_value"]}
+    end
+  end
+
+  defp param_value(raw, _type, vpath, env), do: Lowering.expr(raw, vpath, env)
+
+  defp static(raw, "text"), do: {:ok, raw}
+  defp static("true", "boolean"), do: {:ok, true}
+  defp static("false", "boolean"), do: {:ok, false}
+
+  defp static(raw, "number") do
+    raw = String.trim(raw)
+
+    case {Integer.parse(raw), Float.parse(raw)} do
+      {{n, ""}, _} -> {:ok, n}
+      {_, {n, ""}} -> {:ok, n}
+      _ -> :error
+    end
+  end
+
+  defp static(_raw, _type), do: :error
 
   # A search whose constraints or sort name a field some privacy rule of
   # the searched type keeps out of searches (non-filterable): Bubble limits
@@ -406,6 +529,7 @@ defmodule BubbleEx.PageData do
   end
 
   defp kind_text(:page_thing), do: "type of content"
+  defp kind_text(:param), do: "property value"
   defp kind_text(_kind), do: "data source"
 
   defp text(value) when is_binary(value) and value != "", do: value

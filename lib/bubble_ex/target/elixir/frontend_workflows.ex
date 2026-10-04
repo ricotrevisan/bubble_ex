@@ -1056,10 +1056,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   defp bind({:page_data, %{"name" => "Current Date/Time"}}, _ctx), do: {:ok, :now}
 
   # The page's data (WTF-420): a page's or cell's thing, a group's data, a
-  # repeating group's list.
+  # repeating group's list, a reusable element's property (WTF-493).
   defp bind({:element_state, %{"state" => s}} = input, ctx)
        when s in ["get_group_data", "get_list_data"],
        do: Data.read(ctx.data, ctx.surface, Map.get(ctx, :cell), input)
+
+  defp bind({:element_state, %{"state" => "param_" <> _}} = input, ctx),
+    do: Data.read(ctx.data, ctx.surface, Map.get(ctx, :cell), input)
 
   defp bind({kind, _ref} = input, ctx) when kind in [:page_thing, :cell_thing, :cell_index],
     do: Data.read(ctx.data, ctx.surface, Map.get(ctx, :cell), input)

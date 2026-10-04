@@ -43,7 +43,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
             surfaces: %{},
             elements: %{},
             diagnostics: [],
-            data_index: %{elements: %{}, roots: MapSet.new()}
+            data_index: %{elements: %{}, roots: MapSet.new(), params: %{}, set: %{}}
 
   @type t :: %__MODULE__{}
 
@@ -159,6 +159,19 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     end
   end
 
+  # A reusable element's property (WTF-493).
+  def read(
+        %__MODULE__{} = spec,
+        surface,
+        {:element_state, %{"state" => "param_" <> _}} = input,
+        cell
+      ) do
+    case data_read(spec.data_index, surface, cell, input) do
+      {:ok, bind} -> bind
+      {:error, _} -> nil
+    end
+  end
+
   def read(%__MODULE__{} = spec, surface, {kind, _} = input, cell)
       when kind in [:page_thing, :cell_thing, :cell_index] do
     case data_read(spec.data_index, surface, cell, input) do
@@ -205,6 +218,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     * `{:cell, rg}`, `{:cell_index, rg}` - the current cell's thing and
       index, in the cell of `rg`
     * `{:cell_data, group}` - a group's thing computed in the current cell
+
+  A reusable element's property (`"param_<id>"`, WTF-493) is
+  `{:data, %{path: [], element: "param_<id>"}}` read in the reusable
+  element (when every value of it loads, see `index.params`), or
+  `{:data, %{path: [instance], element: "param_<id>"}}` read where an
+  instance setting it is.
   """
   @spec data_read(map(), String.t(), String.t() | nil, term()) ::
           {:ok, term()} | {:error, String.t()}
@@ -237,6 +256,25 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
 
       _ ->
         {:error, "element_state:" <> state}
+    end
+  end
+
+  def data_read(
+        index,
+        surface,
+        _cell,
+        {:element_state, %{"element" => e, "state" => "param_" <> _ = state}}
+      )
+      when is_binary(e) do
+    cond do
+      e == surface and Map.get(Map.get(index, :params, %{}), {e, state}, true) ->
+        {:ok, {:data, %{path: [], element: state}}}
+
+      Map.get(Map.get(index, :set, %{}), {e, state}) == surface ->
+        {:ok, {:data, %{path: [e], element: state}}}
+
+      true ->
+        {:error, "element_state:param"}
     end
   end
 

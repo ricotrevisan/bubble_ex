@@ -29,6 +29,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   `{:cell, rg}`, `{:cell_index, rg}` and `{:cell_data, group}` (in a
   repeating group's cell).
 
+  A reusable element's property (WTF-493) is page data too: the value an
+  instance sets is a source of the instance's surface, kept under the
+  instance (`key` `%{path: [instance], element: "param_<id>"}`), and its
+  default a source of the reusable element, kept where the instance's
+  would be (`%{path: [], element: "param_<id>"}`), read only when the
+  instance sets none. "This Reusable's <property>" reads
+  `{:data, %{path: [], element: "param_<id>"}}`: it loads when every
+  instance's value of it (outside a repeating group's cell) and its
+  default load. A thing it holds is read where the instance is, through
+  Ash with the actor, like any other source.
+
   ## Residue added here
 
     * `:page_data_in_cell` - a repeating group or reusable instance in a
@@ -56,16 +67,40 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   before the sources themselves are bound; nil page data has none.
   """
   @spec index(PageData.t() | nil) :: map()
-  def index(nil), do: %{elements: %{}, roots: MapSet.new()}
+  def index(nil), do: %{elements: %{}, roots: MapSet.new(), params: %{}, set: %{}}
 
   def index(%PageData{sources: sources}) do
     elements =
       for s <- sources,
+          s.kind != :param,
           Source.native?(s),
           into: %{},
           do: {s.element, %{kind: s.kind, surface: s.surface, cell: s.cell, holder: s.holder}}
 
-    %{elements: elements, roots: roots(sources)}
+    Map.merge(%{elements: elements, roots: roots(sources)}, params(sources, &Source.native?/1))
+  end
+
+  # The reusable element properties (WTF-493): `params`, `{reusable,
+  # param} => whether every value of it outside a cell (each instance's,
+  # its default) loads`; `set`, `{instance, param} => surface` for the
+  # values instances outside a cell set that load.
+  defp params(sources, loads?) do
+    values = for %{kind: :param, cell: nil} = s <- sources, do: s
+
+    %{
+      params:
+        values
+        |> Enum.group_by(&{&1.holder, &1.param})
+        |> Map.new(fn {key, ss} -> {key, Enum.all?(ss, loads?)} end),
+      set:
+        for(
+          s <- values,
+          s.element != s.holder,
+          loads?.(s),
+          into: %{},
+          do: {{s.element, s.param}, s.surface}
+        )
+    }
   end
 
   # Reusable elements an instance gives their thing to.
@@ -88,14 +123,22 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   def wired_index(bound) do
     wired = for {_surface, list} <- bound, b <- list, b.residue == [], do: b
 
-    %{
-      elements:
-        Map.new(
-          wired,
-          &{&1.element, %{kind: &1.kind, surface: &1.surface, cell: &1.cell, holder: &1.holder}}
-        ),
-      roots: for(%{kind: :instance, holder: h} <- wired, is_binary(h), into: MapSet.new(), do: h)
-    }
+    all = for {_surface, list} <- bound, b <- list, do: b
+
+    Map.merge(
+      %{
+        elements:
+          for(
+            b <- wired,
+            b.kind != :param,
+            into: %{},
+            do: {b.element, %{kind: b.kind, surface: b.surface, cell: b.cell, holder: b.holder}}
+          ),
+        roots:
+          for(%{kind: :instance, holder: h} <- wired, is_binary(h), into: MapSet.new(), do: h)
+      },
+      params(all, &(&1.residue == []))
+    )
   end
 
   @doc """
@@ -127,9 +170,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       surface: s.surface,
       cell: s.cell,
       holder: s.holder,
+      param: s.param,
       key: key(s),
       type: s.type,
-      list?: s.kind == :list,
+      list?: list?(s),
       page_size: s.page_size,
       resource: nil,
       read: nil,
@@ -155,8 +199,20 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     end
   end
 
+  # A list's value, or a property holding a list.
+  defp list?(%Source{kind: :list}), do: true
+
+  defp list?(%Source{kind: :param, type: type}),
+    do: match?(%Type{cardinality: :many}, classify(type))
+
+  defp list?(_source), do: false
+
   defp key(%Source{kind: :instance, element: e, holder: holder}),
     do: %{path: [e], element: holder}
+
+  # A property's default is kept where the instance's value would be.
+  defp key(%Source{kind: :param, element: e, holder: e, param: p}), do: %{path: [], element: p}
+  defp key(%Source{kind: :param, element: e, param: p}), do: %{path: [e], element: p}
 
   defp key(%Source{element: e}), do: %{path: [], element: e}
 
@@ -486,11 +542,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # page data outside what its surface keeps) is not loaded either,
   # transitively.
   defp prune(bound) do
-    wired = for b <- bound, b.residue == [], into: MapSet.new(), do: b.element
+    wired = for b <- bound, b.residue == [], into: MapSet.new(), do: id(b)
     wired = prune_fixpoint(wired, bound)
 
     Enum.map(bound, fn b ->
-      if b.residue == [] and not MapSet.member?(wired, b.element),
+      if b.residue == [] and not MapSet.member?(wired, id(b)),
         do: %{
           b
           | read: nil,
@@ -501,27 +557,46 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   end
 
   defp prune_fixpoint(wired, bound) do
-    by_element = Map.new(bound, &{&1.element, &1})
+    by_element = Map.new(bound, &{id(&1), &1})
+
+    # The values of each property outside a cell: every one must load for
+    # the reusable element to read it.
+    params =
+      for(%{kind: :param, cell: nil} = b <- bound, do: b)
+      |> Enum.group_by(&{&1.holder, &1.param}, &id/1)
 
     next =
       for b <- bound,
-          MapSet.member?(wired, b.element),
-          Enum.all?(b.reads, &read_wired?(&1, b, by_element, wired)),
+          MapSet.member?(wired, id(b)),
+          Enum.all?(b.reads, &read_wired?(&1, b, {by_element, params}, wired)),
           into: MapSet.new(),
-          do: b.element
+          do: id(b)
 
     if next == wired, do: wired, else: prune_fixpoint(next, bound)
   end
 
+  # A source's identity: its element, and a property's name (an instance
+  # has a source per property it sets, besides its own data source).
+  defp id(%{kind: :param, element: e, param: p}), do: {e, p}
+  defp id(%{element: e}), do: e
+
+  # This Reusable's property: every value of it (WTF-493).
+  defp read_wired?({:data, %{path: [], element: "param_" <> _ = p}}, b, {_, params}, wired),
+    do: params |> Map.get({b.surface, p}, []) |> Enum.all?(&MapSet.member?(wired, &1))
+
+  # An instance's property, read where the instance is.
+  defp read_wired?({:data, %{path: [i], element: "param_" <> _ = p}}, _b, _maps, wired),
+    do: MapSet.member?(wired, {i, p})
+
   # A read of the surface's own reusable-element thing is the instance's
   # (whatever it holds, possibly nothing).
-  defp read_wired?({:data, %{path: [], element: e}}, %{surface: e}, by_element, wired),
+  defp read_wired?({:data, %{path: [], element: e}}, %{surface: e}, {by_element, _}, wired),
     do: not Map.has_key?(by_element, e) or MapSet.member?(wired, e)
 
-  defp read_wired?({:data, %{path: [instance]}}, _b, _by_element, wired),
+  defp read_wired?({:data, %{path: [instance]}}, _b, _maps, wired),
     do: MapSet.member?(wired, instance)
 
-  defp read_wired?({:data, %{element: e}}, _b, _by_element, wired), do: MapSet.member?(wired, e)
+  defp read_wired?({:data, %{element: e}}, _b, _maps, wired), do: MapSet.member?(wired, e)
 
   defp read_wired?({kind, rg}, _b, _by, wired) when kind in [:cell, :cell_index],
     do: MapSet.member?(wired, rg)
@@ -531,7 +606,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # The order a surface reads its sources in: after those they read. The
   # ones reading each other in a cycle are residue.
   defp order(bound) do
-    by_element = Map.new(bound, &{&1.element, &1})
+    by_element = Map.new(bound, &{id(&1), &1})
     {ordered, left} = kahn(bound, by_element, [], MapSet.new())
 
     cyclic =
@@ -545,18 +620,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         }
       end)
 
-    Enum.reverse(ordered) ++ Enum.sort_by(cyclic, & &1.element)
+    Enum.reverse(ordered) ++ Enum.sort_by(cyclic, &id/1)
   end
 
   defp kahn(bound, by_element, ordered, done) do
     {ready, waiting} =
       bound
-      |> Enum.reject(&MapSet.member?(done, &1.element))
+      |> Enum.reject(&MapSet.member?(done, id(&1)))
       |> Enum.split_with(fn b ->
         Enum.all?(deps(b, by_element), &MapSet.member?(done, &1))
       end)
 
-    case Enum.sort_by(ready, & &1.element) do
+    case Enum.sort_by(ready, &id/1) do
       [] ->
         {ordered, waiting}
 
@@ -565,7 +640,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
           bound,
           by_element,
           Enum.reverse(ready) ++ ordered,
-          Enum.into(Enum.map(ready, & &1.element), done)
+          Enum.into(Enum.map(ready, &id/1), done)
         )
     end
   end
@@ -573,12 +648,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # The sources of the same surface a source reads first.
   defp deps(b, by_element) do
     for read <- b.reads,
-        e <- dep_element(read),
+        e <- dep_element(read, b),
         Map.has_key?(by_element, e),
-        e != b.element,
+        e != id(b),
         uniq: true,
         do: e
   end
+
+  # A property's default, of the same reusable element; an instance's
+  # value of it.
+  defp dep_element({:data, %{path: [], element: "param_" <> _ = p}}, b), do: [{b.surface, p}]
+  defp dep_element({:data, %{path: [i], element: "param_" <> _ = p}}, _b), do: [{i, p}]
+  defp dep_element(read, _b), do: dep_element(read)
 
   defp dep_element({:data, %{path: [instance]}}), do: [instance]
   defp dep_element({:data, %{element: e}}), do: [e]

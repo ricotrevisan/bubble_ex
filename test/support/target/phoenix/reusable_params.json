@@ -1,0 +1,754 @@
+{
+  "_id": "reusable-params-fixture",
+  "element_definitions": {
+    "badge": {
+      "elements": {
+        "bBadgeT": {
+          "id": "bBadgeT",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Badge: ",
+                "1": {
+                  "next": {
+                    "name": "param_pLabel",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bBadgeDef"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bBadgeDef",
+      "name": "Badge",
+      "properties": {
+        "height": 40,
+        "parameters": {
+          "0": {
+            "btype_id": "text",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pLabel",
+            "param_name": "Label"
+          }
+        },
+        "width": 300
+      },
+      "type": "CustomDefinition"
+    },
+    "card": {
+      "custom_states": {
+        "n_": {
+          "display": "N",
+          "value": "number"
+        }
+      },
+      "elements": {
+        "bBadge": {
+          "id": "bBadge",
+          "properties": {
+            "custom_id": "bBadgeDef",
+            "height": 40,
+            "order": 10,
+            "param_pLabel": {
+              "next": {
+                "name": "param_pTask",
+                "next": {
+                  "name": "title_text",
+                  "type": "Message"
+                },
+                "type": "Message"
+              },
+              "properties": {
+                "element_id": "bCard"
+              },
+              "type": "GetElement"
+            },
+            "width": 300
+          },
+          "type": "CustomElement"
+        },
+        "bBump": {
+          "id": "bBump",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 11,
+            "text": {
+              "entries": {
+                "0": "Bump"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bCount": {
+          "id": "bCount",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 4,
+            "text": {
+              "entries": {
+                "0": "Count: ",
+                "1": {
+                  "next": {
+                    "name": "param_pCount",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCard"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bDueSet": {
+          "id": "bDueSet",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 8,
+            "text": {
+              "entries": {
+                "0": "Has a due date"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "param_pDue",
+                  "next": {
+                    "name": "is_not_empty",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bCard"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bFlagT": {
+          "id": "bFlagT",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 7,
+            "text": {
+              "entries": {
+                "0": "Flagged"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "param_pFlag",
+                  "next": {
+                    "name": "is_true",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bCard"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bGroup": {
+          "elements": {
+            "bGroupT": {
+              "id": "bGroupT",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Group: ",
+                    "1": {
+                      "next": {
+                        "name": "title_text",
+                        "type": "Message"
+                      },
+                      "type": "ElementParent"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bGroup",
+          "properties": {
+            "data_source": {
+              "next": {
+                "name": "param_pTask",
+                "type": "Message"
+              },
+              "properties": {
+                "element_id": "bCard"
+              },
+              "type": "GetElement"
+            },
+            "group_type": "custom.task",
+            "height": 40,
+            "order": 9,
+            "width": 300
+          },
+          "type": "Group"
+        },
+        "bHeading": {
+          "id": "bHeading",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 3,
+            "text": {
+              "entries": {
+                "0": "Heading: ",
+                "1": {
+                  "next": {
+                    "name": "param_pHeading",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCard"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bN": {
+          "id": "bN",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 12,
+            "text": {
+              "entries": {
+                "0": "N: ",
+                "1": {
+                  "next": {
+                    "name": "custom.n_",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCard"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bNote": {
+          "id": "bNote",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "text": {
+              "entries": {
+                "0": "Note: ",
+                "1": {
+                  "next": {
+                    "name": "param_pNote",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCard"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bTaskT": {
+          "id": "bTaskT",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 5,
+            "text": {
+              "entries": {
+                "0": "Task: ",
+                "1": {
+                  "next": {
+                    "name": "param_pTask",
+                    "next": {
+                      "name": "title_text",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCard"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bTasksN": {
+          "id": "bTasksN",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 6,
+            "text": {
+              "entries": {
+                "0": "Tasks: ",
+                "1": {
+                  "next": {
+                    "name": "param_pTasks",
+                    "next": {
+                      "name": "count",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCard"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bTitle": {
+          "id": "bTitle",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Title: ",
+                "1": {
+                  "next": {
+                    "name": "param_pTitle",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCard"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bCard",
+      "name": "Card",
+      "properties": {
+        "height": 520,
+        "parameters": {
+          "0": {
+            "btype_id": "text",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pTitle",
+            "param_name": "Title"
+          },
+          "1": {
+            "btype_id": "boolean",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pFlag",
+            "param_name": "Flag"
+          },
+          "2": {
+            "btype_id": "number",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pCount",
+            "param_name": "Count"
+          },
+          "3": {
+            "btype_id": "custom.task",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pTask",
+            "param_name": "Task"
+          },
+          "4": {
+            "btype_id": "custom.task",
+            "editor_type": "DynamicValue",
+            "is_list": true,
+            "optional": true,
+            "param_id": "pTasks",
+            "param_name": "Tasks"
+          },
+          "5": {
+            "btype_id": "date",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pDue",
+            "param_name": "Due"
+          },
+          "6": {
+            "btype_id": "text",
+            "default_value": {
+              "entries": {
+                "0": "Default note"
+              },
+              "type": "TextExpression"
+            },
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pNote",
+            "param_name": "Note"
+          },
+          "7": {
+            "btype_id": "text",
+            "default_value": {
+              "entries": {
+                "0": "Re: ",
+                "1": {
+                  "next": {
+                    "name": "param_pTitle",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCard"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pHeading",
+            "param_name": "Heading"
+          }
+        },
+        "width": 300
+      },
+      "type": "CustomDefinition",
+      "workflows": {
+        "wBump": {
+          "actions": {
+            "0": {
+              "id": "aBump1",
+              "properties": {
+                "custom_state": "custom.n_",
+                "element_id": "bCard",
+                "value": {
+                  "next": {
+                    "name": "param_pCount",
+                    "next": {
+                      "args": 1,
+                      "name": "plus",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCard"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wBump",
+          "properties": {
+            "element_id": "bBump"
+          },
+          "type": "ButtonClicked"
+        }
+      }
+    }
+  },
+  "pages": {
+    "task": {
+      "elements": {
+        "bCardA": {
+          "id": "bCardA",
+          "properties": {
+            "custom_id": "bCard",
+            "height": 520,
+            "order": 1,
+            "param_pCount": "3",
+            "param_pDue": {
+              "next": {
+                "name": "due_date",
+                "type": "Message"
+              },
+              "type": "CurrentPageItem"
+            },
+            "param_pFlag": "true",
+            "param_pHeading": {
+              "entries": {
+                "0": "Custom heading"
+              },
+              "type": "TextExpression"
+            },
+            "param_pTask": {
+              "type": "CurrentPageItem"
+            },
+            "param_pTasks": {
+              "properties": {
+                "descending": false,
+                "sort_field": "title_text",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            },
+            "param_pTitle": {
+              "entries": {
+                "0": "Hello A"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "CustomElement"
+        },
+        "bCardB": {
+          "id": "bCardB",
+          "properties": {
+            "custom_id": "bCard",
+            "height": 520,
+            "order": 2,
+            "param_pCount": "7",
+            "param_pFlag": "false",
+            "param_pNote": {
+              "entries": {
+                "0": "Given B"
+              },
+              "type": "TextExpression"
+            },
+            "param_pTitle": {
+              "entries": {
+                "0": "Hello B"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "CustomElement"
+        },
+        "bList": {
+          "elements": {
+            "bCardC": {
+              "id": "bCardC",
+              "properties": {
+                "custom_id": "bCard",
+                "height": 520,
+                "order": 1,
+                "param_pTask": {
+                  "type": "CurrentDataItem"
+                },
+                "param_pTitle": {
+                  "entries": {
+                    "0": "In a cell"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "CustomElement"
+            }
+          },
+          "id": "bList",
+          "properties": {
+            "columns": 1,
+            "data_source": {
+              "properties": {
+                "descending": false,
+                "sort_field": "title_text",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.task",
+            "height": 520,
+            "min_height_css": "520px",
+            "order": 4,
+            "rows": 3,
+            "width": 300
+          },
+          "type": "RepeatingGroup"
+        },
+        "bOutside": {
+          "id": "bOutside",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 3,
+            "text": {
+              "entries": {
+                "0": "Outside: ",
+                "1": {
+                  "next": {
+                    "name": "param_pTitle",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCardA"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bTaskPage",
+      "name": "task",
+      "properties": {
+        "page_item_type": "custom.task",
+        "title": "Task"
+      },
+      "type": "Page"
+    }
+  },
+  "user_types": {
+    "task": {
+      "display": "Task",
+      "fields": {
+        "due_date": {
+          "display": "Due",
+          "value": "date"
+        },
+        "owner_user": {
+          "display": "Owner",
+          "value": "user"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": []
+          }
+        },
+        "owner_": {
+          "condition": {
+            "next": {
+              "name": "owner_user",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Owner",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        }
+      }
+    }
+  }
+}

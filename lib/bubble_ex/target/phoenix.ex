@@ -548,6 +548,8 @@ defmodule BubbleEx.Target.Phoenix do
   def frontend_report(%Project{} = project, opts) do
     with {:ok, ctx} <- context(project, opts),
          {:ok, %Normalized{} = frontend} <- frontend(opts) do
+      # The pages' workflow modules name the join topics (as in render/2).
+      ctx = Map.put_new(ctx, :join_topics, join_topics(project))
       {:ok, pages(without_dropped_pages(frontend, project), ctx, opts).report}
     else
       {:ok, nil} -> invalid("frontend_report/2 needs the frontend: option")

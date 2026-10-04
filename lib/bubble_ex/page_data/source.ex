@@ -7,8 +7,12 @@ defmodule BubbleEx.PageData.Source do
     * `element` - the Bubble ID of the page or element whose data it is
     * `surface` - the Bubble ID of its page or reusable element;
       `surface_kind` `:page` or `:reusable`
-    * `kind` - `:page_thing`, `:group`, `:list` or `:instance`
-    * `holder` - for `:instance`, the reusable element whose thing it sets
+    * `kind` - `:page_thing`, `:group`, `:list`, `:instance` or `:param`
+    * `holder` - for `:instance`, the reusable element whose thing it sets;
+      for `:param`, the reusable element whose property it sets
+    * `param` - for `:param`, the property (`"param_<id>"`, the element
+      state its reads name): its value on the instance `element`, or, when
+      `element` is the reusable element itself, its default
     * `type` - the Bubble type of its value (`"custom.task"`,
       `"list.custom.task"`), when known
     * `value` - its data source as a `BubbleEx.Workflows.Lowering.Expr`
@@ -26,6 +30,7 @@ defmodule BubbleEx.PageData.Source do
     :surface_kind,
     :kind,
     :holder,
+    :param,
     :type,
     :value,
     :cell,
@@ -39,8 +44,9 @@ defmodule BubbleEx.PageData.Source do
           element: String.t(),
           surface: String.t(),
           surface_kind: :page | :reusable,
-          kind: :page_thing | :group | :list | :instance,
+          kind: :page_thing | :group | :list | :instance | :param,
           holder: String.t() | nil,
+          param: String.t() | nil,
           type: String.t() | nil,
           value: BubbleEx.Workflows.Lowering.Expr.t() | nil,
           cell: String.t() | nil,

@@ -169,6 +169,8 @@ element (not a mobile view):
 | a Group's, Popup's, Floating Group's or Group Focus's data source | `:group` | a search (below), or an Elixir value (`BubbleEx.Target.Elixir`); a thing given as a Bubble ID is read by ID |
 | a Repeating Group's data source | `:list` | a search, or a list value (IDs are read by ID); its cells render its template once per item |
 | a reusable-element instance's data source | `:instance` | the reusable element's thing for that instance (`Parent group` inside it) |
+| a property a reusable-element instance sets (WTF-493) | `:param` | its value, computed where the instance is, kept under the instance (`This Reusable's <property>` inside it) |
+| a reusable element property's default value | `:param` | computed inside the reusable element, for an instance that sets no value |
 
 A **search** (with its constraints, its sort, optionally under `first
 item`, `item #n`, `items until #n` or `count`) is an Ash query: its filter
@@ -196,6 +198,46 @@ runs through `:search` like any other search (what the user may find),
 the search fields check sees the sort, and no field policy is involved
 (no `:search_field_hidden`). Any other sort field that maps to no
 attribute leaves the search uncompiled (residue).
+
+## Reusable element properties (WTF-493)
+
+An instance's properties are page data. Each value it sets in the editor
+is a source of the instance's page (or reusable element): a static value
+as the property's type (the editor keeps yes/no and numbers as text:
+`"true"`, `"1.5"`), an expression computed in the instance's parent's
+scope, like the instance's own data source. A property it does not set
+takes its default, a source of the reusable element computed inside it
+(a default may read the reusable element's thing, its other properties,
+its elements), read only for the instances that set no value; with no
+default it is empty. Values are kept under the instance's scope (`{scope,
+"param_<id>"}` in `@bubble_data`, the component's `bubble_data`
+attribute), so `This Reusable's <property>` reads the value of the
+instance being rendered, in texts, visibility conditions, data sources
+(a group whose data source is the property) and workflows, and nested
+reusables pass theirs down the same way. A page may read an instance's
+property too (`<instance>'s <property>`) when the instance sets it.
+
+A thing or list of things a property holds is what the parent's
+expression read: through Ash, with the current user as the actor, like
+every other source (a search is a query, Bubble IDs are read by ID; a
+record the user may not view is nothing). Nothing reads around the
+policies.
+
+`This Reusable's <property>` is read only when **every** value of it
+loads: each instance's (outside a repeating group's cell) and its default.
+One that does not (it does not compile, or reads data the page does not
+load) leaves the reads residue (`:unavailable_input`,
+`element_state:param`) for every instance, never an empty value for some;
+the instance is marked `TODO(bubble:<id>) its property param_<id> is not
+passed (<reasons>)`.
+
+An instance in a repeating group's cell is not rendered as a surface of
+its own yet (WTF-476): its values are residue (`:page_data_in_cell`),
+marked on the instance, and do not block the reads for the other
+instances.
+
+Bubble has no workflow action that changes a property (in the private
+fixture app, no action names one): properties are read only.
 
 A group inside a repeating group's cell holds a value per cell. A
 repeating group, a reusable instance or a search inside a cell is residue
@@ -399,4 +441,5 @@ where it runs (a privacy rule's condition).
   slug is not resolved.
 * A repeating group shows its first page; later pages ("Show next") are
   not loaded.
-* Reusable-element parameters are not passed to components as data yet.
+* Reusable element properties in a repeating group's cell are not passed
+  (above).
