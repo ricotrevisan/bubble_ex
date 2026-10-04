@@ -1,7 +1,7 @@
 defmodule BubbleEx.Secrets.TrufflehogTest do
   use ExUnit.Case, async: false
 
-  alias BubbleEx.Error
+  alias BubbleEx.{Error, PayloadFile}
   alias BubbleEx.SampleHelper
   alias BubbleEx.Secrets.Trufflehog
 
@@ -61,6 +61,117 @@ defmodule BubbleEx.Secrets.TrufflehogTest do
 
     test "rejects a JSON string without an _id" do
       assert {:error, %Error{kind: :invalid_input}} = Trufflehog.scan(~s({"no":"id"}))
+    end
+  end
+
+  describe "provider verification (offline, fake CLI)" do
+    # The fake CLI records its arguments one per line and prints the finding a
+    # `--no-verification` run prints: unverified, no verification error.
+    @finding %{
+      "DecoderName" => "PLAIN",
+      "DetectorName" => "Github",
+      "Raw" => "synthetic",
+      "Verified" => false,
+      "VerificationError" => nil
+    }
+
+    setup do
+      root =
+        Path.join(
+          System.tmp_dir!(),
+          "bubble_ex_trufflehog_args_#{System.pid()}_#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(root)
+      cli = Path.join(root, "trufflehog")
+
+      File.write!(cli, """
+      #!/bin/sh
+      printf '%s\\n' "$@" > '#{root}/args'
+      printf '%s\\n' '#{Jason.encode!(@finding)}'
+      """)
+
+      File.chmod!(cli, 0o700)
+      original_path = System.get_env("PATH")
+      System.put_env("PATH", root <> ":" <> original_path)
+
+      on_exit(fn ->
+        System.put_env("PATH", original_path)
+        File.rm_rf!(root)
+      end)
+
+      %{
+        args: fn ->
+          root |> Path.join("args") |> File.read!() |> String.split("\n", trim: true)
+        end
+      }
+    end
+
+    test "the default asks providers and reports verified and unknown results only", %{
+      args: args
+    } do
+      # Characterization of the behaviour before WTF-485: findings unchanged.
+      assert {:ok, [@finding]} = Trufflehog.scan(%{"_id" => "x"})
+
+      assert [
+               "filesystem",
+               _path,
+               "--json",
+               "--log-level=5",
+               "--results=verified,unknown",
+               "--no-update"
+             ] = args.()
+
+      default = args.()
+      assert {:ok, [@finding]} = Trufflehog.scan(%{"_id" => "x"}, verify: true)
+      assert Enum.drop(args.(), 2) == Enum.drop(default, 2)
+    end
+
+    test "verify: false contacts no provider and marks every result skipped", %{args: args} do
+      assert {:ok, [finding]} = Trufflehog.scan(%{"_id" => "x"}, verify: false, log_level: "0")
+      assert finding == Map.put(@finding, "Verification", "skipped")
+
+      assert [
+               "filesystem",
+               _path,
+               "--json",
+               "--log-level=0",
+               "--no-verification",
+               "--results=verified,unknown,unverified",
+               "--no-update"
+             ] = args.()
+    end
+
+    test "scan_file/2 takes the same option", %{args: args} do
+      assert {:ok, [%{"Verification" => "skipped"}]} =
+               PayloadFile.with_file(%{"_id" => "x"}, &Trufflehog.scan_file(&1, verify: false))
+
+      assert "--no-verification" in args.()
+
+      assert {:ok, [@finding]} = PayloadFile.with_file(%{"_id" => "x"}, &Trufflehog.scan_file/1)
+      refute "--no-verification" in args.()
+    end
+
+    test "the option reaches the adapter through the public entry points", %{args: args} do
+      assert {:ok, [%{"Verification" => "skipped"}]} =
+               BubbleEx.scan_payload_for_secrets(%{"_id" => "x"}, verify: false)
+
+      assert "--no-verification" in args.()
+
+      assert {:ok, [@finding]} = BubbleEx.scan_payload_for_secrets(%{"_id" => "x"})
+      refute "--no-verification" in args.()
+    end
+
+    test "a non-boolean :verify is refused before the CLI starts", %{args: args} do
+      for value <- [nil, "false", 0] do
+        assert {:error, %Error{kind: :invalid_input}} =
+                 Trufflehog.scan(%{"_id" => "x"}, verify: value)
+
+        assert {:error, %Error{kind: :invalid_input}} =
+                 PayloadFile.with_file(%{"_id" => "x"}, &Trufflehog.scan_file(&1, verify: value))
+      end
+
+      assert_raise File.Error, args
     end
   end
 
