@@ -1013,7 +1013,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> Enum.flat_map(fn child -> Css.lower(child, selector: &selector/1) end)
       |> index_lowered()
 
-    inner_ctx = Map.merge(ctx, %{lowered: Map.merge(ctx.lowered, lowered), cell: rg})
+    # The reusable instances the page renders per cell (WTF-494): the ones
+    # directly in the template, as `__bubble__(:cells)` lists them.
+    listed = node.children |> Enum.flat_map(&cell_instance_nodes/1) |> MapSet.new(&bid/1)
+
+    lowered = Map.merge(ctx.lowered, lowered)
+    inner_ctx = Map.merge(ctx, %{lowered: lowered, cell: rg, cell_instances: listed})
+
     {children, acc} = emit_list(node.children, inner_ctx, %{acc | template: true})
 
     template = [
@@ -1133,6 +1139,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     {classes, acc} = classes(node, styled, ctx, acc)
     acc = track(acc, node, false)
     acc = mark_data(acc, node, ctx)
+    acc = mark_cell(acc, node, ctx)
 
     {params, slots} = parameter_attrs(node, definition, ctx)
     {visibility, acc} = visibility_attrs(node, ctx, acc)
@@ -1170,9 +1177,39 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     {[marker_html(acc, node), call], acc}
   end
 
+  # A reusable instance in the cell of a repeating group the page renders
+  # per cell (WTF-494): directly in the cell's template, not inside a
+  # runtime container there.
+  defp per_cell?(node, ctx),
+    do: cell_instance?(node, ctx) and MapSet.member?(ctx.cell_instances, bid(node))
+
+  defp cell_instance?(node, ctx),
+    do:
+      is_binary(Map.get(ctx, :cell)) and match?(%FlowSpec{}, Map.get(ctx, :flows)) and
+        FlowSpec.per_cell?(ctx.flows, bid(node))
+
+  @in_runtime_container "rendered once for every cell, not per cell (in a runtime container)"
+
+  # One the page would render per cell, but inside a runtime container of
+  # the cell: it keeps one scope, loudly.
+  defp mark_cell(acc, node, ctx) do
+    if cell_instance?(node, ctx) and not per_cell?(node, ctx),
+      do: mark(acc, node, @in_runtime_container),
+      else: acc
+  end
+
+  # Once per cell, in the cell's scope (WTF-494): the cell's thing's
+  # unique ID, not its position.
+  defp cell_scope(node, ctx) do
+    {item, index} = cell_vars(ctx.cell)
+    cell = "Bubble.cell_scope(#{scope_var(ctx)}, #{literal(ctx.cell)}, #{item}, #{index})"
+    "Bubble.nest(#{cell}, #{literal(bid(node))})"
+  end
+
   defp scope_attr(node, definition, ctx) do
     cond do
       not MapSet.member?(ctx.scoped, definition.map_key) -> []
+      per_cell?(node, ctx) -> [{"scope", {:expr, cell_scope(node, ctx)}}]
       ctx.flows && ctx.surface == :page -> [{"scope", nest("", bid(node))}]
       ctx.flows -> [{"scope", {:expr, "Bubble.nest(@scope, " <> literal(bid(node)) <> ")"}}]
       ctx.surface == :page -> [{"scope", bid(node)}]
@@ -1761,14 +1798,41 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # sets, WTF-493) the page does not load, with why.
   defp data_blocked(nil), do: %{}
 
-  defp data_blocked(%FlowSpec{surfaces: surfaces}) do
-    for {_id, s} <- surfaces,
-        d <- Map.get(s, :data, []),
-        d.residue != [],
-        reduce: %{} do
-      acc -> Map.update(acc, d.element, [blocked_text(d)], &(&1 ++ [blocked_text(d)]))
+  defp data_blocked(%FlowSpec{surfaces: surfaces} = spec) do
+    blocked =
+      for {_id, s} <- surfaces,
+          d <- Map.get(s, :data, []),
+          d.residue != [],
+          reduce: %{} do
+        acc -> Map.update(acc, d.element, [blocked_text(d)], &(&1 ++ [blocked_text(d)]))
+      end
+
+    for {id, cell} <- Enum.sort(spec.cells),
+        text <- cell_text(cell, surfaces),
+        reduce: blocked do
+      acc -> Map.update(acc, id, [text], &(&1 ++ [text]))
     end
   end
+
+  @not_started_in_cells ~s(its page-load, condition and "do every" workflows do not run per cell)
+
+  # A reusable instance in a repeating group's cell (WTF-494): not
+  # rendered per cell (its reusable element would search once per cell),
+  # or rendered per cell without the workflows that run on their own.
+  defp cell_text(%{residue: residue}, _surfaces) when residue != [] do
+    if Enum.any?(residue, &(&1.reason == :page_data_in_cell)),
+      do: ["rendered once for every cell, not per cell (page_data_in_cell)"],
+      else: []
+  end
+
+  defp cell_text(%{holder: holder}, surfaces) do
+    workflows = Map.get(surfaces[holder] || %{}, :workflows, [])
+    if Enum.any?(workflows, &self_started?/1), do: [@not_started_in_cells], else: []
+  end
+
+  # A workflow the page starts on its own, not on an event in a scope.
+  defp self_started?(w),
+    do: w.kind in [:page_load, :condition_true, :do_every] and FlowSpec.wired?(w)
 
   defp blocked_text(d) do
     reasons = d.residue |> Enum.map(&Atom.to_string(&1.reason)) |> Enum.uniq() |> Enum.join(", ")
@@ -2938,7 +3002,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
            inputs: inputs,
            containers: containers,
            loads: loads,
-           instances: instances(entry.node, "", by_ref, MapSet.new())
+           instances: instances(entry.node, "", by_ref, MapSet.new()),
+           cells: cell_templates(entry.node, by_ref, base.flows)
          }}
       end
 
@@ -2957,7 +3022,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
            inputs: inputs,
            containers: containers,
            loads: loads,
-           instances: []
+           instances: [],
+           cells: cell_templates(entry.node, by_ref, base.flows)
          }}
       end
 
@@ -3045,6 +3111,44 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     do: []
 
   defp instance_scopes(node, scope, by_ref, stack), do: instances(node, scope, by_ref, stack)
+
+  # The reusable instances a surface renders once per cell of a repeating
+  # group (WTF-494): `{repeating group, [{scope, reusable Bubble ID}]}`,
+  # the scopes relative to the cell's (the instance's, then its nested
+  # instances').
+  defp cell_templates(%Node{children: children}, by_ref, flows),
+    do: Enum.flat_map(children, &cell_templates_of(&1, by_ref, flows))
+
+  defp cell_templates_of(
+         %Node{kind: :placeholder, runtime: %{"boundary" => "container", "repeats" => true}} =
+           node,
+         by_ref,
+         flows
+       ) do
+    entries =
+      for instance <- Enum.flat_map(node.children, &cell_instance_nodes/1),
+          FlowSpec.per_cell?(flows, bid(instance)),
+          entry <- instance_scopes(instance, "", by_ref, MapSet.new()),
+          do: entry
+
+    if entries == [], do: [], else: [{bid(node), entries}]
+  end
+
+  defp cell_templates_of(%Node{kind: :placeholder, runtime: %{"boundary" => "container"}}, _, _),
+    do: []
+
+  defp cell_templates_of(%Node{kind: :reusable_instance}, _by_ref, _flows), do: []
+  defp cell_templates_of(node, by_ref, flows), do: cell_templates(node, by_ref, flows)
+
+  # The reusable instances of a cell's template (not in a nested
+  # container or instance).
+  defp cell_instance_nodes(%Node{kind: :reusable_instance} = node), do: [node]
+
+  defp cell_instance_nodes(%Node{kind: :placeholder, runtime: %{"boundary" => "container"}}),
+    do: []
+
+  defp cell_instance_nodes(%Node{children: children}),
+    do: Enum.flat_map(children, &cell_instance_nodes/1)
 
   # The tracked inputs of a surface found in its tree: `{element => {type,
   # first value}}` and `{element => [containers]}`.

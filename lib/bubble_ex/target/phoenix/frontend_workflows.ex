@@ -121,6 +121,21 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
           module != nil,
           do: "{#{literal(scope)}, #{module}}"
 
+    # The instances rendered once per cell of a repeating group (WTF-494):
+    # per repeating group, their scopes relative to the cell's, with their
+    # nested instances'.
+    cells =
+      for {rg, entries} <- Map.get(s, :cells, []),
+          listed =
+            for(
+              {scope, definition} <- entries,
+              module = ctx.modules[definition],
+              module != nil,
+              do: "{#{literal(scope)}, #{module}}"
+            ),
+          listed != [],
+          do: "{#{literal(rg)}, [#{Enum.join(listed, ", ")}]}"
+
     functions = Enum.map_join(workflows, "\n", &workflow_source(&1, s, spec, ctx))
 
     data = Map.get(surface, :data, [])
@@ -150,6 +165,8 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
       @instances [#{Enum.join(instances, ", ")}]
 
+      @cells [#{Enum.join(cells, ", ")}]
+
       # The page data (WTF-420): the sources this surface loads, in order.
       @data [
     #{data_metas}
@@ -159,6 +176,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       def __bubble__(:surface), do: @surface
       def __bubble__(:workflows), do: @workflows
       def __bubble__(:instances), do: @instances
+      def __bubble__(:cells), do: @cells
       def __bubble__(:data), do: @data
 
     #{functions}
@@ -623,8 +641,44 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       "loads: #{source(loads)}, cell_loads: #{source(cell_loads(d.read))}, topic: #{topic}, " <>
       "inputs: #{source(data_inputs(d.read))}, reads: #{source(data_reads(d))}, " <>
       "blocked: #{source(Enum.uniq(Enum.map(d.residue, & &1.subject)))}" <>
-      "#{display_meta(d)}#{data_default(d)}}"
+      "#{display_meta(d)}#{data_default(d)}#{batch_meta(d, s)}}"
   end
+
+  # How a source is read for every cell of a repeating group together
+  # (WTF-494): a reusable element's sources (its instances in cells) and a
+  # page's sources in a cell. One that reads nothing of its scope is read
+  # once (`shared`); what its value loads through what it reads is loaded
+  # for every cell first (`preloads`).
+  defp batch_meta(d, s) do
+    shared = if s.kind == :reusable and Map.get(d, :shared?, false), do: ", shared: true"
+    preloads = if s.kind == :reusable or d.cell != nil, do: preloads_meta(d)
+    "#{shared}#{preloads}"
+  end
+
+  # The relationships a source's value loads through what it reads
+  # (WTF-494): loaded for every cell together before it runs in each.
+  defp preloads_meta(%{residue: []} = d) do
+    preloads =
+      d.read
+      |> read_bindings()
+      |> Enum.flat_map(fn
+        %{loads: []} -> []
+        %{bind: :actor, loads: loads} -> [{[:actor], loads}]
+        %{bind: {:data, k}, loads: loads} -> [{[:data, k.path, k.element], loads}]
+        %{bind: {:state, k}, loads: loads} -> [{[:state, k.path, k.element, k.state], loads}]
+        %{bind: {:cell_data, g}, loads: loads} -> [{[:cell_data, g], loads}]
+        _ -> []
+      end)
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+      |> Enum.map(fn {what, loads} ->
+        List.to_tuple(what ++ [loads |> Enum.concat() |> Enum.uniq() |> Enum.sort()])
+      end)
+      |> Enum.sort()
+
+    if preloads == [], do: "", else: ", preloads: #{source(preloads)}"
+  end
+
+  defp preloads_meta(_d), do: ""
 
   # An element a "Display data" step sets (WTF-492): what the step showed
   # wins over its own source until a reset; with no source of its own

@@ -100,8 +100,13 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       refute param(pd, "bCardA", "param_pNote")
       refute param(pd, "bCardB", "param_pTask")
 
-      # Inside a repeating group's cell: its cell's.
+      # Inside a repeating group's cell: its cell's (WTF-494), only what
+      # the instance sets.
       assert %{cell: "bList"} = param(pd, "bCardC", "param_pTask")
+      refute param(pd, "bCardC", "param_pFlag")
+
+      assert %{cell: "bList", holder: "bRowDef", type: "boolean"} =
+               param(pd, "bRowC", "param_pFlag")
 
       # A nested instance's, in the reusable element.
       assert %{surface: "bCard", holder: "bBadgeDef"} = param(pd, "bBadge", "param_pLabel")
@@ -148,8 +153,9 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
 
       # Not set by that instance (its default is computed inside it).
       assert read.("bTaskPage", "bCardB", "param_pTask") == nil
-      # In a cell: not passed.
+      # In a cell: kept per cell, not read from the page.
       assert read.("bTaskPage", "bCardC", "param_pTitle") == nil
+      assert read.("bTaskPage", "bRowC", "param_pLabel") == nil
     end
 
     test "values load in order: a default after what it reads, a source after a property",
@@ -310,11 +316,17 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       page = files["lib/shop_web/live/task_live.html.heex"]
       assert page =~ ~s|Bubble.data(@bubble_data, "bCardA", "param_pTitle/bCard")|
 
-      # In a cell, every property is marked, set or not.
-      for p <- ~w(pTitle pFlag pCount pTask pTasks pDue pNote pHeading) do
+      # In a cell where the instance is not rendered per cell, what it sets
+      # is marked (WTF-494).
+      for p <- ~w(pTitle pTask) do
         assert page =~
                  "TODO(bubble:bCardC) its property param_#{p} is not passed (page_data_in_cell)"
       end
+
+      refute page =~ "TODO(bubble:bCardC) its property param_pFlag"
+
+      assert page =~
+               "TODO(bubble:bCardC) rendered once for every cell, not per cell (page_data_in_cell)"
     end
 
     test "values and defaults are data sources of their surfaces", %{files: files} do
@@ -334,8 +346,118 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
     end
 
     test "the data coverage counts the properties", %{spec: spec} do
-      assert %{"by_kind" => %{"param" => %{"total" => 26, "wired" => 17}}} =
+      assert %{"by_kind" => %{"param" => %{"total" => 26, "wired" => 24}}} =
                FrontendWorkflows.data_coverage(spec)
+    end
+  end
+
+  describe "an instance in a repeating group's cell (WTF-494)" do
+    test "is rendered per cell unless its reusable element searches with its instance",
+         %{spec: spec} do
+      assert Spec.per_cell?(spec, "bRowC")
+      assert %{surface: "bTaskPage", cell: "bList", holder: "bRowDef"} = spec.cells["bRowC"]
+
+      # Card's bFound searches with This Card's Query: once per cell.
+      refute Spec.per_cell?(spec, "bCardC")
+
+      assert [%{reason: :page_data_in_cell, detail: %{kind: "query"}}] =
+               spec.cells["bCardC"].residue
+
+      assert %{residue: [%{reason: :page_data_in_cell, detail: %{kind: "query"}}]} =
+               bound(spec, "bTaskPage", "bCardC", "param_pTask")
+
+      # Not per element: an instance outside a cell.
+      refute Spec.per_cell?(spec, "bCardA")
+    end
+
+    test "its thing and properties are computed per cell, after the list", %{spec: spec} do
+      assert %{
+               cell: "bList",
+               key: %{path: ["bRowC"], element: "param_pLabel/bRowDef"},
+               reads: [{:cell, "bList"}],
+               residue: []
+             } = bound(spec, "bTaskPage", "bRowC", "param_pLabel")
+
+      # A static-free value reads the list all the same: it is per cell.
+      assert %{reads: reads, residue: []} = bound(spec, "bTaskPage", "bRowC", "param_pQuery")
+      assert {:cell, "bList"} in reads
+
+      assert %{kind: :instance, key: %{path: ["bRowC"], element: "bRowDef"}, residue: []} =
+               Enum.find(
+                 Spec.data(spec, "bTaskPage"),
+                 &(&1.element == "bRowC" and &1.kind == :instance)
+               )
+
+      # Read in the cell's scope inside the reusable element.
+      assert Spec.read(
+               spec,
+               "bRowDef",
+               {:element_state, %{"element" => "bRowDef", "state" => "param_pLabel"}}
+             ) == {:data, %{path: [], element: "param_pLabel/bRowDef"}}
+
+      # Its workflows run (in the cell's scope, at run time).
+      assert %{blocked_by: [], residue: []} = Spec.workflow(spec, "bRowDef", "wRowPick")
+      assert %{blocked_by: [], residue: []} = Spec.workflow(spec, "bRowDef", "wRowShow")
+    end
+
+    test "the page lists its cells; the component gets the cell's scope", %{files: files} do
+      page = files["lib/shop_web/live/task_live/workflows.ex"]
+
+      assert page =~
+               ~r/\{"bList",\s*\[\s*\{"bRowC", ShopWeb\.Reusables\.Row\.Workflows\},\s*\{"bRowC-bRowChip", ShopWeb\.Reusables\.Chip\.Workflows\}\s*\]\}/
+
+      assert page =~ ~r/\{"bTags", \[\{"bTagC", ShopWeb\.Reusables\.Tag\.Workflows\}\]\}/
+
+      # A reusable element's own lists' cells (WTF-494): one level down.
+      row_module = files["lib/shop_web/components/reusables/row/workflows.ex"]
+
+      assert row_module =~
+               ~r/@cells \[\{"bRowSubs", \[\{"bSubChip", ShopWeb\.Reusables\.Chip\.Workflows\}\]\}\]/
+
+      assert page =~ "def __bubble__(:cells), do: @cells"
+      # Card is not rendered per cell: not listed.
+      refute page =~ ~s|{"bCardC", ShopWeb.Reusables.Card.Workflows}|
+
+      template = files["lib/shop_web/live/task_live.html.heex"]
+
+      assert template =~
+               ~s|scope={Bubble.nest(Bubble.cell_scope("", "bList", cell_blist, cell_blist_i), "bRowC")}|
+
+      assert template =~ ~s|scope="bCardC"|
+
+      # A search reading nothing of the instance is read once for every
+      # cell; the relationships a value loads through what it reads are
+      # loaded for every cell first.
+      row = files["lib/shop_web/components/reusables/row/workflows.ex"]
+      assert row =~ ~r/element: "bRowAny",[^}]*shared: true/s
+      refute row =~ ~r/element: "bRowShown",[^}]*shared: true/s
+    end
+
+    test "a reusable element nesting one that searches with its instance is not per cell" do
+      # Row nests Card (whose bFound searches with This Card's Query).
+      app =
+        put_in_app(
+          app(),
+          ~w(element_definitions row elements bRowCard),
+          %{
+            "id" => "bRowCard",
+            "type" => "CustomElement",
+            "properties" => %{
+              "custom_id" => "bCard",
+              "order" => 13,
+              "width" => 300,
+              "height" => 40
+            }
+          }
+        )
+
+      %{spec: spec, files: files} = build(app)
+      refute Spec.per_cell?(spec, "bRowC")
+
+      assert %{residue: [%{reason: :page_data_in_cell}]} =
+               bound(spec, "bTaskPage", "bRowC", "param_pLabel")
+
+      refute files["lib/shop_web/live/task_live/workflows.ex"] =~ ~s|{"bRowC", |
     end
   end
 end

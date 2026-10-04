@@ -141,11 +141,25 @@ for fixture in $fixtures; do
     # (below) must FAIL, every one of them, against this :omit render.
     if [[ "$fixture" == phoenix_enforced ]]; then
       cp "$root/test/support/target/phoenix/enforced_behavior.exs" test/enforced_behavior_test.exs
-      out="$(mix test test/enforced_behavior_test.exs 2>&1 || true)"
+      out="$(mix test --no-color test/enforced_behavior_test.exs 2>&1 || true)"
       rm test/enforced_behavior_test.exs
-      summary="$(grep -E '^[0-9]+ tests?, [0-9]+ failures?' <<<"$out" | tail -1)"
-      tests="$(sed -E 's/^([0-9]+) tests?.*/\1/' <<<"$summary")"
-      failed="$(sed -E 's/.* ([0-9]+) failures?.*/\1/' <<<"$summary")"
+      # ExUnit's summary: "N tests, M failures" up to Elixir 1.19,
+      # "Result: X/Y passed", "Result: N passed" or "Result: 0 tests" from
+      # 1.20.
+      summary="$(grep -E '^([0-9]+ tests?, [0-9]+ failures?|Result: )' <<<"$out" | tail -1)"
+      if [[ "$summary" =~ ^([0-9]+)\ tests?,\ ([0-9]+)\ failures? ]]; then
+        tests="${BASH_REMATCH[1]}"
+        failed="${BASH_REMATCH[2]}"
+      elif [[ "$summary" =~ ^Result:\ ([0-9]+)/([0-9]+)\ passed ]]; then
+        tests="${BASH_REMATCH[2]}"
+        failed=$((BASH_REMATCH[2] - BASH_REMATCH[1]))
+      elif [[ "$summary" =~ ^Result:\ ([0-9]+)\ passed ]]; then
+        tests="${BASH_REMATCH[1]}"
+        failed=0
+      else
+        tests=0
+        failed=0
+      fi
       if [[ -z "$summary" || "$tests" == 0 || "$tests" != "$failed" ]]; then
         echo "$out" | tail -40
         echo "the enforcement tests must all fail without policies (privacy: :omit): $summary" >&2
@@ -155,7 +169,9 @@ for fixture in $fixtures; do
       # ... and fail on their assertions: what the policies would have
       # prevented happened. Not on a missing table, module or function
       # (a broken fixture fails every test too, proving nothing).
-      asserted="$(grep -cE '^ +(Assertion with |match \(=\) failed|\*\* \(RuntimeError\) expected response with status)' <<<"$out" || true)"
+      # `assert`, `match`, `refute` (Expected false or nil) and a response
+      # status: each failure's first line.
+      asserted="$(grep -cE '^ +(Assertion with |match \(=\) failed|Expected false or nil, got|Expected truthy, got|\*\* \(RuntimeError\) expected response with status)' <<<"$out" || true)"
       if [[ "$asserted" != "$failed" ]] ||
         grep -qE 'undefined_table|UndefinedFunctionError|Postgrex\.Error|CompileError|KeyError|FunctionClauseError' <<<"$out"; then
         echo "$out" | tail -60

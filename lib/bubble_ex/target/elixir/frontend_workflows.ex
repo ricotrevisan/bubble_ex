@@ -63,7 +63,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     * `:unsupported_option` - a list change on a field that is not a list
     * `:page_data_in_cell` (`detail.kind` `"display"`, `"list"`,
       `"instance"`) - a "Display data" step into a repeating group's cell
-      from outside it, or a list or an instance there
+      from outside it, or a list or an instance there (a reusable instance
+      in a cell is otherwise rendered per cell, WTF-494: `Spec.cells`)
 
   ## Coverage
 
@@ -186,6 +187,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       ctx = Map.put(ctx, :states, states)
       ctx = Map.put(ctx, :view, %Spec{elements: elements, surfaces: surfaces_view(ctx)})
 
+      # Reusable instances in repeating group cells (WTF-494), and the
+      # reusable elements each reusable element nests outside its cells.
+      {in_cells, nested} = cell_structure(lowered.elements, ctx)
+      ctx = Map.put(ctx, :nested, nested)
+
       # The page's data (WTF-420): its sources are bound against every
       # source that lowered, then only what loads is read by the rest.
       page_data = Keyword.get(opts, :page_data)
@@ -224,7 +230,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
          surfaces: surfaces,
          elements: elements,
          diagnostics: diagnostics,
-         data_index: ctx.data
+         data_index: ctx.data,
+         cells: Data.cell_instances(in_cells, data, ctx.data, nested)
        }}
     end
   end
@@ -272,6 +279,30 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     if map_size(kept) == map_size(displayed),
       do: {ctx, data, bound},
       else: bind_data_and_workflows(kept, lowered, page_data, ctx)
+  end
+
+  # The reusable instances in a repeating group's cell of their surface
+  # (instance => `%{surface, cell, holder}`), and for each reusable element
+  # the reusable elements of its instances outside its cells.
+  defp cell_structure(elements, ctx) do
+    instances =
+      for {id, %{kind: :element, instance_of: holder} = e} <- elements,
+          is_binary(holder),
+          do: {id, bubble(e.surface), holder, cell_of(e, ctx, 0)}
+
+    in_cells =
+      for {id, surface, holder, rg} <- instances,
+          rg != nil,
+          into: %{},
+          do: {id, %{surface: surface, cell: rg, holder: holder}}
+
+    nested =
+      for {_id, surface, holder, nil} <- instances,
+          reduce: %{} do
+        acc -> Map.update(acc, surface, [holder], &Enum.uniq([holder | &1]))
+      end
+
+    {in_cells, Map.new(nested, fn {k, v} -> {k, Enum.sort(v)} end)}
   end
 
   # The element a bound display step sets: the instance for an instance's

@@ -134,6 +134,22 @@ defmodule <%= @web %>.BubbleData do
   cell's thing, not its position. A list shows at most its page size, capped by
   `:max_items`.
 
+  ## Reusable instances in repeating group cells (WTF-494)
+
+  An instance in a cell (`__bubble__(:cells)`) has a scope per cell, the
+  cell's thing's (`<%= @web %>.Bubble.cell_scope/4`): its thing and the
+  properties it sets are computed in the cell, and its reusable element's
+  sources run in that scope. Each source is read for every cell together,
+  never once per cell: what its value reads through relationships is
+  loaded for all the cells first (`preloads`), things given as unique IDs
+  are read at once, the relationships the bindings read load once per
+  resource, and a source that reads nothing of its scope (`shared`) runs
+  once. The cells are the list as the current user read it: a thing the
+  user may not read has no cell, no instance and no scope, and the page
+  accepts events only in the scopes it read (`@bubble_cells`). At most
+  three levels of instances in cells (`max_cell_depth/0`) and `max_cells/0`
+  scopes (the first ones; logged once past that).
+
   ## Unverified Bubble behavior
 
   To confirm by replay (WTF-358): a page's thing is read from the URL path
@@ -154,6 +170,7 @@ defmodule <%= @web %>.BubbleData do
 
   alias <%= @module %>.Bubble.Changes
   alias <%= @module %>.Workflows.Runtime
+  alias <%= @web %>.Bubble
   alias <%= @web %>.BubbleWorkflows
 
   @id ~r/\A[0-9]{1,20}x[0-9]{1,24}\z/
@@ -255,8 +272,12 @@ defmodule <%= @web %>.BubbleData do
           load_surface(socket, module, scope, acc)
         end)
 
+      # The reusable instances in cells (WTF-494): one scope per cell read.
+      {data, by_source, cells} = load_cells(socket, page, {data, by_source})
+
       socket
       |> assign(:bubble_data, data)
+      |> BubbleWorkflows.put_cells(cells)
       |> assign(:bubble_data_actor, data_actor(socket))
       |> assign(:bubble_source_topics, by_source)
       |> subscribe(all_topics(by_source))
@@ -271,6 +292,7 @@ defmodule <%= @web %>.BubbleData do
 
       socket
       |> assign(:bubble_data, %{})
+      |> BubbleWorkflows.put_cells([])
       |> assign(:bubble_data_warned, not data_access?() and connected?(socket))
     end
   end
@@ -328,7 +350,7 @@ defmodule <%= @web %>.BubbleData do
   # The subscriptions follow what each source last read.
   defp load_inputs(socket, page, changed) do
     socket = assign(socket, :bubble_data_inputs, MapSet.new())
-    affected = affected(page, changed)
+    affected = affected(socket, page, changed)
 
     cond do
       not (data_access?() and connected?(socket)) or affected == :all ->
@@ -339,6 +361,11 @@ defmodule <%= @web %>.BubbleData do
 
       MapSet.size(affected) == 0 ->
         socket
+
+      # A list whose cells hold reusable instances (WTF-494): its cells,
+      # and so the instances' scopes, may change.
+      Enum.any?(cell_lists(socket, page), &MapSet.member?(affected, &1)) ->
+        load(socket, page, actor_fresh?: true)
 
       true ->
         data =
@@ -354,8 +381,11 @@ defmodule <%= @web %>.BubbleData do
             load_surface(socket, module, scope, acc, affected)
           end)
 
+        {data, by_source, cells} = load_cells(socket, page, {data, by_source}, affected)
+
         socket
         |> assign(:bubble_data, data)
+        |> BubbleWorkflows.put_cells(cells)
         |> assign(:bubble_source_topics, by_source)
         |> subscribe(all_topics(by_source))
     end
@@ -372,8 +402,11 @@ defmodule <%= @web %>.BubbleData do
   # reading a changed input, then those reading them (their data, or the
   # list of the repeating group whose cells they fill), to a fixpoint.
   # `:all` when a source does not say what it reads.
-  defp affected(page, changed) do
-    sources = for {_scope, m} <- BubbleWorkflows.surfaces(page), s <- sources(m), do: s
+  defp affected(socket, page, changed) do
+    sources =
+      for {_scope, m} <- socket |> BubbleWorkflows.surfaces(page) |> Enum.uniq_by(&elem(&1, 1)),
+          s <- sources(m),
+          do: s
 
     if Enum.all?(sources, &is_list(Map.get(&1, :inputs))) do
       direct =
@@ -399,6 +432,14 @@ defmodule <%= @web %>.BubbleData do
           do: s.element
 
     if MapSet.size(next) == MapSet.size(affected), do: affected, else: spread(sources, next)
+  end
+
+  # The repeating groups whose cells hold reusable instances (WTF-494).
+  defp cell_lists(socket, page) do
+    for {_scope, m} <- socket |> BubbleWorkflows.surfaces(page) |> Enum.uniq_by(&elem(&1, 1)),
+        {rg, _entries} <- BubbleWorkflows.cells(m),
+        uniq: true,
+        do: rg
   end
 
   # What reads an instance's thing names the instance as well as its holder.
@@ -457,94 +498,432 @@ defmodule <%= @web %>.BubbleData do
 
   # Every source of the surface, or only those whose element is in `only`;
   # the data, and the topics each source's value needs (by source).
-  defp load_surface(socket, module, scope, acc, only \\ nil) do
+  defp load_surface(socket, module, scope, acc, only \\ nil),
+    do: load_batch(socket, module, [scope], acc, only, scope)
+
+  # The sources of `module` in every scope of `scopes` (one, or the same
+  # reusable instance in every cell of a repeating group, WTF-494), each
+  # source read for all of them together before the next: see
+  # `read_source/7`. `id` names the batch in the topics by source.
+  defp load_batch(socket, module, scopes, acc, only, id) do
     {cells, own} =
       module
       |> sources()
       |> Enum.filter(&(is_nil(only) or MapSet.member?(only, &1.element)))
       |> Enum.split_with(& &1.cell)
 
+    batch? = length(scopes) > 1
+
     acc =
-      Enum.reduce(own, acc, fn source, {data, by_source} ->
-        ctx = BubbleWorkflows.data_ctx(socket, module, scope, data)
-        key_scope = if source.instance, do: BubbleWorkflows.scope(ctx, [source.instance]), else: scope
-        key = {key_scope, source.element}
-
-        # A reusable element property's default is for the instances that
-        # set no value (theirs is read first, where they are).
-        if Map.get(source, :default, false) and Map.has_key?(data, key) do
-          {data, Map.delete(by_source, source_id(scope, source))}
-        else
-          case value(socket, module, source, key, ctx) do
-            {:ok, value} ->
-              {Map.put(data, key, value),
-               Map.put(by_source, source_id(scope, source), topics(MapSet.new(), source, value))}
-
-            :none ->
-              {data, Map.put(by_source, source_id(scope, source), MapSet.new())}
+      Enum.reduce(own, acc, fn source, acc ->
+        units =
+          for scope <- scopes do
+            key_scope = if source.instance, do: Bubble.nest(scope, source.instance), else: scope
+            key = {key_scope, source.element}
+            %{scope: scope, cell: nil, key: key, shown: key}
           end
-        end
+
+        read_source(socket, module, source, units, acc, id, batch?)
       end)
 
-    # A group in a repeating group's cell holds a value per cell.
-    Enum.reduce(cells, acc, fn source, {data, by_source} ->
-      items = data |> Map.get({scope, source.cell}) |> List.wrap()
-      # The list's own source may have loaded these already (the same
-      # relationship for a binding): load only what is missing.
-      items =
-        Runtime.load_page(
-          items,
-          source.cell_loads,
-          Runtime.root(nil, <%= if @enforced? do %>BubbleWorkflows.current_actor(socket)<% else %>socket.assigns[:current_user]<% end %>),
-          related_cap(),
-          lazy?: true
-        )
-
-      values =
-        for {item, i} <- Enum.with_index(items, 1) do
-          ctx = BubbleWorkflows.data_ctx(socket, module, scope, data, {item, i})
-
-          # Shown per cell by the cell's thing (WTF-492), not its position:
-          # a re-sorted list keeps what each thing's cell showed.
-          key = {scope, source.element, {:cell, Runtime.id(item)}}
-
-          case value(socket, module, %{source | loads: []}, key, ctx) do
-            {:ok, value} -> {i, value}
-            :none -> {i, nil}
-          end
+    # A group in a repeating group's cell holds a value per cell, and so
+    # does an instance there (its thing and properties, under its scope in
+    # that cell, WTF-494): read for every cell together.
+    Enum.reduce(cells, acc, fn source, {data, _by_source} = acc ->
+      units =
+        for scope <- scopes, {item, i} <- cell_items(data, scope, source.cell) do
+          cell_unit(scope, source, item, i)
         end
 
-      # Load relationships across all cells together, not one query per cell.
-      loaded =
-        values
-        |> Enum.map(&elem(&1, 1))
-        |> Runtime.load_page(source.loads, Runtime.root(nil, <%= if @enforced? do %>BubbleWorkflows.current_actor(socket)<% else %>socket.assigns[:current_user]<% end %>), related_cap())
+      # The relationships the source reads through the cell's thing, for
+      # every cell at once, read as the current user.
+      items =
+        units
+        |> Enum.map(fn %{cell: {item, _}} -> item end)
+        |> load_values(source.cell_loads, data_actor(socket))
 
-      {data, topics} =
-        Enum.zip(Enum.map(values, &elem(&1, 0)), loaded)
-        |> Enum.reduce({data, MapSet.new()}, fn {i, value}, {data, topics} ->
-          {Map.put(data, {scope, source.element, i}, value), topics(topics, source, value)}
-        end)
+      units =
+        Enum.zip_with(units, items, fn %{cell: {_, i}} = unit, item -> %{unit | cell: {item, i}} end)
 
-      {data, Map.put(by_source, source_id(scope, source), topics)}
+      read_source(socket, module, source, units, acc, id, true)
     end)
   end
 
-  defp source_id(scope, source), do: {scope, source.instance, source.element, source.fun}
-
-  # What a source's element shows: what a "Display data" step showed in it
-  # (WTF-492), which wins over its own source until a reset, else its
-  # source. An element with no source of its own (`read: :displayed`)
-  # shows nothing before a step does (`:none`: an instance's thing is left
-  # as the page gave it).
-  defp value(socket, module, source, key, ctx) do
-    case Map.fetch(Map.get(socket.assigns, :bubble_displayed) || %{}, key) do
-      {:ok, shown} -> {:ok, shown(shown, source, ctx)}
-      :error when source.read == :displayed -> :none
-      :error -> {:ok, run(module, source, ctx)}
+  # The items of a repeating group's list, with their 1-based index.
+  defp cell_items(data, scope, rg) do
+    case Map.get(data, {scope, rg}) do
+      list when is_list(list) -> Enum.with_index(list, 1)
+      _ -> []
     end
   end
 
+  # A cell's value: a group's by the cell's index (what "Display data"
+  # showed in it by the cell's thing, WTF-492, so a re-sorted list keeps
+  # what each thing's cell showed); an instance's (WTF-494) under its scope
+  # in the cell, the cell's thing's.
+  defp cell_unit(scope, %{instance: instance} = source, item, i) when is_binary(instance) do
+    key = {Bubble.nest(Bubble.cell_scope(scope, source.cell, item, i), instance), source.element}
+    %{scope: scope, cell: {item, i}, key: key, shown: key}
+  end
+
+  defp cell_unit(scope, source, item, i),
+    do: %{
+      scope: scope,
+      cell: {item, i},
+      key: {scope, source.element, i},
+      shown: {scope, source.element, {:cell, Runtime.id(item)}}
+    }
+
+  # One source in every unit (`%{scope, cell, key, shown}`): its value is
+  # kept under `key`. A reusable element property's default is only for
+  # the instances that set no value (theirs is read first, where they
+  # are). Read together (`batch?`, WTF-494), a source never queries once
+  # per unit: what its value reads through relationships is loaded first
+  # for every unit (`preloads`), a thing it gives as a unique ID is read
+  # with the others' (`records/5`), its own relationships load for every
+  # unit at once, and one that reads nothing of its scope (`shared`) runs
+  # once.
+  defp read_source(socket, module, source, units, {data, by_source}, id, batch?) do
+    units =
+      if Map.get(source, :default, false),
+        do: Enum.reject(units, &Map.has_key?(data, &1.key)),
+        else: units
+
+    {data, states, batch} = preload(socket, source, units, data, batch?)
+    actor = data_actor(socket)
+    displayed = Map.get(socket.assigns, :bubble_displayed) || %{}
+    shared = if batch? and Map.get(source, :shared, false), do: :pending
+
+    {values, _shared} =
+      Enum.map_reduce(units, shared, fn unit, shared ->
+        ctx = unit_ctx(socket, module, unit, data, states, batch)
+
+        case Map.fetch(displayed, unit.shown) do
+          {:ok, shown} ->
+            {{unit, {:ok, shown(shown, source, ctx)}}, shared}
+
+          :error when source.read == :displayed ->
+            {{unit, :none}, shared}
+
+          :error ->
+            case shared do
+              {:done, value} ->
+                {{unit, {:ok, value}}, shared}
+
+              :pending ->
+                value = run(module, source, ctx)
+                {{unit, {:ok, value}}, {:done, value}}
+
+              nil ->
+                {{unit, {:ok, run(module, source, ctx)}}, nil}
+            end
+        end
+      end)
+
+    values = if batch?, do: settle(values, source, actor), else: values
+
+    {data, topics} =
+      Enum.reduce(values, {data, MapSet.new()}, fn
+        {unit, {:ok, value}}, {data, topics} ->
+          {Map.put(data, unit.key, value), topics(topics, source, value)}
+
+        {_unit, :none}, acc ->
+          acc
+      end)
+
+    {data, Map.put(by_source, {id, source.instance, source.element, source.fun}, topics)}
+  end
+
+  # In a batch, the context carries what `preload/5` read (`batch`); the
+  # actor stays the one the policies authorize.
+  defp unit_ctx(socket, module, unit, data, states, batch) do
+    ctx = BubbleWorkflows.data_ctx(socket, module, unit.scope, data, unit.cell)
+    if batch, do: %{ctx | batch: batch, states: states}, else: ctx
+  end
+
+  # Before a source runs in every unit (WTF-494): what its value reads
+  # through relationships (the current user's, a custom state's, a source's
+  # it reads), read again for every unit at once, through Ash with the
+  # current user as the actor (never reused from what was loaded before:
+  # the current user's own relationships are loaded for the policies,
+  # without authorization). Each unit's `load_value/3` then finds them:
+  # the records read, each with the paths read through it
+  # (`batch.loaded`), and the current user's in a copy (`batch.actor`,
+  # with `batch.actor_paths`), never in the actor the policies read.
+  defp preload(socket, source, units, data, batch?) do
+    actor = data_actor(socket)
+    states = Map.get(socket.assigns, :bubble_states) || %{}
+
+    if batch? do
+      init = {data, states, %{actor: nil, actor_paths: MapSet.new(), loaded: %{}}}
+
+      Enum.reduce(Map.get(source, :preloads, []), init, fn
+        {:actor, loads}, {data, states, batch} ->
+          [copy] = load_values([actor], loads, actor)
+          {data, states, %{batch | actor: copy, actor_paths: Enum.into(loads, batch.actor_paths)}}
+
+        {:data, path, element, loads}, {data, states, batch} ->
+          keys = Enum.uniq(for u <- units, do: {nest_path(u.scope, path), element})
+          {data, batch} = load_keys(data, keys, loads, actor, batch)
+          {data, states, batch}
+
+        {:state, path, element, state, loads}, {data, states, batch} ->
+          keys = Enum.uniq(for u <- units, do: {nest_path(u.scope, path), element, state})
+          {states, batch} = load_keys(states, keys, loads, actor, batch)
+          {data, states, batch}
+
+        {:cell_data, group, loads}, {data, states, batch} ->
+          keys = Enum.uniq(for %{cell: {_, i}} = u <- units, do: {u.scope, group, i})
+          {data, batch} = load_keys(data, keys, loads, actor, batch)
+          {data, states, batch}
+      end)
+    else
+      {data, states, nil}
+    end
+  end
+
+  defp nest_path(scope, path), do: Enum.reduce(path, scope, &Bubble.nest(&2, &1))
+
+  # The values under `keys` read again with `loads`; each record read is
+  # kept in the batch with the paths read through it.
+  defp load_keys(map, keys, loads, actor, batch) do
+    present = Enum.filter(keys, &Map.has_key?(map, &1))
+    loaded = load_values(Enum.map(present, &Map.fetch!(map, &1)), loads, actor)
+
+    read =
+      loaded
+      |> Enum.flat_map(&records_in/1)
+      |> Enum.reduce(batch.loaded, fn record, acc ->
+        case record_key(record) do
+          nil ->
+            acc
+
+          key ->
+            paths = acc |> Map.get(key, {record, MapSet.new()}) |> elem(1)
+            Map.put(acc, key, {record, Enum.into(loads, paths)})
+        end
+      end)
+
+    {Map.merge(map, Map.new(Enum.zip(present, loaded))), %{batch | loaded: read}}
+  end
+
+  defp record_key(%{__struct__: module, id: id}) when not is_nil(id), do: {module, id}
+  defp record_key(_record), do: nil
+
+  # Read together: the things given as unique IDs read at once (one read
+  # per resource), then the relationships the page's bindings read through
+  # the source, for every unit at once.
+  defp settle(values, source, actor) do
+    values
+    |> resolve(actor)
+    |> then(fn values ->
+      loaded =
+        values
+        |> Enum.map(fn
+          {_unit, {:ok, value}} -> value
+          {_unit, :none} -> nil
+        end)
+        |> load_values(source.loads, actor)
+
+      Enum.zip_with(values, loaded, fn
+        {unit, {:ok, _}}, value -> {unit, {:ok, value}}
+        none, _ -> none
+      end)
+    end)
+  rescue
+    error ->
+      Logger.error(
+        "bubble page data #{inspect(source.element)} failed: #{Exception.format_banner(:error, error)}"
+      )
+
+      Enum.map(values, fn {unit, _} -> {unit, {:ok, nil}} end)
+  end
+
+  # The things `records/5` left as unique IDs in a batch (`{:bubble_ids,
+  # ...}`), read once per resource, through Ash with the actor, like
+  # `records/5` reads them one by one.
+  defp resolve(values, actor) do
+    wanted =
+      for {_unit, {:ok, {:bubble_ids, resource, value, list?, page_size}}} <- values,
+          id <- ids_of(value, list?, page_size),
+          reduce: %{} do
+        acc -> Map.update(acc, resource, MapSet.new([id]), &MapSet.put(&1, id))
+      end
+
+    found = Map.new(wanted, fn {resource, ids} -> {resource, read_ids(actor, resource, ids)} end)
+
+    Enum.map(values, fn
+      {unit, {:ok, {:bubble_ids, resource, value, list?, page_size}}} ->
+        {unit, {:ok, from_ids(Map.get(found, resource, %{}), value, list?, page_size)}}
+
+      other ->
+        other
+    end)
+  end
+
+  defp ids_of(value, true, page_size),
+    do: value |> Enum.take(cap(page_size)) |> Enum.filter(&is_binary/1)
+
+  defp ids_of(value, false, _page_size),
+    do: if(is_binary(value) and Regex.match?(@id, value), do: [value], else: [])
+
+  defp from_ids(found, value, true, page_size) do
+    value
+    |> Enum.take(cap(page_size))
+    |> Enum.map(fn
+      id when is_binary(id) -> Map.get(found, id)
+      record -> record
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp from_ids(found, id, false, _page_size), do: Map.get(found, id)
+
+  defp read_ids(actor, resource, ids) do
+    ids = MapSet.to_list(ids)
+    [pk] = Ash.Resource.Info.primary_key(resource)
+    filter = [{pk, [in: ids]}]
+
+    resource
+    |> Ash.Query.new()
+    |> Ash.Query.filter(^filter)
+    |> Ash.Query.limit(length(ids))
+    |> Ash.read(actor: actor, authorize?: true)
+    |> case do
+      {:ok, records} ->
+        Map.new(records, &{Map.get(&1, pk), &1})
+
+      {:error, error} ->
+        failed(Ash.Query.new(resource), error)
+        %{}
+    end
+  end
+
+  # Values (a thing, a list of things, anything else) with relationships
+  # `loads` loaded, one load per resource for all of them; in order.
+  defp load_values(values, loads, actor, opts \\ [])
+  defp load_values(values, [], _actor, _opts), do: values
+
+  defp load_values(values, loads, actor, opts) do
+    by_resource =
+      values
+      |> Enum.flat_map(&records_in/1)
+      |> Enum.group_by(& &1.__struct__)
+      |> Map.new(fn {resource, records} ->
+        {resource, Runtime.load_page(records, loads, Runtime.root(nil, actor), related_cap(), opts)}
+      end)
+
+    {loaded, _} = Enum.map_reduce(values, by_resource, &take_loaded/2)
+    loaded
+  end
+
+  defp records_in(list) when is_list(list), do: Enum.flat_map(list, &records_in/1)
+
+  defp records_in(%{__struct__: module} = record),
+    do: if(Ash.Resource.Info.resource?(module), do: [record], else: [])
+
+  defp records_in(_value), do: []
+
+  defp take_loaded(list, acc) when is_list(list), do: Enum.map_reduce(list, acc, &take_loaded/2)
+
+  defp take_loaded(%{__struct__: module} = record, acc) do
+    case Map.get(acc, module) do
+      [loaded | rest] -> {loaded, Map.put(acc, module, rest)}
+      _ -> {record, acc}
+    end
+  end
+
+  defp take_loaded(value, acc), do: {value, acc}
+
+  # The reusable instances in repeating group cells (WTF-494): for every
+  # surface, each instance in the cells of its lists, one scope per cell
+  # (`<%= @web %>.Bubble.cell_scope/4`), read for every cell together
+  # (`load_batch/6`); then the instances in their own lists' cells, at
+  # most `max_cell_depth/0` levels down and `max_cells/0` scopes in all.
+  # The cells are those of the lists just read, as the current user: a
+  # thing the user may not read has no cell, and no scope.
+  defp load_cells(socket, page, {data, by_source}, only \\ nil),
+    do: cell_rounds(socket, BubbleWorkflows.surfaces(page), {data, by_source}, only, [], 0)
+
+  defp cell_rounds(_socket, [], {data, by_source}, _only, cells, _depth),
+    do: {data, by_source, cells}
+
+  defp cell_rounds(socket, outer, {data, by_source}, only, cells, depth) do
+    # Each instance's scope in every cell (instances before the ones they
+    # nest, so their properties are read first), in the lists' order.
+    templates =
+      for({scope, module} <- outer,
+          {rg, entries} <- BubbleWorkflows.cells(module),
+          {{rel, inner}, n} <- Enum.with_index(entries),
+          {item, i} <- cell_items(data, scope, rg),
+          do: {{rg, n, rel, inner}, Bubble.cell_scope(scope, rg, item, i) <> "-" <> rel})
+      |> Enum.uniq_by(&elem(&1, 1))
+      |> Enum.sort_by(fn {{rg, n, rel, _}, _} -> {n, rg, rel} end)
+
+    {kept, dropped} =
+      if depth >= max_cell_depth(),
+        do: {[], templates},
+        else: Enum.split(templates, max(max_cells() - length(cells), 0))
+
+    if dropped != [], do: warn_capped()
+
+    if kept == [] do
+      {data, by_source, cells}
+    else
+      batches =
+        kept
+        |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+        |> Enum.sort_by(fn {{rg, n, rel, _}, _} -> {n, rg, rel} end)
+
+      {acc, new} =
+        Enum.reduce(batches, {{data, by_source}, []}, fn {{rg, _n, rel, inner}, scopes},
+                                                       {acc, new} ->
+          acc = load_batch(socket, inner, scopes, acc, only, {:cells, rg, rel, inner})
+          {acc, new ++ Enum.map(scopes, &{&1, inner})}
+        end)
+
+      cell_rounds(socket, new, acc, only, cells ++ new, depth + 1)
+    end
+  end
+
+  # Logged once per page process, not on every read (a keystroke reads).
+  defp warn_capped do
+    if Process.get(:bubble_cells_capped) != true do
+      Process.put(:bubble_cells_capped, true)
+
+      Logger.warning(
+        "bubble page data: reusable instances in repeating group cells past " <>
+          "#{max_cell_depth()} levels or #{max_cells()} scopes are not read " <>
+          "(they show no data and their events are ignored)"
+      )
+    end
+  end
+
+  @doc """
+  The most reusable-instance scopes in repeating group cells a page reads
+  (`:max_cells`, default `max_items/0` x 10); the first ones are kept.
+  """
+  def max_cells do
+    case Keyword.get(Application.get_env(:<%= @app %>, __MODULE__, []), :max_cells) do
+      n when is_integer(n) and n >= 0 -> n
+      _ -> max_items() * 10
+    end
+  end
+
+  @doc """
+  How many levels of reusable instances in cells (an instance's own lists'
+  cells, ...) a page reads (`:max_cell_depth`, default 3).
+  """
+  def max_cell_depth do
+    case Keyword.get(Application.get_env(:<%= @app %>, __MODULE__, []), :max_cell_depth) do
+      n when is_integer(n) and n >= 0 -> n
+      _ -> 3
+    end
+  end
+
+  # What a source's element shows: what a "Display data" step showed in it
+  # (WTF-492), which wins over its own source until a reset, read as the
+  # current user (in a batch, its relationships load with the others').
   defp shown(shown, source, ctx) do
     page_size =
       case Map.get(source, :display) do
@@ -552,9 +931,11 @@ defmodule <%= @web %>.BubbleData do
         _ -> nil
       end
 
-    shown
-    |> then(&show(ctx, &1, page_size))
-    |> Runtime.load_page(source.loads, Runtime.root(nil, ctx.actor), related_cap())
+    shown = show(ctx, shown, page_size)
+
+    if ctx.batch,
+      do: shown,
+      else: Runtime.load_page(shown, source.loads, Runtime.root(nil, ctx.actor), related_cap())
   rescue
     error ->
       Logger.error(
@@ -591,6 +972,17 @@ defmodule <%= @web %>.BubbleData do
   # read through it. A source that fails reads nothing (logged).
   defp run(_module, %{fun: nil}, _ctx), do: nil
 
+  defp run(module, source, %{batch: %{}} = ctx) do
+    apply(module, source.fun, [ctx])
+  rescue
+    error ->
+      Logger.error(
+        "bubble page data #{inspect(source.element)} failed: #{Exception.format_banner(:error, error)}"
+      )
+
+      nil
+  end
+
   defp run(module, source, ctx) do
     module
     |> apply(source.fun, [ctx])
@@ -611,10 +1003,41 @@ defmodule <%= @web %>.BubbleData do
   the related lists (`related_cap/0`, as for the sources' own loads).
   """
   def load_value(value, loads, ctx) do
-    if data_access?(),
-      do: Runtime.load_page(value, loads, Runtime.root(nil, ctx.actor), related_cap()),
-      else: value
+    batch = Map.get(ctx, :batch)
+    actor? = not is_nil(value) and value === ctx.actor
+
+    cond do
+      not data_access?() -> value
+      actor? and actor_read?(batch, loads) -> batch.actor
+      not actor? and read?(batch, value, loads) -> value
+      true -> Runtime.load_page(value, loads, Runtime.root(nil, ctx.actor), related_cap())
+    end
   end
+
+  # Read for every cell together (WTF-494): what the batch read first, as
+  # the current user, for every cell, is not read again: these very
+  # records, read with these paths. The current user's relationships come
+  # from the batch's copy, never from the actor the policies read (loaded
+  # without authorization).
+  defp actor_read?(%{actor: copy, actor_paths: paths}, loads) when not is_nil(copy),
+    do: Enum.all?(loads, &MapSet.member?(paths, &1))
+
+  defp actor_read?(_batch, _loads), do: false
+
+  defp read?(%{loaded: loaded}, value, loads) do
+    records = records_in(value)
+
+    records != [] and
+      Enum.all?(records, fn record ->
+        case Map.get(loaded, record_key(record)) do
+          {^record, paths} -> Enum.all?(loads, &MapSet.member?(paths, &1))
+          _ -> false
+        end
+      end)
+  end
+
+  defp read?(_batch, _value, _loads), do: false
+
 
   @doc """
   The most related records a loaded relationship reads per record:
@@ -727,6 +1150,13 @@ defmodule <%= @web %>.BubbleData do
   `max_items/0`, in its order); anything else is the value itself.
   """
   def records(ctx, resource, value, list?, page_size \\ nil)
+
+  # Read for every cell together (WTF-494): unique IDs are read with the
+  # other cells' (`{:bubble_ids, ...}`, resolved by the loader).
+  def records(%{batch: %{}}, resource, value, list?, page_size)
+      when resource != nil and (is_binary(value) or (list? and is_list(value))),
+      do: {:bubble_ids, resource, value, list? and is_list(value), page_size}
+
   def records(_ctx, nil, value, true, page_size) when is_list(value),
     do: Enum.take(value, cap(page_size))
   def records(_ctx, nil, value, _list?, _page_size), do: value

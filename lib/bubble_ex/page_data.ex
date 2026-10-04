@@ -30,9 +30,8 @@ defmodule BubbleEx.PageData do
   | a property a reusable-element instance sets (WTF-493) | `:param` | its value, computed where the instance is (`holder`: the reusable element; `param`: `"param_<id>"`) |
   | a reusable element property's default value | `:param` | computed inside the reusable element (`element` and `holder` are the reusable element), for the instances that do not set it |
 
-  An instance in a repeating group's cell lists every property its
-  reusable element declares, with a nil `value` for one it does not set
-  (the target cannot pass any of them there yet).
+  An instance in a repeating group's cell (WTF-494) lists the properties
+  it sets, like any other: their values are computed per cell (`cell`).
 
   A property set to a static value is that value as the property's type
   (`"true"` as a yes/no, `"1.5"` as a number); one the instance does not
@@ -322,18 +321,15 @@ defmodule BubbleEx.PageData do
   # --- reusable element properties (WTF-493) ------------------------------------------
 
   # The properties an instance sets, each computed where the instance is
-  # (its parent's scope, a cell's when in one).
+  # (its parent's scope, a cell's when in one: per cell, WTF-494).
   defp instance_params(id, props, ppath, at, ctx) do
     node = Tree.node(ctx.env.tree, id)
     holder = node && node.instance_of
     declared = declared(holder, ctx)
 
-    # In a repeating group's cell the instance is not a surface of its own
-    # yet: every property it declares is listed, set or not, so the
-    # binding marks each one (none is passed there).
     for {param, type} <- Enum.sort(declared),
         key = "param_" <> param,
-        props[key] != nil or at.cell != nil do
+        props[key] != nil do
       param_source(%{
         element: id,
         holder: holder,

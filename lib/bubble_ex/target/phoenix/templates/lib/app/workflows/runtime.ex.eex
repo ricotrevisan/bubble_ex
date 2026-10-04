@@ -284,10 +284,16 @@ defmodule <%= @module %>.Workflows.Runtime do
   def load([%{__struct__: resource} | _] = values, loads, ctx) do
     # Load a result set together: one Ash.load per row is an N+1 query.
     if Enum.all?(values, &match?(%{__struct__: ^resource}, &1)) do
-      # bubble:ignores_privacy scaffold:workflow_authorize
-      case Ash.load(values, load_statement(loads), actor: ctx.actor, authorize?: ctx.authorize?) do
-        {:ok, loaded} -> loaded
-        {:error, _} -> values
+      statement = load_statement(loads)
+
+      try do
+        # bubble:ignores_privacy scaffold:workflow_authorize
+        case Ash.load(values, statement, actor: ctx.actor, authorize?: ctx.authorize?) do
+          {:ok, loaded} -> loaded
+          {:error, error} -> unloaded(values, statement, error)
+        end
+      rescue
+        error -> unloaded(values, statement, error)
       end
     else
       Enum.map(values, &load(&1, loads, ctx))
@@ -301,8 +307,10 @@ defmodule <%= @module %>.Workflows.Runtime do
     # bubble:ignores_privacy scaffold:workflow_authorize
     case Ash.load(record, load_statement(loads), actor: ctx.actor, authorize?: ctx.authorize?) do
       {:ok, loaded} -> loaded
-      {:error, _} -> record
+      {:error, error} -> unloaded(record, load_statement(loads), error)
     end
+  rescue
+    error -> unloaded(record, load_statement(loads), error)
   end
 
   def load(value, _loads, _ctx), do: value
@@ -337,9 +345,38 @@ defmodule <%= @module %>.Workflows.Runtime do
 
     case Ash.load(value, statement, actor: ctx.actor, authorize?: true, lazy?: lazy?) do
       {:ok, loaded} -> loaded
-      {:error, _} -> value
+      {:error, error} -> unloaded(value, statement, error)
     end
+  rescue
+    error -> unloaded(value, page_load_statement(resource, load_statement(loads), cap), error)
   end
+
+  # A load that failed fails closed (logged): the relationships it was
+  # asked for read as empty, never as they were before (a record may
+  # carry relationships loaded for other reasons, the current user its
+  # privacy policies' loaded without authorization).
+  defp unloaded(value, statement, error) do
+    Logger.error(
+      "bubble: a relationship load failed; its relationships read as empty: " <>
+        Exception.format_banner(:error, Ash.Error.to_error_class(error))
+    )
+
+    empty(value, statement)
+  end
+
+  defp empty(values, statement) when is_list(values), do: Enum.map(values, &empty(&1, statement))
+
+  defp empty(%{__struct__: resource} = record, statement) do
+    Enum.reduce(statement, record, fn {name, _nested}, acc ->
+      case Ash.Resource.Info.relationship(resource, name) do
+        %{cardinality: :many} -> Map.put(acc, name, [])
+        %{} -> Map.put(acc, name, nil)
+        nil -> acc
+      end
+    end)
+  end
+
+  defp empty(value, _statement), do: value
 
   # `cap` is what a record may read below it: a list takes the largest
   # limit that leaves its nested lists (the deepest chain below it) an
