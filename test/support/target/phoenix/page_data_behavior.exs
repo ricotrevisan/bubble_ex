@@ -1513,31 +1513,49 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     {:ok, view, _html} = live(conn, "/")
 
     # Events naming a resource, a record, a query or a data function are
-    # ignored; an input value is only ever a constraint's value. (Run
-    # once first: loading code creates atoms of its own.)
-    hostile = fn suffix ->
-      render_click(view, "bubble:data", %{"resource" => "PhxCheck.User#{suffix}", "id" => @t1})
-      render_click(view, "bubble:click", %{"scope" => "", "element" => "bList#{suffix}"})
-      render_click(view, "bubble:click", %{"scope" => "", "element" => "data_blist#{suffix}"})
+    # ignored; an input value is only ever a constraint's value. Every
+    # name sent carries a fresh random suffix, so none of them (nor what
+    # the page could derive from them) is an atom unless the page made it
+    # one (WTF-490: unlike the VM's atom count, which anything running
+    # alongside may move).
+    suffix = "Wtf490" <> Base.encode16(:crypto.strong_rand_bytes(8))
+    resource = "PhxCheck.User#{suffix}"
+    element = "bList#{suffix}"
+    function = "data_blist#{suffix}"
+    query = "%' OR 1=1 --#{suffix}"
+    topic = "User#{suffix}"
 
-      html =
-        render_change(view, "bubble:change", %{
-          "bubble" => %{"scope" => "", "element" => "bQuery", "value" => "%' OR 1=1 --#{suffix}"}
-        })
+    render_click(view, "bubble:data", %{"resource" => resource, "id" => @t1})
+    render_click(view, "bubble:click", %{"scope" => "", "element" => element})
+    render_click(view, "bubble:click", %{"scope" => "", "element" => function})
 
-      send(view.pid, {:bubble, :data_changed, "bubble:User#{suffix}"})
-      send(view.pid, {:bubble, :data_changed, :not_a_topic})
-      html
-    end
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bQuery", "value" => query}
+    })
 
-    hostile.("")
-    atoms = :erlang.system_info(:atom_count)
-    hostile.("#{System.unique_integer([:positive])}")
+    send(view.pid, {:bubble, :data_changed, "bubble:" <> topic})
+    send(view.pid, {:bubble, :data_changed, :not_a_topic})
 
     Process.sleep(200)
     assert cells(render(view)) == []
     assert Process.alive?(view.pid)
-    assert :erlang.system_info(:atom_count) == atoms
+
+    names = [resource, element, function, query, topic, "bubble:" <> topic]
+
+    derived =
+      Enum.flat_map(names, fn name ->
+        [name, "Elixir." <> name, "read_" <> name, String.downcase(name), Macro.underscore(name)]
+      end)
+
+    assert existing_atom?("data_changed")
+    assert Enum.reject(derived, &existing_atom?/1) == derived
+  end
+
+  defp existing_atom?(name) do
+    _ = String.to_existing_atom(name)
+    true
+  rescue
+    ArgumentError -> false
   end
 
   # --- Display data (WTF-492) ----------------------------------------------------------------
