@@ -35,6 +35,23 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       focus trap that give the focus back when they close. Runtime
       containers (dynamic Repeating Groups) render their template once per
       item of an assign that starts empty
+    * visibility (WTF-477): an element not visible on page load has the
+      `hidden` attribute instead of a `hidden` class, so a workflow's show,
+      hide or toggle step (`<Web>.Bubble`'s JS commands) can change it.
+      The exception is an element a breakpoint shows: it keeps the class,
+      because the breakpoint's media rule must still win. An element whose
+      visibility conditionals compiled (`BubbleEx.Target.Elixir.Frontend`)
+      renders the attribute from a `visible_<id>` helper, evaluated on
+      every render, until a workflow step acts on it; from then on the
+      step decides (see `<Web>.Bubble`). With workflows, the helpers read
+      the current user from `@bubble_viewer`, which the runtime reads
+      afresh with field policies, never the session's user. A helper
+      raises on a relationship it reads that was not loaded rather than
+      decide on an empty value. Conditionals that do not compile, read
+      what the page does not keep or load, or belong to an overlay or a
+      breakpoint-shown element keep the visibility on page load and get a
+      marker. Conditionals that set other properties are only counted
+      (`conditions_other_properties`)
     * a reusable instance's parameters reach its component: a link
       destination through the page map and URL allowlist, a Text's
       content as a slot rendered by the static text path, other values as
@@ -56,7 +73,15 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   """
 
   alias BubbleEx.Frontend.Export.{Bbcode, Css, Safety}
-  alias BubbleEx.Frontend.{ReusableParameters, ResponsiveImages, StaticAssets, StaticSvg}
+
+  alias BubbleEx.Frontend.{
+    Conditions,
+    ReusableParameters,
+    ResponsiveImages,
+    StaticAssets,
+    StaticSvg
+  }
+
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.Node
   alias BubbleEx.Target.Ash.Naming
@@ -168,7 +193,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       routes_path(ctx) => routes_module(ctx, routes),
       "assets/css/bubble.css" => stylesheet(frontend),
       "assets/css/bubble_residue.css" => residue(surfaces),
-      "lib/#{ctx.app}_web/components/bubble.ex" => format(helpers(ctx, frontend)),
+      "lib/#{ctx.app}_web/components/bubble.ex" => format(helpers(ctx, frontend, base)),
       "test/#{ctx.app}_web/bubble_surfaces_test.exs" =>
         format(traceability_test(ctx, pages, reusables, base)),
       ".wtf/surfaces.json" => encode_names(names)
@@ -521,12 +546,19 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # --- surfaces -------------------------------------------------------------------
 
   defp page(entry, base) do
-    page = entry.node
+    {page, hidden} = shown(entry.node)
+    entry = %{entry | node: page}
     lowered = page |> Css.lower(selector: &selector/1) |> index_lowered()
 
     ctx =
       base
-      |> Map.merge(%{surface: :page, entry: entry, lowered: lowered, stack: MapSet.new()})
+      |> Map.merge(%{
+        surface: :page,
+        entry: entry,
+        lowered: lowered,
+        stack: MapSet.new(),
+        hidden: hidden
+      })
       |> Map.merge(surface_flows(base, entry.id))
 
     {markup, acc} = emit(page, ctx, new_acc())
@@ -549,7 +581,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   defp reusable(entry, base) do
-    definition = entry.node
+    {definition, hidden} = shown(entry.node)
+    entry = %{entry | node: definition}
 
     lowered =
       definition
@@ -562,7 +595,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         surface: :reusable,
         entry: entry,
         lowered: lowered,
-        stack: MapSet.new([definition.map_key])
+        stack: MapSet.new([definition.map_key]),
+        hidden: hidden
       })
       |> Map.merge(surface_flows(base, entry.id))
 
@@ -632,6 +666,33 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp index_lowered(entries), do: Map.new(entries, &{&1.node.exporter_id, &1})
 
+  # A surface's tree with every element styled as shown, and the exporter
+  # IDs of the ones not visible on page load: those get the `hidden`
+  # attribute (visibility_attrs/3), which workflow steps and conditionals
+  # change, and keep the display they have when shown (WTF-477).
+  defp shown(%Node{} = root), do: shown(root, MapSet.new())
+
+  # An element a breakpoint shows keeps its `hidden` class: the media
+  # rule's display must win over it, which the attribute's rule would not.
+  defp shown(%Node{} = node, hidden) do
+    {node, hidden} =
+      if is_map(node.box) and node.box[:hidden?] == true and not breakpoint_display?(node),
+        do: {%{node | box: Map.delete(node.box, :hidden?)}, MapSet.put(hidden, node.exporter_id)},
+        else: {node, hidden}
+
+    {children, hidden} = Enum.map_reduce(node.children, hidden, &shown/2)
+    {%{node | children: children}, hidden}
+  end
+
+  defp breakpoint_display?(%Node{responsive: rules}) when is_list(rules) do
+    Enum.any?(rules, fn rule ->
+      paint = (is_map(rule) && (rule["paint"] || rule[:paint])) || %{}
+      is_map(paint) and Map.get(paint, "display", "none") != "none"
+    end)
+  end
+
+  defp breakpoint_display?(_node), do: false
+
   defp new_acc do
     %{
       residue: [],
@@ -651,7 +712,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         "bindings_marked" => 0,
         "utilities" => 0,
         "residue_declarations" => 0,
-        "elements_with_residue" => 0
+        "elements_with_residue" => 0,
+        "visibility_conditions_compiled" => 0,
+        "visibility_conditions_marked" => 0,
+        "conditions_other_properties" => 0
       }
     }
   end
@@ -961,6 +1025,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       scope_var(ctx),
       ", ",
       literal(rg),
+      ")} id={Bubble.cell_id(",
+      scope_var(ctx),
+      ", ",
+      literal(rg),
+      ", ",
+      item,
+      ", ",
+      index,
       ")}>\n",
       indent(children, 1),
       "</div>"
@@ -1063,11 +1135,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     acc = mark_data(acc, node, ctx)
 
     {params, slots} = parameter_attrs(node, definition, ctx)
+    {visibility, acc} = visibility_attrs(node, ctx, acc)
 
     {own, acc} =
       node.attributes
       |> Enum.to_list()
       |> Kernel.++(overlay_attrs(node))
+      |> Kernel.++(visibility)
       |> Kernel.++(if acc.template, do: [], else: click_attrs(bid(node), "div", ctx))
       |> put_authored_id(node, ctx, acc)
 
@@ -1348,11 +1422,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # page's maps instead: see read_arg/2.)
   defp vars_below(%Node{} = node, surface, by_ref, base, seen) do
     own =
-      for {_slot, %{kind: :value, id: id}} <- node.bindings,
+      for {_slot, %{kind: kind, id: id}} <- node.bindings,
+          kind in [:value, :condition],
           %{bindings: vars} <- [base.expressions[id]],
           %{var: var} = binding <- vars,
           not kept?(binding, surface, base),
-          do: var
+          do: if(kind == :condition and viewer?(binding, base), do: "bubble_viewer", else: var)
 
     own ++ nested_vars(node, surface, by_ref, base, seen)
   end
@@ -1377,6 +1452,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp nested_vars(%Node{children: children}, surface, by_ref, base, seen),
     do: Enum.flat_map(children, &vars_below(&1, surface, by_ref, base, seen))
+
+  # With workflows, a condition reads the current user as the runtime
+  # refreshes it (`@bubble_viewer`, WTF-477), never the session's.
+  defp viewer?(%{input: :current_user}, %{flows: %FlowSpec{}}), do: true
+  defp viewer?(_binding, _base), do: false
 
   defp kept?(%{input: input}, surface, %{flows: %FlowSpec{} = flows}),
     do: FlowSpec.read(flows, surface, input) != nil
@@ -1422,10 +1502,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     acc = mark_data(acc, node, ctx)
 
     clicks = if acc.template, do: [], else: click_attrs(bid(node), tag, ctx)
+    {visibility, acc} = visibility_attrs(node, ctx, acc)
 
     {rest, acc} =
       attrs
       |> Kernel.++(overlay_attrs(node))
+      |> Kernel.++(visibility)
       |> Kernel.++(overlay_dismissal(node, ctx))
       |> Kernel.++(clicks)
       |> put_authored_id(node, ctx, acc)
@@ -1651,7 +1733,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp node_reads_data?(%Node{} = node, surface, by_ref, seen, flows, expressions) do
     own =
       Enum.any?(node.bindings, fn
-        {_slot, %{kind: :value, id: id}} ->
+        {_slot, %{kind: kind, id: id}} when kind in [:value, :condition] ->
           case expressions[id] do
             %{bindings: vars} -> Enum.any?(vars, &data_input?(&1.input))
             _ -> false
@@ -1807,45 +1889,157 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp compiled_slot(node, name, compiled, ctx, acc, binding \\ nil) do
     case compiled do
-      %{source: source, bindings: vars} ->
+      %{source: source} ->
         {source, bbcode} = bbcode_source(node, name, source)
         acc = acc |> mark_bbcode(node, bbcode) |> mark_approximated(node, name, compiled)
-        helper = helper_name(name, node, acc)
-        args = Enum.map(vars, & &1.var)
-        reads = Enum.map(vars, &read_arg(&1, ctx))
 
-        acc =
-          vars
-          |> Enum.zip(reads)
-          |> Enum.reduce(acc, fn
-            {%{var: var}, "@" <> _}, acc -> need_var(acc, var, ctx)
-            _, acc -> acc
-          end)
+        {call, acc} =
+          add_helper(node, name, %{compiled | source: source}, bbcode != nil, ctx, acc)
 
-        acc = %{
-          acc
-          | helpers: [
-              %{
-                name: helper,
-                args: args,
-                source: source,
-                node: node,
-                slot: name,
-                raw?: Map.get(compiled, :raw?, false),
-                bbcode?: bbcode != nil
-              }
-              | acc.helpers
-            ],
-            counts: Map.update!(acc.counts, "bindings_compiled", &(&1 + 1))
-        }
-
-        call = helper <> "(" <> Enum.join(reads, ", ") <> ")"
+        acc = %{acc | counts: Map.update!(acc.counts, "bindings_compiled", &(&1 + 1))}
         {{if(bbcode, do: :bbcode, else: :expr), call}, acc}
 
       _ ->
         {{:static, ""}, mark_binding(acc, node, name, binding)}
     end
   end
+
+  # A compiled binding as a helper of the surface module; returns its call.
+  defp add_helper(node, name, %{source: source, bindings: vars} = compiled, bbcode?, ctx, acc) do
+    helper = helper_name(name, node, acc)
+    reads = Enum.map(vars, &read_arg(&1, ctx))
+
+    acc =
+      vars
+      |> Enum.zip(reads)
+      |> Enum.reduce(acc, fn
+        {_var, "@" <> read}, acc -> need_var(acc, read, ctx)
+        _, acc -> acc
+      end)
+
+    entry = %{
+      name: helper,
+      args: Enum.map(vars, & &1.var),
+      source: source,
+      node: node,
+      slot: name,
+      raw?: Map.get(compiled, :raw?, false),
+      bbcode?: bbcode?,
+      checks: if(Map.has_key?(compiled, :visibility), do: loaded_checks(compiled), else: [])
+    }
+
+    {helper <> "(" <> Enum.join(reads, ", ") <> ")", %{acc | helpers: [entry | acc.helpers]}}
+  end
+
+  # --- visibility (WTF-477) ---------------------------------------------------------
+
+  # The relationships a condition reads, per variable: the helper refuses
+  # to decide on one that was not loaded (it would read as empty).
+  defp loaded_checks(%{bindings: vars, loads: loads}) do
+    for %{var: var} <- vars, paths = Map.get(loads, var, []), paths != [], do: {var, paths}
+  end
+
+  defp loaded_checks(_compiled), do: []
+
+  # The `hidden` attribute of an element: from its compiled visibility
+  # conditionals, else as on page load. An overlay's is overlay_attrs/1's.
+  defp visibility_attrs(%Node{} = node, ctx, acc) do
+    payload =
+      case node.bindings["condition"] do
+        %{kind: :condition, payload: payload} -> payload
+        _ -> nil
+      end
+
+    states = length(Conditions.visibility(payload))
+    others = Conditions.other_properties(payload)
+    acc = count(acc, "conditions_other_properties", others)
+
+    static =
+      if MapSet.member?(Map.get(ctx, :hidden, MapSet.new()), node.exporter_id),
+        do: [{"hidden", true}],
+        else: []
+
+    cond do
+      states == 0 ->
+        {static, acc}
+
+      match?(%{"boundary" => "overlay"}, node.runtime) ->
+        {[], mark_visibility(acc, node, states, "an overlay: workflows show and hide it")}
+
+      # Not visible on page load and shown by a breakpoint: its `hidden`
+      # class stays (see shown/2).
+      is_map(node.box) and node.box[:hidden?] == true ->
+        {[], mark_visibility(acc, node, states, "a breakpoint also shows it")}
+
+      true ->
+        conditional_visibility(
+          node,
+          ctx.expressions[node.bindings["condition"].id],
+          states,
+          static,
+          ctx,
+          acc
+        )
+    end
+  end
+
+  defp conditional_visibility(node, nil, states, static, _ctx, acc),
+    do: {static, mark_visibility(acc, node, states, "it does not compile")}
+
+  # Conditionals that only ever set the visibility on page load.
+  defp conditional_visibility(
+         _node,
+         %{visibility: %{constant?: true}},
+         states,
+         static,
+         _ctx,
+         acc
+       ),
+       do: {static, count(acc, "visibility_conditions_compiled", states)}
+
+  # Every input of a condition must be what the page keeps (the current
+  # user, its loaded data, custom states, input values): a value nothing
+  # sets would decide the visibility as if empty.
+  defp conditional_visibility(node, %{bindings: vars} = compiled, states, static, ctx, acc) do
+    case Enum.find(vars, &(not kept_input?(&1, ctx))) do
+      nil ->
+        {call, acc} =
+          add_helper(node, "visible", compiled, false, Map.put(ctx, :viewer, true), acc)
+
+        {[{"hidden", {:raw, "{!" <> call <> "}"}}],
+         count(acc, "visibility_conditions_compiled", states)}
+
+      var ->
+        {static, mark_visibility(acc, node, states, unkept(var))}
+    end
+  end
+
+  defp kept_input?(%{input: :current_user}, _ctx), do: true
+  defp kept_input?(_var, %{flows: nil}), do: false
+
+  defp kept_input?(%{input: input}, ctx),
+    do: FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell)) != nil
+
+  defp unkept(%{input: {kind, ref} = input}) do
+    what = if kind == :element_state, do: "element_state:" <> to_string(ref["state"]), else: kind
+
+    if data_input?(input),
+      do: "it reads page data that is not loaded: #{what}",
+      else: "it reads a value the page does not keep: #{what}"
+  end
+
+  defp unkept(_var), do: "it reads a value the page does not keep"
+
+  defp mark_visibility(acc, node, states, why) do
+    noun = if states == 1, do: "conditional", else: "conditionals"
+
+    acc
+    |> mark(node, "visibility: #{states} #{noun} not lowered (#{why}); shown as on page load")
+    |> count("visibility_conditions_marked", states)
+  end
+
+  defp count(acc, _key, 0), do: acc
+  defp count(acc, key, n), do: %{acc | counts: Map.update!(acc.counts, key, &(&1 + n))}
 
   # A Text's dynamic content with BBCode in its own literal text (WTF-450):
   # the helper returns `Bubble.bbcode/1`'s nodes instead of one text, the
@@ -1893,6 +2087,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # A page assigns a variable (nil until workflows set it; the signed-in
   # user comes from on_mount); a component declares it as an attribute.
   defp need_var(acc, "current_user", %{surface: :page}), do: acc
+  defp need_var(acc, "bubble_viewer", %{surface: :page}), do: acc
   defp need_var(acc, var, %{surface: :page}), do: add_assign(acc, var, "nil")
   defp need_var(acc, _var, _ctx), do: acc
 
@@ -2536,6 +2731,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # A compiled binding's argument: a custom state or an input value the
   # page keeps, else the assign (or attribute) of its variable.
+  defp read_arg(%{input: :current_user}, %{viewer: true, flows: %FlowSpec{}}),
+    do: "@bubble_viewer"
+
   defp read_arg(%{var: var, input: input}, ctx) do
     case ctx.flows && FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell)) do
       {:data, k} ->
@@ -2710,6 +2908,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp flow_ctx(ctx, names, base) do
     by_ref = names.reusable_by_ref
     loads = data_loads(names, base)
+    {viewer?, viewer_loads} = viewer_loads(base.frontend, base)
 
     pages =
       for entry <- names.pages, into: %{} do
@@ -2754,6 +2953,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       app: ctx.app,
       join_topics: ctx.join_topics,
       enforced?: Map.get(ctx, :enforced?, false),
+      viewer?: viewer?,
+      viewer_loads?: viewer_loads != [],
       surfaces: Map.merge(pages, reusables)
     }
   end
@@ -2774,7 +2975,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp node_loads(nodes, surface, cell, base) do
     Enum.flat_map(nodes, fn node ->
       own =
-        for {_slot, %{kind: :value, id: id}} <- node.bindings,
+        for {_slot, %{kind: kind, id: id}} <- node.bindings,
+            # Values and visibility conditionals (WTF-477) read alike.
+            kind in [:value, :condition],
             %{bindings: vars} = compiled <- [base.expressions[id]],
             %{var: var, input: input} <- vars,
             loads = Map.get(Map.get(compiled, :loads, %{}), var, []),
@@ -3131,11 +3334,16 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     params = Enum.join(args, ", ")
 
+    checks =
+      Enum.map_join(Map.get(h, :checks, []), "", fn {var, paths} ->
+        "Bubble.loaded!(#{var}, #{source(paths)})\n"
+      end)
+
     """
 
       # bubble:#{comment_line(bid(node))} #{slot}
       defp #{name}(#{params}) do
-        #{String.replace(body, "\n", "\n    ")}
+        #{String.replace(checks <> body, "\n", "\n    ")}
       end
     """
   end
@@ -3312,8 +3520,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     #{indent_block(text_defaults, "  ")}
     #{Enum.join(components)}}
 
-    /* A closed overlay stays closed whatever its display utility. */
+    /* A closed overlay, or an element a workflow or its conditionals hide,
+       stays hidden whatever its display utility. */
     #{closing}
+    [data-bubble-id][hidden] { display: none; }
     """
     |> String.replace(~r/\n\n\n+/, "\n\n")
   end
@@ -3389,7 +3599,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   # <Web>.Bubble: the overlay JS commands and the Escape hook.
-  defp helpers(ctx, frontend) do
+  defp helpers(ctx, frontend, base) do
+    {_viewer?, viewer_loads} = viewer_loads(frontend, base)
+
     modals =
       (frontend.pages ++ frontend.reusables)
       |> Enum.flat_map(&overlay_nodes/1)
@@ -3398,8 +3610,37 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> Enum.uniq()
       |> Enum.sort()
 
-    Templates.render("lib/web/components/bubble.ex", %{web: ctx.web, modals: modals})
+    Templates.render("lib/web/components/bubble.ex", %{
+      web: ctx.web,
+      modals: modals,
+      viewer_loads: source(viewer_loads)
+    })
   end
+
+  # Whether a compiled visibility conditional reads the current user
+  # (with workflows: `@bubble_viewer`, WTF-477), and the relationships
+  # they read from it, for every page.
+  defp viewer_loads(frontend, %{flows: %FlowSpec{}} = base) do
+    compiled =
+      for root <- frontend.pages ++ frontend.reusables,
+          node <- tree_nodes(root),
+          %{kind: :condition, id: id} <- [node.bindings["condition"]],
+          %{bindings: vars} = c <- [base.expressions[id]],
+          Enum.any?(vars, &(&1.input == :current_user)),
+          do: c
+
+    loads =
+      compiled
+      |> Enum.flat_map(&Map.get(&1.loads, "current_user", []))
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    {compiled != [], loads}
+  end
+
+  defp viewer_loads(_frontend, _base), do: {false, []}
+
+  defp tree_nodes(%Node{} = node), do: [node | Enum.flat_map(node.children, &tree_nodes/1)]
 
   defp overlay_nodes(%Node{runtime: %{"boundary" => "overlay"}} = node),
     do: [node | Enum.flat_map(node.children, &overlay_nodes/1)]

@@ -25,6 +25,23 @@ defmodule BubbleEx.Frontend.Responsive do
     end)
   end
 
+  @doc """
+  The keys of the compact states (`"%s"`) that `breakpoint_states/2`
+  lowers to breakpoint rules: they are not element conditionals.
+  """
+  @spec breakpoint_keys(map(), map()) :: [String.t()]
+  def breakpoint_keys(raw, breakpoints) do
+    case Map.get(raw, "%s") do
+      states when is_map(states) ->
+        for {key, %{"%c" => condition}} <- states,
+            match?({:ok, _}, breakpoint_condition(condition, breakpoints)),
+            do: key
+
+      _ ->
+        []
+    end
+  end
+
   defp states(states) when is_map(states) do
     states
     |> Enum.sort_by(fn {key, _} ->

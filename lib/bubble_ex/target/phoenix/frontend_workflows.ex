@@ -68,7 +68,9 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       module: ctx.module,
       app: ctx.app,
       join_topics: ctx.join_topics,
-      enforced?: Map.get(ctx, :enforced?, false)
+      enforced?: Map.get(ctx, :enforced?, false),
+      viewer?: Map.get(ctx, :viewer?, false),
+      viewer_loads?: Map.get(ctx, :viewer_loads?, false)
     }
 
     %{

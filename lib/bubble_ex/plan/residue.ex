@@ -33,6 +33,7 @@ defmodule BubbleEx.Plan.Residue do
   | `:page_data_in_cell` | element | `BubbleEx.Target.Elixir.FrontendWorkflows` (WTF-420): a data source in a repeating group's cell that the generated page would read once per cell (a repeating group, a reusable instance or a search there; `detail.kind`) |
   | `:search_field_restricted` | element | `BubbleEx.PageData` (WTF-420): a page data source's search whose constraints or sort name fields a privacy rule of the searched type keeps out of searches (non-filterable); Bubble limits such a search per user, which the generated page cannot (`detail.fields`) |
   | `:search_field_hidden` | element | `BubbleEx.Target.Elixir.FrontendWorkflows` with `privacy: :enforced` (WTF-423): a page data source's search whose constraints or sort read a field some users may not view (or follow a gated relationship) further along a relationship path, where `<namespace>.Privacy.SearchFields` would return nothing for everyone; on the searched type itself such a search is loaded and decided per user and record (WTF-457) (`detail.fields`) |
+  | `:element_condition` | element | `BubbleEx.Target.Elixir.Frontend.residue/2` (WTF-477): conditionals that set the element's visibility and do not compile (a condition with no IR or no Elixir, a visibility that is not a yes/no literal, an overlay's), so the page keeps its visibility on page load and a marker (`detail.states`) |
   | `:style_condition`, `:plugin_style` | `style:<key>` | `styles/1`: a named style with a conditional state that is not a pseudo-class, or a plugin element's style |
 
   `index/2` and `frontend/2` are computed by `BubbleEx.Plan.build/5` itself;
@@ -58,7 +59,7 @@ defmodule BubbleEx.Plan.Residue do
               plugin_style trigger_dropped reads_dropped_plugin api_connector_action
               unsupported_option not_generated unavailable_input backend_workflow
               target_not_rendered page_data_in_cell uses_dropped data_to_send_untyped_page
-              search_field_restricted search_field_hidden)a
+              search_field_restricted search_field_hidden element_condition)a
 
   # Events with a known wiring (page, element and backend events).
   @events ~w(ButtonClicked CustomEvent APIEvent DatabaseTriggerEvent ConditionTrue PageLoaded

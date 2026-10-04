@@ -535,6 +535,11 @@ defmodule BubbleEx.Target.Phoenix do
   several); `"bindings_compiled"` / `"bindings_marked"` value bindings;
   `"utilities"` / `"residue_declarations"` style declarations, and
   `"elements_with_residue"` the elements with a residue rule.
+  `"visibility_conditions_compiled"` / `"visibility_conditions_marked"`
+  count the conditional states that set an element's visibility, rendered
+  or kept as on page load with a marker (WTF-477);
+  `"conditions_other_properties"` the states that set anything else
+  (colors, text…), not lowered yet.
   `"assets_<status>"` count `.wtf/assets.json`'s assets by status;
   `"assets_external"` (images linked to other hosts, as in Bubble) is
   informational, not work to do.

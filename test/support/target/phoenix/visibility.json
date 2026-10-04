@@ -1,0 +1,832 @@
+{
+  "_id": "visibility-conditions-fixture",
+  "element_definitions": {
+    "card": {
+      "elements": {
+        "bCardT": {
+          "id": "bCardT",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Member"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "logged_in",
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bCard",
+      "name": "Card",
+      "properties": {
+        "height": 100,
+        "width": 300
+      },
+      "type": "CustomDefinition"
+    }
+  },
+  "pages": {
+    "index": {
+      "custom_states": {
+        "flag_": {
+          "default_val": false,
+          "display": "Flag",
+          "value": "boolean"
+        }
+      },
+      "elements": {
+        "bAdmin": {
+          "id": "bAdmin",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 14,
+            "text": {
+              "entries": {
+                "0": "Admin tools"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "role_text",
+                  "next": {
+                    "args": {
+                      "entries": {
+                        "0": "admin"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "name": "equals",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bBad": {
+          "id": "bBad",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 11,
+            "text": {
+              "entries": {
+                "0": "Bad"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Not a Bubble expression"
+                },
+                "type": "NoSuchExpression"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bFlagged": {
+          "id": "bFlagged",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 4,
+            "text": {
+              "entries": {
+                "0": "Flagged"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "custom.flag_",
+                  "next": {
+                    "name": "is_true",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bVis"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bHideFlagged": {
+          "id": "bHideFlagged",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 7,
+            "text": {
+              "entries": {
+                "0": "Hide flagged"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bIn": {
+          "elements": {
+            "bInT": {
+              "id": "bInT",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Open App"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bIn",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 2,
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "logged_in",
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Group"
+        },
+        "bMember": {
+          "id": "bMember",
+          "properties": {
+            "custom_id": "bCard",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 13,
+            "width": 300
+          },
+          "type": "CustomElement"
+        },
+        "bName": {
+          "id": "bName",
+          "properties": {
+            "content_format": "text",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 16,
+            "placeholder": {
+              "entries": {
+                "0": "Name"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Input"
+        },
+        "bOpen": {
+          "id": "bOpen",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 17,
+            "text": {
+              "entries": {
+                "0": "Opened"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "get_data",
+                  "next": {
+                    "args": {
+                      "entries": {
+                        "0": "open"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "name": "equals",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bName"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bOrder": {
+          "id": "bOrder",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 3,
+            "text": {
+              "entries": {
+                "0": "Order"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "not_logged_in",
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "is_visible": false
+              },
+              "type": "State"
+            },
+            "1": {
+              "condition": {
+                "next": {
+                  "name": "not_logged_in",
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            },
+            "2": {
+              "condition": {
+                "next": {
+                  "name": "logged_in",
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "is_visible": false
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bOut": {
+          "elements": {
+            "bOutT": {
+              "id": "bOutT",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Sign in"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bOut",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 1,
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "not_logged_in",
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Group"
+        },
+        "bSetFlag": {
+          "id": "bSetFlag",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 5,
+            "text": {
+              "entries": {
+                "0": "Flag"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bShowWf": {
+          "id": "bShowWf",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 9,
+            "text": {
+              "entries": {
+                "0": "Show"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bStyle": {
+          "id": "bStyle",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 12,
+            "text": {
+              "entries": {
+                "0": "Styled"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "logged_in",
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "bgcolor": "#eeeeee"
+              },
+              "type": "State"
+            },
+            "1": {
+              "condition": {
+                "next": {
+                  "name": "not_logged_in",
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "font_color": "#333333",
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bTasks": {
+          "elements": {
+            "bCellNoProject": {
+              "id": "bCellNoProject",
+              "properties": {
+                "height": 40,
+                "is_visible": false,
+                "min_height_css": "40px",
+                "order": 2,
+                "text": {
+                  "entries": {
+                    "0": "No project"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "states": {
+                "0": {
+                  "condition": {
+                    "next": {
+                      "name": "project_custom_project",
+                      "next": {
+                        "name": "name_text",
+                        "next": {
+                          "name": "is_empty",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "CurrentDataItem"
+                  },
+                  "properties": {
+                    "is_visible": true
+                  },
+                  "type": "State"
+                }
+              },
+              "type": "Text"
+            },
+            "bCellTitle": {
+              "id": "bCellTitle",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Task: ",
+                    "1": {
+                      "next": {
+                        "name": "title_text",
+                        "type": "Message"
+                      },
+                      "type": "CurrentDataItem"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bTasks",
+          "properties": {
+            "columns": 1,
+            "data_source": {
+              "properties": {
+                "descending": false,
+                "sort_field": "title_text",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.task",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 15,
+            "rows": 3,
+            "width": 300
+          },
+          "type": "RepeatingGroup"
+        },
+        "bUnflag": {
+          "id": "bUnflag",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 6,
+            "text": {
+              "entries": {
+                "0": "Unflag"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bWf": {
+          "id": "bWf",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 8,
+            "text": {
+              "entries": {
+                "0": "Shown by a step"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bWidth": {
+          "id": "bWidth",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 10,
+            "text": {
+              "entries": {
+                "0": "Narrow"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "args": 600,
+                  "name": "less_than",
+                  "type": "Message"
+                },
+                "properties": {
+                  "name": "Current Page Width"
+                },
+                "type": "PageData"
+              },
+              "properties": {
+                "is_visible": false
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bVis",
+      "name": "index",
+      "properties": {
+        "title": "Home"
+      },
+      "type": "Page",
+      "workflows": {
+        "wFlag": {
+          "actions": {
+            "0": {
+              "id": "aFlag1",
+              "properties": {
+                "custom_state": "custom.flag_",
+                "element_id": "bVis",
+                "value": true
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wFlag",
+          "properties": {
+            "element_id": "bSetFlag"
+          },
+          "type": "ButtonClicked"
+        },
+        "wHide": {
+          "actions": {
+            "0": {
+              "id": "aHide1",
+              "properties": {
+                "element_id": "bFlagged"
+              },
+              "type": "HideElement"
+            }
+          },
+          "id": "wHide",
+          "properties": {
+            "element_id": "bHideFlagged"
+          },
+          "type": "ButtonClicked"
+        },
+        "wShow": {
+          "actions": {
+            "0": {
+              "id": "aShow1",
+              "properties": {
+                "element_id": "bWf"
+              },
+              "type": "ShowElement"
+            }
+          },
+          "id": "wShow",
+          "properties": {
+            "element_id": "bShowWf"
+          },
+          "type": "ButtonClicked"
+        },
+        "wUnflag": {
+          "actions": {
+            "0": {
+              "id": "aUnflag1",
+              "properties": {
+                "custom_state": "custom.flag_",
+                "element_id": "bVis",
+                "value": false
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wUnflag",
+          "properties": {
+            "element_id": "bUnflag"
+          },
+          "type": "ButtonClicked"
+        }
+      }
+    },
+    "task": {
+      "elements": {
+        "bTaskGroup": {
+          "elements": {
+            "bHasProject": {
+              "id": "bHasProject",
+              "properties": {
+                "height": 40,
+                "is_visible": false,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Has a project"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "states": {
+                "0": {
+                  "condition": {
+                    "next": {
+                      "name": "project_custom_project",
+                      "next": {
+                        "name": "name_text",
+                        "next": {
+                          "name": "is_not_empty",
+                          "type": "Message"
+                        },
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "ElementParent"
+                  },
+                  "properties": {
+                    "is_visible": true
+                  },
+                  "type": "State"
+                }
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bTaskGroup",
+          "properties": {
+            "data_source": {
+              "type": "CurrentPageItem"
+            },
+            "group_type": "custom.task",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "width": 300
+          },
+          "type": "Group"
+        }
+      },
+      "id": "bTaskPage",
+      "name": "task",
+      "properties": {
+        "page_item_type": "custom.task",
+        "title": "Task"
+      },
+      "type": "Page"
+    }
+  },
+  "user_types": {
+    "project": {
+      "display": "Project",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      }
+    },
+    "task": {
+      "display": "Task",
+      "fields": {
+        "project_custom_project": {
+          "display": "Project",
+          "value": "custom.project"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        },
+        "role_text": {
+          "display": "Role",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": [
+              "email"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

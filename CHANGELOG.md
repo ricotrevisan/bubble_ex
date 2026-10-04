@@ -19,6 +19,43 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **Generated pages render visibility conditionals** (WTF-477). An
+  element's conditional states that set `is_visible` were kept by the
+  normalizer but never compiled, rendered or counted, so an element not
+  visible on page load that a conditional shows (a "Sign in" group shown
+  when logged out) never appeared. `Target.Elixir.Frontend.compile/5`
+  now compiles them (the element's environment, the same inputs and page
+  data path as its dynamic text) into one yes/no expression folding the
+  states in Bubble's order (the last true state wins; none keeps the
+  visibility on page load), and the page renders `hidden={!visible_<id>(...)}`.
+  An element not visible on page load now has the `hidden` attribute
+  instead of a `hidden` class (`[data-bubble-id][hidden]` hides it), so a
+  workflow's show, hide or toggle step changes it too; a step on an
+  element is now kept even when it changes nothing at that moment, so,
+  as Bubble documents ("Actions take precedence over conditions which
+  take precedence on the default setting"), it decides from then on
+  until the page reloads. A visibility conditional that does not compile
+  (no IR or Elixir, a non-literal visibility, an input no page supplies
+  such as a URL parameter or the page width, an overlay's) or reads what
+  this page does not keep keeps the visibility on page load with a
+  `TODO(bubble:<id>)` marker; the first kind is new
+  `:element_condition` plan residue (`Target.Elixir.Frontend.residue/2`).
+  The frontend report counts `visibility_conditions_compiled`,
+  `visibility_conditions_marked` and `conditions_other_properties`
+  (states setting colors, text and other properties, not lowered yet).
+  The relationships a condition reads load with the page's data (as a
+  dynamic text's do), and a condition helper raises rather than decide
+  on one that was not loaded. With workflows, conditions read the current
+  user from `@bubble_viewer`: `<Web>.BubbleWorkflows.refresh_viewer/1`
+  reads it afresh at mount, page load and every event (a changed role
+  takes effect), as the user themself, so with `privacy: :enforced` a
+  field they may not view reads as empty. Repeating group cells carry
+  their item's DOM ID (`<Web>.Bubble.cell_id/4`), so a kept step follows
+  its item. The compact payload's `"%s"` states are conditionals too,
+  except the ones lowered as breakpoint rules.
+  `scripts/visibility_browser_check.sh` drives the steps in Chrome
+  (browserq; not in CI).
+
 - **Index hints build concurrently** (WTF-418). `Target.Ash` declares
   every custom index `concurrently: true`, so `mix ash.codegen` writes the
   indexes it adds as a migration of their own (index additions only),

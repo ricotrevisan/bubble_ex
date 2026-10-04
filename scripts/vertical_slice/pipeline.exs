@@ -119,7 +119,8 @@ defmodule VerticalSlice.Pipeline do
       expression_residue ++
         Plan.Residue.styles(app) ++
         AshTarget.Workflows.Spec.residue(backend) ++
-        FrontendWorkflows.Spec.residue(spec)
+        FrontendWorkflows.Spec.residue(spec) ++
+        Frontend.residue(frontend, expressions)
 
     {:ok, plan} =
       Plan.build(model, index, frontend, applied,
