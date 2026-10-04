@@ -118,13 +118,28 @@ defmodule <%= @web %>.BubbleData do
   before WTF-475) is read again on any input change, with the rest of the
   page.
 
+  ## Display data (WTF-492)
+
+  An element a "Display data" or "Display list" step set
+  (`<%= @web %>.BubbleWorkflows.display/8`, kept in `@bubble_displayed`
+  until a reset or the page's next load) shows what the step showed, in
+  place of its own source (`display:` in its `__bubble__(:data)` entry;
+  `read: :displayed` when it has no source of its own). The page kept a
+  thing's unique ID only: it is read again through Ash as the current
+  user, like any other read, so a workflow never shows what the user may
+  not read<%= if @enforced? do %> (a record the policies hide shows nothing, a hidden field is
+  empty)<% end %>. A list shows at most its page size, capped by
+  `:max_items`.
+
   ## Unverified Bubble behavior
 
   To confirm by replay (WTF-358): a page's thing is read from the URL path
   segment after the page name (`/<page>/<unique id>`; Bubble also accepts
   a slug, which is not read here); a search that does not state whether
   it ignores empty constraints is not generated (see
-  `docs/page-data.md`); a repeating group's later pages are not loaded.
+  `docs/page-data.md`); a repeating group's later pages are not loaded;
+  "Display data" wins over an element's own source until a reset or the
+  page's next load, even when what the source reads changes.
   """
 
   require Ash.Expr
@@ -449,11 +464,17 @@ defmodule <%= @web %>.BubbleData do
     acc =
       Enum.reduce(own, acc, fn source, {data, by_source} ->
         ctx = BubbleWorkflows.data_ctx(socket, module, scope, data)
-        value = run(module, source, ctx)
         key_scope = if source.instance, do: BubbleWorkflows.scope(ctx, [source.instance]), else: scope
+        key = {key_scope, source.element}
 
-        {Map.put(data, {key_scope, source.element}, value),
-         Map.put(by_source, source_id(scope, source), topics(MapSet.new(), source, value))}
+        case value(socket, module, source, key, ctx) do
+          {:ok, value} ->
+            {Map.put(data, key, value),
+             Map.put(by_source, source_id(scope, source), topics(MapSet.new(), source, value))}
+
+          :none ->
+            {data, Map.put(by_source, source_id(scope, source), MapSet.new())}
+        end
       end)
 
     # A group in a repeating group's cell holds a value per cell.
@@ -473,7 +494,11 @@ defmodule <%= @web %>.BubbleData do
       values =
         for {item, i} <- Enum.with_index(items, 1) do
           ctx = BubbleWorkflows.data_ctx(socket, module, scope, data, {item, i})
-          {i, run(module, %{source | loads: []}, ctx)}
+
+          case value(socket, module, %{source | loads: []}, {scope, source.element, i}, ctx) do
+            {:ok, value} -> {i, value}
+            :none -> {i, nil}
+          end
         end
 
       # Load relationships across all cells together, not one query per cell.
@@ -493,6 +518,41 @@ defmodule <%= @web %>.BubbleData do
   end
 
   defp source_id(scope, source), do: {scope, source.instance, source.element, source.fun}
+
+  # What a source's element shows: what a "Display data" step showed in it
+  # (WTF-492), which wins over its own source until a reset, else its
+  # source. An element with no source of its own (`read: :displayed`)
+  # shows nothing before a step does (`:none`: an instance's thing is left
+  # as the page gave it).
+  defp value(socket, module, source, key, ctx) do
+    case Map.fetch(Map.get(socket.assigns, :bubble_displayed) || %{}, key) do
+      {:ok, shown} -> {:ok, shown(shown, source, ctx)}
+      :error when source.read == :displayed -> :none
+      :error -> {:ok, run(module, source, ctx)}
+    end
+  end
+
+  # A thing a step showed is read again through Ash as the current user
+  # (its unique ID is all the page kept): a record the user may not read
+  # shows nothing<%= if @enforced? do %>, a field the user may not view is empty<% end %>.
+  defp shown({resource, list?, value}, source, ctx) do
+    page_size =
+      case Map.get(source, :display) do
+        %{page_size: n} -> n
+        _ -> nil
+      end
+
+    ctx
+    |> records(resource, value, list?, page_size)
+    |> Runtime.load_page(source.loads, Runtime.root(nil, ctx.actor), related_cap())
+  rescue
+    error ->
+      Logger.error(
+        "bubble page data #{inspect(source.element)} failed: #{Exception.format_banner(:error, error)}"
+      )
+
+      nil
+  end
 
   # One source: its function, then the relationships the page's bindings
   # read through it. A source that fails reads nothing (logged).

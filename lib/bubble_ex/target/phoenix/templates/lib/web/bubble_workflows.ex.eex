@@ -155,7 +155,9 @@ defmodule <%= @web %>.BubbleWorkflows do
     ran (it may have written what the page shows). `page_path` is the
     page's own path (without its thing's segment) and `takes_thing`
     whether the page reads a thing from its URL (WTF-454); `resume` the
-    step a paused workflow continues from (WTF-451).
+    step a paused workflow continues from (WTF-451). `displayed` is what
+    "Display data" steps showed (WTF-492), by `{scope, element}` (and cell
+    index): `{resource, list?, value}`, a thing as its unique ID.
     """
     defstruct [
       :module,
@@ -179,6 +181,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       inputs: %{},
       url: %{},
       data: %{},
+      displayed: %{},
       first: %{},
       js: [],
       messages: [],
@@ -235,6 +238,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_data, %{})
     |> assign(:bubble_data_stale, false)
     |> assign(:bubble_data_inputs, MapSet.new())
+    |> assign(:bubble_displayed, %{})
     |> assign(:bubble_committed, %{})
     |> assign(:bubble_thing, nil)
     |> refresh_viewer()
@@ -818,6 +822,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       page_path: Map.get(socket.assigns, :bubble_page_path, socket.assigns.bubble_path),
       takes_thing: Map.get(socket.assigns, :bubble_takes_thing, false),
       data: Map.get(socket.assigns, :bubble_data, %{}),
+      displayed: Map.get(socket.assigns, :bubble_displayed, %{}),
       thing: Map.get(socket.assigns, :bubble_thing)
     }
   end
@@ -878,12 +883,15 @@ defmodule <%= @web %>.BubbleWorkflows do
   defp apply_ctx(socket, %Ctx{} = ctx) do
     # A data step may have written what the page shows; a custom state or
     # an input may be a search constraint (an input only for the sources
-    # reading it, WTF-475).
+    # reading it, WTF-475); a display step (or a reset) changes what an
+    # element shows (WTF-492).
     changed = changed_inputs(socket.assigns.bubble_inputs, ctx.inputs)
+    displayed = Map.get(socket.assigns, :bubble_displayed, %{})
 
     socket =
       cond do
-        ctx.data_stale or ctx.states != socket.assigns.bubble_states ->
+        ctx.data_stale or ctx.states != socket.assigns.bubble_states or
+            ctx.displayed != displayed ->
           BubbleData.mark_stale(socket)
 
         changed != [] ->
@@ -904,6 +912,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       socket
       |> assign(:bubble_states, ctx.states)
       |> assign(:bubble_inputs, ctx.inputs)
+      |> assign(:bubble_displayed, ctx.displayed)
       |> assign(:bubble_committed, committed)
 
     socket =
@@ -1254,10 +1263,27 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc """
   Reset inputs back to their first values: those of element `within`
   (`inputs`, the ones the surface lists there), or with nil every input of
-  the instance or page, its nested instances' included.
+  the instance or page, its nested instances' included. A reset group or
+  popup also forgets what "Display data" steps showed in it and in the
+  elements inside it (`clears`, WTF-492; in every cell); a reset instance
+  (`clears: :all`) everything they showed in its scope. The elements then show their own
+  data source again, or nothing.
   """
-  def reset(ctx, path, within, inputs) do
+  def reset(ctx, path, within, inputs, clears \\ []) do
     scope = scope(ctx, path)
+
+    displayed =
+      case clears do
+        :all ->
+          Map.reject(ctx.displayed, fn {key, _} -> within?(elem(key, 0), scope) end)
+
+        clears ->
+          Map.reject(ctx.displayed, fn {key, _} ->
+            elem(key, 0) == scope and elem(key, 1) in clears
+          end)
+      end
+
+    ctx = %{ctx | displayed: displayed}
     to = if within == nil and scope == "", do: "body", else: Bubble.selector(scope, within)
 
     values =
@@ -1288,6 +1314,50 @@ defmodule <%= @web %>.BubbleWorkflows do
 
     {:cont, put_step(%{ctx | states: values}, step, nil)}
   end
+
+  @doc """
+  "Display data in a group / popup" or "Display list in a repeating group"
+  (WTF-492): element `element` (in the instance `path` below; in the
+  current cell when `cell?`) shows `value` until a reset or the page's
+  next load, in place of its own data source. A thing of `resource` (a
+  list when `list?`) is kept as its unique ID only and read again through
+  Ash as the current user whenever the page reads its data
+  (`<%= @web %>.BubbleData`), so a workflow never shows what the user may
+  not read: it shows what the policies let the user read at that moment.
+  Any other value (text, a number, a date) is kept as it is; a record
+  that is not of `resource` is not kept.
+  """
+  def display(ctx, step, path, element, cell?, resource, list?, value) do
+    key =
+      cond do
+        not cell? -> {:ok, {scope(ctx, path), element}}
+        is_integer(ctx.cell_index) -> {:ok, {scope(ctx, path), element, ctx.cell_index}}
+        true -> :error
+      end
+
+    case key do
+      {:ok, key} ->
+        shown = {resource, list?, displayed_value(resource, list?, value)}
+        {:cont, put_step(%{ctx | displayed: Map.put(ctx.displayed, key, shown)}, step, nil)}
+
+      :error ->
+        fail(ctx, step, :not_in_cell)
+    end
+  end
+
+  defp displayed_value(nil, _list?, value), do: plain(value)
+  defp displayed_value(_resource, true, value), do: Runtime.ids(List.wrap(value))
+  defp displayed_value(_resource, false, value), do: Runtime.id(value)
+
+  # A value shown as it is: never a record (a struct), which only the
+  # resource's re-read may show.
+  defp plain(%{__struct__: module} = value) when module in [Date, DateTime, NaiveDateTime, Time, Decimal],
+    do: value
+
+  defp plain(%{__struct__: _}), do: nil
+  defp plain(list) when is_list(list), do: list |> Enum.map(&plain/1) |> Enum.reject(&is_nil/1)
+  defp plain(%{} = map), do: Map.new(map, fn {k, v} -> {k, plain(v)} end)
+  defp plain(value), do: value
 
   # --- navigation -----------------------------------------------------------------------------
 

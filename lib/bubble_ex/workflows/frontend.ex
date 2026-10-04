@@ -48,6 +48,8 @@ defmodule BubbleEx.Workflows.Frontend do
   | Set focus to an element, Scroll to an element | `:focus`, `:scroll_to` | `element` |
   | Reset relevant inputs (`ResetInputs`) | `:reset_inputs` | `within` (the triggering element's container, nil for the surface) |
   | Reset a group / popup (`ResetGroup`) | `:reset_group` | `element` |
+  | Display data in a group / popup (`DisplayGroupData`) | `:display_data` | `element` (a group, popup, floating group, group focus or reusable-element instance, or the reusable element itself), `value` (nil: empty), `cell` (the repeating group whose cell holds `element`, or nil) |
+  | Display list in a repeating group (`DisplayListData`) | `:display_list` | `element` (a repeating group), `value`, `cell` |
   | Set state(s) (`SetCustomState`) | `:set_state` | `element`, `states` (`%{state, value}`, state `custom.<id>`) |
   | Go to page (`ChangePage`) | `:navigate` | `page` (a page's Bubble ID, or `:current`), `params` (`%{key, value}`), `thing` (the data to send, the index page and the current page included), `untyped?` (true when `thing` goes to a page with no type of content: Bubble appends it as a path segment, a thing's unique ID or a text, WTF-466), `keep_params?`, `replace?`, `new_tab?` |
   | Open an external website (`OpenURL`) | `:open_url` | `url`, `new_tab?` |
@@ -99,7 +101,8 @@ defmodule BubbleEx.Workflows.Frontend do
           type: String.t() | nil,
           parent: String.t() | nil,
           instance_of: String.t() | nil,
-          value: String.t() | nil
+          value: String.t() | nil,
+          content: String.t() | nil
         }
   @type state :: %{
           element: String.t(),
@@ -142,6 +145,8 @@ defmodule BubbleEx.Workflows.Frontend do
     "ScrollToElement" => :scroll_to,
     "ResetInputs" => :reset_inputs,
     "ResetGroup" => :reset_group,
+    "DisplayGroupData" => :display_data,
+    "DisplayListData" => :display_list,
     "SetCustomState" => :set_state,
     "ChangePage" => :navigate,
     "OpenURL" => :open_url,
@@ -167,6 +172,8 @@ defmodule BubbleEx.Workflows.Frontend do
     scroll_to: ~w(element_id),
     reset_inputs: [],
     reset_group: ~w(element_id),
+    display_data: ~w(element_id data_source),
+    display_list: ~w(element_id data_source),
     set_state: ~w(element_id custom_state value custom_states_values),
     navigate:
       ~w(element_id url_parameters add_parameters keep_current_page_params replace_history open_in_new_tab data_to_send),
@@ -529,6 +536,27 @@ defmodule BubbleEx.Workflows.Frontend do
 
   defp lower(:reset_inputs, _props, _path, _id, _env, ctx), do: {%{within: ctx.within}, []}
 
+  # "Display data in a group / popup" and "Display list in a repeating
+  # group" (WTF-492): the element's data, until a reset or the page's next
+  # load. Only a holder of group data of the workflow's surface takes it.
+  defp lower(op, props, path, id, env, ctx) when op in [:display_data, :display_list] do
+    element = text(props["element_id"])
+
+    residue =
+      case element_ref(id, element, ctx) do
+        [] -> display_residue(id, op, Tree.node(ctx.tree, element), ctx)
+        residue -> residue
+      end
+
+    value =
+      case props["data_source"] do
+        nil -> %Expr{path: Source.pointer(path ++ ["data_source"]), ir: IR.node(:empty)}
+        value -> Lowering.expr(value, path ++ ["data_source"], env)
+      end
+
+    {%{element: element, value: value, cell: cell_of(element, ctx)}, residue}
+  end
+
   defp lower(:set_state, props, path, id, env, ctx) do
     element = text(props["element_id"])
 
@@ -733,6 +761,34 @@ defmodule BubbleEx.Workflows.Frontend do
 
   # --- elements ------------------------------------------------------------------------
 
+  @group_holders ~w(Group Popup FloatingGroup GroupFocus CustomElement)
+
+  # A display step's element must hold that kind of data: a group (or a
+  # reusable-element instance, or the reusable element itself) for a
+  # thing, a repeating group for a list.
+  defp display_residue(id, op, %Tree.Node{} = node, ctx) do
+    holds? =
+      case op do
+        :display_data -> node.type in @group_holders or node.id == bubble(ctx.surface)
+        :display_list -> node.type == "RepeatingGroup"
+      end
+
+    surface? = node.kind == :reusable or node.kind == :element
+
+    if holds? and surface?,
+      do: [],
+      else: Lowering.option_residue(id, ["element_id"])
+  end
+
+  # The repeating group whose cell holds `element` (in the same surface),
+  # or nil.
+  defp cell_of(element, ctx) do
+    ctx.tree
+    |> Tree.ancestors(element)
+    |> Enum.take_while(&(&1.kind == :element))
+    |> Enum.find_value(&(&1.type in ~w(RepeatingGroup Table) && &1.id))
+  end
+
   defp element_ref(id, element, ctx) do
     if element && in_surface?(element, ctx),
       do: [],
@@ -801,7 +857,8 @@ defmodule BubbleEx.Workflows.Frontend do
          type: node.type,
          parent: node.parent,
          instance_of: node.instance_of,
-         value: node.value
+         value: node.value,
+         content: node.content
        }}
     end
   end

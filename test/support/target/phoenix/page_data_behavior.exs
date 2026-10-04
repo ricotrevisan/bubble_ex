@@ -1539,4 +1539,96 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert Process.alive?(view.pid)
     assert :erlang.system_info(:atom_count) == atoms
   end
+
+  # --- Display data (WTF-492) ----------------------------------------------------------------
+
+  defp shown(html, label),
+    do: ~r/#{label}: (\w+)/ |> Regex.scan(html, capture: :all_but_first) |> List.flatten()
+
+  defp click(view, element, scope \\ ""),
+    do: render_click(view, "bubble:click", %{"scope" => scope, "element" => element})
+
+  test "Display data shows a thing in a group with no data source, until a reset", %{
+    conn: conn
+  } do
+    on()
+    {:ok, view, html} = live(conn, "/shown")
+    assert shown(html, "SrcA") == ["Answer"]
+    assert shown(html, "SrcB") == ["Eat"]
+    assert shown(html, "Shown") == []
+
+    # The group shows the step's thing, and what reads it (a group inside
+    # whose source is its parent's project) follows.
+    html = click(view, "bShowA")
+    assert shown(html, "Shown") == ["Answer"]
+    assert shown(html, "Shown project") == ["Apollo"]
+
+    # Another step replaces it.
+    assert shown(click(view, "bShowB"), "Shown") == ["Eat"]
+
+    # The page kept its unique ID, not the record: a change shows.
+    PhxCheck.Task
+    |> Ash.get!("1700000000000x200000000000000005", authorize?: false)
+    |> Ash.Changeset.for_update(:update, %{title: "Eaten"})
+    |> Ash.update!(authorize?: false)
+
+    Process.sleep(150)
+    assert shown(render(view), "Shown") == ["Eaten"]
+
+    # A reset forgets it: the group shows nothing again.
+    html = click(view, "bResetShown")
+    assert shown(html, "Shown") == []
+    assert shown(html, "Shown project") == []
+  end
+
+  test "Display data wins over a group's own data source until a reset", %{conn: conn} do
+    on()
+    {:ok, view, _html} = live(conn, "/shown")
+    assert shown(click(view, "bOverride"), "SrcA") == ["Eat"]
+    assert shown(click(view, "bResetSrc"), "SrcA") == ["Answer"]
+  end
+
+  test "Display data then Show popup opens the popup on its thing", %{conn: conn} do
+    on()
+    {:ok, view, html} = live(conn, "/shown")
+    assert shown(html, "Popup") == []
+
+    assert shown(click(view, "bOpenPop"), "Popup") == ["Eat"]
+    assert_push_event(view, "bubble:exec", %{ops: [%{op: "show"}]})
+  end
+
+  test "Display list shows a list in a repeating group with no data source", %{conn: conn} do
+    on()
+    {:ok, view, html} = live(conn, "/shown")
+    assert shown(html, "Listed") == []
+    assert shown(click(view, "bShowList"), "Listed") == ["Answer", "Bake"]
+  end
+
+  test "Display data in a reusable element: its own group, or the instance's thing", %{
+    conn: conn
+  } do
+    on()
+    {:ok, view, html} = live(conn, "/shown")
+    assert shown(html, "Panel") == []
+
+    # The reusable element's custom event shows its parameter in its group.
+    assert shown(click(view, "bShowPanel"), "Panel") == ["Answer"]
+
+    # The page shows a thing in the instance: the reusable element's own.
+    html = click(view, "bShowCard")
+    assert shown(html, "Panel own") == ["Eat"]
+    assert shown(html, "Panel") == ["Answer"]
+
+    # Resetting the instance forgets both.
+    html = click(view, "bResetPanel")
+    assert shown(html, "Panel own") == []
+    assert shown(html, "Panel") == []
+  end
+
+  test "Display data runs only with data access: off, nothing is kept or shown", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/shown")
+    html = click(view, "bShowA")
+    assert shown(html, "Shown") == []
+    assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."})
+  end
 end

@@ -90,7 +90,8 @@ lists for that element.
 |--------|-----------|
 | Show / Hide / Toggle, Set focus, Scroll to | `<Web>.Bubble` JS commands (browser) or `bubble:exec` operations pushed to the page's hook (server) |
 | Set state(s) | the page's state map, per instance |
-| Reset relevant inputs, Reset a group | the page's input map back to first values, and the browser's inputs |
+| Reset relevant inputs, Reset a group | the page's input map back to first values, and the browser's inputs; a reset group or popup also forgets what "Display data" showed in it and in the elements inside it, a reset reusable-element instance everything shown in its scope (WTF-492) |
+| Display data in a group / popup, Display list in a repeating group | the element's data, kept by the page per instance (per cell in a repeating group's cell) until a reset or the page's next load, in place of its own data source; a thing is kept as its unique ID and read again as the current user (WTF-492, below) |
 | Go to page | `push_patch` (same page) or `push_navigate`, URL parameters as text; the target is a page of the app or Bubble's `Current page`, anything else (an unknown or deleted page's ID, an empty one, a path, other text) is `:unresolved_reference` residue and the workflow refuses to run, never a navigation elsewhere (WTF-429); its data to send, to a page with a type of content whose thing the page loads (`docs/page-data.md`), is the thing's unique ID as the path segment after the page's (`/<page>/<unique id>`, WTF-378; `/index/<unique id>` for the index page, WTF-454); to a page with no type of content (WTF-466, replay-verified) it is appended all the same, as Bubble does: a thing's unique ID or the value (text, a number, a boolean, a date) as text, percent-encoded as one segment (`/<page>/x`; none when empty, `.` or `..`, another kind of value, a list included, or over 2000 encoded bytes, logged), which the page ignores; to the current page it replaces that segment of the page's URL (a page's workflow: known at generation; a reusable element's: decided at run time, as text when the page takes no thing); every page's route takes the segment; the page's own path is its route's, without the segment the router took (never a query parameter), and the index page's is `/` |
 | Open an external website | `redirect(external:)` or a new tab, http(s) or a site path only |
 | Refresh the page, Log out | `redirect` |
@@ -114,6 +115,40 @@ With `page_data:` (WTF-420, `docs/page-data.md`), the page's thing, a
 group's or reusable instance's thing and a repeating group's list are
 what the page loads, and workflows read them; a workflow that does is a
 data workflow (it runs only with the data-access opt-in).
+
+### Display data (WTF-492)
+
+"Display data in a group / popup" sets what a group, popup, floating
+group, group focus, reusable-element instance (its reusable element's
+thing) or the reusable element itself (seen from inside) shows; "Display
+list in a repeating group" sets a repeating group's list. The lowering's
+`:display_data` / `:display_list` step names the element, the value and
+the repeating group whose cell holds the element; another kind of
+element is `:unsupported_option` residue (`element_id`).
+
+The page keeps what was shown in `@bubble_displayed`, keyed like the
+page's data (`{scope, element}`, plus the cell's index in a cell):
+`{resource, list?, value}` where a thing (or list of things) is its
+unique ID only. Every read of the page's data reads it again through Ash
+as the current user (`<Web>.BubbleData`), with the relationships the
+page's bindings read through it, and follows its records' change
+notifications. So a workflow never shows what the user may not read:
+with `privacy: :enforced`, a record the user may not view shows nothing
+and a hidden field is empty, whatever the workflow read it as (a custom
+event ignoring privacy rules included). Any other value (text, a
+number, a date) is kept as it is, never a record.
+
+The element becomes page data (`docs/page-data.md`): with no data
+source of its own, a source that reads only what a step showed
+(`read: :displayed`, nothing before); with one, the step's value wins
+over it until a reset. Either way only when a step that **runs** sets it
+(a native step in a workflow the runtime starts, transitively): an
+element only a refused workflow would set stays unloaded, and what reads
+it is a `TODO` marker as before. In a repeating group's cell, only a
+group from a workflow of the same cell (per cell; such workflows are not
+wired yet, `:trigger_in_runtime_template`); a list or an instance there,
+or a cell's group from outside the cell, is `:page_data_in_cell`
+residue (`kind` `"list"`, `"instance"`, `"display"`).
 
 Anything the generated page does not keep is `:unavailable_input` residue,
 never a silent empty value: data the page does not load, a cell's thing
@@ -241,7 +276,16 @@ sent to a page with no type of content is a list (here none: no path
 segment; Bubble may join its things' unique IDs with commas), or a value
 over 2000 encoded bytes (here none, logged); the URL Bubble gives
 the index page with data sent to it (`/index/<unique id>` here); that a
-workflow calling a custom event waits for the custom event's pauses; "Reset relevant inputs" resets the inputs
+workflow calling a custom event waits for the custom event's pauses;
+"Display data" on a group with a data source of its own wins over it
+until a reset or the page's next load, even when what the source reads
+changes; "Display data" with an empty value shows nothing (it does not
+fall back to the group's own source); "Reset group / popup" forgets what
+was shown in the group and in the groups inside it (they show their own
+source again), and a reset reusable-element instance forgets everything
+shown in it; a repeating group a "Display list" sets shows its list up to
+`:max_items` (its rows are not read for a list with no source of its
+own); "Reset relevant inputs" resets the inputs
 of the triggering element's container; a condition-true workflow whose "run
 this" is unset runs once per page load; a condition that is true when the
 page loads fires; "Go to page" lets the workflow finish before the page
@@ -272,6 +316,20 @@ mobile views):
 
   Steps are counted the same way. Residue reasons are counted per entry (a
   workflow can have several).
+
+### Private fixture app (test version), 2026-10-04
+
+With "Display data" lowered (WTF-492): 55 of the 77 "Display data"
+steps (79 with mobile views, not counted) are generated (35 in workflows
+the runtime starts; the rest wait on other steps), up from none; the 30
+"Display list" steps lower but none compiles yet (searches, list
+operators, untyped step results in their values). Generated code: 622 →
+692 native workflows, 430 → 466 wired, 2,007 → 2,085 native steps;
+`unsupported_action` residue entries 175 → 68. Page data: 943 → 1,016
+of 2,017 → 2,037 sources wired (20 elements set only by a step, 14 with
+a source of their own a step overrides, 53 sources reading them wired),
+and the elements inside wired page data 4,308 → 4,569 (elements inside
+unloaded data only 1,486 → 1,294).
 
 ### Private fixture app (test version), 2026-09-30
 

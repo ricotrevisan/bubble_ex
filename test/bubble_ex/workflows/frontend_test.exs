@@ -340,7 +340,8 @@ defmodule BubbleEx.Workflows.FrontendTest do
     assert coverage["by_surface"]["reusable"] == %{"total" => 3, "native" => 3}
 
     assert coverage["residue_reasons"] == %{
-             "unsupported_action" => 2,
+             "unsupported_action" => 1,
+             "unsupported_option" => 1,
              "unresolved_reference" => 1
            }
 
