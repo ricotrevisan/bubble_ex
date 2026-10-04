@@ -37,12 +37,19 @@ defmodule <%= @web %>.BubbleData do
   `authorize?: true`, which restricts nothing until you add policies.
 
   **A search that ignores empty constraints can return every record.** A
-  search stating `ignore_empty_constraints: true` drops each constraint
-  whose value is empty, as Bubble does: for a logged-out visitor
-  `Current User` is empty, so `X = Current User` is dropped and the
-  search returns every record of the type (up to its page size or
-  `:max_items`). With no policies nothing stops this; require a signed-in
-  user on such pages or add policies before enabling data access.<% end %>
+  page search stating `ignore_empty_constraints: true` drops each
+  constraint whose value is empty, as Bubble does (any other empty
+  constraint value matches nothing). A signed-in user whose referenced
+  field is empty (`X = Current User's Workspace`, with no workspace) or
+  whose input is blank gets every record of the type the search can
+  read (up to its page size or `:max_items`). A logged-out visitor does
+  not: a constraint reading the current user matches nothing for them
+  (stricter than Bubble, whose temporary user would drop it). With no
+  policies nothing stops this. Before enabling data access, find such
+  searches and add policies that limit what each user may read, or
+  make the referenced field required, or set the search's
+  `ignore_empty_constraints` to false in Bubble where a blank value
+  should show nothing; requiring sign-in does not help.<% end %>
 
   ## What a browser can choose
 

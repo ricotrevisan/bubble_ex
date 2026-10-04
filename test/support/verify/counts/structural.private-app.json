@@ -117,12 +117,12 @@
             "residue:plugin_action": 323,
             "residue:plugin_event": 259,
             "residue:trigger_in_runtime_template": 195,
-            "residue:unavailable_input": 429,
-            "residue:uncompiled_expression": 702,
-            "residue:unresolved_reference": 16,
+            "residue:unavailable_input": 431,
+            "residue:uncompiled_expression": 696,
+            "residue:unresolved_reference": 19,
             "residue:unsupported_action": 101,
             "residue:unsupported_event": 17,
-            "residue:unsupported_option": 33
+            "residue:unsupported_option": 34
           },
           "residue": 2270,
           "total": 2964,
@@ -284,12 +284,12 @@
             "residue:plugin_action": 323,
             "residue:plugin_event": 259,
             "residue:trigger_in_runtime_template": 195,
-            "residue:unavailable_input": 429,
-            "residue:uncompiled_expression": 702,
-            "residue:unresolved_reference": 16,
+            "residue:unavailable_input": 431,
+            "residue:uncompiled_expression": 696,
+            "residue:unresolved_reference": 19,
             "residue:unsupported_action": 101,
             "residue:unsupported_event": 17,
-            "residue:unsupported_option": 33
+            "residue:unsupported_option": 34
           },
           "residue": 2270,
           "total": 2964,
