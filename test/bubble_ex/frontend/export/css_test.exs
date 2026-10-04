@@ -354,6 +354,83 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     end
   end
 
+  test "a z-index stays below the generated pages' workflow notice (WTF-474)" do
+    top =
+      node("top",
+        kind: :shape,
+        box: %{x: "0px", y: "0px", width: "10px", height: "10px", z_index: 9_999_999_999}
+      )
+
+    css = Css.page(node("fixed", layout: %{mode: :fixed}, children: [top]))
+    # The notice keeps 2147483647, CSS's maximum, for itself.
+    assert rule(css, "top") =~ "z-index: 2147483646;"
+    refute css =~ "9999999999"
+  end
+
+  test "a paint z-index, plain or responsive, is clamped too (WTF-474)" do
+    painted =
+      node("painted",
+        kind: :shape,
+        style: %{resolved: %{"z-index" => "2147483647"}},
+        responsive: [
+          %{
+            "media" => %{"operator" => "<", "width" => 768},
+            "paint" => %{"z-index" => 99_999_999_999}
+          }
+        ]
+      )
+
+    css = Css.page(painted)
+    [base, mobile] = String.split(css, "@media")
+    assert base =~ "z-index: 2147483646;"
+    assert mobile =~ "z-index: 2147483646;"
+    refute css =~ "2147483647"
+    refute css =~ "99999999999"
+
+    # What the HEEx emitter lowers (declarations, then Tailwind) too.
+    [lowered] = Css.lower(painted)
+    assert {"z-index", "2147483646"} in lowered.declarations
+
+    # Ordinary values pass as they are.
+    assert Css.z_index(183) == 183
+    assert Css.z_index("183") == "183"
+    assert Css.z_index("auto") == "auto"
+    assert Css.z_index(-1) == -1
+    assert Css.z_index("inherit") == "inherit"
+
+    # Anything that might be larger becomes the bound.
+    assert Css.z_index("calc(2147483647 + 1)") == "2147483646"
+    assert Css.z_index("var(--top)") == "2147483646"
+    assert Css.z_index("99999999999 !important") == "2147483646 !important"
+    assert Css.z_index("5 !important") == "5 !important"
+  end
+
+  test "a shared style's z-index, plain or responsive, is clamped (WTF-474)" do
+    style = %Style{
+      exporter_id: "footer",
+      map_key: "footer",
+      slug: "footer",
+      class_name: "s-footer",
+      properties: %{"z-index" => 9_999_999_999},
+      responsive: [
+        %{
+          "media" => %{"operator" => ">", "width" => 900},
+          "paint" => %{"z-index" => "9999999999"}
+        }
+      ]
+    }
+
+    css = Css.shared(%Normalized{styles: [style]})
+    [base, wide] = String.split(css, "@media")
+    assert base =~ "z-index: 2147483646;"
+    assert wide =~ "z-index: 2147483646;"
+    refute css =~ "9999999999"
+
+    [{_style, decls, [{">", 900, wide_decls}]}] = Css.style_rules(%Normalized{styles: [style]})
+    assert {"z-index", 2_147_483_646} in decls
+    assert {"z-index", "2147483646"} in wide_decls
+  end
+
   test "positions fixed children with absolute offsets and z-index" do
     child =
       node("fixed-child",

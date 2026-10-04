@@ -106,6 +106,18 @@ defmodule <%= @web %>.BubbleData do
   delivered to the page (sent after their writes committed, so the read
   sees them): a workflow's own write and its notification are one read.
 
+  An input change (typing, WTF-475) is narrower: it reads again only the
+  sources whose value or search constraints read that input (a source's
+  `inputs` in `__bubble__(:data)`) and the sources reading those
+  (`reads`, `cell`), transitively; the rest of the page's data stays as
+  it is, as read by the same current user: when the user differs from
+  the one the page was read as (a changed role, or anything the policies
+  read), the whole page reads again. The browser debounces typing
+  (`phx-debounce`, 300 ms) and the page coalesces what still arrives into
+  one read (`defer/2`). A source listed without `inputs` (scaffolded
+  before WTF-475) is read again on any input change, with the rest of the
+  page.
+
   ## Unverified Bubble behavior
 
   To confirm by replay (WTF-358): a page's thing is read from the URL path
@@ -197,26 +209,39 @@ defmodule <%= @web %>.BubbleData do
   @doc """
   Loads the page's data into `@bubble_data` (nothing with data access
   off) and, once connected, subscribes to the changes of what it read.
-  The data is then current (`@bubble_data_stale` false).
+  The data is then current (`@bubble_data_stale` false). <%= if @enforced? do %>The current
+  user is read afresh first, unless `actor_fresh?: true` says the caller
+  has just done it (`BubbleWorkflows.refresh_actor/1`).<% else %>`opts` is
+  for the enforced variant (`actor_fresh?:`), ignored here.<% end %>
   """
-  def load(socket, page) do
-    socket = assign(socket, :bubble_data_stale, false)<%= if @enforced? do %>
-    socket = if data_access?(), do: BubbleWorkflows.refresh_actor(socket), else: socket<% end %>
+  def load(socket, page, opts \\ []) do
+    socket =
+      socket
+      |> assign(:bubble_data_stale, false)
+      |> assign(:bubble_data_inputs, MapSet.new())<%= if @enforced? do %>
+
+    socket =
+      if data_access?() and not Keyword.get(opts, :actor_fresh?, false),
+        do: BubbleWorkflows.refresh_actor(socket),
+        else: socket<% else %>
+
+    _ = opts<% end %>
 
     if data_access?() and connected?(socket) do
       # Notifications already delivered were sent after their writes
       # committed: this read covers them.
       _ = take_changes(Map.get(socket.assigns, :bubble_topics, MapSet.new()), false)
 
-      {data, topics} =
-        Enum.reduce(BubbleWorkflows.surfaces(page), {%{}, MapSet.new()}, fn {scope, module},
-                                                                          acc ->
+      {data, by_source} =
+        Enum.reduce(BubbleWorkflows.surfaces(page), {%{}, %{}}, fn {scope, module}, acc ->
           load_surface(socket, module, scope, acc)
         end)
 
       socket
       |> assign(:bubble_data, data)
-      |> subscribe(topics)
+      |> assign(:bubble_data_actor, data_actor(socket))
+      |> assign(:bubble_source_topics, by_source)
+      |> subscribe(all_topics(by_source))
     else
       if not data_access?() and connected?(socket) and
            not Map.get(socket.assigns, :bubble_data_warned, false) and sources?(page) do
@@ -250,18 +275,119 @@ defmodule <%= @web %>.BubbleData do
   def mark_stale(socket), do: assign(socket, :bubble_data_stale, true)
 
   @doc """
+  Marks the inputs `elements` (Bubble IDs) changed: the next `reload/2`
+  reads again only the sources that read them, transitively (WTF-475).
+  """
+  def mark_inputs(socket, elements) do
+    changed = Map.get(socket.assigns, :bubble_data_inputs) || MapSet.new()
+    assign(socket, :bubble_data_inputs, Enum.into(elements, changed))
+  end
+
+  @doc """
   Reads the page's data again only when it is stale, or when a change
   notification of a subscribed topic is already waiting (e.g. the echo of
-  a write the event just made outside the workflow runtime).
+  a write the event just made outside the workflow runtime). After input
+  changes alone (`mark_inputs/2`) it reads only the sources that read
+  them.
   """
-  def reload(socket, page) do
+  def reload(socket, page, opts \\ []) do
     topics = Map.get(socket.assigns, :bubble_topics, MapSet.new())
     waiting? = take_changes(topics, false)
+    inputs = Map.get(socket.assigns, :bubble_data_inputs) || MapSet.new()
 
-    if waiting? or Map.get(socket.assigns, :bubble_data_stale, false),
-      do: load(socket, page),
-      else: socket
+    cond do
+      waiting? or Map.get(socket.assigns, :bubble_data_stale, false) -> load(socket, page, opts)
+      MapSet.size(inputs) > 0 -> load_inputs(socket, page, inputs)
+      true -> socket
+    end
   end
+
+  # Reads again the sources that read the changed inputs, and those that
+  # read them; keeps the rest, which were read as the same actor. The
+  # current user is the one the event read on its way in (never read again
+  # here): when it differs from the one the data was read as (a changed
+  # role, or anything else the policies read), the whole page reads again.
+  # The subscriptions follow what each source last read.
+  defp load_inputs(socket, page, changed) do
+    socket = assign(socket, :bubble_data_inputs, MapSet.new())
+    affected = affected(page, changed)
+
+    cond do
+      not (data_access?() and connected?(socket)) or affected == :all ->
+        load(socket, page, actor_fresh?: true)
+
+      data_actor(socket) != Map.get(socket.assigns, :bubble_data_actor) ->
+        load(socket, page, actor_fresh?: true)
+
+      MapSet.size(affected) == 0 ->
+        socket
+
+      true ->
+        data =
+          Map.reject(socket.assigns.bubble_data, fn {key, _} ->
+            MapSet.member?(affected, elem(key, 1))
+          end)
+
+        by_source = Map.get(socket.assigns, :bubble_source_topics, %{})
+
+        {data, by_source} =
+          Enum.reduce(BubbleWorkflows.surfaces(page), {data, by_source}, fn {scope, module},
+                                                                           acc ->
+            load_surface(socket, module, scope, acc, affected)
+          end)
+
+        socket
+        |> assign(:bubble_data, data)
+        |> assign(:bubble_source_topics, by_source)
+        |> subscribe(all_topics(by_source))
+    end
+  end
+
+  # The actor the page's data is read as.
+  defp data_actor(socket),
+    do: <%= if @enforced? do %>BubbleWorkflows.current_actor(socket)<% else %>socket.assigns[:current_user]<% end %>
+
+  defp all_topics(by_source),
+    do: by_source |> Map.values() |> Enum.reduce(MapSet.new(), &MapSet.union/2)
+
+  # The elements of the sources an input change makes read again: those
+  # reading a changed input, then those reading them (their data, or the
+  # list of the repeating group whose cells they fill), to a fixpoint.
+  # `:all` when a source does not say what it reads.
+  defp affected(page, changed) do
+    sources = for {_scope, m} <- BubbleWorkflows.surfaces(page), s <- sources(m), do: s
+
+    if Enum.all?(sources, &is_list(Map.get(&1, :inputs))) do
+      direct =
+        for s <- sources,
+            Enum.any?(s.inputs, &MapSet.member?(changed, &1)),
+            into: MapSet.new(),
+            do: s.element
+
+      spread(sources, direct)
+    else
+      :all
+    end
+  end
+
+  defp spread(sources, affected) do
+    marked = Enum.reduce(sources, affected, &mark_instance(&1, &2))
+
+    next =
+      for s <- sources,
+          not MapSet.member?(affected, s.element),
+          Enum.any?([s.cell | Map.get(s, :reads, [])], &MapSet.member?(marked, &1)),
+          into: affected,
+          do: s.element
+
+    if MapSet.size(next) == MapSet.size(affected), do: affected, else: spread(sources, next)
+  end
+
+  # What reads an instance's thing names the instance as well as its holder.
+  defp mark_instance(%{instance: instance, element: e}, set) when is_binary(instance),
+    do: if(MapSet.member?(set, e), do: MapSet.put(set, instance), else: set)
+
+  defp mark_instance(_source, set), do: set
 
   # Takes the change notifications waiting in the page's mailbox; whether
   # one was of a subscribed topic.
@@ -288,13 +414,14 @@ defmodule <%= @web %>.BubbleData do
 
   @doc """
   Handles the pending refresh: reads when the data is stale (not when a
-  read since has covered it); superseded timers do not read.
+  read since has covered it); superseded timers do not read. `opts` as
+  `load/3`'s.
   """
-  def refresh(socket, page, ref) do
+  def refresh(socket, page, ref, opts \\ []) do
     if pending?(socket, ref) do
       socket
       |> assign(:bubble_data_refresh, nil)
-      |> reload(page)
+      |> reload(page, opts)
     else
       socket
     end
@@ -310,19 +437,27 @@ defmodule <%= @web %>.BubbleData do
     FunctionClauseError -> []
   end
 
-  defp load_surface(socket, module, scope, acc) do
-    {cells, own} = Enum.split_with(sources(module), & &1.cell)
+  # Every source of the surface, or only those whose element is in `only`;
+  # the data, and the topics each source's value needs (by source).
+  defp load_surface(socket, module, scope, acc, only \\ nil) do
+    {cells, own} =
+      module
+      |> sources()
+      |> Enum.filter(&(is_nil(only) or MapSet.member?(only, &1.element)))
+      |> Enum.split_with(& &1.cell)
 
     acc =
-      Enum.reduce(own, acc, fn source, {data, topics} ->
+      Enum.reduce(own, acc, fn source, {data, by_source} ->
         ctx = BubbleWorkflows.data_ctx(socket, module, scope, data)
         value = run(module, source, ctx)
         key_scope = if source.instance, do: BubbleWorkflows.scope(ctx, [source.instance]), else: scope
-        {Map.put(data, {key_scope, source.element}, value), topics(topics, source, value)}
+
+        {Map.put(data, {key_scope, source.element}, value),
+         Map.put(by_source, source_id(scope, source), topics(MapSet.new(), source, value))}
       end)
 
     # A group in a repeating group's cell holds a value per cell.
-    Enum.reduce(cells, acc, fn source, {data, topics} ->
+    Enum.reduce(cells, acc, fn source, {data, by_source} ->
       items = data |> Map.get({scope, source.cell}) |> List.wrap()
       # The list's own source may have loaded these already (the same
       # relationship for a binding): load only what is missing.
@@ -347,12 +482,17 @@ defmodule <%= @web %>.BubbleData do
         |> Enum.map(&elem(&1, 1))
         |> Runtime.load_page(source.loads, Runtime.root(nil, <%= if @enforced? do %>BubbleWorkflows.current_actor(socket)<% else %>socket.assigns[:current_user]<% end %>), related_cap())
 
-      Enum.zip(Enum.map(values, &elem(&1, 0)), loaded)
-      |> Enum.reduce({data, topics}, fn {i, value}, {data, topics} ->
-        {Map.put(data, {scope, source.element, i}, value), topics(topics, source, value)}
-      end)
+      {data, topics} =
+        Enum.zip(Enum.map(values, &elem(&1, 0)), loaded)
+        |> Enum.reduce({data, MapSet.new()}, fn {i, value}, {data, topics} ->
+          {Map.put(data, {scope, source.element, i}, value), topics(topics, source, value)}
+        end)
+
+      {data, Map.put(by_source, source_id(scope, source), topics)}
     end)
   end
+
+  defp source_id(scope, source), do: {scope, source.instance, source.element, source.fun}
 
   # One source: its function, then the relationships the page's bindings
   # read through it. A source that fails reads nothing (logged).

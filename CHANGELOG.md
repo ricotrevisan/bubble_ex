@@ -1509,6 +1509,37 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **The workflow refusal notice is never covered** (WTF-474). The
+  generated pages' `#bubble-notice` (role `status`, a polite live region)
+  had `z-index: 50`, so an element with a higher one (a footer at 183)
+  hid it. It is now an open manual popover, in the browser's top layer
+  above every z-index, kept open while empty so its live region stays in
+  the tree, and reopened for each notice so it rises above anything that
+  entered the top layer since; with a modal `<dialog>` open, a visually
+  hidden live region inside it announces the notice too. Without popover
+  support it has CSS's
+  maximum z-index; every z-index the frontend export emits (box, paint,
+  responsive paint, shared styles, retained source `<style>` blocks) is
+  clamped below it (`Frontend.Export.Css.z_index/1`; a value that is not
+  a plain integer or keyword, such as `calc(...)`, becomes the bound).
+- **Typing in an input no longer re-reads the whole page** (WTF-475).
+  Each input change re-ran every data source of the page. Now each source
+  in `__bubble__(:data)` lists the inputs it reads (`inputs`) and the
+  page data it reads (`reads`); an input change reads again only the
+  sources that read that input, and those reading them, transitively,
+  keeping the rest (and their change subscriptions). If the current user
+  differs from the one the page was read as (a changed role), the whole
+  page reads again. The current user is read once per input change.
+  Sources scaffolded before this (no `inputs`) still read the whole page.
+- **Text inputs commit on blur** (WTF-475). Tracked text and multiline
+  inputs debounce typing (`phx-debounce="300"`); the debounced change (and
+  Enter) updates the value for the page's data and conditions only, and
+  their "An input's value is changed" workflows run when the input is
+  committed on blur (`bubble:commit`), once per value that differs from
+  the last committed one, as Bubble's fire on blur. The field shows the
+  value the page keeps (`Bubble.input(@bubble_inputs, ...)`), so a
+  re-render never puts its first value back. Other inputs (checkboxes,
+  dropdowns) still run them on every change.
 - **Policy heads format the same on every Elixir version** (WTF-459).
   A `field_policy [...] do` or `policy [...] do` head that passed 98
   columns only by its ` do` stayed on one line on Elixir 1.17/1.18 and

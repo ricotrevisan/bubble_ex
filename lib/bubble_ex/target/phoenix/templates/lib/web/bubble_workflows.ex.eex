@@ -11,8 +11,8 @@ defmodule <%= @web %>.BubbleWorkflows do
   A browser can only ask the page to run what the page lists
   (`__bubble__(:surface)` of its `Workflows` module and of the reusable
   elements it renders, `__bubble__(:instances)`): a click (`bubble:click`)
-  or an input change (`bubble:change`) of an element the page renders in a
-  scope (reusable-element instance) it renders. Anything else is ignored.
+  or an input change (`bubble:change`, `bubble:commit`) of an element the
+  page renders in a scope (reusable-element instance) it renders. Anything else is ignored.
   Event parameters never become atoms, never name a workflow, a module or a
   record: the page looks the element up in its own static lists and runs
   the workflows listed there, with the values it keeps (current user,
@@ -23,6 +23,16 @@ defmodule <%= @web %>.BubbleWorkflows do
   `phx-click`), in Bubble ID order; Bubble also runs those of a clickable
   element around it (unverified). A workflow run in the browser (element
   steps only) never reaches the server.
+
+  Typing in a text or multiline input (WTF-475) reaches the page 300 ms
+  after the last keystroke (`phx-debounce`): its value for the page's
+  data, which reads again only the sources that read it, and for
+  conditions. Its "An input's value is changed" workflows run when it is
+  committed, on blur (`bubble:commit`), once per value that differs from
+  the one last committed or set by a workflow; Enter is a change. The
+  input shows the value the page keeps, so a re-render never puts back
+  its first value. Checkboxes,
+  dropdowns and the other inputs commit on every change.
 
   ## Running a workflow
 
@@ -105,7 +115,10 @@ defmodule <%= @web %>.BubbleWorkflows do
   page loads fires; "Go to page" lets the workflow finish before the page
   changes; workflows triggered together run one after the other; a custom
   event's caller waits for the custom event's pauses; data sent to the
-  index page is at `/index/<unique id>`.
+  index page is at `/index/<unique id>`; a search reading a text input
+  updates while the user types, after a pause (about 300 ms here), and
+  the input's "An input's value is changed" fires on blur, not on that
+  pause (Bubble's manual; WTF-475).
   """
 
   require Logger
@@ -221,6 +234,8 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_conditions, %{})
     |> assign(:bubble_data, %{})
     |> assign(:bubble_data_stale, false)
+    |> assign(:bubble_data_inputs, MapSet.new())
+    |> assign(:bubble_committed, %{})
     |> assign(:bubble_thing, nil)
   end
 
@@ -310,26 +325,75 @@ defmodule <%= @web %>.BubbleWorkflows do
     end
   end
 
+  # A text input's change (`"on" => "blur"`, sent while typing or on
+  # Enter) is its value for the page's data and conditions only; its
+  # workflows run when it is committed (`bubble:commit`, on blur). Any
+  # other input's change commits it.
   def handle_event(socket, page, "bubble:change", %{"bubble" => %{} = params}) do
-    with %{"scope" => scope, "element" => element} when is_binary(scope) and is_binary(element) <-
-           params,
-         {:ok, module} <- surface(page, scope),
-         %{^element => {type, _first}} <- module.__bubble__(:surface).inputs,
-         {:ok, value} <- coerce(type, Map.get(params, "value")) do
-      ids = Map.get(module.__bubble__(:surface).changes, element, [])
+    with {:ok, module, scope, element, value} <- input_event(page, params) do
+      socket = assign(socket, :bubble_refused, false) |> put_input(scope, element, value)
 
-      socket =
-        socket
-        |> assign(:bubble_inputs, Map.put(socket.assigns.bubble_inputs, {scope, element}, value))
-        |> assign(:bubble_refused, false)
+      if Map.get(params, "on") == "blur" do
+        {:noreply, socket |> event(page, [], nil, :deferred) |> notice()}
+      else
+        commit(socket, page, module, scope, element, value)
+      end
+    else
+      _ -> {:noreply, socket}
+    end
+  end
 
-      {:noreply, socket |> event(page, [{module, scope, ids, %{}}], nil, :deferred) |> notice()}
+  # A text input committed on blur (`phx-blur`: the scope, empty on the
+  # page itself, and the element as values). Its workflows run when its
+  # value differs from the one last committed (or set by a workflow).
+  def handle_event(socket, page, "bubble:commit", %{} = params) do
+    params = Map.put_new(params, "scope", "")
+
+    with {:ok, module, scope, element, value} <- input_event(page, params) do
+      socket = assign(socket, :bubble_refused, false) |> put_input(scope, element, value)
+      commit(socket, page, module, scope, element, value)
     else
       _ -> {:noreply, socket}
     end
   end
 
   def handle_event(socket, _page, _event, _params), do: {:noreply, socket}
+
+  defp input_event(page, params) do
+    with %{"scope" => scope, "element" => element} when is_binary(scope) and is_binary(element) <-
+           params,
+         {:ok, module} <- surface(page, scope),
+         %{^element => {type, _first}} <- module.__bubble__(:surface).inputs,
+         {:ok, value} <- coerce(type, Map.get(params, "value")) do
+      {:ok, module, scope, element, value}
+    end
+  end
+
+  # The input's new value; the sources reading it read again (WTF-475).
+  defp put_input(socket, scope, element, value) do
+    if Map.get(socket.assigns.bubble_inputs, {scope, element}) == value do
+      socket
+    else
+      socket
+      |> assign(:bubble_inputs, Map.put(socket.assigns.bubble_inputs, {scope, element}, value))
+      |> BubbleData.mark_inputs([element])
+    end
+  end
+
+  defp commit(socket, page, module, scope, element, value) do
+    key = {scope, element}
+    committed = Map.get(socket.assigns, :bubble_committed) || %{}
+    before = Map.get(committed, key, Map.get(socket.assigns.bubble_first_inputs, key))
+    socket = assign(socket, :bubble_committed, Map.put(committed, key, value))
+
+    runs =
+      case Map.get(module.__bubble__(:surface).changes, element, []) do
+        ids when ids != [] and before != value -> [{module, scope, ids, %{}}]
+        _ -> []
+      end
+
+    {:noreply, socket |> event(page, runs, nil, :deferred) |> notice()}
+  end
 
   @doc "Page loaded, delayed custom events and \"do every\" workflows."
   def handle_info(socket, page, {:bubble, :page_loaded}) do
@@ -365,12 +429,12 @@ defmodule <%= @web %>.BubbleWorkflows do
         socket
         |> assign(:bubble_pending_run, nil)
         |> assign(:bubble_refused, false)
-        |> BubbleData.refresh(page, ref)
+        |> BubbleData.refresh(page, ref, actor_fresh?: true)
 
       # The pending events are input changes: a refused one gets its notice.
       pending = socket.assigns[:bubble_pending_events] || []
       {socket, run} = run_events(socket, page, pending, run)
-      socket = assign(socket, :bubble_pending_events, nil)
+      socket = socket |> assign(:bubble_pending_events, nil) |> assign(:bubble_pending_keys, nil)
       {socket, run} = settle_after_events(socket, page, pending, run)
       {:noreply, socket |> dispatch(run) |> notice()}
     else
@@ -524,8 +588,14 @@ defmodule <%= @web %>.BubbleWorkflows do
   # changed, or a change notification of a record it shows arrived), before
   # a workflow and before conditions settle; every read clears it. An event
   # that changes none of that reads nothing.
-  defp event(socket, page, runs, budget \\ nil, reload \\ :immediate) do<%= if @enforced? do %>
-    socket = refresh_actor(socket)<% end %>
+  defp event(socket, page, runs, budget \\ nil, reload \\ :immediate) do
+    # A deferred event with page data only queues its workflows: the
+    # debounced read reads the current user (once) and runs them.
+    queued? =
+      reload == :deferred and BubbleData.data_access?() and
+        Enum.any?(surfaces(page), fn {_, m} -> BubbleData.sources(m) != [] end)
+<%= if @enforced? do %>
+    socket = if queued?, do: socket, else: refresh_actor(socket)<% end %>
     run = start(socket, budget)
 
     case reload do
@@ -538,21 +608,29 @@ defmodule <%= @web %>.BubbleWorkflows do
         # With page data, input workflows must read the latest input's
         # sources, not the preceding render. Keep their shared run budget
         # until the last keystroke's single debounced read.
-        if BubbleData.data_access?() and
-             Enum.any?(surfaces(page), fn {_, m} -> BubbleData.sources(m) != [] end) do
+        if queued? do
           run = merge_pending(socket.assigns[:bubble_pending_run], run)
 
-          pending =
-            Enum.reduce(runs, socket.assigns[:bubble_pending_events] || [], fn
-              {module, scope, ids, _} = entry, acc ->
-                Enum.reject(acc, fn {m, s, i, _} -> {m, s, i} == {module, scope, ids} end) ++
-                  [entry]
-            end)
+          # The same workflows queued with the same input values run once;
+          # a commit of another value runs again (WTF-475).
+          {pending, keys} =
+            Enum.reduce(
+              runs,
+              {socket.assigns[:bubble_pending_events] || [],
+               socket.assigns[:bubble_pending_keys] || MapSet.new()},
+              fn {module, scope, ids, _} = entry, {acc, keys} ->
+                key = {module, scope, ids, socket.assigns.bubble_inputs}
+
+                if MapSet.member?(keys, key),
+                  do: {acc, keys},
+                  else: {acc ++ [entry], MapSet.put(keys, key)}
+              end
+            )
 
           socket
           |> assign(:bubble_pending_run, run)
           |> assign(:bubble_pending_events, pending)
-          |> BubbleData.mark_stale()
+          |> assign(:bubble_pending_keys, keys)
           |> BubbleData.defer()
         else
           # No page data to re-read: keep input-only workflows and their
@@ -572,6 +650,7 @@ defmodule <%= @web %>.BubbleWorkflows do
           socket
           |> assign(:bubble_pending_run, nil)
           |> assign(:bubble_pending_events, nil)
+          |> assign(:bubble_pending_keys, nil)
           |> assign(:bubble_data_refresh, nil)
 
         {socket, run} = run_events(socket, page, pending, run)
@@ -733,17 +812,34 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   defp apply_ctx(socket, %Ctx{} = ctx) do
     # A data step may have written what the page shows; a custom state or
-    # an input may be a search constraint.
-    stale? =
-      ctx.data_stale or ctx.states != socket.assigns.bubble_states or
-        ctx.inputs != socket.assigns.bubble_inputs
+    # an input may be a search constraint (an input only for the sources
+    # reading it, WTF-475).
+    changed = changed_inputs(socket.assigns.bubble_inputs, ctx.inputs)
+
+    socket =
+      cond do
+        ctx.data_stale or ctx.states != socket.assigns.bubble_states ->
+          BubbleData.mark_stale(socket)
+
+        changed != [] ->
+          BubbleData.mark_inputs(socket, Enum.map(changed, &elem(&1, 1)))
+
+        true ->
+          socket
+      end
+
+    # A value a workflow sets (a reset) is not the user's change: the next
+    # commit compares with it.
+    committed =
+      Enum.reduce(changed, Map.get(socket.assigns, :bubble_committed) || %{}, fn key, acc ->
+        Map.put(acc, key, Map.get(ctx.inputs, key))
+      end)
 
     socket =
       socket
       |> assign(:bubble_states, ctx.states)
       |> assign(:bubble_inputs, ctx.inputs)
-
-    socket = if stale?, do: BubbleData.mark_stale(socket), else: socket
+      |> assign(:bubble_committed, committed)
 
     socket =
       if ctx.js == [],
@@ -757,6 +853,16 @@ defmodule <%= @web %>.BubbleWorkflows do
       {:redirect, to} -> redirect(socket, to: to)
       {:external, url} -> redirect(socket, external: url)
     end
+  end
+
+  # The inputs (`{scope, element}`) whose value differs between `before`
+  # and `now`.
+  defp changed_inputs(same, same), do: []
+
+  defp changed_inputs(before, now) do
+    (Map.keys(before) ++ Map.keys(now))
+    |> Enum.uniq()
+    |> Enum.filter(&(Map.get(before, &1) != Map.get(now, &1)))
   end
 
   # Condition-true workflows: each runs when its condition becomes true

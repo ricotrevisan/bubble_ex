@@ -329,6 +329,60 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     refute hook =~ "innerHTML"
   end
 
+  test "the refusal notice sits above every element, whatever its z-index (WTF-474)", %{
+    files: files
+  } do
+    hook = files["lib/shop_web/components/bubble.ex"]
+    [notice] = Regex.run(~r/<div\s+id="bubble-notice".*?>/s, hook)
+
+    # The top layer: an open manual popover is above every z-index.
+    assert notice =~ ~s(popover="manual")
+    assert hook =~ "region.showPopover()"
+    # Reopened for every notice: above whatever entered the top layer since.
+    assert hook =~ ~s|if (region.matches(":popover-open")) region.hidePopover()|
+    assert hook =~ "this.raiseNotice()"
+    # Still a polite live region, in the tree before any notice arrives.
+    assert notice =~ ~s(role="status")
+    assert notice =~ ~s(aria-live="polite")
+    refute notice =~ "z-50"
+
+    # Without popover support, the maximum z-index; pages stay below it.
+    assert hook =~ "@notice_z 2_147_483_647"
+    assert hook =~ "inset: auto 1rem 1rem auto"
+  end
+
+  test "typing is debounced and commits on blur, showing the kept value; checkboxes are not (WTF-475)",
+       %{
+         files: files
+       } do
+    page = files["lib/shop_web/live/index_live.html.heex"]
+    [input] = Regex.run(~r/<input[^>]*data-bubble-id="bIn"[^>]*>/s, page)
+    assert input =~ ~s(phx-debounce="300")
+    assert input =~ ~s(phx-blur="bubble:commit")
+    assert input =~ ~s(phx-value-element="bIn")
+
+    # What the page keeps, never the first value again after a re-render.
+    assert input =~ ~s|value={Bubble.input(@bubble_inputs, "", "bIn")}|
+    [number] = Regex.run(~r/<input[^>]*data-bubble-id="bNum"[^>]*>/s, page)
+    assert number =~ ~s|value={Bubble.input(@bubble_inputs, "", "bNum")}|
+    refute number =~ ~s(value="3")
+
+    # Enter is a change (the form's submit), not a commit.
+    [form] = Regex.run(~r/<form\s+id="bubble-input-bIn".*?<\/form>/s, page)
+    assert form =~ ~s(phx-submit="bubble:change")
+    assert form =~ ~s(<input type="hidden" name="bubble[on]" value="blur" />)
+
+    [checkbox] = Regex.run(~r/<input[^>]*type="checkbox"[^>]*>/s, page)
+    refute checkbox =~ "phx-debounce"
+    refute checkbox =~ "phx-blur"
+    [form] = Regex.run(~r/<form\s+id="bubble-input-bCheck".*?<\/form>/s, page)
+    assert form =~ ~s(phx-submit="bubble:change")
+    refute form =~ "bubble[on]"
+
+    runtime = files["lib/shop_web/bubble_workflows.ex"]
+    assert runtime =~ ~s|def handle_event(socket, page, "bubble:commit", %{} = params) do|
+  end
+
   test "BBCode around dynamic text renders its own tags, values escaped (WTF-450)", %{
     files: files
   } do

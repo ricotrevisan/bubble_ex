@@ -824,11 +824,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> then(&if node.variant == :fit_height, do: put_attr(&1, "rows", "1"), else: &1)
       |> tracked_attrs(node, ctx, acc)
 
-    inner =
-      case value do
-        {:static, text} -> escape_textarea(text)
-        {:expr, expr} -> ["{", expr, "}"]
-      end
+    inner = textarea_inner(value, node, ctx, tracked?(node, ctx, acc))
 
     "textarea"
     |> element(node, attrs, inner, ctx, acc)
@@ -2583,7 +2579,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp tracked?(node, ctx, acc),
     do: not acc.template and Map.has_key?(Map.get(ctx, :tracked, %{}), bid(node))
 
-  # A tracked input is named for its form (a checkbox sends "true").
+  # A tracked input is named for its form (a checkbox sends "true"). Typing
+  # (WTF-475) reaches the page 300 ms after the last keystroke, a value
+  # for the page's data and conditions only; leaving the field commits it
+  # (`bubble:commit`), which runs its "An input's value is changed"
+  # workflows. It shows the value the page keeps (`kept_value/3`). See
+  # BubbleWorkflows' "Unverified Bubble behavior".
   defp tracked_attrs(attrs, node, ctx, acc) do
     cond do
       not tracked?(node, ctx, acc) ->
@@ -2592,13 +2593,77 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       node.kind == :checkbox ->
         attrs |> put_attr("name", "bubble[value]") |> put_attr("value", "true")
 
+      commits_on_blur?(node) ->
+        scope = if ctx.surface == :page, do: "", else: {:expr, "@scope"}
+
+        attrs
+        |> then(
+          &if node.kind == :input, do: put_attr(&1, "value", input_value(&1, node, ctx)), else: &1
+        )
+        |> put_attr("name", "bubble[value]")
+        |> put_attr("phx-debounce", "300")
+        |> put_attr("phx-blur", "bubble:commit")
+        |> put_attr("phx-value-element", bid(node))
+        |> put_attr("phx-value-scope", scope)
+
       true ->
         put_attr(attrs, "name", "bubble[value]")
     end
   end
 
+  defp commits_on_blur?(node), do: node.kind in [:input, :multiline_input]
+
+  # A tracked text input's `value`: what the page keeps (kept_value/3).
+  defp input_value(attrs, node, ctx) do
+    code =
+      case List.keyfind(attrs, "value", 0) do
+        {_, {:raw, "{" <> code}} ->
+          kept_value(node, ctx, binary_part(code, 0, byte_size(code) - 1))
+
+        {_, shown} when is_binary(shown) ->
+          shown_value(node, ctx, shown)
+
+        _ ->
+          kept_value(node, ctx, nil)
+      end
+
+    {:raw, "{" <> code <> "}"}
+  end
+
+  # A tracked textarea shows the value the page keeps, as a text input.
+  defp textarea_inner({:static, text}, _node, _ctx, false), do: escape_textarea(text)
+  defp textarea_inner({:expr, expr}, _node, _ctx, false), do: ["{", expr, "}"]
+
+  defp textarea_inner({:expr, expr}, node, ctx, true),
+    do: ["{", kept_value(node, ctx, expr), "}"]
+
+  defp textarea_inner(_value, node, ctx, true), do: ["{", kept_value(node, ctx, nil), "}"]
+
+  # A static first value the page displays formatted (a currency, a
+  # percentage): shown as such until the value changes.
+  defp shown_value(node, ctx, shown) do
+    first = first_value(node, ctx.tracked[bid(node)])
+
+    if is_nil(first) or to_string(first) == shown,
+      do: kept_value(node, ctx, nil),
+      else:
+        "Bubble.input_shown(@bubble_inputs, #{scope_var(ctx)}, #{literal(bid(node))}, " <>
+          "#{inspect(first)}, #{literal(shown)})"
+  end
+
+  # What a text input shows: the value the page keeps for it (what the
+  # user typed, or a workflow set), so a re-render never puts back its
+  # first value; an initial expression (`initial`) until it has one.
+  defp kept_value(node, ctx, initial) do
+    kept = "Bubble.input(@bubble_inputs, #{scope_var(ctx)}, #{literal(bid(node))})"
+    if initial, do: "#{kept} || (#{initial})", else: kept
+  end
+
   # A tracked input sits in its own form: every change reaches the page
-  # (`bubble:change`) with the element and its instance scope.
+  # (`bubble:change`) with the element and its instance scope. A text
+  # input's says it commits on blur (`bubble[on]`): only blur commits it,
+  # as Bubble's "An input's value is changed" (Enter is a change, sent as
+  # `phx-submit`, which also keeps the browser from submitting the form).
   defp wrap_input({markup, acc}, node, ctx) do
     if tracked?(node, ctx, acc) do
       id = bid(node)
@@ -2608,10 +2673,17 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           do: {~s( id="#{escape_attr("bubble-input-" <> id)}"), ~s( value="")},
           else: {~s| id={"bubble-input-\#{@scope}-" <> #{literal(id)}}|, " value={@scope}"}
 
-      unchecked =
-        if ctx.tracked[id] == :boolean,
-          do: ~s(<input type="hidden" name="bubble[value]" value="false">),
-          else: ""
+      hidden =
+        cond do
+          ctx.tracked[id] == :boolean ->
+            ~s(<input type="hidden" name="bubble[value]" value="false">)
+
+          commits_on_blur?(node) ->
+            ~s(<input type="hidden" name="bubble[on]" value="blur">)
+
+          true ->
+            ""
+        end
 
       {[
          "<form",
@@ -2623,7 +2695,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
          ~s(<input type="hidden" name="bubble[scope]"),
          scope,
          ">",
-         unchecked,
+         hidden,
          markup,
          "</form>"
        ], acc}

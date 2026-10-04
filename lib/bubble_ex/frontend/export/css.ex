@@ -5,6 +5,11 @@ defmodule BubbleEx.Frontend.Export.Css do
   alias BubbleEx.Frontend.Export.{Bbcode, Safety}
   alias BubbleEx.Frontend.Normalized.Node
 
+  # The highest z-index an element gets: one below CSS's maximum, which the
+  # generated pages' workflow notice keeps for itself where the top layer
+  # is unsupported (WTF-474). See z_index/1.
+  @max_z 2_147_483_646
+
   @base """
   * { box-sizing: border-box; }
   html { -webkit-font-smoothing: antialiased; }
@@ -191,9 +196,40 @@ defmodule BubbleEx.Frontend.Export.Css do
     map
     |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
     |> Enum.map(fn {k, v} -> {css_prop_name(k), css_paint_value(k, v)} end)
+    |> Enum.map(fn
+      {"z-index", v} -> {"z-index", z_index(v)}
+      decl -> decl
+    end)
     |> Enum.filter(fn {_k, value} -> Safety.safe_css_value?(value) end)
     |> Enum.sort_by(&elem(&1, 0))
   end
+
+  @doc """
+  A z-index as emitted: at most 2147483646, one below CSS's maximum, which
+  the generated pages' workflow notice keeps for itself (WTF-474). A
+  number is clamped. Text stays as it is when it is a plain integer within
+  the bound or a keyword (`auto`, the CSS-wide ones); anything else (a
+  larger integer, `calc(...)`, `var(...)`, ...) becomes the bound, keeping
+  `!important`.
+  """
+  @spec z_index(term()) :: term()
+  def z_index(n) when is_number(n), do: min(n, @max_z)
+
+  def z_index(text) when is_binary(text) do
+    {value, important} =
+      case Regex.run(~r/\A(.*?)\s*(!\s*important)\s*\z/is, text) do
+        [_, value, _] -> {String.trim(value), " !important"}
+        nil -> {String.trim(text), ""}
+      end
+
+    cond do
+      String.downcase(value) in ~w(auto inherit initial unset revert revert-layer) -> text
+      match?({n, ""} when n <= @max_z, Integer.parse(value)) -> text
+      true -> Integer.to_string(@max_z) <> important
+    end
+  end
+
+  def z_index(value), do: value
 
   @doc """
   The named styles as `shared/2` lowers them: per style, its declarations
