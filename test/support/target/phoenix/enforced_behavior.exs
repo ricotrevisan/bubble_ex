@@ -338,6 +338,35 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
     assert states.()[{card.(@t3), "bCard", "custom.picked_"}] == nil
   end
 
+  # WTF-494: the current user is loaded with what the policies read (its
+  # Team, for Board's rule) without authorization. A source reading the
+  # current user's relationships (the card's Team group) reads them again
+  # as the user, in a cell's batch too: a member who is not the team's
+  # lead sees its Name, not its Secret.
+  test "an instance in a cell reads the current user's relationships as the user", %{
+    conn: conn,
+    u1: u1
+  } do
+    data_access_on()
+    team = "1700000000000x500000000000000001"
+    Ash.Seed.seed!(PhxCheck.Team, %{id: team, name: "Red", secret: "s3cret"})
+    u1 = Ash.Seed.update!(u1, %{team_id: team})
+    {:ok, view, _html} = live(sign_in(conn, u1), "/")
+
+    shown = fn scope, id ->
+      view
+      |> element(~s([data-bubble-scope="#{scope}"] [data-bubble-id="#{id}"]))
+      |> render()
+      |> then(&Regex.replace(~r/<[^>]*>/, &1, ""))
+      |> String.trim()
+    end
+
+    for scope <- ["bList~2#{@t1}-bCellCard", "bList~2#{@t3}-bCellCard", "bCard1"] do
+      assert shown.(scope, "bCardTeamName") == "Team: Red"
+      assert shown.(scope, "bCardSecret") == "Secret:"
+    end
+  end
+
   # WTF-457: a search constrained or sorted on a field some users may not
   # view (Note's Flagged: its owner only) runs for everyone, and finds only
   # the records where the user may view that field. Bubble matches the

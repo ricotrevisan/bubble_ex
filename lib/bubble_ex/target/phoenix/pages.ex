@@ -1013,7 +1013,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> Enum.flat_map(fn child -> Css.lower(child, selector: &selector/1) end)
       |> index_lowered()
 
-    inner_ctx = Map.merge(ctx, %{lowered: Map.merge(ctx.lowered, lowered), cell: rg})
+    # The reusable instances the page renders per cell (WTF-494): the ones
+    # directly in the template, as `__bubble__(:cells)` lists them.
+    listed = node.children |> Enum.flat_map(&cell_instance_nodes/1) |> MapSet.new(&bid/1)
+
+    lowered = Map.merge(ctx.lowered, lowered)
+    inner_ctx = Map.merge(ctx, %{lowered: lowered, cell: rg, cell_instances: listed})
+
     {children, acc} = emit_list(node.children, inner_ctx, %{acc | template: true})
 
     template = [
@@ -1133,6 +1139,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     {classes, acc} = classes(node, styled, ctx, acc)
     acc = track(acc, node, false)
     acc = mark_data(acc, node, ctx)
+    acc = mark_cell(acc, node, ctx)
 
     {params, slots} = parameter_attrs(node, definition, ctx)
     {visibility, acc} = visibility_attrs(node, ctx, acc)
@@ -1171,11 +1178,25 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   # A reusable instance in the cell of a repeating group the page renders
-  # per cell (WTF-494).
+  # per cell (WTF-494): directly in the cell's template, not inside a
+  # runtime container there.
   defp per_cell?(node, ctx),
+    do: cell_instance?(node, ctx) and MapSet.member?(ctx.cell_instances, bid(node))
+
+  defp cell_instance?(node, ctx),
     do:
       is_binary(Map.get(ctx, :cell)) and match?(%FlowSpec{}, Map.get(ctx, :flows)) and
         FlowSpec.per_cell?(ctx.flows, bid(node))
+
+  @in_runtime_container "rendered once for every cell, not per cell (in a runtime container)"
+
+  # One the page would render per cell, but inside a runtime container of
+  # the cell: it keeps one scope, loudly.
+  defp mark_cell(acc, node, ctx) do
+    if cell_instance?(node, ctx) and not per_cell?(node, ctx),
+      do: mark(acc, node, @in_runtime_container),
+      else: acc
+  end
 
   # Once per cell, in the cell's scope (WTF-494): the cell's thing's
   # unique ID, not its position.

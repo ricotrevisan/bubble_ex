@@ -1,5 +1,5 @@
 {
-  "_comment": "Invented app for the enforced privacy policies (WTF-423): the backend workflows of test/support/target/workflows/backend.json and the pages of test/support/target/phoenix/page_data.json, with privacy rules on Task and a file field. scripts/phoenix_compile_check.sh renders it with privacy: :enforced and runs test/support/target/phoenix/enforced_behavior.exs, which must pass, and renders it with privacy: :omit, where the same tests must fail. Note (WTF-457): everyone finds every note and views its Title only; its owner views everything (its Score makes the owner's field policy head 100 columns, where Elixir 1.17/1.18 and 1.19+ format it differently unless the generator breaks it, WTF-459). The index page lists the flagged notes (a search constrained on Flagged, a field only the owner views): a user finds only the flagged notes they own (stricter than Bubble, which matches the stored value for every user who may search by it). Memo (WTF-475): only admins (the Current User's Admin is yes) find and view memos; the index page lists them, so a user demoted while the page is open stops seeing them on the next read, however narrow. WTF-494: the index page's list renders the reusable Task card once per cell (bCellCard, its thing the cell's task, with a workflow): a cell exists only for a task the user finds, and an event in the scope of any other is ignored.",
+  "_comment": "Invented app for the enforced privacy policies (WTF-423): the backend workflows of test/support/target/workflows/backend.json and the pages of test/support/target/phoenix/page_data.json, with privacy rules on Task and a file field. scripts/phoenix_compile_check.sh renders it with privacy: :enforced and runs test/support/target/phoenix/enforced_behavior.exs, which must pass, and renders it with privacy: :omit, where the same tests must fail. Note (WTF-457): everyone finds every note and views its Title only; its owner views everything (its Score makes the owner's field policy head 100 columns, where Elixir 1.17/1.18 and 1.19+ format it differently unless the generator breaks it, WTF-459). The index page lists the flagged notes (a search constrained on Flagged, a field only the owner views): a user finds only the flagged notes they own (stricter than Bubble, which matches the stored value for every user who may search by it). Memo (WTF-475): only admins (the Current User's Admin is yes) find and view memos; the index page lists them, so a user demoted while the page is open stops seeing them on the next read, however narrow. WTF-494: the index page's list renders the reusable Task card once per cell (bCellCard, its thing the cell's task, with a workflow): a cell exists only for a task the user finds, and an event in the scope of any other is ignored. Team (WTF-494): everyone views a team's Name, its lead everything; a Board rule reads the Current User's Team's Name, so the actor is loaded with it (without authorization, for the policies). The Task card shows the Current User's Team: its Secret must read as hidden for a member who is not its lead, in a cell too.",
   "_id": "enforced-probe",
   "api": {
     "wBlocked": {
@@ -645,6 +645,71 @@
             "width": 300
           },
           "type": "Text"
+        },
+        "bCardTeam": {
+          "elements": {
+            "bCardTeamName": {
+              "id": "bCardTeamName",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Team: ",
+                    "1": {
+                      "next": {
+                        "name": "name_text",
+                        "type": "Message"
+                      },
+                      "type": "ElementParent"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            },
+            "bCardSecret": {
+              "id": "bCardSecret",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 2,
+                "text": {
+                  "entries": {
+                    "0": "Secret: ",
+                    "1": {
+                      "next": {
+                        "name": "secret_text",
+                        "type": "Message"
+                      },
+                      "type": "ElementParent"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bCardTeam",
+          "properties": {
+            "data_source": {
+              "next": {
+                "name": "team_custom_team",
+                "type": "Message"
+              },
+              "type": "CurrentUser"
+            },
+            "group_type": "custom.team",
+            "height": 80,
+            "order": 4,
+            "width": 300
+          },
+          "type": "Group"
         }
       },
       "id": "bCard",
@@ -1297,6 +1362,10 @@
         "admin_boolean": {
           "display": "Admin",
           "value": "boolean"
+        },
+        "team_custom_team": {
+          "display": "Team",
+          "value": "custom.team"
         }
       }
     },
@@ -1390,6 +1459,112 @@
             "type": "CurrentUser"
           },
           "display": "Admins",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
+        }
+      }
+    },
+    "team": {
+      "display": "Team",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        },
+        "secret_text": {
+          "display": "Secret",
+          "value": "text"
+        },
+        "lead_user": {
+          "display": "Lead",
+          "value": "user"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": [
+              "name_text"
+            ]
+          }
+        },
+        "lead_": {
+          "condition": {
+            "next": {
+              "name": "lead_user",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Lead",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
+        }
+      }
+    },
+    "board": {
+      "display": "Board",
+      "fields": {
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": []
+          }
+        },
+        "same_team_": {
+          "condition": {
+            "next": {
+              "name": "title_text",
+              "next": {
+                "args": {
+                  "next": {
+                    "name": "team_custom_team",
+                    "next": {
+                      "name": "name_text",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Team's board",
           "permissions": {
             "auto_binding": false,
             "search_for": true,

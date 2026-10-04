@@ -39,6 +39,14 @@ All notable changes to this project are documented here.
   `@bubble_cells`) and ignores an event in any other, so a browser cannot
   reach the cell of a thing the user was not shown. Page-load,
   condition-true and "do every" workflows do not run in a cell (marked).
+  Values read the current user's relationships again as the user, never
+  from the actor the policies load without authorization; a cell that
+  leaves the list drops what the page kept for it and takes no event
+  (scheduled and paused workflows included); `:max_cells` and
+  `:max_cell_depth` (`<Web>.BubbleData`) bound the scopes, the first
+  ones kept, logged once. `scripts/phoenix_compile_check.sh` reads
+  Elixir 1.20's test summary (`Result: ...`) and `refute` failures, and
+  CI's 1.20 job checks `phoenix_enforced`.
   Behavior tests in both privacy modes (`reusable_params_behavior.exs`:
   per-cell values, workflows, crafted scopes, an input change, as many
   queries for three cells as for one; `enforced_behavior.exs`: a hidden

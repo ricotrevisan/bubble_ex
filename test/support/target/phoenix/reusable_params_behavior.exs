@@ -352,4 +352,131 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
     render_click(view, "bubble:click", %{"scope" => row(@t1), "element" => "bRowPick"})
     assert states(view) |> Map.keys() |> Enum.all?(&(elem(&1, 0) != row(@t1)))
   end
+
+  defp type(view, element, value) do
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => element, "value" => value, "on" => "blur"}
+    })
+
+    Process.sleep(250)
+  end
+
+  defp assigns(view), do: :sys.get_state(view.pid).socket.assigns
+
+  defp with_data_config(config, fun) do
+    before = Application.get_env(:phx_check, PhxCheckWeb.BubbleData, [])
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleData, Keyword.merge(before, config))
+
+    try do
+      fun.()
+    after
+      Application.put_env(:phx_check, PhxCheckWeb.BubbleData, before)
+    end
+  end
+
+  test "a list an input changes reads its cells again; a cell that left it runs nothing",
+       %{conn: conn, user: user} do
+    data_access_on()
+    Ash.Seed.seed!(PhxCheck.Task, %{id: @t3, title: "Charlie", owner_id: @u1})
+    {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+    module = PhxCheckWeb.Reusables.Row.Workflows
+    budget = %{jobs: 1, calls: 1, chain: 0}
+
+    frame = fn scope ->
+      %{
+        module: module,
+        scope: scope,
+        workflow: "wRowPick",
+        at: 1,
+        args: %{},
+        steps: %{},
+        call: nil,
+        returns: nil
+      }
+    end
+
+    # A scheduled run and a paused workflow's rest in a cell it shows run.
+    send(view.pid, {:bubble, :run, row(@t3), module, "wRowPick", %{}, budget})
+    assert text(view, row(@t3), "bRowPicked") == "Picked: Row: Charlie"
+    send(view.pid, {:bubble, :resume, [frame.(row(@t1))], DateTime.utc_now(), budget})
+    assert text(view, row(@t1), "bRowPicked") == "Picked: Row: Alpha"
+
+    # The filter leaves Alpha only: the whole page reads again.
+    type(view, "bFilter", "Alp")
+    refute has_element?(view, ~s([data-bubble-scope="#{row(@t3)}"]))
+    assert text(view, row(@t1), "bRowPicked") == "Picked: Row: Alpha"
+    # What the page kept for Charlie's cell is gone.
+    refute Enum.any?(Map.keys(assigns(view).bubble_states), &(elem(&1, 0) == row(@t3)))
+    before = assigns(view).bubble_states
+
+    # Its old scope: a click, a scheduled run, a paused workflow's rest.
+    render_click(view, "bubble:click", %{"scope" => row(@t3), "element" => "bRowPick"})
+    send(view.pid, {:bubble, :run, row(@t3), module, "wRowPick", %{}, budget})
+    send(view.pid, {:bubble, :resume, [frame.(row(@t3))], DateTime.utc_now(), budget})
+    _ = render(view)
+    assert assigns(view).bubble_states == before
+
+    # Back in the list: a new cell, its states from their defaults.
+    type(view, "bFilter", "")
+    assert text(view, row(@t3), "bRowPicked") == "Picked:"
+    assert text(view, row(@t3), "bRowLabel") == "Label: Row: Charlie"
+  end
+
+  test "a list of texts: cells by position, duplicates included", %{conn: conn, user: user} do
+    data_access_on()
+    Ash.Seed.update!(Ash.get!(PhxCheck.Task, @t1, authorize?: false), %{tags: ~w(red blue red)})
+    {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+    tag = fn i -> "bTags~2~3#{i}-bTagC" end
+
+    assert Enum.map(1..3, &text(view, tag.(&1), "bTagT")) == ["Tag: red", "Tag: blue", "Tag: red"]
+    refute has_element?(view, ~s([data-bubble-scope="#{tag.(4)}"]))
+
+    render_click(view, "bubble:click", %{"scope" => tag.(3), "element" => "bTagPick"})
+    assert text(view, tag.(3), "bTagPicked") == "Picked: red"
+    assert text(view, tag.(1), "bTagPicked") == "Picked:"
+  end
+
+  test "instances in cells of an instance's own list; past the depth and scope caps none",
+       %{conn: conn, user: user} do
+    data_access_on()
+    sub = row(@t1) <> "-bRowSubs~2#{@t1}-bSubChip"
+
+    {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+    assert text(view, sub, "bChipT") == "Chip: Chip default"
+    assert {sub, PhxCheckWeb.Reusables.Chip.Workflows} in assigns(view).bubble_cells
+
+    # One level only: the instance in the cell is read, not those in its
+    # own list's cells.
+    with_data_config([max_cell_depth: 1], fn ->
+      {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+      assert text(view, row(@t1), "bRowLabel") == "Label: Row: Alpha"
+      assert text(view, sub, "bChipT") == "Chip:"
+      refute Enum.any?(assigns(view).bubble_cells, &(elem(&1, 0) == sub))
+    end)
+
+    # At most 1 scope: the first cell's instance; logged once, not on every
+    # read.
+    with_data_config([max_cells: 1], fn ->
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+          assert [{scope, PhxCheckWeb.Reusables.Row.Workflows}] = assigns(view).bubble_cells
+          assert scope == row(@t1)
+          type(view, "bQuery", "x")
+          type(view, "bQuery", "y")
+        end)
+
+      assert length(String.split(log, "are not read")) == 2
+    end)
+  end
+
+  test "read together, a unique ID where a list is expected is read as one thing" do
+    batch = %{batch: %{actor: nil, paths: MapSet.new()}}
+
+    assert PhxCheckWeb.BubbleData.records(batch, PhxCheck.Task, @t1, true, nil) ==
+             {:bubble_ids, PhxCheck.Task, @t1, false, nil}
+
+    assert PhxCheckWeb.BubbleData.records(batch, PhxCheck.Task, [@t1], true, 3) ==
+             {:bubble_ids, PhxCheck.Task, [@t1], true, 3}
+  end
 end

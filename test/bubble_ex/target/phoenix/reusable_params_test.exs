@@ -120,7 +120,7 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       # No default, no source.
       refute param(pd, "bCard", "param_pTitle")
 
-      assert %{"by_kind" => %{"param" => %{"total" => 25, "native" => 25}}} =
+      assert %{"by_kind" => %{"param" => %{"total" => 26, "native" => 26}}} =
                PageData.coverage(pd)
     end
 
@@ -346,7 +346,7 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
     end
 
     test "the data coverage counts the properties", %{spec: spec} do
-      assert %{"by_kind" => %{"param" => %{"total" => 25, "wired" => 23}}} =
+      assert %{"by_kind" => %{"param" => %{"total" => 26, "wired" => 24}}} =
                FrontendWorkflows.data_coverage(spec)
     end
   end
@@ -404,7 +404,15 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       page = files["lib/shop_web/live/task_live/workflows.ex"]
 
       assert page =~
-               ~r/@cells \[\s*\{"bList",\s*\[\s*\{"bRowC", ShopWeb\.Reusables\.Row\.Workflows\},\s*\{"bRowC-bRowChip", ShopWeb\.Reusables\.Chip\.Workflows\}\s*\]\}\s*\]/
+               ~r/\{"bList",\s*\[\s*\{"bRowC", ShopWeb\.Reusables\.Row\.Workflows\},\s*\{"bRowC-bRowChip", ShopWeb\.Reusables\.Chip\.Workflows\}\s*\]\}/
+
+      assert page =~ ~r/\{"bTags", \[\{"bTagC", ShopWeb\.Reusables\.Tag\.Workflows\}\]\}/
+
+      # A reusable element's own lists' cells (WTF-494): one level down.
+      row_module = files["lib/shop_web/components/reusables/row/workflows.ex"]
+
+      assert row_module =~
+               ~r/@cells \[\{"bRowSubs", \[\{"bSubChip", ShopWeb\.Reusables\.Chip\.Workflows\}\]\}\]/
 
       assert page =~ "def __bubble__(:cells), do: @cells"
       # Card is not rendered per cell: not listed.

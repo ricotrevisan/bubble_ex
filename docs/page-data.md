@@ -291,9 +291,13 @@ each source for all the cells at once (`<Web>.BubbleData`):
 
 * a value computed per cell is Elixir on what the page loaded; the
   relationships it reads through a source, a custom state or the current
-  user are loaded for every cell first (`preloads:` in
-  `__bubble__(:data)`), and the relationships the page's bindings read
-  through it for every cell after, one load per resource;
+  user are read again for every cell first (`preloads:` in
+  `__bubble__(:data)`), through Ash as the current user, never reused
+  from what was loaded before (the current user is loaded with what the
+  policies read, without authorization: its relationships are read again
+  into a copy for the values, and the actor the policies read is left as
+  it is); the relationships the page's bindings read through the value
+  are loaded for every cell after, one load per resource;
 * a thing given as a unique ID (`BubbleData.records/5`) is read with the
   other cells' IDs, one read per resource;
 * a search that reads nothing of the instance or the cell (only the
@@ -307,13 +311,26 @@ each source for all the cells at once (`<Web>.BubbleData`):
 
 A repeating group's first page is at most `:max_items` cells, and the
 instances in cells of lists inside those instances are read the same
-way, at most 3 levels down and `:max_items` x 10 scopes in all (past
-that, logged and not read). An input change re-reads only what reads the
-input in every cell; when a list whose cells hold instances is
-re-read, the whole page is.
+way, at most `:max_cell_depth` levels down (default 3) and `:max_cells`
+scopes in all (default `:max_items` x 10; `config :<app>,
+<Web>.BubbleData`): past that the first scopes are kept, the rest show no
+data and take no events, logged once per page. An input change re-reads
+only what reads the input in every cell; when a list whose cells hold
+instances is re-read, the whole page is. When a cell leaves the list
+(its thing is gone, filtered out, or no longer readable), what the page
+kept for it (custom states, inputs, what "Display data" showed) is
+dropped, and its scope takes no event, a paused or scheduled workflow
+included. A list of texts or numbers has no unique ID: its cells are
+by position, duplicates included; a list holding the same thing twice
+gives both cells one scope (they share their states).
+
+An instance inside a runtime container of a cell (not the cell's own
+template) keeps one scope and is marked.
 
 **Privacy.** Every read goes through Ash with the current user as the
-actor, as anywhere else. The cells are the list's items as the user read
+actor, as anywhere else, the current user's own relationships included
+(`enforced_behavior.exs`: a member reads their team's name, not its
+secret, in a cell too). The cells are the list's items as the user read
 them: a thing the user may not read has no cell, so no instance and no
 scope.
 

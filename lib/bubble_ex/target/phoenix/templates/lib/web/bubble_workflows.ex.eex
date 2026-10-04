@@ -465,11 +465,19 @@ defmodule <%= @web %>.BubbleWorkflows do
   def handle_info(socket, page, {:bubble, :resume, frames, now, budget}) do
     socket = delivered(socket)
 
-    if resumable?(socket, page, frames) and budget?(budget) and match?(%DateTime{}, now) do
-      {:noreply, event(socket, page, [{:resume, frames, now}], cap_budget(budget))}
-    else
-      Logger.warning("bubble: a malformed paused workflow was ignored")
-      {:noreply, socket}
+    cond do
+      not (well_formed?(frames) and budget?(budget) and match?(%DateTime{}, now)) ->
+        Logger.warning("bubble: a malformed paused workflow was ignored")
+        {:noreply, socket}
+
+      resumable?(socket, page, frames) ->
+        {:noreply, event(socket, page, [{:resume, frames, now}], cap_budget(budget))}
+
+      true ->
+        # Its instance is no longer on the page (a cell whose thing left
+        # the list, WTF-494): what was left of it is dropped.
+        Logger.info("bubble: a paused workflow's instance is no longer on the page; it was dropped")
+        {:noreply, socket}
     end
   end
 
@@ -601,13 +609,22 @@ defmodule <%= @web %>.BubbleWorkflows do
   Keeps the reusable instances in cells the page just read (WTF-494,
   `{scope, module}`), with their custom states' defaults and their
   inputs' first values for the cells new to the page (a cell the page
-  already showed keeps its own).
+  already showed keeps its own). What the page kept for a cell no longer
+  read (its thing left the list, or the user may no longer read it) is
+  dropped: its states, inputs and what "Display data" showed in it.
   """
   def put_cells(socket, cells) do
+    gone =
+      socket.assigns
+      |> Map.get(:bubble_cells, [])
+      |> Enum.map(&elem(&1, 0))
+      |> MapSet.new()
+      |> MapSet.difference(MapSet.new(cells, &elem(&1, 0)))
+
     states =
       for {scope, module} <- cells,
           {{element, state}, value} <- module.__bubble__(:surface).states,
-          reduce: socket.assigns.bubble_states do
+          reduce: drop_scopes(socket.assigns.bubble_states, gone) do
         acc -> Map.put_new(acc, {scope, element, state}, value)
       end
 
@@ -619,11 +636,20 @@ defmodule <%= @web %>.BubbleWorkflows do
     socket
     |> assign(:bubble_cells, cells)
     |> assign(:bubble_states, states)
-    |> assign(:bubble_inputs, put_new(socket.assigns.bubble_inputs, inputs))
-    |> assign(:bubble_first_inputs, put_new(socket.assigns.bubble_first_inputs, inputs))
+    |> assign(:bubble_inputs, put_new(drop_scopes(socket.assigns.bubble_inputs, gone), inputs))
+    |> assign(:bubble_first_inputs, put_new(drop_scopes(socket.assigns.bubble_first_inputs, gone), inputs))
+    |> assign(:bubble_committed, drop_scopes(Map.get(socket.assigns, :bubble_committed) || %{}, gone))
+    |> assign(:bubble_displayed, drop_scopes(Map.get(socket.assigns, :bubble_displayed) || %{}, gone))
   end
 
   defp put_new(map, pairs), do: Enum.reduce(pairs, map, fn {k, v}, acc -> Map.put_new(acc, k, v) end)
+
+  # A map keyed by tuples whose first element is a scope, without `gone`'s.
+  defp drop_scopes(map, gone) do
+    if MapSet.size(gone) == 0,
+      do: map,
+      else: Map.reject(map, fn {key, _} -> MapSet.member?(gone, elem(key, 0)) end)
+  end
 
   defp budget?(%{jobs: j, calls: c, chain: n}),
     do: is_integer(j) and j >= 0 and is_integer(c) and c >= 0 and is_integer(n) and n >= 0
@@ -637,20 +663,23 @@ defmodule <%= @web %>.BubbleWorkflows do
     %{jobs: min(jobs, root.budget), calls: min(calls, root.calls), chain: min(chain, max_chain())}
   end
 
-  # Every paused workflow is well formed and belongs to a surface the page
-  # renders, in its scope; every one but the innermost waits on a call.
-  defp resumable?(socket, page, [_ | outer] = frames) when is_list(outer),
-    do: Enum.all?(frames, &frame?(socket, page, &1)) and Enum.all?(outer, &is_binary(&1.call))
+  # Every paused workflow is well formed (every one but the innermost waits
+  # on a call), and belongs to a surface the page renders, in its scope.
+  defp well_formed?([_ | outer] = frames) when is_list(outer),
+    do: Enum.all?(frames, &frame?/1) and Enum.all?(outer, &is_binary(&1.call))
 
-  defp resumable?(_socket, _page, _frames), do: false
+  defp well_formed?(_frames), do: false
 
-  defp frame?(socket, page, %{module: module, scope: scope, workflow: id, at: at, args: args, steps: steps, call: call} = frame)
+  defp resumable?(socket, page, frames),
+    do: Enum.all?(frames, &(surface(socket, page, &1.scope) == {:ok, &1.module}))
+
+  defp frame?(%{module: module, scope: scope, workflow: id, at: at, args: args, steps: steps, call: call} = frame)
        when is_atom(module) and is_binary(scope) and is_binary(id) and is_integer(at) and at > 0 and
               is_map(args) and is_map(steps) and (is_nil(call) or is_binary(call)) and
               is_map_key(frame, :returns),
-       do: surface(socket, page, scope) == {:ok, module}
+       do: true
 
-  defp frame?(_socket, _page, _frame), do: false
+  defp frame?(_frame), do: false
 
   # One paused workflow or scheduled custom event was delivered.
   defp delivered(socket),

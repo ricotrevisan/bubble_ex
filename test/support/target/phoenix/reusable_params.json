@@ -1146,6 +1146,38 @@
             "width": 300
           },
           "type": "Group"
+        },
+        "bRowSubs": {
+          "elements": {
+            "bSubChip": {
+              "id": "bSubChip",
+              "properties": {
+                "custom_id": "bChipDef",
+                "height": 40,
+                "order": 1,
+                "width": 300
+              },
+              "type": "CustomElement"
+            }
+          },
+          "id": "bRowSubs",
+          "properties": {
+            "columns": 1,
+            "data_source": {
+              "properties": {
+                "descending": false,
+                "sort_field": "title_text",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.task",
+            "height": 120,
+            "order": 14,
+            "rows": 2,
+            "width": 300
+          },
+          "type": "RepeatingGroup"
         }
       },
       "id": "bRowDef",
@@ -1293,6 +1325,130 @@
           "type": "ButtonClicked"
         }
       }
+    },
+    "tag": {
+      "custom_states": {
+        "picked_": {
+          "display": "Picked",
+          "value": "text"
+        }
+      },
+      "elements": {
+        "bTagPick": {
+          "id": "bTagPick",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 3,
+            "text": {
+              "entries": {
+                "0": "Pick tag"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bTagPicked": {
+          "id": "bTagPicked",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "text": {
+              "entries": {
+                "0": "Picked: ",
+                "1": {
+                  "next": {
+                    "name": "custom.picked_",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bTagDef"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bTagT": {
+          "id": "bTagT",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Tag: ",
+                "1": {
+                  "next": {
+                    "name": "param_pTag",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bTagDef"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bTagDef",
+      "name": "Tag",
+      "properties": {
+        "height": 80,
+        "parameters": {
+          "0": {
+            "btype_id": "text",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pTag",
+            "param_name": "Tag"
+          }
+        },
+        "width": 300
+      },
+      "type": "CustomDefinition",
+      "workflows": {
+        "wTagPick": {
+          "actions": {
+            "0": {
+              "id": "aTagPick1",
+              "properties": {
+                "custom_state": "custom.picked_",
+                "element_id": "bTagDef",
+                "value": {
+                  "next": {
+                    "name": "param_pTag",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bTagDef"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wTagPick",
+          "properties": {
+            "element_id": "bTagPick"
+          },
+          "type": "ButtonClicked"
+        }
+      }
     }
   },
   "pages": {
@@ -1373,6 +1529,17 @@
             "width": 300
           },
           "type": "CustomElement"
+        },
+        "bFilter": {
+          "id": "bFilter",
+          "properties": {
+            "content_format": "text",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 7,
+            "width": 300
+          },
+          "type": "Input"
         },
         "bList": {
           "elements": {
@@ -1455,7 +1622,24 @@
             "columns": 1,
             "data_source": {
               "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "text contains string",
+                    "key": "title_text",
+                    "value": {
+                      "next": {
+                        "name": "get_data",
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "element_id": "bFilter"
+                      },
+                      "type": "GetElement"
+                    }
+                  }
+                },
                 "descending": false,
+                "ignore_empty_constraints": true,
                 "sort_field": "title_text",
                 "type_to_find": "custom.task"
               },
@@ -1522,6 +1706,40 @@
             "width": 300
           },
           "type": "Button"
+        },
+        "bTags": {
+          "elements": {
+            "bTagC": {
+              "id": "bTagC",
+              "properties": {
+                "custom_id": "bTagDef",
+                "height": 80,
+                "order": 1,
+                "param_pTag": {
+                  "type": "CurrentDataItem"
+                },
+                "width": 300
+              },
+              "type": "CustomElement"
+            }
+          },
+          "id": "bTags",
+          "properties": {
+            "columns": 1,
+            "data_source": {
+              "next": {
+                "name": "tags_list_text",
+                "type": "Message"
+              },
+              "type": "CurrentPageItem"
+            },
+            "group_type": "text",
+            "height": 240,
+            "order": 8,
+            "rows": 5,
+            "width": 300
+          },
+          "type": "RepeatingGroup"
         }
       },
       "id": "bTaskPage",
@@ -1578,6 +1796,10 @@
         "project_custom_project": {
           "display": "Project",
           "value": "custom.project"
+        },
+        "tags_list_text": {
+          "display": "Tags",
+          "value": "list.text"
         },
         "title_text": {
           "display": "Title",
