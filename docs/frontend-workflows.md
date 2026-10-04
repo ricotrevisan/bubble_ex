@@ -126,10 +126,16 @@ list in a repeating group" sets a repeating group's list. The lowering's
 the repeating group whose cell holds the element; another kind of
 element is `:unsupported_option` residue (`element_id`).
 
-The page keeps what was shown in `@bubble_displayed`, keyed like the
-page's data (`{scope, element}`, plus the cell's index in a cell):
+The page keeps what was shown in `@bubble_displayed`, keyed by
+`{scope, element}` (in a cell, plus `{:cell, <the cell's thing's unique
+ID>}`, so a re-sorted list keeps what each thing's cell showed):
 `{resource, list?, value}` where a thing (or list of things) is its
-unique ID only. Every read of the page's data reads it again through Ash
+unique ID only: a record of the element's type, or a text shaped like a
+Bubble ID; a record of another type, a crafted text or a number is
+dropped. A list keeps at most its repeating group's page size (capped by
+`:max_items`). The workflow's later steps read the element's new data at
+once (read the same way, as the current user, into the run's context).
+Every read of the page's data reads it again through Ash
 as the current user (`<Web>.BubbleData`), with the relationships the
 page's bindings read through it, and follows its records' change
 notifications. So a workflow never shows what the user may not read:
@@ -283,9 +289,10 @@ changes; "Display data" with an empty value shows nothing (it does not
 fall back to the group's own source); "Reset group / popup" forgets what
 was shown in the group and in the groups inside it (they show their own
 source again), and a reset reusable-element instance forgets everything
-shown in it; a repeating group a "Display list" sets shows its list up to
-`:max_items` (its rows are not read for a list with no source of its
-own); "Reset relevant inputs" resets the inputs
+shown in it, but not what was shown inside the reusable-element
+instances within a reset group (to replay, WTF-387); a repeating group a
+"Display list" sets shows one page of the list (its rows × columns);
+"Reset relevant inputs" resets the inputs
 of the triggering element's container; a condition-true workflow whose "run
 this" is unset runs once per page load; a condition that is true when the
 page loads fires; "Go to page" lets the workflow finish before the page

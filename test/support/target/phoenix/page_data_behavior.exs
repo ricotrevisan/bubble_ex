@@ -1619,7 +1619,8 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     on()
     {:ok, view, html} = live(conn, "/shown")
     assert shown(html, "Listed") == []
-    assert shown(click(view, "bShowList"), "Listed") == ["Answer", "Bake"]
+    # Its repeating group shows one row: the list keeps its page size.
+    assert shown(click(view, "bShowList"), "Listed") == ["Answer"]
   end
 
   test "Display data in a reusable element: its own group, or the instance's thing", %{
@@ -1641,6 +1642,153 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     html = click(view, "bResetPanel")
     assert shown(html, "Panel own") == []
     assert shown(html, "Panel") == []
+  end
+
+  test "a later step reads the data a Display data step just set", %{conn: conn} do
+    on()
+    {:ok, view, _html} = live(conn, "/shown")
+    # Step 1 shows B in bShown; step 2 shows bShown's thing in the popup.
+    html = click(view, "bChain")
+    assert shown(html, "Shown") == ["Eat"]
+    assert shown(html, "Popup") == ["Eat"]
+  end
+
+  test "resetting an outer group clears what was shown in a group inside it", %{conn: conn} do
+    on()
+    {:ok, view, _html} = live(conn, "/shown")
+    assert shown(click(view, "bShowInner"), "Inner") == ["Answer"]
+    assert shown(click(view, "bResetOuter"), "Inner") == []
+  end
+
+  test "Display data keeps only unique IDs: another type, a crafted ID or a number shows nothing" do
+    on()
+    alias PhxCheckWeb.BubbleWorkflows, as: BW
+    project = Ash.get!(PhxCheck.Project, @p1, authorize?: false)
+    task = Ash.get!(PhxCheck.Task, @t1, authorize?: false)
+    ctx = %BW.Ctx{}
+
+    for bad <- [project, "../#{@t1}", "1x", 42, %{id: @t1}, nil] do
+      {:cont, ctx} = BW.display(ctx, "s", [], "g", false, PhxCheck.Task, false, bad)
+      assert ctx.displayed[{"", "g"}] == {PhxCheck.Task, false, nil}, inspect(bad)
+      assert ctx.data[{"", "g"}] == nil
+    end
+
+    # A record of the type, or its ID: kept as the ID, read as the user.
+    {:cont, ctx} = BW.display(ctx, "s", [], "g", false, PhxCheck.Task, false, task)
+    assert ctx.displayed[{"", "g"}] == {PhxCheck.Task, false, @t1}
+    assert ctx.data[{"", "g"}].title == "Bake"
+
+    # A list keeps only IDs (non-text values dropped), at most its page size.
+    t2 = "1700000000000x200000000000000002"
+    list = [123, project, "bad", task, t2, %{id: t2}]
+    {:cont, ctx} = BW.display(ctx, "s", [], "l", false, PhxCheck.Task, true, list, nil)
+    assert ctx.displayed[{"", "l"}] == {PhxCheck.Task, true, [@t1, t2]}
+    assert Enum.map(ctx.data[{"", "l"}], & &1.title) == ["Bake", "Answer"]
+
+    {:cont, ctx} = BW.display(ctx, "s", [], "l", false, PhxCheck.Task, true, list, 1)
+    assert ctx.displayed[{"", "l"}] == {PhxCheck.Task, true, [@t1]}
+
+    # What the loader reads drops anything but an ID too.
+    assert PhxCheckWeb.BubbleData.show(ctx, {PhxCheck.Task, true, [42, %{id: @t1}, "x"]}, nil) ==
+             []
+
+    assert PhxCheckWeb.BubbleData.show(ctx, {PhxCheck.Task, false, 42}, nil) == nil
+
+    # With data access off, nothing is read.
+    Application.delete_env(:phx_check, PhxCheckWeb.BubbleWorkflows)
+    {:cont, ctx} = BW.display(ctx, "s", [], "g", false, PhxCheck.Task, false, task)
+    assert ctx.displayed[{"", "g"}] == {PhxCheck.Task, false, @t1}
+    assert ctx.data[{"", "g"}] == nil
+  end
+
+  # A group in a repeating group's cell, set per cell (WTF-492): keyed by
+  # the cell's thing, so re-sorting the list keeps what each thing showed.
+  defmodule CellShownPage do
+    def __bubble__(:instances), do: []
+
+    def __bubble__(:surface),
+      do: %{
+        states: %{},
+        inputs: %{},
+        loaded: [],
+        intervals: [],
+        clicks: %{},
+        changes: %{},
+        conditions: []
+      }
+
+    def __bubble__(:workflows), do: %{}
+
+    def __bubble__(:data),
+      do: [
+        %{
+          element: "list",
+          instance: nil,
+          fun: :tasks,
+          read: :query,
+          cell: nil,
+          loads: [],
+          cell_loads: [],
+          topic: "Task",
+          inputs: [],
+          reads: [],
+          blocked: []
+        },
+        %{
+          element: "g",
+          instance: nil,
+          fun: nil,
+          read: :displayed,
+          cell: "list",
+          loads: [],
+          cell_loads: [],
+          topic: "Task",
+          inputs: [],
+          reads: [],
+          blocked: [],
+          display: %{page_size: nil}
+        }
+      ]
+
+    def tasks(ctx) do
+      desc? = PhxCheckWeb.BubbleWorkflows.state(ctx, [], "x", "desc") == true
+
+      PhxCheck.Task
+      |> Ash.Query.sort(title: if(desc?, do: :desc, else: :asc))
+      |> PhxCheckWeb.BubbleData.read(ctx, :all, 100)
+    end
+  end
+
+  test "a cell's displayed group is keyed by the cell's thing, not its position" do
+    on()
+    alias PhxCheckWeb.BubbleWorkflows, as: BW
+    task = Ash.get!(PhxCheck.Task, @t1, authorize?: false)
+
+    # The step, run in a cell: kept under the cell's thing.
+    ctx = %BW.Ctx{cell: task, cell_index: 2}
+    {:cont, ctx} = BW.display(ctx, "s", [], "g", true, PhxCheck.Task, false, task)
+    assert Map.keys(ctx.displayed) == [{"", "g", {:cell, @t1}}]
+    assert ctx.data[{"", "g", 2}].title == "Bake"
+
+    # Outside a cell it fails, never guesses a cell.
+    assert {:halt, {:error, {"s", :not_in_cell}}, _} =
+             BW.display(%BW.Ctx{}, "s", [], "g", true, PhxCheck.Task, false, task)
+
+    load = fn desc? ->
+      %Phoenix.LiveView.Socket{transport_pid: self()}
+      |> BW.mount(CellShownPage)
+      |> Phoenix.Component.assign(:bubble_states, %{{"", "x", "desc"} => desc?})
+      |> Phoenix.Component.assign(:bubble_displayed, ctx.displayed)
+      |> PhxCheckWeb.BubbleData.load(CellShownPage)
+    end
+
+    shown = fn socket ->
+      for {{"", "g", i}, %{title: title}} <- socket.assigns.bubble_data, do: {i, title}
+    end
+
+    # Bake is 2nd in title order, 4th in reverse: it follows its thing.
+    assert shown.(load.(false)) == [{2, "Bake"}]
+    assert shown.(load.(true)) == [{4, "Bake"}]
   end
 
   test "Display data runs only with data access: off, nothing is kept or shown", %{conn: conn} do

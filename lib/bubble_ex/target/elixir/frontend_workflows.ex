@@ -756,6 +756,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
            key: key,
            cell?: holder.cell != nil,
            list?: op == :display_list,
+           page_size: holder.page_size,
            resource: resource,
            value: value
          }, residue ++ unmapped}
@@ -1019,9 +1020,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       cell: cell,
       holder: nil,
       type: raw.content && Type.listed(raw.content),
-      page_size: nil
+      page_size: Map.get(raw, :page_size)
     }
 
+  # A thing has no page: a group's or instance's page size is nil.
   defp holder(:display_data, _element, %{instance_of: definition}, _raw, surface, cell, ctx)
        when is_binary(definition) do
     content = Map.get(ctx.raw_elements[definition] || %{}, :content)

@@ -128,7 +128,9 @@ defmodule <%= @web %>.BubbleData do
   thing's unique ID only: it is read again through Ash as the current
   user, like any other read, so a workflow never shows what the user may
   not read<%= if @enforced? do %> (a record the policies hide shows nothing, a hidden field is
-  empty)<% end %>. A list shows at most its page size, capped by
+  empty)<% end %>; anything kept that is not a text shaped like a Bubble ID
+  shows nothing (`show/3`). In a repeating group's cell it is kept by the
+  cell's thing, not its position. A list shows at most its page size, capped by
   `:max_items`.
 
   ## Unverified Bubble behavior
@@ -495,7 +497,11 @@ defmodule <%= @web %>.BubbleData do
         for {item, i} <- Enum.with_index(items, 1) do
           ctx = BubbleWorkflows.data_ctx(socket, module, scope, data, {item, i})
 
-          case value(socket, module, %{source | loads: []}, {scope, source.element, i}, ctx) do
+          # Shown per cell by the cell's thing (WTF-492), not its position:
+          # a re-sorted list keeps what each thing's cell showed.
+          key = {scope, source.element, {:cell, Runtime.id(item)}}
+
+          case value(socket, module, %{source | loads: []}, key, ctx) do
             {:ok, value} -> {i, value}
             :none -> {i, nil}
           end
@@ -532,18 +538,15 @@ defmodule <%= @web %>.BubbleData do
     end
   end
 
-  # A thing a step showed is read again through Ash as the current user
-  # (its unique ID is all the page kept): a record the user may not read
-  # shows nothing<%= if @enforced? do %>, a field the user may not view is empty<% end %>.
-  defp shown({resource, list?, value}, source, ctx) do
+  defp shown(shown, source, ctx) do
     page_size =
       case Map.get(source, :display) do
         %{page_size: n} -> n
         _ -> nil
       end
 
-    ctx
-    |> records(resource, value, list?, page_size)
+    shown
+    |> then(&show(ctx, &1, page_size))
     |> Runtime.load_page(source.loads, Runtime.root(nil, ctx.actor), related_cap())
   rescue
     error ->
@@ -553,6 +556,29 @@ defmodule <%= @web %>.BubbleData do
 
       nil
   end
+
+  @doc """
+  What a "Display data" step showed (`{resource, list?, value}`, WTF-492),
+  as the current user reads it now: a thing's unique ID (a list of them,
+  at most `page_size` capped by `max_items/0`) is read again through Ash
+  with the actor, so a record the user may not read shows nothing<%= if @enforced? do %> and a
+  field the user may not view is empty<% end %>; an ID that is not a text
+  shaped like a Bubble ID shows nothing. Any other value is itself.
+  Nothing is read with data access off.
+  """
+  def show(_ctx, {nil, list?, value}, page_size), do: records(nil, nil, value, list?, page_size)
+
+  def show(ctx, {resource, list?, value}, page_size) do
+    if data_access?() do
+      records(ctx, resource, displayed_ids(value, list?), list?, page_size)
+    end
+  end
+
+  defp displayed_ids(value, true), do: value |> List.wrap() |> Enum.filter(&bubble_id?/1)
+  defp displayed_ids(value, false), do: if(bubble_id?(value), do: value)
+
+  @doc "Whether `value` is a text shaped like a Bubble unique ID."
+  def bubble_id?(value), do: is_binary(value) and byte_size(value) <= 64 and Regex.match?(@id, value)
 
   # One source: its function, then the relationships the page's bindings
   # read through it. A source that fails reads nothing (logged).
@@ -660,9 +686,10 @@ defmodule <%= @web %>.BubbleData do
     end
   end
 
-  defp cap(nil), do: max_items()
-  defp cap(n) when is_integer(n) and n > 0, do: min(n, max_items())
-  defp cap(_), do: max_items()
+  @doc "The most items a list of page size `page_size` reads (capped by `max_items/0`)."
+  def cap(nil), do: max_items()
+  def cap(n) when is_integer(n) and n > 0, do: min(n, max_items())
+  def cap(_), do: max_items()
 
 <%= if @enforced? do %>  # A read the policies refuse outright (e.g. logged out, where every rule
   # reads the user) shows nothing, as in Bubble: not an error.

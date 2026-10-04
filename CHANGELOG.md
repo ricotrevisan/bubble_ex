@@ -256,8 +256,11 @@ All notable changes to this project are documented here.
   with no data source of its own it is a source that reads what the step
   showed (`read: :displayed`), with one the step's value wins until a
   reset. "Reset group / popup" forgets what was shown in the group and
-  the elements inside it (an instance: everything in its scope). **The
-  page keeps a thing's unique ID only** and `<Web>.BubbleData` reads it
+  the elements inside it (an instance: everything in its scope). Later
+  steps of the workflow read the new data at once; a list keeps its
+  repeating group's page size; in a cell it is kept by the cell's thing.
+  **The page keeps a thing's unique ID only** (a record of another type,
+  a crafted text or a number is dropped) and `<Web>.BubbleData` reads it
   again through Ash as the current user at every read, so a workflow can
   never put into a group what the user may not read (with `privacy:
   :enforced`, what the policies hide stays hidden; tested to fail

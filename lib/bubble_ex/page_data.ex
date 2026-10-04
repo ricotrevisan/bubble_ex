@@ -365,18 +365,8 @@ defmodule BubbleEx.PageData do
 
   defp listed(type), do: Type.listed(type)
 
-  # A repeating group with a fixed number of rows shows rows × columns
-  # items a page; one showing all its items (or without rows) has none.
-  defp page_size(props) do
-    rows = positive(props["rows"] || props["%rs"])
-    columns = positive(props["columns"] || props["%cs"]) || 1
-
-    if rows && props["show_all_items"] != true, do: rows * columns
-  end
-
-  defp positive(n) when is_integer(n) and n > 0, do: n
-  defp positive(n) when is_float(n) and n >= 1, do: trunc(n)
-  defp positive(_), do: nil
+  # A repeating group's page (rows × columns), as the element tree reads it.
+  defp page_size(props), do: Tree.page_size(props)
 
   defp props_key(raw) do
     case Json.get(raw, ~w(properties %p)) do

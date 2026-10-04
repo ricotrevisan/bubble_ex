@@ -1318,36 +1318,74 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc """
   "Display data in a group / popup" or "Display list in a repeating group"
   (WTF-492): element `element` (in the instance `path` below; in the
-  current cell when `cell?`) shows `value` until a reset or the page's
-  next load, in place of its own data source. A thing of `resource` (a
-  list when `list?`) is kept as its unique ID only and read again through
-  Ash as the current user whenever the page reads its data
-  (`<%= @web %>.BubbleData`), so a workflow never shows what the user may
-  not read: it shows what the policies let the user read at that moment.
-  Any other value (text, a number, a date) is kept as it is; a record
-  that is not of `resource` is not kept.
+  current cell when `cell?`, keyed by the cell's thing, not its position)
+  shows `value` until a reset or the page's next load, in place of its
+  own data source.
+
+  With a `resource`, only unique IDs are kept: a record of `resource` as
+  its ID, a text shaped like a Bubble ID as itself; anything else (a
+  record of another type, a crafted text, a number) is dropped, and a
+  list keeps at most `page_size` (capped by `:max_items`) of them. Every
+  read of the page's data reads them again through Ash as the current
+  user (`<%= @web %>.BubbleData`), so a workflow never shows what the user
+  may not read, only what the policies let the user read at that moment.
+  Without a resource the value (text, a number, a date) is kept as it is,
+  never a record.
+
+  The workflow's later steps read the element's new data at once: it is
+  read the same way, as the current user, into the context (nothing with
+  data access off).
   """
-  def display(ctx, step, path, element, cell?, resource, list?, value) do
-    key =
+  def display(ctx, step, path, element, cell?, resource, list?, value, page_size \\ nil) do
+    scope = scope(ctx, path)
+
+    keys =
       cond do
-        not cell? -> {:ok, {scope(ctx, path), element}}
-        is_integer(ctx.cell_index) -> {:ok, {scope(ctx, path), element, ctx.cell_index}}
+        not cell? -> {:ok, {scope, element}, {scope, element}}
+        ctx.cell != nil -> {:ok, {scope, element, {:cell, Runtime.id(ctx.cell)}}, {scope, element, ctx.cell_index}}
         true -> :error
       end
 
-    case key do
-      {:ok, key} ->
-        shown = {resource, list?, displayed_value(resource, list?, value)}
-        {:cont, put_step(%{ctx | displayed: Map.put(ctx.displayed, key, shown)}, step, nil)}
+    case keys do
+      {:ok, key, data_key} ->
+        shown = {resource, list?, displayed_value(resource, list?, value, page_size)}
+
+        ctx = %{
+          ctx
+          | displayed: Map.put(ctx.displayed, key, shown),
+            data: Map.put(ctx.data, data_key, BubbleData.show(ctx, shown, page_size))
+        }
+
+        {:cont, put_step(ctx, step, nil)}
 
       :error ->
         fail(ctx, step, :not_in_cell)
     end
   end
 
-  defp displayed_value(nil, _list?, value), do: plain(value)
-  defp displayed_value(_resource, true, value), do: Runtime.ids(List.wrap(value))
-  defp displayed_value(_resource, false, value), do: Runtime.id(value)
+  defp displayed_value(nil, true, value, page_size),
+    do: value |> List.wrap() |> plain() |> Enum.take(BubbleData.cap(page_size))
+
+  defp displayed_value(nil, false, value, _page_size), do: plain(value)
+
+  defp displayed_value(resource, true, value, page_size),
+    do:
+      value
+      |> List.wrap()
+      |> Enum.map(&displayed_id(resource, &1))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.take(BubbleData.cap(page_size))
+
+  defp displayed_value(resource, false, value, _page_size), do: displayed_id(resource, value)
+
+  # A thing's unique ID: a record of `resource`, or a text shaped like a
+  # Bubble ID. Never a record of another type, nor another value.
+  defp displayed_id(resource, %{__struct__: resource} = record), do: bubble_id(Runtime.id(record))
+  defp displayed_id(_resource, %{__struct__: _}), do: nil
+  defp displayed_id(_resource, id), do: bubble_id(id)
+
+  defp bubble_id(id) when is_binary(id), do: if(BubbleData.bubble_id?(id), do: id)
+  defp bubble_id(_id), do: nil
 
   # A value shown as it is: never a record (a struct), which only the
   # resource's re-read may show.

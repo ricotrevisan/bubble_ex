@@ -446,8 +446,10 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
       })
 
     # The page kept their unique IDs only.
-    assert %{{"", "memo"} => {PhxCheck.Memo, false, _}, {"", "task"} => {PhxCheck.Task, false, _}} =
-             socket.assigns.bubble_displayed
+    assert socket.assigns.bubble_displayed == %{
+             {"", "memo"} => {PhxCheck.Memo, false, "1700000000000x400000000000000009"},
+             {"", "task"} => {PhxCheck.Task, false, @t2}
+           }
 
     # Not an admin: the memo reads as nothing.
     assert socket.assigns.bubble_data[{"", "memo"}] == nil

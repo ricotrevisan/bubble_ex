@@ -102,7 +102,8 @@ defmodule BubbleEx.Workflows.Frontend do
           parent: String.t() | nil,
           instance_of: String.t() | nil,
           value: String.t() | nil,
-          content: String.t() | nil
+          content: String.t() | nil,
+          page_size: pos_integer() | nil
         }
   @type state :: %{
           element: String.t(),
@@ -858,7 +859,8 @@ defmodule BubbleEx.Workflows.Frontend do
          parent: node.parent,
          instance_of: node.instance_of,
          value: node.value,
-         content: node.content
+         content: node.content,
+         page_size: node.page_size
        }}
     end
   end

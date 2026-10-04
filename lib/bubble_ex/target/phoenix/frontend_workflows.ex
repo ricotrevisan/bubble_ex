@@ -345,8 +345,10 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp op(op, args, id, env) when op in [:display_data, :display_list] do
     resource = if args.resource, do: "#{env.spec.namespace}.#{args.resource}", else: "nil"
 
+    page_size = if args.list?, do: ", #{inspect(Map.get(args, :page_size))}", else: ""
+
     "BubbleWorkflows.display(ctx, #{id}, #{source(args.key.path)}, #{literal(args.key.element)}, " <>
-      "#{args.cell?}, #{resource}, #{args.list?}, #{src(args.value)})"
+      "#{args.cell?}, #{resource}, #{args.list?}, #{src(args.value)}#{page_size})"
   end
 
   defp op(:reset_inputs, args, _id, env),

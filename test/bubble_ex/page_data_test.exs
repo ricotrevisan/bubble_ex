@@ -279,11 +279,11 @@ defmodule BubbleEx.PageDataTest do
       # The group after the page's thing it reads.
       assert Enum.map(Spec.data(spec, "bTaskPage"), & &1.element) == ["bTaskPage", "bProjGroup"]
 
-      # With the shown page's (WTF-492): its four sources and the five
+      # With the shown page's (WTF-492): its four sources and the six
       # elements its "Display data" steps set.
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 18,
-               "wired" => 18,
+               "total" => 19,
+               "wired" => 19,
                "residue" => 0
              }
 
@@ -383,7 +383,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 16
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 17
     end
 
     test "a repeating group in a repeating group's cell is residue" do
@@ -659,7 +659,14 @@ defmodule BubbleEx.PageDataTest do
              } = steps["aShowA1"]
 
       assert %{args: %{key: %{path: ["bPanel1"], element: "bPanel"}}} = steps["aShowCard1"]
-      assert %{args: %{list?: true}} = steps["aShowList1"]
+      assert %{args: %{list?: true, page_size: 1}} = steps["aShowList1"]
+      assert %{page_size: 1} = data(spec, "bShownList")
+      # An outer group's reset clears the displayed group inside it.
+      assert %{args: %{clears: ["bInner"]}} = steps["aResetOuter1"]
+      # A later step reads what the first just set.
+      assert %{args: %{value: %{bindings: [%{bind: {:data, %{element: "bShown"}}}]}}} =
+               steps["aChain2"]
+
       assert %{args: %{clears: ["bShown"]}} = steps["aResetShown1"]
       assert %{args: %{clears: :all}} = steps["aResetPanel1"]
 
@@ -680,6 +687,10 @@ defmodule BubbleEx.PageDataTest do
         |> update_in(
           ["pages", "shown", "workflows", "wShowB", "actions"],
           &Map.put(&1, "1", residue)
+        )
+        |> update_in(
+          ["pages", "shown", "workflows", "wChain", "actions"],
+          &Map.put(&1, "2", residue)
         )
 
       {spec, _project, _frontend, _app, _model} = spec(app)
@@ -791,10 +802,16 @@ defmodule BubbleEx.PageDataTest do
       refute template =~ "TODO(bubble:bShown"
 
       runtime = files["lib/shop_web/bubble_workflows.ex"]
-      assert runtime =~ "def display(ctx, step, path, element, cell?, resource, list?, value)"
+
+      assert runtime =~
+               "def display(ctx, step, path, element, cell?, resource, list?, value, page_size \\\\ nil)"
+
+      # A list keeps its repeating group's page size (one row here).
+      assert shown =~
+               ~r/"aShowList1",.*?"bShownList",\s*false,\s*Shop.Task,\s*true,.*?,\s*1\s*\)/s
 
       assert files["lib/shop_web/bubble_data.ex"] =~
-               "defp shown({resource, list?, value}, source, ctx)"
+               "def show(ctx, {resource, list?, value}, page_size)"
     end
   end
 end
