@@ -98,7 +98,7 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
     assert %{read: {:value, %{source: limit}}} = data(spec, "bLimit")
     assert limit =~ "Runtime.limit("
     assert %{read: {:value, %{source: options}}} = data(spec, "bOptions")
-    assert options =~ "Enum.filter(Shop.Enums.Color.values() || [], fn item ->"
+    assert options =~ "Enum.filter(List.wrap(Shop.Enums.Color.values()), fn item ->"
   end
 
   test "a page's :filtered not stating the option matches nothing on an empty value", %{

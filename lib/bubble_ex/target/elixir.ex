@@ -565,11 +565,15 @@ defmodule BubbleEx.Target.Elixir do
   defp reads_actor?(_), do: false
 
   # Each item of `l` (`item`) that meets `pred`.
-  defp item_filter(l, nil, st), do: {ok(l, &"(#{&1} || [])"), st}
+  # `List.wrap/1`, not `|| []`: a set's options are never nil, and Elixir
+  # 1.20's type checker rejects the dead branch.
+  defp item_filter(l, nil, st), do: {ok(l, &"List.wrap(#{&1})"), st}
 
   defp item_filter(l, pred, st) do
     {c, inner} = cond(pred, %{st | item?: true}, true)
-    {all_ok("Enum.filter(#{l} || [], fn item -> #{c} end)", [l, c]), %{inner | item?: st.item?}}
+
+    {all_ok("Enum.filter(List.wrap(#{l}), fn item -> #{c} end)", [l, c]),
+     %{inner | item?: st.item?}}
   end
 
   # A shown file or image value goes through `:file_url` (WTF-415).
@@ -621,7 +625,7 @@ defmodule BubbleEx.Target.Elixir do
   # option's label or attribute, of all of a set's options).
   defp each(part, fun, %IR{type: type}) do
     if match?(%Type{cardinality: :many}, classify(type)),
-      do: "Enum.map(#{part} || [], #{fun})",
+      do: "Enum.map(List.wrap(#{part}), #{fun})",
       else: "then(#{part}, #{fun})"
   end
 
