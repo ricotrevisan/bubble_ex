@@ -491,6 +491,13 @@ defmodule BubbleEx.PageDataTest do
       assert index =~ "require Ash.Query"
       assert index =~ ~s(element: "bCellGroup")
       assert index =~ ~s(cell_loads: [["project"]])
+
+      # What each source reads of the page (WTF-475): typing in bQuery reads
+      # again bList and its cells' group, nothing else.
+      assert index =~ ~r/element: "bList",.*?inputs: \["bQuery"\],\s+reads: \[\]/s
+      assert index =~ ~r/element: "bCellGroup",.*?inputs: \[\],\s+reads: \["bList"\]/s
+      assert index =~ ~r/element: "bFirstOpen",.*?inputs: \[\],\s+reads: \[\]/s
+      assert files["lib/shop_web/bubble_data.ex"] =~ "defp load_inputs(socket, page, changed)"
       assert index =~ "= ctx.cell"
 
       template = files["lib/shop_web/live/index_live.html.heex"]
