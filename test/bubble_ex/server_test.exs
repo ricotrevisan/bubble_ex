@@ -14,6 +14,8 @@ defmodule BubbleEx.ServerTest do
 
     def scan(%{"_id" => "hang"}, _opts), do: Process.sleep(:infinity)
 
+    def scan(%{"_id" => "opts"}, opts), do: {:ok, [%{"verify" => Keyword.fetch(opts, :verify)}]}
+
     def scan(_payload, opts) do
       ref = Keyword.get(opts, :ref)
       server_pid = Keyword.get(opts, :server_pid)
@@ -46,6 +48,14 @@ defmodule BubbleEx.ServerTest do
       assert_receive {:scan_completed, ^ref, [%{"finding" => "x"}]}, 1000
 
       assert {:ok, %{status: :completed}} = Server.scan_status(ref, server: server)
+    end
+
+    test "passes :verify to the scanner, and nothing when it is not given", %{server: server} do
+      {:ok, ref} = Server.start_scan(%{"_id" => "opts"}, server: server, verify: false)
+      assert_receive {:scan_completed, ^ref, [%{"verify" => {:ok, false}}]}, 1000
+
+      {:ok, ref} = Server.start_scan(%{"_id" => "opts"}, server: server)
+      assert_receive {:scan_completed, ^ref, [%{"verify" => :error}]}, 1000
     end
 
     test "reports scanner errors via :scan_error", %{server: server} do

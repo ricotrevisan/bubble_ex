@@ -73,7 +73,8 @@ defmodule BubbleEx.Server do
   ## Parameters
 
     * `payload` - A map containing the payload to scan. Must include an "_id" field.
-    * `opts` - Options for the scan (currently unused)
+    * `opts` - `:server` (default `BubbleEx.Server`) and `:verify`,
+      passed to the scanner (see `BubbleEx.Secrets.Trufflehog`)
 
   ## Returns
 
@@ -88,7 +89,7 @@ defmodule BubbleEx.Server do
   """
   def start_scan(payload, opts \\ []) do
     server = Keyword.get(opts, :server, __MODULE__)
-    GenServer.call(server, {:start_scan, payload, self()})
+    GenServer.call(server, {:start_scan, payload, self(), Keyword.take(opts, [:verify])})
   end
 
   @doc """
@@ -153,7 +154,7 @@ defmodule BubbleEx.Server do
   end
 
   @impl true
-  def handle_call({:start_scan, payload, client_pid}, _from, state) do
+  def handle_call({:start_scan, payload, client_pid, opts}, _from, state) do
     ref = make_ref()
 
     scan_info = %{
@@ -168,7 +169,7 @@ defmodule BubbleEx.Server do
     # Run the scan in a supervised, unlinked task so a crash is reported via a
     # :DOWN message instead of taking down the server.
     server_pid = self()
-    scan_opts = scan_opts(state.adapter, server_pid, ref)
+    scan_opts = scan_opts(state.adapter, server_pid, ref) ++ opts
 
     task =
       Task.Supervisor.async_nolink(state.task_sup, fn ->
