@@ -94,6 +94,9 @@ defmodule BubbleEx do
   ## Parameters
 
     * `payload` - A map containing the payload to scan for secrets
+    * `opts` - Passed to `BubbleEx.Secrets.scan/2`; `verify: false` scans
+      without asking providers whether found keys work (see
+      `BubbleEx.Secrets.Trufflehog`)
 
   ## Returns
 
@@ -106,9 +109,10 @@ defmodule BubbleEx do
       BubbleEx.scan_payload_for_secrets(payload)
       #=> {:ok, []}
   """
-  @spec scan_payload_for_secrets(map()) :: {:ok, list()} | {:error, BubbleEx.Error.t()}
-  def scan_payload_for_secrets(payload) when is_map(payload) do
-    Secrets.scan(payload)
+  @spec scan_payload_for_secrets(map(), keyword()) ::
+          {:ok, list()} | {:error, BubbleEx.Error.t()}
+  def scan_payload_for_secrets(payload, opts \\ []) when is_map(payload) do
+    Secrets.scan(payload, opts)
   end
 
   @doc """
@@ -120,6 +124,7 @@ defmodule BubbleEx do
   ## Parameters
 
     * `payload` - A map containing the payload to scan. Must include an "_id" field.
+    * `opts` - Passed to `BubbleEx.Server.start_scan/2` (`:verify`, `:server`)
 
   ## Returns
 
@@ -138,9 +143,9 @@ defmodule BubbleEx do
       end
 
   """
-  @spec start_scan_for_secrets(map()) :: {:ok, reference()} | {:error, term()}
-  def start_scan_for_secrets(payload) when is_map(payload) do
-    Server.start_scan(payload)
+  @spec start_scan_for_secrets(map(), keyword()) :: {:ok, reference()} | {:error, term()}
+  def start_scan_for_secrets(payload, opts \\ []) when is_map(payload) do
+    Server.start_scan(payload, opts)
   end
 
   @doc """
