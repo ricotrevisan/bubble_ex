@@ -21,6 +21,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       (`BubbleEx.Target.Elixir`, `read: {:value, compiled}`); a thing or a
       list of things may be records or Bubble IDs, which the runtime reads
       through Ash (`resource`)
+    * an element with no data source that a "Display data" step sets
+      (WTF-492, `ctx.displayed`) reads what the step showed
+      (`read: :displayed`); every source a step sets is `displayed?`
 
   What a source reads of the page is bound as a workflow's values are
   (`BubbleEx.Target.Elixir.FrontendWorkflows`), plus the page's data:
@@ -52,21 +55,54 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   alias BubbleEx.Workflows.Lowering
 
   @doc """
-  The page's data holders (every source that lowered), for binding reads
-  before the sources themselves are bound; nil page data has none.
+  The page's data holders (every source that lowered, and every element a
+  "Display data" step shows data in, `displayed`: element => `%{kind,
+  surface, cell, holder}`), for binding reads before the sources
+  themselves are bound; nil page data has none but the displayed ones.
   """
-  @spec index(PageData.t() | nil) :: map()
-  def index(nil), do: %{elements: %{}, roots: MapSet.new()}
+  @spec index(PageData.t() | nil, map()) :: map()
+  def index(page_data, displayed \\ %{})
 
-  def index(%PageData{sources: sources}) do
+  def index(nil, displayed),
+    do: with_displayed(%{elements: %{}, roots: MapSet.new()}, displayed, MapSet.new())
+
+  def index(%PageData{sources: sources}, displayed) do
     elements =
       for s <- sources,
           Source.native?(s),
           into: %{},
           do: {s.element, %{kind: s.kind, surface: s.surface, cell: s.cell, holder: s.holder}}
 
-    %{elements: elements, roots: roots(sources)}
+    with_displayed(
+      %{elements: elements, roots: roots(sources)},
+      displayed,
+      MapSet.new(sources, & &1.element)
+    )
   end
+
+  # A displayed element with no source of its own (WTF-492) holds what the
+  # step shows; one with a source keeps the source's entry. A source that
+  # did not lower stays unread: its element is not added.
+  defp with_displayed(index, displayed, own) do
+    displayed
+    |> Enum.reject(fn {element, _} -> MapSet.member?(own, element) end)
+    |> Enum.reduce(index, fn {element, holder}, acc ->
+      entry = Map.take(holder, [:kind, :surface, :cell, :holder])
+      %{acc | elements: Map.put(acc.elements, element, entry), roots: root(acc.roots, holder)}
+    end)
+  end
+
+  defp root(roots, %{kind: :instance, holder: holder}) when is_binary(holder),
+    do: MapSet.put(roots, holder)
+
+  defp root(roots, _holder), do: roots
+
+  @doc """
+  The Ash resource (relative module) of a thing or list-of-things type
+  (`"custom.task"`, `"list.custom.task"`), or nil.
+  """
+  @spec resource_of_type(String.t() | nil, map()) :: String.t() | nil
+  def resource_of_type(type, ctx), do: resource(type, ctx)
 
   # Reusable elements an instance gives their thing to.
   defp roots(sources),
@@ -107,11 +143,22 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   them (a source after those it reads).
   """
   @spec bind(PageData.t() | nil, map(), map()) :: %{String.t() => [map()]}
-  def bind(nil, _ctx, _fns), do: %{}
+  def bind(page_data, ctx, fns) do
+    displayed = Map.get(ctx, :displayed, %{})
+    sources = if page_data, do: page_data.sources, else: []
+    own = MapSet.new(sources, & &1.element)
 
-  def bind(%PageData{sources: sources}, ctx, fns) do
-    sources
-    |> Enum.map(&source(&1, ctx, fns))
+    bound =
+      Enum.map(sources, fn s ->
+        s |> source(ctx, fns) |> Map.put(:displayed?, Map.has_key?(displayed, s.element))
+      end)
+
+    shown =
+      for {element, holder} <- Enum.sort(displayed),
+          not MapSet.member?(own, element),
+          do: displayed_source(element, holder, ctx)
+
+    (bound ++ shown)
     |> prune()
     |> Enum.group_by(& &1.surface)
     |> Map.new(fn {surface, bound} -> {surface, order(bound)} end)
@@ -153,6 +200,33 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       true ->
         value(s, base, ctx, fns)
     end
+  end
+
+  # An element with no data source of its own whose data a "Display data"
+  # step sets (WTF-492): read from what the step showed, re-read as the
+  # current user (`read: :displayed`).
+  defp displayed_source(element, holder, ctx) do
+    %{
+      element: element,
+      symbol: "element:" <> element,
+      kind: holder.kind,
+      surface: holder.surface,
+      cell: holder.cell,
+      holder: holder.holder,
+      key:
+        if(holder.kind == :instance,
+          do: %{path: [element], element: holder.holder},
+          else: %{path: [], element: element}
+        ),
+      type: holder.type,
+      list?: holder.kind == :list,
+      page_size: holder.page_size,
+      resource: resource(holder.type, ctx),
+      read: :displayed,
+      reads: [],
+      residue: [],
+      displayed?: true
+    }
   end
 
   defp key(%Source{kind: :instance, element: e, holder: holder}),

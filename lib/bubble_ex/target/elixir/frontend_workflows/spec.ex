@@ -132,6 +132,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     do: [args[:at], args[:list], args[:interval] | Enum.map(args[:params] || [], & &1.value)]
 
   defp values(:pause, args), do: [args[:length]]
+  defp values(op, args) when op in [:display_data, :display_list], do: [args[:value]]
 
   defp values(:schedule_custom, args),
     do: [args[:delay] | Enum.map(args[:params] || [], & &1.value)]
@@ -271,7 +272,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   page, with no residue, neither the lowering's nor this target's, and
   every source it reads loaded too; `residue`), `"by_kind"` (`{total,
   wired}` per kind), `"reads"` (wired sources per read: `url_thing`,
-  `query`, `value`) and `"residue_reasons"`.
+  `query`, `value`, `displayed`: an element with no source of its own
+  that a "Display data" step sets, WTF-492) and `"residue_reasons"`.
   """
   @spec data_coverage(t()) :: map()
   def data_coverage(%__MODULE__{surfaces: surfaces}) do
@@ -292,8 +294,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
         end),
       "reads" =>
         Enum.frequencies_by(wired, fn
-          %{read: :url_thing} -> "url_thing"
           %{read: {kind, _}} -> Atom.to_string(kind)
+          %{read: kind} when is_atom(kind) -> Atom.to_string(kind)
         end),
       "residue_reasons" =>
         sources |> Enum.flat_map(& &1.residue) |> Enum.frequencies_by(&Atom.to_string(&1.reason))

@@ -169,6 +169,7 @@ element (not a mobile view):
 | a Group's, Popup's, Floating Group's or Group Focus's data source | `:group` | a search (below), or an Elixir value (`BubbleEx.Target.Elixir`); a thing given as a Bubble ID is read by ID |
 | a Repeating Group's data source | `:list` | a search, or a list value (IDs are read by ID); its cells render its template once per item |
 | a reusable-element instance's data source | `:instance` | the reusable element's thing for that instance (`Parent group` inside it) |
+| a group, popup, repeating group or instance with no data source that a "Display data" / "Display list" step sets (WTF-492) | its kind | what the step showed (`read: :displayed`), read again as the current user; nothing before a step |
 
 A **search** (with its constraints, its sort, optionally under `first
 item`, `item #n`, `items until #n` or `count`) is an Ash query: its filter
@@ -196,6 +197,17 @@ runs through `:search` like any other search (what the user may find),
 the search fields check sees the sort, and no field policy is involved
 (no `:search_field_hidden`). Any other sort field that maps to no
 attribute leaves the search uncompiled (residue).
+
+**Display data (WTF-492).** An element a "Display data in a group /
+popup" or "Display list in a repeating group" step sets shows what the
+step showed until a reset or the page's next load, in place of its own
+data source (`docs/frontend-workflows.md`). The page keeps a thing's
+unique ID only (`@bubble_displayed`) and reads it again, as the current
+user through Ash, at every read of its data: a workflow never shows
+what the user may not read. Its entry in `__bubble__(:data)` says so
+(`display: %{page_size: ...}`); one with no source of its own has no
+function (`read: :displayed`, `fun: nil`, nothing `blocked`). Only an
+element a step that runs sets is listed.
 
 A group inside a repeating group's cell holds a value per cell. A
 repeating group, a reusable instance or a search inside a cell is residue
@@ -400,3 +412,6 @@ where it runs (a privacy rule's condition).
 * A repeating group shows its first page; later pages ("Show next") are
   not loaded.
 * Reusable-element parameters are not passed to components as data yet.
+* "Display data" over a group's own data source: the step's value wins
+  until a reset or the page's next load, even when what the source reads
+  changes (WTF-492; to replay, WTF-358).

@@ -338,10 +338,21 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
         "#{source(args.target.path)}, #{element_source(args.target.element)})"
 
   defp op(:reset_group, args, _id, env),
-    do: reset_source(args.target, env.surface, env.spec, env.ctx)
+    do: reset_source(args.target, env.surface, env.spec, env.ctx, Map.get(args, :clears, []))
+
+  # "Display data" / "Display list" (WTF-492): kept per instance (and
+  # cell), re-read as the current user when the page reads its data.
+  defp op(op, args, id, env) when op in [:display_data, :display_list] do
+    resource = if args.resource, do: "#{env.spec.namespace}.#{args.resource}", else: "nil"
+
+    page_size = if args.list?, do: ", #{inspect(Map.get(args, :page_size))}", else: ""
+
+    "BubbleWorkflows.display(ctx, #{id}, #{source(args.key.path)}, #{literal(args.key.element)}, " <>
+      "#{args.cell?}, #{resource}, #{args.list?}, #{src(args.value)}#{page_size})"
+  end
 
   defp op(:reset_inputs, args, _id, env),
-    do: reset_source(args.within, env.surface, env.spec, env.ctx)
+    do: reset_source(args.within, env.surface, env.spec, env.ctx, [])
 
   defp op(:set_state, args, id, _env) do
     states =
@@ -441,17 +452,23 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   # A whole instance or page resets from the page's first values; an
   # element's inputs are listed.
-  defp reset_source(nil, _s, _spec, _ctx), do: "BubbleWorkflows.reset(ctx, [], nil, [])"
+  # A reset group also clears what display steps showed in it (`clears`,
+  # WTF-492); a reset instance everything shown in its scope.
+  defp reset_source(nil, _s, _spec, _ctx, _clears), do: "BubbleWorkflows.reset(ctx, [], nil, [])"
 
-  defp reset_source(%{path: path, element: :root}, _s, _spec, _ctx),
+  defp reset_source(%{path: path, element: :root}, _s, _spec, _ctx, :all),
+    do: "BubbleWorkflows.reset(ctx, #{source(path)}, nil, [], :all)"
+
+  defp reset_source(%{path: path, element: :root}, _s, _spec, _ctx, _clears),
     do: "BubbleWorkflows.reset(ctx, #{source(path)}, nil, [])"
 
-  defp reset_source(%{path: [], element: element}, s, _spec, _ctx) do
+  defp reset_source(%{path: [], element: element}, s, _spec, _ctx, clears) do
     within = for {input, containers} <- s.containers, element in containers, do: input
     within = if element in Map.keys(s.inputs), do: [element | within], else: within
+    clears = if clears == [], do: "", else: ", #{source(Enum.sort(clears))}"
 
     "BubbleWorkflows.reset(ctx, [], #{literal(element)}, " <>
-      "#{first_values(Enum.sort(Enum.uniq(within)), s.inputs)})"
+      "#{first_values(Enum.sort(Enum.uniq(within)), s.inputs)}#{clears})"
   end
 
   defp first_values(elements, inputs) do
@@ -591,7 +608,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   # IDs): an input change reads again only the sources that read the input,
   # and those reading them, transitively (WTF-475).
   defp data_meta(d, s) do
-    fun = if d.residue == [], do: ":" <> data_fun(d), else: "nil"
+    fun = if d.residue == [] and d.read != :displayed, do: ":" <> data_fun(d), else: "nil"
 
     loads = Map.get(Map.get(s, :loads, %{}), d.holder || d.element, [])
     topic = if d.resource && d.residue == [], do: literal(d.resource), else: "nil"
@@ -601,8 +618,17 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       "cell: #{if d.cell, do: literal(d.cell), else: "nil"}, " <>
       "loads: #{source(loads)}, cell_loads: #{source(cell_loads(d.read))}, topic: #{topic}, " <>
       "inputs: #{source(data_inputs(d.read))}, reads: #{source(data_reads(d))}, " <>
-      "blocked: #{source(Enum.uniq(Enum.map(d.residue, & &1.subject)))}}"
+      "blocked: #{source(Enum.uniq(Enum.map(d.residue, & &1.subject)))}" <>
+      "#{display_meta(d)}}"
   end
+
+  # An element a "Display data" step sets (WTF-492): what the step showed
+  # wins over its own source until a reset; with no source of its own
+  # (`read: :displayed`), it shows only that.
+  defp display_meta(%{displayed?: true} = d),
+    do: ", display: %{page_size: #{inspect(d.page_size)}}"
+
+  defp display_meta(_d), do: ""
 
   # The input elements a source's value or search constraints read.
   defp data_inputs(read) do
@@ -638,6 +664,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   end
 
   defp data_read_kind(:url_thing), do: ":url_thing"
+  defp data_read_kind(:displayed), do: ":displayed"
   defp data_read_kind({:query, _}), do: ":query"
   defp data_read_kind(_), do: ":value"
 
@@ -675,6 +702,13 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     """
     # bubble:data #{marker(d.element)}
     # TODO(bubble:#{comment(d.symbol)}) not loaded: #{reasons}
+    """
+  end
+
+  defp data_source(%{read: :displayed} = d, _s, _ctx) do
+    """
+    # bubble:data #{marker(d.element)}
+    # Shown by a "Display data" step (no data source of its own): see BubbleData.
     """
   end
 

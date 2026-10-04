@@ -91,6 +91,79 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
     )
   end
 
+  # WTF-492: a page whose workflow came by records the user may not read
+  # (as one ignoring privacy rules would) and shows them with "Display
+  # data" in two groups with no data source of their own.
+  defmodule ShownPage do
+    @memo "1700000000000x400000000000000009"
+    @task "1700000000000x200000000000000002"
+
+    def __bubble__(:instances), do: []
+
+    def __bubble__(:surface),
+      do: %{
+        states: %{},
+        inputs: %{},
+        loaded: [],
+        intervals: [],
+        clicks: %{"show" => ["show"]},
+        changes: %{},
+        conditions: []
+      }
+
+    def __bubble__(:workflows),
+      do: %{"show" => %{condition: nil, run: :show, blocked: [], data: true}}
+
+    def __bubble__(:data), do: [shown("memo", "Memo"), shown("task", "Task")]
+
+    defp shown(element, topic),
+      do: %{
+        element: element,
+        instance: nil,
+        fun: nil,
+        read: :displayed,
+        cell: nil,
+        loads: [],
+        cell_loads: [],
+        topic: topic,
+        inputs: [],
+        reads: [],
+        blocked: [],
+        display: %{page_size: nil}
+      }
+
+    def show(ctx) do
+      memo = Ash.get!(PhxCheck.Memo, @memo, authorize?: false)
+      task = Ash.get!(PhxCheck.Task, @task, authorize?: false)
+
+      {:cont, ctx} =
+        PhxCheckWeb.BubbleWorkflows.display(
+          ctx,
+          "a1",
+          [],
+          "memo",
+          false,
+          PhxCheck.Memo,
+          false,
+          memo
+        )
+
+      {:cont, ctx} =
+        PhxCheckWeb.BubbleWorkflows.display(
+          ctx,
+          "a2",
+          [],
+          "task",
+          false,
+          PhxCheck.Task,
+          false,
+          task
+        )
+
+      {:done, ctx}
+    end
+  end
+
   defp data_access_on,
     do: Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: true)
 
@@ -353,6 +426,38 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
     created = post(conn, "/api/1.1/wf/create%20task", %{"title" => "From the API"})
     assert %{"response" => %{"task" => id}} = json_response(created, 200)
     assert Ash.get!(PhxCheck.Task, id, authorize?: false).title == "From the API"
+  end
+
+  # WTF-492: what a "Display data" step shows is read again as the current
+  # user: a workflow can never put into a group what the user may not read.
+  test "Display data shows only what the current user may read", %{u1: u1} do
+    data_access_on()
+    Ash.Seed.seed!(PhxCheck.Memo, %{id: "1700000000000x400000000000000009", title: "Roadmap"})
+
+    socket =
+      %Phoenix.LiveView.Socket{transport_pid: self()}
+      |> Phoenix.Component.assign(:current_user, u1)
+      |> PhxCheckWeb.BubbleWorkflows.mount(ShownPage)
+
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, ShownPage, "bubble:click", %{
+        "scope" => "",
+        "element" => "show"
+      })
+
+    # The page kept their unique IDs only.
+    assert socket.assigns.bubble_displayed == %{
+             {"", "memo"} => {PhxCheck.Memo, false, "1700000000000x400000000000000009"},
+             {"", "task"} => {PhxCheck.Task, false, @t2}
+           }
+
+    # Not an admin: the memo reads as nothing.
+    assert socket.assigns.bubble_data[{"", "memo"}] == nil
+
+    # Not watching the task: its Title (everyone), nothing else.
+    task = socket.assigns.bubble_data[{"", "task"}]
+    assert task.title == "Answer"
+    assert %Ash.ForbiddenField{} = task.done
   end
 
   @tag :tmp_dir

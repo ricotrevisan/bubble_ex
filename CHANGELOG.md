@@ -245,6 +245,34 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **"Display data" and "Display list" steps** (WTF-492, part of WTF-476).
+  Groups, popups, floating groups, group focuses and reusable-element
+  instances that read data a workflow sends them were empty: every
+  `DisplayGroupData` and `DisplayListData` step was `unsupported_action`.
+  `Workflows.Frontend` lowers them to `:display_data` / `:display_list`
+  (`element`, `value`, `cell`); `Target.Elixir.FrontendWorkflows` binds
+  them to a per-instance page state (`@bubble_displayed`, per cell in a
+  repeating group's cell) and makes each element they set page data:
+  with no data source of its own it is a source that reads what the step
+  showed (`read: :displayed`), with one the step's value wins until a
+  reset. "Reset group / popup" forgets what was shown in the group and
+  the elements inside it (an instance: everything in its scope). Later
+  steps of the workflow read the new data at once; a list keeps its
+  repeating group's page size; in a cell it is kept by the cell's thing.
+  **The page keeps a thing's unique ID only** (a record of another type,
+  a crafted text or a number is dropped) and `<Web>.BubbleData` reads it
+  again through Ash as the current user at every read, so a workflow can
+  never put into a group what the user may not read (with `privacy:
+  :enforced`, what the policies hide stays hidden; tested to fail
+  without them). An element is page data only when a step that runs
+  (its workflow generated whole) sets it; otherwise it stays unloaded,
+  loudly. Private fixture app (counts only): 55 of 77 "Display data"
+  steps lowered in generated code (35 in workflows the runtime starts),
+  data sources wired 943 → 1,016 of 2,037 (20 elements set only by a
+  step, 53 sources reading them), elements inside wired data 4,308 →
+  4,569, native workflows 622 → 692. "Display list" steps lower but none
+  of the 30 compiles yet (searches, list operators in their values).
+
 - **Enforced privacy: searches on fields some users may not view are
   decided per user** (WTF-457). With `privacy: :enforced`, a page search
   whose constraints or sort read a field of the searched type that some
