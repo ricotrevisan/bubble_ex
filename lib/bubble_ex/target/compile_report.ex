@@ -119,10 +119,18 @@ defmodule BubbleEx.Target.CompileReport do
     end
   end
 
-  # Searches (with their sort), outermost first.
-  defp searches(%IR{op: :sort, args: [%IR{op: :search} | _]} = ir), do: [ir]
+  # Searches (with their sorts, nested for several keys), outermost first.
   defp searches(%IR{op: :search} = ir), do: [ir]
+
+  defp searches(%IR{op: :sort, args: [inner | _]} = ir) do
+    if sorted_search?(inner), do: [ir], else: Enum.flat_map(ir.args, &nested/1)
+  end
+
   defp searches(%IR{args: args}), do: Enum.flat_map(args, &nested/1)
+
+  defp sorted_search?(%IR{op: :search}), do: true
+  defp sorted_search?(%IR{op: :sort, args: [inner | _]}), do: sorted_search?(inner)
+  defp sorted_search?(_ir), do: false
 
   defp nested(%IR{} = ir), do: searches(ir)
   defp nested(list) when is_list(list), do: Enum.flat_map(list, &nested/1)

@@ -181,8 +181,9 @@ defmodule BubbleEx.Target.Ash.Expressions do
   @random_sort "_random_sorting"
 
   @doc """
-  Compiles a search (`:search`, possibly under `:sort`) to a filter on the
-  searched resource, with its sort. Context inputs become arguments.
+  Compiles a search (`:search`, possibly under `:sort`, nested for several
+  keys, the outermost first) to a filter on the searched resource, with
+  its sort. Context inputs become arguments.
   Bubble's random sort (`_random_sorting`) becomes `sort: [:random]`; any
   other sort field that maps to no attribute leaves the search uncompiled.
   """
@@ -211,8 +212,17 @@ defmodule BubbleEx.Target.Ash.Expressions do
       {:error,
        Error.new(:invalid_input, "expected an IR node, a BubbleEx.Target.Ash.Project and options")}
 
-  defp unsort(%IR{op: :sort, args: [inner, field, desc]}),
-    do: {inner, [{field, if(desc, do: :desc, else: :asc)}]}
+  # Nested sorts are one sort by several keys, the outermost first (a sort
+  # keeps the order of what it sorts among equal keys). A random sort
+  # orders everything: the keys inside it are dropped.
+  defp unsort(%IR{op: :sort, args: [inner, field, desc]}) do
+    key = {field, if(desc, do: :desc, else: :asc)}
+
+    case {field, unsort(inner)} do
+      {@random_sort, {search, _inner_keys}} -> {search, [key]}
+      {_, {search, keys}} -> {search, [key | keys]}
+    end
+  end
 
   defp unsort(ir), do: {ir, []}
 
@@ -226,14 +236,17 @@ defmodule BubbleEx.Target.Ash.Expressions do
   defp sort_result(%{expr: expr} = result, sort, type, lookup, opts) do
     fields = get_in(lookup, [:types, type, :fields]) || %{}
 
-    case Enum.map(sort, fn {field, dir} -> {get_in(fields, [field, :attribute]), dir} end) do
-      mapped when mapped != [] and is_nil(elem(hd(mapped), 0)) ->
+    mapped =
+      Enum.map(sort, fn {field, dir} -> {field, get_in(fields, [field, :attribute]), dir} end)
+
+    case Enum.find(mapped, fn {_field, attribute, _dir} -> is_nil(attribute) end) do
+      {field, nil, _dir} ->
         st = state(lookup, opts)
-        {:error, st} = unmapped(st, {"the sort field", elem(hd(sort), 0)})
+        {:error, st} = unmapped(st, {"the sort field", field})
         %{expr: nil, diagnostics: result.diagnostics ++ diagnostics(st, opts)}
 
-      mapped ->
-        %{result | expr: %{expr | sort: mapped}}
+      nil ->
+        %{result | expr: %{expr | sort: Enum.map(mapped, fn {_f, a, dir} -> {a, dir} end)}}
     end
   end
 

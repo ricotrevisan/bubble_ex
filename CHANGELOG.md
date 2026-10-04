@@ -19,6 +19,35 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **List operators of page data load** (WTF-495, part of WTF-476).
+  Repeating group lists (and groups, properties) using `:sorted by`,
+  `:filtered`, `:merged with`, `:unique elements` and the other list
+  operators were `:uncompiled_expression` residue, so 53 of 61 instances
+  in cells waited on lists the page did not load. Now
+  (`Target.Elixir.FrontendWorkflows.Lists`): a sorted search sorted
+  again, and a search's further sort keys (`additional_sort_fields`), are
+  one query sorted by several keys; a filtered search is the search with
+  the filter's constraints; sorting or filtering any other list of
+  things is a query for its records (`id in ^ids`, read as the user may
+  view them, `BubbleData.listed/1`; filtered keeps the list's order);
+  searches under other operators are queries read first (`query_<n>`),
+  combined in Elixir by new runtime functions (`merge/2`, `unique/1`,
+  `minus_list/2`, `intersect/2`, `plus_item/2`, `minus_item/2`,
+  `limit/2`, `item_at/2`, `as_list/1`; an existing app's owned
+  `Bubble.Runtime` needs them added from the template). Options, texts
+  and numbers are filtered in Elixir; `All <option set>` (option value
+  `all values`) is every option. Every read is an Ash query as the
+  actor, bounded by `:max_items`. A page's `:filtered` that does not
+  state `ignore_empty_constraints` matches nothing on an empty value, as
+  a page search does (not replayed; questions on WTF-387). The editor's
+  `*_friendly` keys and unset dynamic sort fields no longer block a
+  search. Structural coverage no longer counts a self-scheduling
+  workflow blocked by a residue callee as uncovered. On the private
+  fixture app: data sources loaded 2,026 → 2,287 (lists 84 → 140 of
+  238), elements without data 1,918 → 1,494; frontend workflows native
+  737 → 788, wired 502 → 523; backend workflows native own body 142 →
+  155.
+
 - **Reusable element properties are passed down** (WTF-493, part of
   WTF-476). `This Reusable's <property>` was `:unavailable_input`
   residue everywhere, so data sources, texts, visibility conditionals

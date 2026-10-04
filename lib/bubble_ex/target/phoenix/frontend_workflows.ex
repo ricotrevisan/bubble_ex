@@ -647,12 +647,16 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     |> Enum.sort()
   end
 
-  defp read_bindings({:value, %{bindings: bindings}}), do: bindings
+  defp read_bindings({:value, %{bindings: bindings} = v}),
+    do: bindings ++ Enum.flat_map(Map.get(v, :queries, []), &pin_bindings/1)
 
-  defp read_bindings({:query, %{pins: pins}}),
-    do: for(%{value: %{bindings: bindings}} <- pins, b <- bindings, do: b)
+  defp read_bindings({:query, q}),
+    do: pin_bindings(q) ++ Enum.flat_map(Map.get(q, :queries, []), &pin_bindings/1)
 
   defp read_bindings(_), do: []
+
+  defp pin_bindings(%{pins: pins}),
+    do: for(%{value: %{bindings: bindings}} <- pins, b <- bindings, do: b)
 
   # The page data a source reads, as the elements it is kept under (an
   # instance's thing under its instance and its reusable element).
@@ -671,6 +675,8 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp data_read_kind(:url_thing), do: ":url_thing"
   defp data_read_kind(:displayed), do: ":displayed"
   defp data_read_kind({:query, _}), do: ":query"
+  # A value over queries (WTF-495) follows their type's changes too.
+  defp data_read_kind({:value, %{queries: [_ | _]}}), do: ":query"
   defp data_read_kind(_), do: ":value"
 
   defp data_instance(%{kind: :instance, element: element}), do: literal(element)
@@ -730,6 +736,11 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
         :url_thing ->
           "BubbleData.url_thing(ctx, #{ctx.module}.#{d.resource})"
 
+        {:value, %{queries: [_ | _] = queries} = v} ->
+          resource = if d.resource, do: "#{ctx.module}.#{d.resource}", else: "nil"
+
+          "#{queries_source(queries, [v], ctx)}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?}, #{inspect(d.page_size)})"
+
         {:value, v} ->
           resource = if d.resource, do: "#{ctx.module}.#{d.resource}", else: "nil"
 
@@ -750,42 +761,86 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     """
   end
 
+  defp query_source(%{queries: [_ | _] = queries} = q, d, ctx) do
+    """
+    #{queries_source(queries, [], ctx, q)}#{query_pipeline(q, ctx)}
+    |> BubbleData.read(ctx, #{take(q.take)}, #{inspect(d.page_size)})
+    """
+  end
+
   defp query_source(q, d, ctx) do
     values = for %{value: %{bindings: _} = v} <- q.pins, do: v
 
-    pins =
-      Enum.map_join(q.pins, "", fn
-        %{var: var, value: {:actor, path}} ->
-          "#{var} = BubbleData.actor(ctx, #{source(path)}, #{source(q.actor_loads)})\n"
+    """
+    #{prelude(values, false, true)}#{pins_source(q)}#{query_pipeline(q, ctx)}
+    |> BubbleData.read(ctx, #{take(q.take)}, #{inspect(d.page_size)})
+    """
+  end
 
-        %{var: var, value: v, ref: ref} ->
-          "#{var} = BubbleData.pin((#{v.source}), #{inspect(ref)})\n"
+  # The queries a source reads first (WTF-495: searches under list
+  # operators), in order, after the page values they all read; `values`
+  # (and the source's own query `q`) read them as `query_<n>`.
+  defp queries_source(queries, values, ctx, q \\ nil) do
+    pinned = for x <- queries ++ List.wrap(q), %{value: %{bindings: _} = v} <- x.pins, do: v
+    all = values ++ pinned
+
+    page =
+      Enum.map(all, fn v ->
+        %{v | bindings: Enum.reject(v.bindings, &match?(%{bind: {:query, _}}, &1))}
       end)
 
+    loads =
+      for v <- all, %{bind: {:query, n}, loads: l} <- v.bindings, path <- l, reduce: %{} do
+        acc -> Map.update(acc, n, [path], &Enum.uniq([path | &1]))
+      end
+
+    reads =
+      Enum.map_join(queries, "", fn x ->
+        n = Integer.to_string(x.n)
+        read = "#{query_pipeline(x, ctx)}\n|> BubbleData.read(ctx, #{take(x.take)}, nil)"
+
+        read =
+          case Map.get(loads, n, []) do
+            [] -> read
+            l -> "BubbleData.load_value(#{read}, #{loads_source(Enum.sort(l))}, ctx)"
+          end
+
+        "#{pins_source(x)}query_#{n} = #{read}\n"
+      end)
+
+    "#{prelude(page, false, true)}#{reads}#{if q, do: pins_source(q), else: ""}"
+  end
+
+  defp pins_source(q) do
+    Enum.map_join(q.pins, "", fn
+      %{var: var, value: {:actor, path}} ->
+        "#{var} = BubbleData.actor(ctx, #{source(path)}, #{source(q.actor_loads)})\n"
+
+      %{var: var, value: v, ref: ref} ->
+        "#{var} = BubbleData.pin((#{v.source}), #{inspect(ref)})\n"
+    end)
+  end
+
+  defp query_pipeline(q, ctx) do
     sort =
       case q.sort do
         [] ->
           ""
 
         [:random] ->
-          "|> BubbleData.random_sort()\n"
+          "\n|> BubbleData.random_sort()"
 
         sort ->
-          "|> Ash.Query.sort([#{Enum.map_join(sort, ", ", fn {a, dir} -> "{#{atom(a)}, #{inspect(dir)}}" end)}])\n"
+          "\n|> Ash.Query.sort([#{Enum.map_join(sort, ", ", fn {a, dir} -> "{#{atom(a)}, #{inspect(dir)}}" end)}])"
       end
 
-    take =
-      case q.take do
-        {kind, n} -> "{#{inspect(kind)}, #{n}}"
-        kind -> inspect(kind)
-      end
-
-    """
-    #{prelude(values, false, true)}#{pins}#{ctx.module}.#{q.resource}
-    |> Ash.Query.filter(#{Source.filter(q.filter)})
-    #{sort}|> BubbleData.read(ctx, #{take}, #{inspect(d.page_size)})
-    """
+    # A list's own records (WTF-495): read as the user may view them.
+    listed = if Map.get(q, :listed), do: "\n|> BubbleData.listed()", else: ""
+    "#{ctx.module}.#{q.resource}\n|> Ash.Query.filter(#{Source.filter(q.filter)})#{sort}#{listed}"
   end
+
+  defp take({kind, n}), do: "{#{inspect(kind)}, #{n}}"
+  defp take(kind), do: inspect(kind)
 
   defp interval_seconds(%{source: source, bindings: []}), do: {:source, source}
   defp interval_seconds(_), do: nil

@@ -454,7 +454,7 @@ defmodule BubbleEx.PageData do
   # the searched item, and its sort field.
   defp searched_fields(%IR{op: :sort, args: [inner, field, _desc]} = ir) do
     sorted =
-      case inner do
+      case searched(inner) do
         %IR{op: :search, args: [type, _]} when is_binary(field) -> [{type, field}]
         _ -> []
       end
@@ -467,6 +467,10 @@ defmodule BubbleEx.PageData do
 
   defp searched_fields(%IR{args: args}), do: Enum.flat_map(args, &searched_fields/1)
   defp searched_fields(_other), do: []
+
+  # The search under sorts (a sort by several keys nests).
+  defp searched(%IR{op: :sort, args: [inner | _]}), do: searched(inner)
+  defp searched(ir), do: ir
 
   defp item_fields(%IR{op: :field, args: [%IR{op: :this, args: [:filter_item]}, _type, field]}),
     do: [field]

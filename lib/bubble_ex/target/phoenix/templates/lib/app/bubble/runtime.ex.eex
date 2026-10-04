@@ -419,6 +419,76 @@ defmodule <%= @module %>.Bubble.Runtime do
     Enum.join([whole | fraction], point)
   end
 
+  # --- lists (WTF-495) -------------------------------------------------------------
+
+  # Not replayed against Bubble (WTF-387): which copy of a duplicate the
+  # list operators keep, whether `:plus item` skips one already listed and
+  # what `:items until #` does with an empty number. These keep the first
+  # occurrence, skip it and show nothing.
+
+  @doc "`:converted to list`."
+  def as_list(x) when is_list(x), do: x
+  def as_list(x), do: if(empty?(x), do: [], else: [x])
+
+  @doc "`:unique elements`: the first of each item; things are the same when their IDs are."
+  def unique(a), do: a |> list() |> Enum.uniq_by(&list_key/1)
+
+  @doc "`:merged with`: `a`, then `b`'s items not in it, without duplicates."
+  def merge(a, b), do: unique(list(a) ++ list(b))
+
+  @doc "`:minus list`."
+  def minus_list(a, b) do
+    drop = b |> list() |> MapSet.new(&list_key/1)
+    a |> unique() |> Enum.reject(&MapSet.member?(drop, list_key(&1)))
+  end
+
+  @doc "`:intersect with`: `a`'s order, `b`'s copy of each thing (a record over its ID)."
+  def intersect(a, b) do
+    keep = b |> list() |> Enum.reverse() |> Map.new(&{list_key(&1), &1})
+
+    for x <- unique(a), Map.has_key?(keep, list_key(x)), do: Map.fetch!(keep, list_key(x))
+  end
+
+  @doc "`:plus item`: at the end, unless empty or already listed."
+  def plus_item(a, x) do
+    a = list(a)
+
+    if empty?(x) or Enum.any?(a, &(list_key(&1) == list_key(x))),
+      do: a,
+      else: a ++ [x]
+  end
+
+  @doc "`:minus item`."
+  def minus_item(a, x), do: a |> list() |> Enum.reject(&(list_key(&1) == list_key(x)))
+
+  @doc "`:items until #n`."
+  def limit(a, n) do
+    case count(n) do
+      n when is_integer(n) and n > 0 -> Enum.take(list(a), n)
+      _ -> []
+    end
+  end
+
+  @doc "`:item #n`, from 1."
+  def item_at(a, n) do
+    case count(n) do
+      n when is_integer(n) and n > 0 -> Enum.at(list(a), n - 1)
+      _ -> nil
+    end
+  end
+
+  @doc "What identifies a list item: a thing's Bubble ID, else the value."
+  def list_key(%{id: id}), do: id
+  def list_key(x), do: x
+
+  defp list(x) when is_list(x), do: x
+  defp list(_x), do: []
+
+  defp count(n) when is_integer(n), do: n
+  defp count(n) when is_float(n) and n == trunc(n), do: trunc(n)
+  defp count(%Decimal{} = n), do: n |> Decimal.to_float() |> count()
+  defp count(_n), do: nil
+
   def format_boolean(true, yes, _no), do: yes
   def format_boolean(false, _yes, no), do: no
   def format_boolean(_x, _yes, _no), do: nil

@@ -1284,6 +1284,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp bind({:page_data, %{"name" => "Current Date/Time"}}, _ctx), do: {:ok, :now}
 
+  # A query a page data source reads first (WTF-495, `Data`).
+  defp bind({:query, %{"n" => n}}, _ctx) when is_binary(n), do: {:ok, {:query, n}}
+
   # The page's data (WTF-420): a page's or cell's thing, a group's data, a
   # repeating group's list, a reusable element's property (WTF-493).
   defp bind({:element_state, %{"state" => s}} = input, ctx)

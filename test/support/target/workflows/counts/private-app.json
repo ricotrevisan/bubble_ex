@@ -2,15 +2,15 @@
   "generated": {
     "by_kind": {
       "api": {
-        "native": 66,
+        "native": 71,
         "total": 472
       },
       "custom_event": {
-        "native": 24,
+        "native": 27,
         "total": 113
       },
       "database_trigger": {
-        "native": 14,
+        "native": 15,
         "total": 74
       }
     },
@@ -22,39 +22,39 @@
       "authenticated": 16,
       "none": 1
     },
-    "native_own_body": 142,
+    "native_own_body": 155,
     "privacy_bypasses": 165,
     "residue_reasons": {
       "api_connector_action": 132,
       "auth_action": 3,
       "plugin_action": 15,
-      "uncompiled_expression": 1282,
+      "uncompiled_expression": 1228,
       "unresolved_reference": 19,
       "unsupported_action": 34,
       "unsupported_option": 33
     },
     "step_ops": {
       "call": 138,
-      "create": 62,
+      "create": 67,
       "delete": 34,
       "delete_list": 9,
-      "return": 40,
-      "schedule": 120,
+      "return": 41,
+      "schedule": 137,
       "schedule_list": 1,
-      "terminate": 115,
-      "update": 282,
+      "terminate": 117,
+      "update": 297,
       "update_current_user": 1,
       "update_list": 5
     },
     "steps": {
-      "native": 807,
-      "residue": 1338,
+      "native": 847,
+      "residue": 1298,
       "total": 2145
     },
     "triggers": 20,
     "workflows": {
-      "native": 104,
-      "residue": 555,
+      "native": 113,
+      "residue": 546,
       "total": 659
     }
   },
@@ -81,7 +81,7 @@
       "api_connector_action": 132,
       "auth_action": 3,
       "plugin_action": 15,
-      "uncompiled_expression": 729,
+      "uncompiled_expression": 728,
       "unresolved_reference": 19,
       "unsupported_action": 34,
       "unsupported_option": 32
@@ -93,15 +93,15 @@
       "delete_list": 42,
       "return": 57,
       "schedule": 189,
-      "schedule_list": 42,
+      "schedule_list": 43,
       "terminate": 167,
       "update": 400,
       "update_current_user": 1,
       "update_list": 51
     },
     "steps": {
-      "native": 1241,
-      "residue": 904,
+      "native": 1242,
+      "residue": 903,
       "total": 2145
     },
     "workflows": {

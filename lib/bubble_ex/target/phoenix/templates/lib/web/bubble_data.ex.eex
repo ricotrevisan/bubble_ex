@@ -681,7 +681,7 @@ defmodule <%= @web %>.BubbleData do
 
     query = query |> Ash.Query.offset(offset) |> Ash.Query.limit(limit)
 
-    case Ash.read(query, <%= if @enforced? do %>action: :search, <% end %>actor: ctx.actor, authorize?: true) do
+    case Ash.read(query, <%= if @enforced? do %>action: read_action(query), <% end %>actor: ctx.actor, authorize?: true) do
       {:ok, records} when take in [:first] or is_tuple(take) and elem(take, 0) == :item ->
         List.first(records)
 
@@ -693,7 +693,18 @@ defmodule <%= @web %>.BubbleData do
     end
   end
 
-  @doc "The most items a list of page size `page_size` reads (capped by `max_items/0`)."
+  @doc """
+  Marks a query reading the records a list holds (WTF-495: a list of
+  things sorted or filtered in the database), which `read/4` reads as the
+  user may view them, like reading the list's things by ID, rather than
+  as a search (what the user may find).
+  """
+  def listed(query), do: Ash.Query.set_context(query, %{bubble_listed: true})
+
+<%= if @enforced? do %>  defp read_action(%Ash.Query{context: %{bubble_listed: true}}), do: :read
+  defp read_action(_query), do: :search
+
+<% end %>  @doc "The most items a list of page size `page_size` reads (capped by `max_items/0`)."
   def cap(nil), do: max_items()
   def cap(n) when is_integer(n) and n > 0, do: min(n, max_items())
   def cap(_), do: max_items()
