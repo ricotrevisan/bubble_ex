@@ -646,47 +646,69 @@ defmodule <%= @web %>.BubbleData do
   # it reads), read again for every unit at once, through Ash with the
   # current user as the actor (never reused from what was loaded before:
   # the current user's own relationships are loaded for the policies,
-  # without authorization). Each unit's `load_value/3` then finds them
-  # (`batch.paths`, see `load_value/3`); the current user's go to a copy (`batch.actor`), never
-  # into the actor the policies read.
+  # without authorization). Each unit's `load_value/3` then finds them:
+  # the records read, each with the paths read through it
+  # (`batch.loaded`), and the current user's in a copy (`batch.actor`,
+  # with `batch.actor_paths`), never in the actor the policies read.
   defp preload(socket, source, units, data, batch?) do
     actor = data_actor(socket)
     states = Map.get(socket.assigns, :bubble_states) || %{}
 
     if batch? do
-      init = {data, states, %{actor: nil, paths: MapSet.new()}}
+      init = {data, states, %{actor: nil, actor_paths: MapSet.new(), loaded: %{}}}
 
       Enum.reduce(Map.get(source, :preloads, []), init, fn
         {:actor, loads}, {data, states, batch} ->
           [copy] = load_values([actor], loads, actor)
-          {data, states, %{batch | actor: copy} |> mark_preloaded(loads)}
+          {data, states, %{batch | actor: copy, actor_paths: Enum.into(loads, batch.actor_paths)}}
 
         {:data, path, element, loads}, {data, states, batch} ->
           keys = Enum.uniq(for u <- units, do: {nest_path(u.scope, path), element})
-          {load_keys(data, keys, loads, actor), states, mark_preloaded(batch, loads)}
+          {data, batch} = load_keys(data, keys, loads, actor, batch)
+          {data, states, batch}
 
         {:state, path, element, state, loads}, {data, states, batch} ->
           keys = Enum.uniq(for u <- units, do: {nest_path(u.scope, path), element, state})
-          {data, load_keys(states, keys, loads, actor), mark_preloaded(batch, loads)}
+          {states, batch} = load_keys(states, keys, loads, actor, batch)
+          {data, states, batch}
 
         {:cell_data, group, loads}, {data, states, batch} ->
           keys = Enum.uniq(for %{cell: {_, i}} = u <- units, do: {u.scope, group, i})
-          {load_keys(data, keys, loads, actor), states, mark_preloaded(batch, loads)}
+          {data, batch} = load_keys(data, keys, loads, actor, batch)
+          {data, states, batch}
       end)
     else
       {data, states, nil}
     end
   end
 
-  defp mark_preloaded(batch, loads), do: %{batch | paths: Enum.into(loads, batch.paths)}
-
   defp nest_path(scope, path), do: Enum.reduce(path, scope, &Bubble.nest(&2, &1))
 
-  defp load_keys(map, keys, loads, actor) do
+  # The values under `keys` read again with `loads`; each record read is
+  # kept in the batch with the paths read through it.
+  defp load_keys(map, keys, loads, actor, batch) do
     present = Enum.filter(keys, &Map.has_key?(map, &1))
     loaded = load_values(Enum.map(present, &Map.fetch!(map, &1)), loads, actor)
-    Map.merge(map, Map.new(Enum.zip(present, loaded)))
+
+    read =
+      loaded
+      |> Enum.flat_map(&records_in/1)
+      |> Enum.reduce(batch.loaded, fn record, acc ->
+        case record_key(record) do
+          nil ->
+            acc
+
+          key ->
+            paths = acc |> Map.get(key, {record, MapSet.new()}) |> elem(1)
+            Map.put(acc, key, {record, Enum.into(loads, paths)})
+        end
+      end)
+
+    {Map.merge(map, Map.new(Enum.zip(present, loaded))), %{batch | loaded: read}}
   end
+
+  defp record_key(%{__struct__: module, id: id}) when not is_nil(id), do: {module, id}
+  defp record_key(_record), do: nil
 
   # Read together: the things given as unique IDs read at once (one read
   # per resource), then the relationships the page's bindings read through
@@ -981,26 +1003,40 @@ defmodule <%= @web %>.BubbleData do
   the related lists (`related_cap/0`, as for the sources' own loads).
   """
   def load_value(value, loads, ctx) do
-    batch = preloaded(ctx, loads)
+    batch = Map.get(ctx, :batch)
     actor? = not is_nil(value) and value === ctx.actor
 
     cond do
       not data_access?() -> value
-      batch && actor? && batch.actor -> batch.actor
-      batch && not actor? -> value
+      actor? and actor_read?(batch, loads) -> batch.actor
+      not actor? and read?(batch, value, loads) -> value
       true -> Runtime.load_page(value, loads, Runtime.root(nil, ctx.actor), related_cap())
     end
   end
 
   # Read for every cell together (WTF-494): what the batch read first, as
-  # the current user, for every cell, is not read again; the current
-  # user's relationships come from the batch's copy, never from the actor
-  # the policies read (loaded without authorization).
-  defp preloaded(%{batch: %{paths: paths} = batch}, loads) do
-    if Enum.all?(loads, &MapSet.member?(paths, &1)), do: batch
+  # the current user, for every cell, is not read again: these very
+  # records, read with these paths. The current user's relationships come
+  # from the batch's copy, never from the actor the policies read (loaded
+  # without authorization).
+  defp actor_read?(%{actor: copy, actor_paths: paths}, loads) when not is_nil(copy),
+    do: Enum.all?(loads, &MapSet.member?(paths, &1))
+
+  defp actor_read?(_batch, _loads), do: false
+
+  defp read?(%{loaded: loaded}, value, loads) do
+    records = records_in(value)
+
+    records != [] and
+      Enum.all?(records, fn record ->
+        case Map.get(loaded, record_key(record)) do
+          {^record, paths} -> Enum.all?(loads, &MapSet.member?(paths, &1))
+          _ -> false
+        end
+      end)
   end
 
-  defp preloaded(_ctx, _loads), do: nil
+  defp read?(_batch, _value, _loads), do: false
 
 
   @doc """

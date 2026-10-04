@@ -471,12 +471,56 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
   end
 
   test "read together, a unique ID where a list is expected is read as one thing" do
-    batch = %{batch: %{actor: nil, paths: MapSet.new()}}
+    batch = %{batch: %{actor: nil, actor_paths: MapSet.new(), loaded: %{}}}
 
     assert PhxCheckWeb.BubbleData.records(batch, PhxCheck.Task, @t1, true, nil) ==
              {:bubble_ids, PhxCheck.Task, @t1, false, nil}
 
     assert PhxCheckWeb.BubbleData.records(batch, PhxCheck.Task, [@t1], true, 3) ==
              {:bubble_ids, PhxCheck.Task, [@t1], true, 3}
+  end
+
+  # A relationship read that fails reads as empty: never as the value
+  # carried it before (the current user carries the relationships its
+  # privacy policies read, loaded without authorization). The project
+  # table is renamed inside the test's transaction (rolled back).
+  test "a relationship read that fails fails closed, the current user's included" do
+    data_access_on()
+    # Loaded without authorization, as the current user's are.
+    task = Ash.get!(PhxCheck.Task, @t1, authorize?: false)
+    task = %{task | project: Ash.get!(PhxCheck.Project, @p1, authorize?: false)}
+    assert task.project.name == "Apollo"
+    Ecto.Adapters.SQL.query!(PhxCheck.Repo, ~s(ALTER TABLE "project" RENAME TO "project_off"))
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        # As the current user (the actor itself), and as any value.
+        assert PhxCheckWeb.BubbleData.load_value(task, [["project"]], %{actor: task}).project ==
+                 nil
+
+        assert PhxCheckWeb.BubbleData.load_value(task, [["project"]], %{actor: nil}).project ==
+                 nil
+
+        # Read for every cell together: the batch's copy is read again too.
+        batch = %{actor: nil, batch: %{actor: nil, actor_paths: MapSet.new(), loaded: %{}}}
+        assert PhxCheckWeb.BubbleData.load_value(task, [["project"]], batch).project == nil
+
+        assert [%{project: nil}] =
+                 PhxCheck.Workflows.Runtime.load_page(
+                   [task],
+                   [["project"]],
+                   PhxCheck.Workflows.Runtime.root(nil, nil),
+                   10
+                 )
+
+        assert %{project: nil} =
+                 PhxCheck.Workflows.Runtime.load(
+                   task,
+                   [["project"]],
+                   PhxCheck.Workflows.Runtime.root(nil, nil)
+                 )
+      end)
+
+    assert log =~ "a relationship load failed; its relationships read as empty"
   end
 end

@@ -296,7 +296,8 @@ each source for all the cells at once (`<Web>.BubbleData`):
   from what was loaded before (the current user is loaded with what the
   policies read, without authorization: its relationships are read again
   into a copy for the values, and the actor the policies read is left as
-  it is); the relationships the page's bindings read through the value
+  it is; a read that fails reads as empty, logged, never as the value
+  carried it); the relationships the page's bindings read through the value
   are loaded for every cell after, one load per resource;
 * a thing given as a unique ID (`BubbleData.records/5`) is read with the
   other cells' IDs, one read per resource;

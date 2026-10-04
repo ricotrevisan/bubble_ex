@@ -40,7 +40,11 @@ All notable changes to this project are documented here.
   reach the cell of a thing the user was not shown. Page-load,
   condition-true and "do every" workflows do not run in a cell (marked).
   Values read the current user's relationships again as the user, never
-  from the actor the policies load without authorization; a cell that
+  from the actor the policies load without authorization (a batch reuses
+  only the very records it read, with the paths it read through each);
+  a relationship load that fails (`Workflows.Runtime.load/3`,
+  `load_page/5`) now fails closed and is logged: the relationships asked
+  for read as empty instead of as the value carried them; a cell that
   leaves the list drops what the page kept for it and takes no event
   (scheduled and paused workflows included); `:max_cells` and
   `:max_cell_depth` (`<Web>.BubbleData`) bound the scopes, the first
