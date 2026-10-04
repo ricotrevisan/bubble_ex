@@ -10,7 +10,7 @@ defmodule BubbleEx.Target.Phoenix.Checks do
 
   | criterion | Phoenix binding |
   |-----------|-----------------|
-  | `generated_unchanged` | `BubbleEx.Target.Phoenix.check_manifest/3` of `.wtf/generated.json` against the files: no hand-edited or missing generated file, and nothing the owned files leave undone: no `unrouted` page, no `extensions_unlisted`, no `images_unserved` (the manifest itself is unsigned) |
+  | `generated_unchanged` | `BubbleEx.Target.Phoenix.check_manifest/3` of `.wtf/generated.json` against the files: no hand-edited or missing generated file, and nothing the owned files leave undone: no `unrouted` page, no `extensions_unlisted`, no `images_unserved` (the manifest itself is unsigned); `index_snapshots_stale` is a warning in the detail |
   | `compiles` | `mix compile --warnings-as-errors`: undefined and deprecated calls are compiler warnings, so they fail it |
   | `lint` | `mix format --check-formatted`, and `mix credo --strict` when the project has Credo (`deps/credo`) |
   | `traceability` | every listed element is a `data-bubble-id="<id>"` attribute in `lib/` outside comments (Elixir, `<%!-- --%>`, `<%# %>` and HTML comments are removed first), and every listed page or reusable is rendered by its tagged tests (see Tagged tests; the generated LiveView tests assert each `data-bubble-id` with `has_element?`). With no page or reusable listed, only the source is checked (`source_only: true`: a weaker binding) |
@@ -683,9 +683,24 @@ defmodule BubbleEx.Target.Phoenix.Checks do
         Enum.map(report.images_unserved, &"image not served safely #{&1}")
 
     if changes == [],
-      do: pass(binding, "#{length(report.unchanged)} generated files unchanged"),
-      else: fail(binding, summary(changes))
+      do:
+        pass(
+          binding,
+          "#{length(report.unchanged)} generated files unchanged" <> snapshots_warning(report)
+        ),
+      else: fail(binding, summary(changes) <> snapshots_warning(report))
   end
+
+  # Snapshots recording the index hints as not concurrent (WTF-418): a
+  # warning, the next `mix ash.codegen` would drop and rebuild them.
+  defp snapshots_warning(%{index_snapshots_stale: [_ | _] = paths}) do
+    "; warning: #{length(paths)} resource snapshot(s) record generated indexes as not " <>
+      "concurrent, so mix ash.codegen would drop and rebuild them: first run mix " <>
+      "bubble.concurrent_index_snapshots --root <project> from bubble_ex (" <>
+      summary(paths) <> ")"
+  end
+
+  defp snapshots_warning(_report), do: ""
 
   # --- helpers -----------------------------------------------------------------------
 
@@ -695,7 +710,29 @@ defmodule BubbleEx.Target.Phoenix.Checks do
 
     if status == 0,
       do: pass(binding, nil),
-      else: %{fail(binding, "exit status #{status}") | output: tail(output)}
+      else: %{fail(binding, "exit status #{status}" <> hint(output, env)) | output: tail(output)}
+  end
+
+  # A stale build of crux, the SAT solver wrapper Ash policies use
+  # (WTF-460): built before `picosat_elixir` was added (privacy switched
+  # from `:omit` to `:enforced`) and not rebuilt, e.g. when `mix deps.get`
+  # ran under Elixir 1.19+ and the build under an older Elixir, whose Mix
+  # keeps another marker of what needs recompiling.
+  @stale_sat "No SAT solver available, although one was loaded"
+
+  defp hint(output, env) do
+    mix_env =
+      case List.keyfind(env, "MIX_ENV", 0) do
+        {_, value} when is_binary(value) -> value
+        _ -> System.get_env("MIX_ENV") || "dev"
+      end
+
+    if String.contains?(output, @stale_sat),
+      do:
+        "; crux, the SAT solver wrapper, was built without picosat_elixir: run " <>
+          "`MIX_ENV=#{mix_env} mix deps.compile crux --force` " <>
+          "in the project (and for each other MIX_ENV it built), with one Elixir version",
+      else: ""
   end
 
   defp tail(output),

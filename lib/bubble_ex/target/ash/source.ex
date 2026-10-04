@@ -479,6 +479,12 @@ defmodule BubbleEx.Target.Ash.Source do
 
   defp custom_indexes([]), do: ""
 
+  # Every index is built `concurrently` (WTF-418): AshPostgres puts the
+  # concurrent index additions in a migration of their own, with
+  # `@disable_ddl_transaction true` and `@disable_migration_lock true`, so
+  # an index added on re-publish does not lock writes to a loaded table
+  # while it builds. The tables, columns and other changes stay in the
+  # transactional migration before it.
   defp custom_indexes(indexes) do
     lines =
       Enum.map_join(indexes, "\n", fn %Index{} = index ->
@@ -489,7 +495,8 @@ defmodule BubbleEx.Target.Ash.Source do
 
         options =
           [{"name", literal(index.name)}] ++
-            if(index.using, do: [{"using", literal(index.using)}], else: [])
+            if(index.using, do: [{"using", literal(index.using)}], else: []) ++
+            [{"concurrently", "true"}]
 
         "index [#{fields}], #{options(options)}"
       end)

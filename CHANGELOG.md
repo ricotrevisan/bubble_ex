@@ -56,6 +56,59 @@ All notable changes to this project are documented here.
   `scripts/visibility_browser_check.sh` drives the steps in Chrome
   (browserq; not in CI).
 
+- **Index hints build concurrently** (WTF-418). `Target.Ash` declares
+  every custom index `concurrently: true`, so `mix ash.codegen` writes the
+  indexes it adds as a migration of their own (index additions only),
+  `CREATE INDEX CONCURRENTLY` with `@disable_ddl_transaction true` and
+  `@disable_migration_lock true`, after the transactional migration with
+  the tables and columns. An index a re-publish adds to a loaded table no
+  longer locks its writes while it builds. `scripts/ash_compile_check.sh`
+  checks the generated migrations (`index_migrations.exs`) and runs them.
+  **Existing projects:** their resource snapshots record the old index
+  hints as not concurrent, and AshPostgres compares the flag, so a plain
+  `mix ash.codegen` would drop every hint index and build it again. After
+  regenerating, and before `mix ash.codegen`, run once from a bubble_ex
+  checkout `mix bubble.concurrent_index_snapshots --root
+  /path/to/project` (try `--dry-run` first): in each table's latest
+  snapshot it records the generated resources' custom indexes as
+  concurrent (only those whose table, name, fields and method match;
+  never an identity, a unique index or an index of the owner's, nor
+  older, `_dev` or tenant snapshots; running it again changes nothing),
+  so codegen sees no change for them and the database keeps its indexes.
+  It tolerates whitespace-only differences from AshPostgres' layout
+  (keeping a trailing newline), writes each file atomically, warns about
+  a symbolically linked snapshot directory and `_dev` snapshots, and
+  exits non-zero when it must skip a snapshot (other key order, invalid
+  JSON: fix it by hand) or when the resources were not regenerated yet. `check_manifest/3` lists the snapshots that
+  still need it (`index_snapshots_stale`); the task CLI's
+  `generated_unchanged` check warns about them, and `mix wtf.verify`'s
+  failing `migrations_in_sync` says to run it. One index is dropped
+  either way: `user_email_index`, when a project had the email hint
+  below, goes once in the transactional migration (a plain, brief
+  `DROP INDEX`). If a concurrent build fails, PostgreSQL leaves an
+  `INVALID` index: `DROP INDEX CONCURRENTLY <name>;` and migrate again;
+  the generated README says so.
+- **A stale SAT solver build after switching to `privacy: :enforced`
+  is explained** (WTF-460). Regenerating an `:omit` project with
+  `:enforced` adds `picosat_elixir`; `mix deps.get` marks crux (its
+  parent, which picks the solver at compile time) to rebuild in every
+  `_build/<env>`, but Mix 1.19+ marks it by removing
+  `.mix/compile.elixir_scm` while Mix 1.18 and older read
+  `.mix/compile.fetch`. So with mixed Mix versions, in either direction
+  (`deps.get` under 1.19+ and a build directory last built by 1.18, as
+  in the WTF-378 slice's test env, or the reverse), crux is not
+  rebuilt and Ash fails with `No SAT solver available, although one was
+  loaded`. One Elixir version (1.18, 1.19 or 1.20) rebuilds it
+  correctly. The task CLI's and `wtf.verify`'s mix checks now append the
+  fix to their failure (`MIX_ENV=<env> mix deps.compile crux --force`),
+  and the generated README says so in both privacy sections.
+- **No duplicate index on the User's email** (WTF-418).
+  `Target.Phoenix` gives the email a unique identity (citext); an
+  `email equals` search hint's btree index over the email alone
+  duplicated its unique index and is no longer created. Wider indexes
+  starting with the email are kept, and `Target.Ash` alone (no identity)
+  still creates it.
+
 - **Bubble page images move out of `priv/static`** (WTF-455). Stored
   images (`asset_store:`, the exporter's `assets:`) are generated as
   `priv/bubble_images/<sha256>.<ext>` (was
