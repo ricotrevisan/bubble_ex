@@ -187,12 +187,12 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
   } do
     {:ok, report} = Phoenix.frontend_report(project, Keyword.delete(opts, :frontend_workflows))
 
-    # Without the workflows the page keeps no custom state and loads no
-    # data: bFlagged's, bCellNoProject's and bHasProject's conditionals are
-    # marked too.
+    # Without the workflows the page keeps no custom state or input value
+    # and loads no data: bFlagged's, bOpen's, bCellNoProject's and
+    # bHasProject's conditionals are marked too.
     assert %{
              "visibility_conditions_compiled" => 8,
-             "visibility_conditions_marked" => 5,
+             "visibility_conditions_marked" => 6,
              "conditions_other_properties" => 2
            } = report
   end
@@ -331,6 +331,11 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
 
     assert files["lib/shop_web/components/bubble.ex"] =~
              "defp loaded_path!(%Ash.NotLoaded{}, _rest, path)"
+  end
+
+  test "a condition reads an input's value from the page's input map", %{files: files} do
+    assert tag(files["lib/shop_web/live/index_live.html.heex"], "bOpen") =~
+             ~s|hidden={!visible_bopen(Bubble.input(@bubble_inputs, "", "bName"))}|
   end
 
   test "repeating group cells are keyed by their item", %{files: files} do

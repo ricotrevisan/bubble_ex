@@ -109,7 +109,9 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
   since the export the matrix was built from (the 2026-10-01 run used a
   fresh one); an ID-only `get` answer is ambiguous
   (`BubbleEx.Verify.DataApi`); and Bubble's `ignore_empty_constraints`
-  was inconclusive (all three variants found nothing).
+  was inconclusive (all three variants found nothing). The 2026-10-01 run
+  settled it, per where the search runs (`BubbleEx.Expression.Compiler`,
+  WTF-478).
 
   The four of WTF-384/385 (the Bubble semantics the compiler's
   `privacy: :unverified` gate rests on) are `empty_equals_empty`,
@@ -124,9 +126,10 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
   uploads). A Data API create was seen storing defaults (WTF-385), but no
   matrix check has depended on it yet.
 
-  Not listed: Bubble's `ignore_empty_constraints` default. It only matters
-  for searches inside a condition, which the interpreter does not evaluate
-  (such rules are unsolved).
+  Not listed: Bubble's `ignore_empty_constraints`. Replayed for page and
+  backend workflow searches (`BubbleEx.Expression.Compiler`); inside a
+  condition it is not known, and the interpreter does not evaluate
+  searches there (such rules are unsolved).
   """
 
   alias BubbleEx.Error

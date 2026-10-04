@@ -173,7 +173,7 @@ defmodule BubbleEx.Workflows.Backend do
 
   def build(app, %Model{} = model, %Index{} = index, _opts)
       when is_map(app) and not is_struct(app) do
-    env = Env.new(model, tree: Tree.build(app))
+    env = Env.new(model, tree: Tree.build(app), searches: :backend)
 
     raws =
       case Map.get(app, "api") do

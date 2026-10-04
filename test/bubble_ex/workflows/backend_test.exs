@@ -284,6 +284,60 @@ defmodule BubbleEx.Workflows.BackendTest do
              Enum.find(step.residue, &(&1.reason == :uncompiled_expression))
   end
 
+  # WTF-478, replayed on Bubble (2026-10-01): in a backend workflow an
+  # empty constraint value matches nothing, and `ignore_empty_constraints:
+  # true` has no effect.
+  test "a search's empty constraint value matches nothing, whatever it states" do
+    for options <- [
+          %{},
+          %{"ignore_empty_constraints" => false},
+          %{"ignore_empty_constraints" => true}
+        ] do
+      search = %{
+        "type" => "Search",
+        "properties" =>
+          Map.merge(options, %{
+            "type_to_find" => "custom.task",
+            "constraints" => %{
+              "0" => %{
+                "key" => "title_text",
+                "constraint_type" => "equals",
+                "value" => %{
+                  "type" => "CurrentWorkflowItem",
+                  "properties" => %{"btype_id" => "text", "param_id" => "pQ", "param_name" => "q"}
+                }
+              }
+            }
+          }),
+        "next" => %{"type" => "Message", "name" => "first_element"}
+      }
+
+      actions = %{
+        "0" => %{"id" => "aD", "type" => "DeleteThing", "properties" => %{"to_delete" => search}}
+      }
+
+      params = %{
+        "parameters" => %{"0" => %{"btype_id" => "text", "param_id" => "pQ", "param_name" => "q"}}
+      }
+
+      [step] =
+        build(put_workflow(app(), "wX", api(actions, params)))
+        |> workflow("wX")
+        |> Map.fetch!(:steps)
+
+      assert step.residue == []
+
+      assert %{target: %Expr{ir: %{op: :first, args: [%{op: :search, args: [_, pred]}]}}} =
+               step.args
+
+      assert %{op: :and, args: [%{op: :not, args: [%{op: :is_empty, args: [param]}]}, eq]} =
+               BubbleEx.Expression.IR.strip_paths(pred)
+
+      assert %{op: :input, args: [:parameter, %{"param_id" => "pQ"}]} = param
+      assert %{op: :eq, args: [%{op: :field}, ^param]} = eq
+    end
+  end
+
   test "deterministic, whatever the JSON member order" do
     app = app()
     backend = build(app)

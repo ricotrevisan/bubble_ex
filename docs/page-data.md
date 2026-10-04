@@ -37,15 +37,21 @@ public pages without first adding and testing authorization policies**; passing
 `authorize?: true` alone does not enforce privacy.
 
 **A search that ignores empty constraints can return every record.** A
-search stating `ignore_empty_constraints: true` drops each constraint
-whose value is empty, as Bubble does. For a logged-out visitor `Current
-User` is empty, so a constraint `X = Current User` (the usual "my
-records" search) is dropped and the search returns every record of the
-type, up to the page size or `:max_items`. Under `privacy: :omit`
-nothing stops this: there is no policy to fall back on. Before enabling
-data access, find such searches on pages a logged-out visitor can open
-(or that a signed-out session can reach), and either require a signed-in
-user there or add policies.
+page search stating `ignore_empty_constraints: true` drops each
+constraint whose value is empty, as Bubble does (WTF-478; any other empty
+constraint value matches nothing, see below). A **signed-in** user whose
+referenced field is empty (`X = Current User's Workspace` for a user
+with no workspace), or whose input is blank, gets every record of the
+type the search can read, up to the page size or `:max_items`. A
+logged-out visitor does not: a constraint reading the current user (or
+one of its fields) matches nothing for them, which is stricter than
+Bubble (its temporary user's empty fields would drop the constraint).
+Under `privacy: :omit` nothing stops this: there is no policy to fall
+back on, and requiring sign-in does not help. Before enabling data access, find such searches
+and add policies that limit what each user may read (or generate with
+`privacy: :enforced`), make the referenced field required, or set the
+search's `ignore_empty_constraints` to false in Bubble where a blank
+value should show nothing.
 
 **A search on a field Bubble keeps out of searches is not loaded.** A
 privacy rule can list fields the users it applies to may not search by
@@ -346,20 +352,49 @@ Wired sources by kind: groups 707/1,548, instances 59/195, lists 36/234,
 page things 3/3; by read: 798 Elixir values, 4 queries, 3 URL things. The
 largest blockers: 472 sources read a source that is not loaded, 160 read
 a reusable element's parameters (not passed yet), 149 searches do not
-state `ignore_empty_constraints` (below), 112 read a group's thing the
+state `ignore_empty_constraints` (compiled since WTF-478, below), 112 read a group's thing the
 page does not load (mostly a reusable element's own, when no instance
 gives it one), 74 read a cell's thing of a list that is not loaded, 62
 are in a cell.
 
+## Empty constraint values (WTF-478)
+
+What a search constraint whose value is empty does was replayed against
+Bubble (WTF-385, 2026-10-01), and depends on where the search runs
+(`BubbleEx.Expression.Env`'s `searches`):
+
+| where | `ignore_empty_constraints` unstated or false | `true` |
+|-------|----------------------------------------------|--------|
+| a page (its data sources, elements and workflows) | matches nothing, even a record whose field is empty | the constraint is dropped |
+| a backend workflow | matches nothing | matches nothing (no effect) |
+| a page workflow's server-side action (create, change, delete, bulk change, schedule, …) | matches nothing | matches nothing (not replayed: the backend rule, so a delete or bulk change with a blank input never reaches every readable record) |
+
+(The Data API drops `equals ""`, `equals null`, `not equal ""` and `text
+contains ""`; nothing here generates Data API searches.) Both forms are a
+filter of the same search, read with the actor like any other, so privacy
+policies and `<App>.Privacy.SearchFields` still apply: a field a dropped
+constraint names still decides whether the search is loaded. The
+emptiness of a page's value is computed per read (a pinned
+`Runtime.empty?/1`). The Current User itself is never empty (a
+logged-out visitor is Bubble's temporary user), so `X = Current User`
+matches nothing for them rather than being dropped.
+
+Only searches were replayed. A `:filtered` list follows its own
+`ignore_empty_constraints` (`true` drops, `false` compares) and is
+otherwise residue unless `BubbleEx.PageData.build/3` is given a default
+(`ignore_empty_constraints:`), as is a search where it is not known
+where it runs (a privacy rule's condition).
+
 ## Unverified Bubble behavior and open questions
 
-* **`ignore_empty_constraints`.** Most searches do not state it, and
-  Bubble's default is not verified; **do not set a global default merely to
-  increase coverage**: verify the app's ignore-empty behavior first.
-  Such a search with a constraint whose value may be empty is residue
-  (149 on the private fixture app, and every source reading them). `BubbleEx.PageData.build/3` takes the default
-  (`ignore_empty_constraints:`); it is left unset until replay (WTF-358)
-  or the owner decides.
+* **`:filtered` with an empty constraint value.** Not replayed (above).
+* **Server actions in page workflows ignore the flag.** A page workflow's
+  server-side action (`BubbleEx.Index.WorkflowAnalysis`) takes the
+  backend rule; whether Bubble evaluates its searches like a page search
+  or a backend one is not replayed (WTF-358).
+* **Matches nothing for operators other than `equals`.** The replay
+  tried `equals`; that `>`, `contains`, `in` and the others match
+  nothing on an empty value (or are dropped with `true`) is assumed.
 * A page's thing is read from the path segment after the page name; a
   slug is not resolved.
 * A repeating group shows its first page; later pages ("Show next") are

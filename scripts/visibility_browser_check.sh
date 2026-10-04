@@ -14,6 +14,7 @@
 #      same DOM elements) while the page's custom states reset to their
 #      defaults (a new mount)
 #   5. a full reload starts over: the visibility on page load
+#   6. a conditional reading an input follows typing and its commit
 #
 # Not run in CI (it needs browserq). Needs a PostgreSQL URL without a
 # database on a port other than 5432 (VISIBILITY_CHECK_DB, e.g.
@@ -142,6 +143,16 @@ connected
 expect bWf true "a reload starts from the visibility on page load"
 click bSetFlag
 expect bFlagged false "a reload forgets the hide step"
+
+# A conditional reading an input re-renders as the user types (the
+# input's change, WTF-474/475) and after it is committed (blur).
+expect bOpen true "a conditional on an input's value, false on page load"
+b fill '[data-bubble-id="bName"]' open >/dev/null
+sleep 1
+expect bOpen false "typing re-renders a conditional reading the input"
+b click '[data-bubble-id="bSetFlag"]' >/dev/null
+sleep 0.5
+expect bOpen false "after the input is committed (blur) it still holds"
 
 if [[ $failures -gt 0 ]]; then
   echo "visibility browser check: $failures failed" >&2

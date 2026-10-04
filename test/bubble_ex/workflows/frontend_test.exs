@@ -363,4 +363,97 @@ defmodule BubbleEx.Workflows.FrontendTest do
   test "invalid input" do
     assert {:error, %BubbleEx.Error{kind: :invalid_input}} = Frontend.build(:app, nil, nil)
   end
+
+  # WTF-478, replayed on Bubble (2026-10-01): a page's search drops a
+  # constraint whose value is empty only when it states
+  # `ignore_empty_constraints: true`; else the constraint matches nothing.
+  # A page workflow's server-side action (here a delete) is not replayed:
+  # its searches take the backend rule, so an empty value always matches
+  # nothing and a delete never reaches every record the user can read.
+  test "server actions in page workflows ignore the flag; client actions follow the page rule" do
+    search = fn options, next ->
+      %{
+        "type" => "Search",
+        "properties" =>
+          Map.merge(options, %{
+            "type_to_find" => "custom.note",
+            "constraints" => %{
+              "0" => %{
+                "key" => "title_text",
+                "constraint_type" => "equals",
+                "value" => %{
+                  "type" => "GetElement",
+                  "properties" => %{"element_id" => "bIn"},
+                  "next" => %{"type" => "Message", "name" => "get_data"}
+                }
+              }
+            }
+          }),
+        "next" => next
+      }
+    end
+
+    first = %{"type" => "Message", "name" => "first_element"}
+
+    step = fn action ->
+      app()
+      |> edit("wLoad", &Map.put(&1, "actions", %{"0" => action}))
+      |> lower()
+      |> workflow("wLoad")
+      |> Map.fetch!(:steps)
+      |> hd()
+    end
+
+    guarded = fn pred, op ->
+      assert %{op: ^op, args: [guard, %{op: :eq, args: [%{op: :field}, value]}]} = pred
+
+      case op do
+        :and -> assert %{op: :not, args: [%{op: :is_empty, args: [^value]}]} = guard
+        :or -> assert %{op: :is_empty, args: [^value]} = guard
+      end
+    end
+
+    for {options, page_op} <- [
+          {%{}, :and},
+          {%{"ignore_empty_constraints" => false}, :and},
+          {%{"ignore_empty_constraints" => true}, :or}
+        ] do
+      # A delete (server-side): matches nothing, whatever the flag.
+      delete =
+        step.(%{
+          "id" => "aLoad1",
+          "type" => "DeleteThing",
+          "properties" => %{"to_delete" => search.(options, first)}
+        })
+
+      assert delete.residue == []
+
+      assert %{target: %{ir: %{op: :first, args: [%{op: :search, args: [_, pred]}]}}} =
+               delete.args
+
+      guarded.(pred, :and)
+
+      # A client-side action's condition: the page rule.
+      hide =
+        step.(%{
+          "id" => "aLoad1",
+          "type" => "HideElement",
+          "properties" => %{
+            "element_id" => "bLabel",
+            "condition" =>
+              search.(
+                options,
+                Map.put(first, "next", %{"type" => "Message", "name" => "is_not_empty"})
+              )
+          }
+        })
+
+      assert %{ir: condition} = hide.condition
+      assert [pred] = for(%{op: :search, args: [_, p]} <- walk(condition), do: p)
+      guarded.(pred, page_op)
+    end
+  end
+
+  defp walk(%BubbleEx.Expression.IR{args: args} = ir), do: [ir | Enum.flat_map(args, &walk/1)]
+  defp walk(_), do: []
 end

@@ -1,7 +1,7 @@
 defmodule BubbleEx.Frontend.Export.SourceStyles do
   @moduledoc false
 
-  alias BubbleEx.Frontend.Export.Safety
+  alias BubbleEx.Frontend.Export.{Css, Safety}
 
   @max_blocks 32
   @max_block_bytes 262_144
@@ -171,6 +171,7 @@ defmodule BubbleEx.Frontend.Export.SourceStyles do
       [property, value] ->
         property = property |> String.trim() |> String.downcase()
         value = String.trim(value)
+        value = if property == "z-index", do: Css.z_index(value), else: value
 
         if property in @properties and Safety.safe_css_value?(value),
           do: {:ok, ["  ", property, ": ", value, ";\n"]},

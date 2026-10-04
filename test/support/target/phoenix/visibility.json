@@ -238,6 +238,68 @@
           },
           "type": "CustomElement"
         },
+        "bName": {
+          "id": "bName",
+          "properties": {
+            "content_format": "text",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 16,
+            "placeholder": {
+              "entries": {
+                "0": "Name"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Input"
+        },
+        "bOpen": {
+          "id": "bOpen",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 17,
+            "text": {
+              "entries": {
+                "0": "Opened"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "get_data",
+                  "next": {
+                    "args": {
+                      "entries": {
+                        "0": "open"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "name": "equals",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bName"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
         "bOrder": {
           "id": "bOrder",
           "properties": {

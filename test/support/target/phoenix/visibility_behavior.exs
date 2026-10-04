@@ -144,4 +144,37 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     loaded = Ash.load!(task, :project, authorize?: false)
     assert PhxCheckWeb.Bubble.loaded!(loaded, [["project"]]) == loaded
   end
+
+  defp change(view, value, extra \\ %{}) do
+    render_change(view, "bubble:change", %{
+      "bubble" => Map.merge(%{"scope" => "", "element" => "bName", "value" => value}, extra)
+    })
+  end
+
+  test "a condition reading an input re-renders as it is typed and committed", %{conn: conn} do
+    # With page data and data access on, a change while typing is deferred
+    # (WTF-475): the input's value still re-renders its conditions.
+    data_access_on()
+    {:ok, view, _html} = live(conn, "/")
+    assert hidden?(view, "bOpen")
+
+    change(view, "open", %{"on" => "blur"})
+    Process.sleep(200)
+    refute hidden?(view, "bOpen")
+
+    change(view, "closed", %{"on" => "blur"})
+    Process.sleep(200)
+    assert hidden?(view, "bOpen")
+
+    render_blur(view, "bubble:commit", %{"element" => "bName", "value" => "open"})
+    refute hidden?(view, "bOpen")
+  end
+
+  test "without data access, a change re-renders the input's conditions at once", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/")
+    change(view, "open", %{"on" => "blur"})
+    refute hidden?(view, "bOpen")
+    change(view, "x")
+    assert hidden?(view, "bOpen")
+  end
 end

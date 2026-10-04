@@ -24,6 +24,9 @@ defmodule BubbleEx.Expression.CompilerTest do
   defp user, do: n(:current_user, [], "user")
   defp lit(v, t), do: n(:literal, [v], t)
 
+  defp input_value,
+    do: n(:input, [:element_state, %{"element" => "bI1", "state" => "get_data"}], "number")
+
   describe "sources and fields" do
     test "field chains through records, with Bubble IDs" do
       assert ir(
@@ -279,7 +282,7 @@ defmodule BubbleEx.Expression.CompilerTest do
                )
     end
 
-    test "a constraint whose value may be empty needs ignore_empty_constraints" do
+    test "a constraint whose value may be empty, where searches run is not known" do
       value = chain(el("bI1"), [msg("get_data")])
       raw = search("custom.task", [con("estimate_number", "greater than", value)])
 
@@ -299,6 +302,128 @@ defmodule BubbleEx.Expression.CompilerTest do
         })
 
       assert %IR{op: :search, args: [_, %IR{op: :or}]} = ir(stated)
+    end
+
+    # WTF-478, replayed on Bubble (2026-10-01): a page search drops a
+    # constraint whose value is empty only when it states
+    # `ignore_empty_constraints: true`, else the constraint matches nothing
+    # (even a record whose field is empty); a backend workflow's search
+    # matches nothing whatever it states. The caller's default
+    # (`ignore_empty_constraints:`) does not change either.
+    test "an empty constraint value on a page and in a backend workflow" do
+      value = chain(el("bI1"), [msg("get_data")])
+
+      gt = fn ->
+        n(
+          :gt,
+          [
+            n(
+              :field,
+              [n(:this, [:filter_item], "custom.task"), "task", "estimate_number"],
+              "number"
+            ),
+            input_value()
+          ],
+          "boolean"
+        )
+      end
+
+      empty = n(:is_empty, [input_value()], "boolean")
+      dropped = n(:or, [empty, gt.()], "boolean")
+      nothing = n(:and, [n(:not, [empty], "boolean"), gt.()], "boolean")
+
+      raw = fn options ->
+        search("custom.task", [con("estimate_number", "greater than", value)], options)
+      end
+
+      cases = [
+        {:page, %{}, nothing},
+        {:page, %{"ignore_empty_constraints" => false}, nothing},
+        {:page, %{"ignore_empty_constraints" => true}, dropped},
+        {:backend, %{}, nothing},
+        {:backend, %{"ignore_empty_constraints" => false}, nothing},
+        {:backend, %{"ignore_empty_constraints" => true}, nothing}
+      ]
+
+      for {searches, options, pred} <- cases, default <- [nil, true, false] do
+        assert ir(raw.(options), searches: searches, ignore_empty_constraints: default) ==
+                 n(:search, ["task", pred], "list.custom.task"),
+               inspect({searches, options, default})
+      end
+    end
+
+    test "a constraint whose value cannot be empty is not guarded" do
+      literal = search("custom.task", [con("estimate_number", "greater than", 3)])
+      # An `is empty` constraint has no value to be empty, even when its
+      # JSON carries a null one.
+      none = search("custom.task", [con("estimate_number", "is_not_empty", nil)])
+
+      for searches <- [:page, :backend, nil],
+          options <- [%{}, %{"ignore_empty_constraints" => true}] do
+        assert %IR{op: :search, args: [_, %IR{op: :gt}]} =
+                 ir(Map.update!(literal, "properties", &Map.merge(&1, options)),
+                   searches: searches
+                 )
+
+        assert %IR{op: :search, args: [_, %IR{op: :not, args: [%IR{op: :is_empty}]}]} =
+                 ir(Map.update!(none, "properties", &Map.merge(&1, options)), searches: searches)
+      end
+    end
+
+    # A logged-out visitor's Current User is Bubble's temporary user, never
+    # empty (`logged_out_user_is_empty` is refuted): `X = Current User` is
+    # never dropped, so it matches no record for them rather than every one.
+    test "the Current User is never an empty constraint value" do
+      raw =
+        search("custom.task", [con("assignee_user", "equals", cu())], %{
+          "ignore_empty_constraints" => true
+        })
+
+      for searches <- [:page, :backend, nil] do
+        assert %IR{op: :search, args: [_, %IR{op: :eq, args: [_, %IR{op: :current_user}]}]} =
+                 ir(raw, searches: searches)
+      end
+
+      # Its fields can be empty: dropped on a page that says so.
+      field = chain(cu(), [msg("name_text")])
+
+      raw =
+        search("custom.task", [con("title_text", "equals", field)], %{
+          "ignore_empty_constraints" => true
+        })
+
+      assert %IR{op: :search, args: [_, %IR{op: :or, args: [%IR{op: :is_empty}, %IR{op: :eq}]}]} =
+               ir(raw, searches: :page)
+    end
+
+    # Only searches were replayed: `:filtered` still follows its own option
+    # or the caller's default, wherever it runs.
+    test "a :filtered list is not decided by where searches run" do
+      raw = fn options ->
+        chain(el("bR1"), [
+          msg("get_list_data"),
+          msg(
+            "filtered",
+            nil,
+            Map.merge(options, %{
+              "constraints" => %{
+                "0" => con("estimate_number", "greater than", chain(el("bI1"), [msg("get_data")]))
+              }
+            })
+          )
+        ])
+      end
+
+      for searches <- [:page, :backend] do
+        assert %{ir: nil, diagnostics: diags} = compile(raw.(%{}), searches: searches)
+        assert Enum.any?(diags, &(&1.details == %{construct: :ignore_empty_constraints}))
+
+        assert %IR{op: :filter, args: [_, %IR{op: :or}]} =
+                 ir(raw.(%{"ignore_empty_constraints" => true}), searches: searches)
+
+        assert %IR{op: :filter, args: [_, %IR{op: :gt}]} =
+                 ir(raw.(%{"ignore_empty_constraints" => false}), searches: searches)
+      end
     end
 
     test "unmodeled search options are diagnosed" do
