@@ -272,3 +272,10 @@ Default roles: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human
 
 Single-context: `CONTEXT.md` at the repo root and ADRs in `docs/adr/`. See `docs/agents/domain.md`.
 
+## Current issue tracker override
+
+- Canonical tracker: Linear via Loggie account `personal`.
+- Linear workspace: `ricowtf`; project: `bubble_ex`.
+- Use the `linear-ticket-workflow` skill and keep ticket status current.
+- GitHub remains the code, pull-request, and historical issue surface.
+- This section supersedes older GitHub-Issues tracker instructions in this checkout.
