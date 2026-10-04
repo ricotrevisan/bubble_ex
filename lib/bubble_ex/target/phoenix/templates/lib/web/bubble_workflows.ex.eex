@@ -13,6 +13,15 @@ defmodule <%= @web %>.BubbleWorkflows do
   elements it renders, `__bubble__(:instances)`): a click (`bubble:click`)
   or an input change (`bubble:change`, `bubble:commit`) of an element the
   page renders in a scope (reusable-element instance) it renders. Anything else is ignored.
+
+  A reusable instance in a repeating group's cell (WTF-494,
+  `__bubble__(:cells)`) has a scope per cell, the cell's thing's
+  (`<%= @web %>.Bubble.cell_scope/4`): the page lists the scopes of the
+  cells it read (`<%= @web %>.BubbleData`, as the current user), and an
+  event in any other scope is ignored, so a browser can only reach the
+  cells of things the user was shown. Its workflows run in that scope (its
+  custom states, inputs and data are the cell's); its page-load,
+  condition-true and "do every" workflows do not run in a cell.
   Event parameters never become atoms, never name a workflow, a module or a
   record: the page looks the element up in its own static lists and runs
   the workflows listed there, with the values it keeps (current user,
@@ -151,7 +160,8 @@ defmodule <%= @web %>.BubbleWorkflows do
     The page's data (WTF-420, `<%= @web %>.BubbleData`): what it loaded
     (`data`), the unique ID of its thing from the URL (`thing`) and, while
     a repeating group's cells are read, the current cell's thing and
-    1-based index (`cell`, `cell_index`); `data_stale` once a data step
+    1-based index (`cell`, `cell_index`), and `batch` while the cells (or
+    the instances in cells, WTF-494) are read together; `data_stale` once a data step
     ran (it may have written what the page shows). `page_path` is the
     page's own path (without its thing's segment) and `takes_thing`
     whether the page reads a thing from its URL (WTF-454); `resume` the
@@ -171,6 +181,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       :cell,
       :cell_index,
       :resume,
+      batch: false,
       scope: "",
       path: "/",
       page_path: "/",
@@ -239,6 +250,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_data_stale, false)
     |> assign(:bubble_data_inputs, MapSet.new())
     |> assign(:bubble_displayed, %{})
+    |> assign(:bubble_cells, [])
     |> assign(:bubble_committed, %{})
     |> assign(:bubble_thing, nil)
     |> refresh_viewer()
@@ -322,7 +334,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc "Runs the workflows of a click or an input change the page lists."
   def handle_event(socket, page, "bubble:click", %{"scope" => scope, "element" => element})
       when is_binary(scope) and is_binary(element) do
-    with {:ok, module} <- surface(page, scope),
+    with {:ok, module} <- surface(socket, page, scope),
          [_ | _] = ids <- Map.get(module.__bubble__(:surface).clicks, element, []) do
       socket = assign(socket, :bubble_refused, false)
       {:noreply, socket |> event(page, [{module, scope, ids, %{}}]) |> notice()}
@@ -336,7 +348,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   # workflows run when it is committed (`bubble:commit`, on blur). Any
   # other input's change commits it.
   def handle_event(socket, page, "bubble:change", %{"bubble" => %{} = params}) do
-    with {:ok, module, scope, element, value} <- input_event(page, params) do
+    with {:ok, module, scope, element, value} <- input_event(socket, page, params) do
       socket = assign(socket, :bubble_refused, false) |> put_input(scope, element, value)
 
       if Map.get(params, "on") == "blur" do
@@ -355,7 +367,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   def handle_event(socket, page, "bubble:commit", %{} = params) do
     params = Map.put_new(params, "scope", "")
 
-    with {:ok, module, scope, element, value} <- input_event(page, params) do
+    with {:ok, module, scope, element, value} <- input_event(socket, page, params) do
       socket = assign(socket, :bubble_refused, false) |> put_input(scope, element, value)
       commit(socket, page, module, scope, element, value)
     else
@@ -365,10 +377,10 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   def handle_event(socket, _page, _event, _params), do: {:noreply, socket}
 
-  defp input_event(page, params) do
+  defp input_event(socket, page, params) do
     with %{"scope" => scope, "element" => element} when is_binary(scope) and is_binary(element) <-
            params,
-         {:ok, module} <- surface(page, scope),
+         {:ok, module} <- surface(socket, page, scope),
          %{^element => {type, _first}} <- module.__bubble__(:surface).inputs,
          {:ok, value} <- coerce(type, Map.get(params, "value")) do
       {:ok, module, scope, element, value}
@@ -416,7 +428,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   def handle_info(socket, page, {:bubble, :run, scope, module, id, args, budget}) do
     socket = delivered(socket)
 
-    if surface(page, scope) == {:ok, module} and budget?(budget),
+    if surface(socket, page, scope) == {:ok, module} and budget?(budget),
       do: {:noreply, event(socket, page, [{module, scope, [id], args}], cap_budget(budget))},
       else: {:noreply, socket}
   end
@@ -453,7 +465,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   def handle_info(socket, page, {:bubble, :resume, frames, now, budget}) do
     socket = delivered(socket)
 
-    if resumable?(page, frames) and budget?(budget) and match?(%DateTime{}, now) do
+    if resumable?(socket, page, frames) and budget?(budget) and match?(%DateTime{}, now) do
       {:noreply, event(socket, page, [{:resume, frames, now}], cap_budget(budget))}
     else
       Logger.warning("bubble: a malformed paused workflow was ignored")
@@ -462,7 +474,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   end
 
   def handle_info(socket, page, {:bubble, :interval, scope, id}) do
-    case surface(page, scope) do
+    case surface(socket, page, scope) do
       {:ok, module} -> {:noreply, event(socket, page, [{module, scope, [id], %{}}])}
       _ -> {:noreply, socket}
     end
@@ -548,17 +560,70 @@ defmodule <%= @web %>.BubbleWorkflows do
   defp unforbidden(value), do: value
 <% else %>  def refresh_viewer(socket), do: assign(socket, :bubble_viewer, socket.assigns[:current_user])
 <% end %>
-  @doc "The page itself (scope \"\") and the reusable-element instances it renders."
+  @doc """
+  The page itself (scope \"\") and the reusable-element instances it
+  renders outside repeating group cells.
+  """
   def surfaces(page), do: [{"", page} | page.__bubble__(:instances)]
 
-  defp surface(page, ""), do: {:ok, page}
+  @doc """
+  As `surfaces/1`, with the reusable instances in the cells the page read
+  last (WTF-494, `put_cells/2`): one scope per cell.
+  """
+  def surfaces(socket, page), do: surfaces(page) ++ cell_surfaces(socket)
 
-  defp surface(page, scope) do
-    case List.keyfind(page.__bubble__(:instances), scope, 0) do
+  defp cell_surfaces(socket), do: Map.get(socket.assigns, :bubble_cells) || []
+
+  @doc """
+  The reusable instances a surface module renders once per cell of a
+  repeating group (WTF-494): `{repeating group, [{scope relative to the
+  cell's, module}]}`; none for a module scaffolded before it.
+  """
+  def cells(module) do
+    module.__bubble__(:cells)
+  rescue
+    FunctionClauseError -> []
+  end
+
+  # The surface of an event's scope: the page, an instance it renders, or
+  # an instance in a cell it read (never a scope the browser made up).
+  defp surface(_socket, page, ""), do: {:ok, page}
+
+  defp surface(socket, page, scope) do
+    case List.keyfind(page.__bubble__(:instances), scope, 0) ||
+           List.keyfind(cell_surfaces(socket), scope, 0) do
       {^scope, module} -> {:ok, module}
       nil -> :error
     end
   end
+
+  @doc """
+  Keeps the reusable instances in cells the page just read (WTF-494,
+  `{scope, module}`), with their custom states' defaults and their
+  inputs' first values for the cells new to the page (a cell the page
+  already showed keeps its own).
+  """
+  def put_cells(socket, cells) do
+    states =
+      for {scope, module} <- cells,
+          {{element, state}, value} <- module.__bubble__(:surface).states,
+          reduce: socket.assigns.bubble_states do
+        acc -> Map.put_new(acc, {scope, element, state}, value)
+      end
+
+    inputs =
+      for {scope, module} <- cells,
+          {element, {_type, value}} <- module.__bubble__(:surface).inputs,
+          do: {{scope, element}, value}
+
+    socket
+    |> assign(:bubble_cells, cells)
+    |> assign(:bubble_states, states)
+    |> assign(:bubble_inputs, put_new(socket.assigns.bubble_inputs, inputs))
+    |> assign(:bubble_first_inputs, put_new(socket.assigns.bubble_first_inputs, inputs))
+  end
+
+  defp put_new(map, pairs), do: Enum.reduce(pairs, map, fn {k, v}, acc -> Map.put_new(acc, k, v) end)
 
   defp budget?(%{jobs: j, calls: c, chain: n}),
     do: is_integer(j) and j >= 0 and is_integer(c) and c >= 0 and is_integer(n) and n >= 0
@@ -574,18 +639,18 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   # Every paused workflow is well formed and belongs to a surface the page
   # renders, in its scope; every one but the innermost waits on a call.
-  defp resumable?(page, [_ | outer] = frames) when is_list(outer),
-    do: Enum.all?(frames, &frame?(page, &1)) and Enum.all?(outer, &is_binary(&1.call))
+  defp resumable?(socket, page, [_ | outer] = frames) when is_list(outer),
+    do: Enum.all?(frames, &frame?(socket, page, &1)) and Enum.all?(outer, &is_binary(&1.call))
 
-  defp resumable?(_page, _frames), do: false
+  defp resumable?(_socket, _page, _frames), do: false
 
-  defp frame?(page, %{module: module, scope: scope, workflow: id, at: at, args: args, steps: steps, call: call} = frame)
+  defp frame?(socket, page, %{module: module, scope: scope, workflow: id, at: at, args: args, steps: steps, call: call} = frame)
        when is_atom(module) and is_binary(scope) and is_binary(id) and is_integer(at) and at > 0 and
               is_map(args) and is_map(steps) and (is_nil(call) or is_binary(call)) and
               is_map_key(frame, :returns),
-       do: surface(page, scope) == {:ok, module}
+       do: surface(socket, page, scope) == {:ok, module}
 
-  defp frame?(_page, _frame), do: false
+  defp frame?(_socket, _page, _frame), do: false
 
   # One paused workflow or scheduled custom event was delivered.
   defp delivered(socket),

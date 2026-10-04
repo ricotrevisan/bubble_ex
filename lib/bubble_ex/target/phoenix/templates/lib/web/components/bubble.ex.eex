@@ -81,6 +81,24 @@ defmodule <%= @web %>.Bubble do
 
   defp segment(id), do: id |> to_string() |> String.replace("~", "~0") |> String.replace("-", "~1")
 
+  @doc """
+  The scope of a cell of repeating group `element` in instance `scope`
+  (WTF-494): a reusable instance in the cell is
+  `nest(cell_scope(...), instance)`. It is the cell's thing's (its unique
+  ID, not its position, as `cell_id/4`), else its 1-based `index` (a list
+  of texts or numbers). `~2` and `~3` never occur in an escaped ID, so a
+  cell's scope is never an instance's.
+  """
+  def cell_scope(scope, element, item, index) do
+    key =
+      case item do
+        %{id: id} when is_binary(id) or is_integer(id) -> segment(id)
+        _ -> "~3" <> Integer.to_string(index)
+      end
+
+    nest(scope, element) <> "~2" <> key
+  end
+
   @doc "Opens element `id` of instance `scope` (an overlay, or any element)."
   def show(js \\ %JS{}, scope, id), do: JS.dispatch(js, "bubble:show", to: selector(scope, id))
 

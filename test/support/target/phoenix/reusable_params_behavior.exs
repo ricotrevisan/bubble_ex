@@ -11,6 +11,13 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
   # values, the page's thing, a search, the thing's date), bCardB only
   # static ones; Card shows them in texts, conditions, a group's data
   # source, a nested reusable's property and a workflow.
+  #
+  # WTF-494: the repeating group bList renders the reusable element Row
+  # (bRowC) once per cell, in the cell's scope (`bList~2<task id>-bRowC`):
+  # its thing and properties are the cell's task's, its workflows and
+  # "Display data" steps act on that cell only, and the cells are read
+  # together (Card's bCardC is not rendered per cell: Card searches with
+  # its instance's property).
   use PhxCheckWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
@@ -19,6 +26,8 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
   @p1 "1700000000000x200000000000000001"
   @t1 "1700000000000x300000000000000001"
   @t2 "1700000000000x300000000000000002"
+  @t3 "1700000000000x300000000000000003"
+  @t4 "1700000000000x300000000000000004"
 
   setup do
     on_exit(fn -> Application.delete_env(:phx_check, PhxCheckWeb.BubbleWorkflows) end)
@@ -198,5 +207,149 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
     {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t2}")
     assert text(view, "bCardA", "bTitle") == "Title:"
     assert text(view, "bCardB", "bNote") == "Note:"
+  end
+
+  # --- WTF-494: a reusable instance in a repeating group's cell ---------------------------
+
+  defp row(task), do: "bList~2#{task}-bRowC"
+
+  defp states(view), do: :sys.get_state(view.pid).socket.assigns.bubble_states
+
+  # The database queries `fun` makes (the page's own, in the LiveView).
+  defp queries(fun) do
+    counter = :counters.new(1, [])
+    id = "bubble-queries-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach(
+      id,
+      [:phx_check, :repo, :query],
+      fn _event, _measurements, _meta, c -> :counters.add(c, 1, 1) end,
+      counter
+    )
+
+    try do
+      {:ok, view, _html} = fun.()
+      _ = render(view)
+      :counters.get(counter, 1)
+    after
+      :telemetry.detach(id)
+    end
+  end
+
+  test "an instance in a cell is the cell's: its thing, properties, default, nested reusable",
+       %{conn: conn, user: user} do
+    data_access_on()
+    {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+
+    # Computed in the cell: the cell's task.
+    assert text(view, row(@t1), "bRowLabel") == "Label: Row: Alpha"
+    assert text(view, row(@t1), "bRowOwn") == "Own: Alpha"
+    # A relationship read through a property, loaded with the cells.
+    assert text(view, row(@t1), "bRowProject") == "Project: Apollo"
+    # A visibility conditional reading a property computed in the cell.
+    refute hidden?(view, row(@t1), "bRowFlag")
+    # Not set by the instance: its default, in the cell's scope.
+    assert text(view, row(@t1), "bRowNote") == "Note: Row note"
+    # A search that reads nothing of the instance.
+    assert text(view, row(@t1), "bRowAnyT") == "Any: Apollo"
+    # A reusable inside the cell's instance.
+    assert text(view, row(@t1) <> "-bRowChip", "bChipT") == "Chip: Chip default"
+
+    if enforced?() do
+      # Not the user's task: no cell, no instance.
+      refute has_element?(view, ~s([data-bubble-scope="#{row(@t2)}"]))
+    else
+      assert text(view, row(@t2), "bRowLabel") == "Label: Row: Bravo"
+      assert text(view, row(@t2), "bRowProject") == "Project:"
+      assert hidden?(view, row(@t2), "bRowFlag")
+    end
+  end
+
+  test "a workflow in a cell's instance acts on that cell; a scope the page did not read is ignored",
+       %{conn: conn, user: user} do
+    data_access_on()
+    Ash.Seed.seed!(PhxCheck.Task, %{id: @t3, title: "Charlie", owner_id: @u1})
+    {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+
+    render_click(view, "bubble:click", %{"scope" => row(@t1), "element" => "bRowPick"})
+    assert text(view, row(@t1), "bRowPicked") == "Picked: Row: Alpha"
+    assert text(view, row(@t3), "bRowPicked") == "Picked:"
+
+    # "Display data" in the instance: that cell only.
+    render_click(view, "bubble:click", %{"scope" => row(@t3), "element" => "bRowShow"})
+    assert text(view, row(@t3), "bRowShownT") == "Shown: Charlie"
+    assert text(view, row(@t1), "bRowShownT") == "Shown:"
+    # "Display data" into the instance itself (its Page task, the page's
+    # thing): its thing, in that cell only; its properties stay the cell's.
+    render_click(view, "bubble:click", %{"scope" => row(@t3), "element" => "bRowSelf"})
+    assert text(view, row(@t3), "bRowOwn") == "Own: Alpha"
+    assert text(view, row(@t3), "bRowLabel") == "Label: Row: Charlie"
+    assert text(view, row(@t1), "bRowOwn") == "Own: Alpha"
+
+    # No due date: hidden in that cell; the other cell keeps its state.
+    assert hidden?(view, row(@t3), "bRowFlag")
+    assert text(view, row(@t1), "bRowPicked") == "Picked: Row: Alpha"
+
+    # Scopes of no cell the page read: a task not in the list, the
+    # template's, the instance's without a cell (and with policies, a task
+    # the user may not find).
+    before = states(view)
+    shown = :sys.get_state(view.pid).socket.assigns.bubble_displayed
+    crafted = [row("1700000000000x300000000000000099"), "bRowC", "bList-bRowC"]
+    crafted = if enforced?(), do: [row(@t2) | crafted], else: crafted
+
+    for scope <- crafted do
+      render_click(view, "bubble:click", %{"scope" => scope, "element" => "bRowPick"})
+      render_click(view, "bubble:click", %{"scope" => scope, "element" => "bRowShow"})
+      render_click(view, "bubble:click", %{"scope" => scope, "element" => "bRowSelf"})
+    end
+
+    assert states(view) == before
+    assert :sys.get_state(view.pid).socket.assigns.bubble_displayed == shown
+    refute Enum.any?(Map.keys(states(view)), &(elem(&1, 0) in crafted))
+  end
+
+  test "typing into an input a cell's property reads re-reads it in every cell",
+       %{conn: conn, user: user} do
+    data_access_on()
+    Ash.Seed.seed!(PhxCheck.Task, %{id: @t3, title: "Charlie", owner_id: @u1})
+    {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+    render_click(view, "bubble:click", %{"scope" => row(@t3), "element" => "bRowPick"})
+    assert text(view, row(@t1), "bRowQuery") == "Query:"
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bQuery", "value" => "Alp", "on" => "blur"}
+    })
+
+    Process.sleep(250)
+    assert text(view, row(@t1), "bRowQuery") == "Query: Alp"
+    assert text(view, row(@t3), "bRowQuery") == "Query: Alp"
+    # The rest of the cell is as it was.
+    assert text(view, row(@t3), "bRowPicked") == "Picked: Row: Charlie"
+    assert text(view, row(@t3), "bRowLabel") == "Label: Row: Charlie"
+  end
+
+  test "the cells' instances are read together: three cells cost no more queries than one",
+       %{conn: conn, user: user} do
+    data_access_on()
+    fewer = queries(fn -> live(sign_in(conn, user), "/task/#{@t1}") end)
+
+    for {id, title} <- [{@t3, "Charlie"}, {@t4, "Delta"}],
+        do: Ash.Seed.seed!(PhxCheck.Task, %{id: id, title: title, owner_id: @u1, project_id: @p1})
+
+    {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+    # bList shows its first page, 3 rows.
+    assert text(view, row(@t3), "bRowProject") == "Project: Apollo"
+    assert view |> render() |> String.split(~s(data-bubble-id="bRowLabel")) |> length() == 4
+
+    more = queries(fn -> live(sign_in(conn, user), "/task/#{@t1}") end)
+    assert more == fewer
+  end
+
+  test "without data access, no cell and no instance in one", %{conn: conn, user: user} do
+    {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+    refute has_element?(view, ~s([data-bubble-scope="#{row(@t1)}"]))
+    render_click(view, "bubble:click", %{"scope" => row(@t1), "element" => "bRowPick"})
+    assert states(view) |> Map.keys() |> Enum.all?(&(elem(&1, 0) != row(@t1)))
   end
 end

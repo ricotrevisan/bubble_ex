@@ -107,7 +107,11 @@ lists for that element.
 Custom states and input values are kept per reusable-element instance.
 Instances are addressed by a scope, the instances' Bubble IDs from the page
 down (`<Web>.Bubble.nest/2`); an instance's root carries
-`data-bubble-scope`. Page bindings compiled by T5 that read a custom state
+`data-bubble-scope`. An instance in a repeating group's cell (WTF-494) has
+a scope per cell, the cell's thing's (`<Web>.Bubble.cell_scope/4`): its
+workflows run there, with that cell's states, inputs and data
+(`docs/page-data.md`); its page-load, condition-true and "do every"
+workflows do not run in a cell. Page bindings compiled by T5 that read a custom state
 or an input value read the page's maps too, so they update when a workflow
 sets them.
 
@@ -221,7 +225,9 @@ are refused silently (logged), as they would show it on their own.
 ## Security
 
 * **Event parameters are untrusted.** The page runs only what its static
-  lists name: an element it renders, in a scope it renders. Parameters
+  lists name: an element it renders, in a scope it renders (an
+  instance in a repeating group's cell: one of the cell scopes the page
+  read as the current user, WTF-494, never one the browser made up). Parameters
   never become atoms and never name a workflow, a module or a record.
   Input values are text, numbers or yes/no, never records. Unknown events
   are ignored.

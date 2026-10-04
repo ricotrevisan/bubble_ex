@@ -19,6 +19,35 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **Reusable instances in repeating group cells are rendered per cell**
+  (WTF-494, part of WTF-476). An instance in a cell rendered with one scope
+  for every cell, so its thing, its properties, what "Display data"
+  showed in it and its reusable element's sources were all unresolved
+  and marked (`:page_data_in_cell`). Each cell's instance now has a scope
+  of its own, keyed by the cell's thing's unique ID
+  (`<Web>.Bubble.cell_scope/4`), not its position: its data source and
+  the properties it sets are computed in the cell (an instance lists only
+  the properties it sets, as elsewhere), its reusable element's sources,
+  custom states, inputs, texts, visibility conditionals and workflows
+  ("Display data" included) are that cell's. The loader reads each source
+  for every cell together: relationships load once per resource, unique
+  IDs are read at once, and a search that reads nothing of the instance
+  runs once (`shared`, `preloads` in `__bubble__(:data)`); a reusable
+  element with a search reading its instance would query once per cell,
+  so its instances in cells stay one scope and are marked. The page
+  lists the cell scopes it read as the current user (`__bubble__(:cells)`,
+  `@bubble_cells`) and ignores an event in any other, so a browser cannot
+  reach the cell of a thing the user was not shown. Page-load,
+  condition-true and "do every" workflows do not run in a cell (marked).
+  Behavior tests in both privacy modes (`reusable_params_behavior.exs`:
+  per-cell values, workflows, crafted scopes, an input change, as many
+  queries for three cells as for one; `enforced_behavior.exs`: a hidden
+  task has no cell and its scope runs nothing). On the private fixture
+  app: 6 of its 61 instances in cells are rendered per cell (504
+  elements with each cell's data; 53 wait on a list the page does not
+  load yet, 2 on a per-instance search), `:page_data_in_cell` residue
+  531 → 22, sources wired 2,026 → 2,044, visibility conditionals
+  rendered 569 → 607, native workflows 737 → 750.
 - **Reusable element properties are passed down** (WTF-493, part of
   WTF-476). `This Reusable's <property>` was `:unavailable_input`
   residue everywhere, so data sources, texts, visibility conditionals

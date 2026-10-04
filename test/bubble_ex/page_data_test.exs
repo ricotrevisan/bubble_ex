@@ -220,7 +220,7 @@ defmodule BubbleEx.PageDataTest do
                ~s|BubbleData.load_value(BubbleWorkflows.data(ctx, [], "pHome"), [["tasks"]], ctx)|
 
       assert files["lib/shop_web/bubble_data.ex"] =~
-               "Runtime.load_page(value, loads, Runtime.root(nil, ctx.actor), related_cap())"
+               "Runtime.load_page(value, loads, Runtime.root(nil, ctx.actor), related_cap(), opts)"
 
       assert page =~ "BubbleData.records("
       assert page =~ "Shop.Task"
@@ -478,7 +478,7 @@ defmodule BubbleEx.PageDataTest do
       assert index =~ ~s(instance: "bCard2")
       assert index =~ ~s(element: "bCard")
       assert template =~ ~s|Bubble.data(@bubble_data, @scope, "bCard")|
-      assert loader =~ "BubbleWorkflows.scope(ctx, [source.instance])"
+      assert loader =~ "Bubble.nest(scope, source.instance)"
     end
 
     test "routes, data functions, templates and change notifications", %{files: files} do

@@ -13,6 +13,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
       `:number` or `:boolean`)
     * `elements` - by Bubble ID: `%{surface, instance_of, root?}` for every
       element of a surface (`root?`: the page or reusable element itself)
+    * `cells` - the reusable instances in a repeating group's cell
+      (WTF-494), by Bubble ID: `%{surface, cell, holder, residue}`; the
+      page renders one per cell, in a scope of its own, when `residue` is
+      empty (see `BubbleEx.Target.Elixir.FrontendWorkflows.Data`)
     * `diagnostics` - the lowering's and this binding's
 
   A workflow: `%{workflow, symbol, name, surface, kind, element, run_when,
@@ -43,7 +47,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
             surfaces: %{},
             elements: %{},
             diagnostics: [],
-            data_index: %{elements: %{}, roots: MapSet.new(), params: %{}, set: %{}}
+            data_index: %{elements: %{}, roots: MapSet.new(), params: %{}, set: %{}},
+            cells: %{}
 
   @type t :: %__MODULE__{}
 
@@ -304,6 +309,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   """
   @spec param_key(String.t(), String.t()) :: String.t()
   def param_key(reusable, param), do: param <> "/" <> reusable
+
+  @doc """
+  Whether the page renders reusable instance `id` once per cell of the
+  repeating group holding it, in a scope of its own (WTF-494).
+  """
+  @spec per_cell?(t(), String.t()) :: boolean()
+  def per_cell?(%__MODULE__{cells: cells}, id), do: match?(%{residue: []}, cells[id])
 
   @doc "The data sources the page loads for surface `id` (WTF-420), in order."
   @spec data(t(), String.t()) :: [map()]

@@ -798,6 +798,501 @@
         "width": 300
       },
       "type": "CustomDefinition"
+    },
+    "row": {
+      "custom_states": {
+        "picked_": {
+          "display": "Picked",
+          "value": "text"
+        }
+      },
+      "elements": {
+        "bRowAny": {
+          "elements": {
+            "bRowAnyT": {
+              "id": "bRowAnyT",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Any: ",
+                    "1": {
+                      "next": {
+                        "name": "name_text",
+                        "type": "Message"
+                      },
+                      "type": "ElementParent"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bRowAny",
+          "properties": {
+            "data_source": {
+              "next": {
+                "name": "first_element",
+                "type": "Message"
+              },
+              "properties": {
+                "descending": false,
+                "sort_field": "name_text",
+                "type_to_find": "custom.project"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.project",
+            "height": 40,
+            "order": 10,
+            "width": 300
+          },
+          "type": "Group"
+        },
+        "bRowChip": {
+          "id": "bRowChip",
+          "properties": {
+            "custom_id": "bChipDef",
+            "height": 40,
+            "order": 12,
+            "width": 300
+          },
+          "type": "CustomElement"
+        },
+        "bRowFlag": {
+          "id": "bRowFlag",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 4,
+            "text": {
+              "entries": {
+                "0": "Due"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "param_pFlag",
+                  "next": {
+                    "name": "is_true",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bRowDef"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bRowLabel": {
+          "id": "bRowLabel",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Label: ",
+                "1": {
+                  "next": {
+                    "name": "param_pLabel",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bRowDef"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bRowNote": {
+          "id": "bRowNote",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 11,
+            "text": {
+              "entries": {
+                "0": "Note: ",
+                "1": {
+                  "next": {
+                    "name": "param_pNote",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bRowDef"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bRowOwn": {
+          "id": "bRowOwn",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "text": {
+              "entries": {
+                "0": "Own: ",
+                "1": {
+                  "next": {
+                    "name": "title_text",
+                    "type": "Message"
+                  },
+                  "type": "ElementParent"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bRowPick": {
+          "id": "bRowPick",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 7,
+            "text": {
+              "entries": {
+                "0": "Pick"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bRowPicked": {
+          "id": "bRowPicked",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 6,
+            "text": {
+              "entries": {
+                "0": "Picked: ",
+                "1": {
+                  "next": {
+                    "name": "custom.picked_",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bRowDef"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bRowProject": {
+          "id": "bRowProject",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 3,
+            "text": {
+              "entries": {
+                "0": "Project: ",
+                "1": {
+                  "next": {
+                    "name": "param_pTask",
+                    "next": {
+                      "name": "project_custom_project",
+                      "next": {
+                        "name": "name_text",
+                        "type": "Message"
+                      },
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bRowDef"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bRowQuery": {
+          "id": "bRowQuery",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 5,
+            "text": {
+              "entries": {
+                "0": "Query: ",
+                "1": {
+                  "next": {
+                    "name": "param_pQuery",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bRowDef"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bRowSelf": {
+          "id": "bRowSelf",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 13,
+            "text": {
+              "entries": {
+                "0": "Show last"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bRowShow": {
+          "id": "bRowShow",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 8,
+            "text": {
+              "entries": {
+                "0": "Show"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bRowShown": {
+          "elements": {
+            "bRowShownT": {
+              "id": "bRowShownT",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Shown: ",
+                    "1": {
+                      "next": {
+                        "name": "title_text",
+                        "type": "Message"
+                      },
+                      "type": "ElementParent"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bRowShown",
+          "properties": {
+            "group_type": "custom.task",
+            "height": 40,
+            "order": 9,
+            "width": 300
+          },
+          "type": "Group"
+        }
+      },
+      "id": "bRowDef",
+      "name": "Row",
+      "properties": {
+        "group_type": "custom.task",
+        "height": 520,
+        "parameters": {
+          "0": {
+            "btype_id": "text",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pLabel",
+            "param_name": "Label"
+          },
+          "1": {
+            "btype_id": "custom.task",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pTask",
+            "param_name": "Task"
+          },
+          "2": {
+            "btype_id": "boolean",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pFlag",
+            "param_name": "Flag"
+          },
+          "3": {
+            "btype_id": "text",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pQuery",
+            "param_name": "Query"
+          },
+          "4": {
+            "btype_id": "text",
+            "default_value": {
+              "entries": {
+                "0": "Row note"
+              },
+              "type": "TextExpression"
+            },
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pNote",
+            "param_name": "Note"
+          },
+          "5": {
+            "btype_id": "custom.task",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pPage",
+            "param_name": "Page task"
+          }
+        },
+        "width": 300
+      },
+      "type": "CustomDefinition",
+      "workflows": {
+        "wRowPick": {
+          "actions": {
+            "0": {
+              "id": "aRowPick1",
+              "properties": {
+                "custom_state": "custom.picked_",
+                "element_id": "bRowDef",
+                "value": {
+                  "next": {
+                    "name": "param_pLabel",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bRowDef"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wRowPick",
+          "properties": {
+            "element_id": "bRowPick"
+          },
+          "type": "ButtonClicked"
+        },
+        "wRowSelf": {
+          "actions": {
+            "0": {
+              "id": "aRowSelf1",
+              "properties": {
+                "data_source": {
+                  "next": {
+                    "name": "param_pPage",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bRowDef"
+                  },
+                  "type": "GetElement"
+                },
+                "element_id": "bRowDef"
+              },
+              "type": "DisplayGroupData"
+            }
+          },
+          "id": "wRowSelf",
+          "properties": {
+            "element_id": "bRowSelf"
+          },
+          "type": "ButtonClicked"
+        },
+        "wRowShow": {
+          "actions": {
+            "0": {
+              "id": "aRowShow1",
+              "properties": {
+                "data_source": {
+                  "next": {
+                    "name": "param_pTask",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bRowDef"
+                  },
+                  "type": "GetElement"
+                },
+                "element_id": "bRowShown"
+              },
+              "type": "DisplayGroupData"
+            }
+          },
+          "id": "wRowShow",
+          "properties": {
+            "element_id": "bRowShow"
+          },
+          "type": "ButtonClicked"
+        }
+      }
     }
   },
   "pages": {
@@ -895,6 +1390,60 @@
                     "0": "In a cell"
                   },
                   "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "CustomElement"
+            },
+            "bRowC": {
+              "id": "bRowC",
+              "properties": {
+                "custom_id": "bRowDef",
+                "data_source": {
+                  "type": "CurrentDataItem"
+                },
+                "group_type": "custom.task",
+                "height": 520,
+                "order": 2,
+                "param_pFlag": {
+                  "next": {
+                    "name": "due_date",
+                    "next": {
+                      "name": "is_not_empty",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "type": "CurrentDataItem"
+                },
+                "param_pLabel": {
+                  "entries": {
+                    "0": "Row: ",
+                    "1": {
+                      "next": {
+                        "name": "title_text",
+                        "type": "Message"
+                      },
+                      "type": "CurrentDataItem"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "param_pPage": {
+                  "type": "CurrentPageItem"
+                },
+                "param_pQuery": {
+                  "next": {
+                    "name": "get_data",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bQuery"
+                  },
+                  "type": "GetElement"
+                },
+                "param_pTask": {
+                  "type": "CurrentDataItem"
                 },
                 "width": 300
               },
