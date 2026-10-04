@@ -67,7 +67,7 @@ The codebase follows a modular architecture with clear separation of concerns:
   `BubbleEx.AppTree`. Frozen-case fidelity is `BubbleEx.Frontend.Fidelity` /
   `mix bubble.fidelity` (Playwright 1.55, Chromium 140); default `mix test`
   excludes `:fidelity`.
-- **BubbleEx.Secrets** - Pluggable secret-scanning behaviour; `Secrets.Trufflehog` is the default adapter
+- **BubbleEx.Secrets** - Pluggable secret-scanning behaviour; `Secrets.Trufflehog` is the default adapter. It asks providers whether found keys work (`--results=verified,unknown`) unless given `verify: false` (also through `BubbleEx.scan_payload_for_secrets/2`, `start_scan_for_secrets/2`, `Server.start_scan/2`): `--no-verification --results=verified,unknown,unverified`, every finding marked `"Verification" => "skipped"` so its `"Verified" => false` is never read as invalid (WTF-485)
 
 ### Key Dependencies
 - **Req** - HTTP client for external requests

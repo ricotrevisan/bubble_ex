@@ -7,6 +7,14 @@ defmodule BubbleEx.Secrets.Trufflehog do
   parses the JSON findings. The CLI is optional: when it is not installed,
   `scan/2` returns `{:error, %BubbleEx.Error{kind: :cli_missing}}` rather than
   raising.
+
+  By default TruffleHog asks each provider whether a found key works and only
+  verified and unknown (verification errored) results are reported. With
+  `verify: false` it contacts no provider (`--no-verification`) and reports
+  every result (`--results=verified,unknown,unverified`; without
+  `unverified` a run that verifies nothing reports nothing), each marked
+  `"Verification" => "skipped"`: TruffleHog's `"Verified" => false` then means
+  not asked, never invalid (WTF-485).
   """
 
   @behaviour BubbleEx.Secrets
@@ -21,6 +29,9 @@ defmodule BubbleEx.Secrets.Trufflehog do
   string. Supported `opts`:
 
     * `:log_level` - trufflehog verbosity, `"0"`..`"5"` (default `"5"`)
+    * `:verify` - ask providers whether found keys work (default `true`);
+      `false` contacts no provider and marks every finding
+      `"Verification" => "skipped"`
     * `:server_pid` / `:ref` - when both are set, progress is streamed to the
       pid as `{:scan_output, ref, data}` and `{:scan_completed, ref, findings}`
   """
@@ -28,6 +39,7 @@ defmodule BubbleEx.Secrets.Trufflehog do
   @spec scan(map() | String.t(), keyword()) :: {:ok, [map()]} | {:error, Error.t()}
   def scan(payload, opts \\ []) do
     with {:ok, _id} <- extract_id(payload),
+         :ok <- validate_verify(opts),
          {:ok, cli} <- find_cli() do
       PayloadFile.with_file(payload, opts, &run_file(&1, cli, opts))
     end
@@ -38,13 +50,15 @@ defmodule BubbleEx.Secrets.Trufflehog do
   The caller owns the artifact lifetime. Input is bounded to 32 MB by default;
   stdout to 8 MB, each finding line to 1 MB, and execution to 120 seconds.
   Limits can be set with `:max_input_bytes`, `:max_output_bytes`,
-  `:max_line_bytes`, `:max_findings`, and `:timeout_ms`.
+  `:max_line_bytes`, `:max_findings`, and `:timeout_ms`. Takes `:verify` as
+  `scan/2` does.
   """
   @spec scan_file(PayloadFile.t(), keyword()) :: {:ok, [map()]} | {:error, Error.t()}
   def scan_file(%PayloadFile{} = file, opts \\ []) do
     limit = Keyword.get(opts, :max_input_bytes, 32_000_000)
 
-    with true <- is_integer(limit) and limit > 0,
+    with :ok <- validate_verify(opts),
+         true <- is_integer(limit) and limit > 0,
          {:ok, cli} <- find_cli(),
          {:ok, stat} <- File.stat(file.path),
          true <- stat.type == :regular and stat.size <= limit do
@@ -90,6 +104,12 @@ defmodule BubbleEx.Secrets.Trufflehog do
     end
   end
 
+  defp validate_verify(opts) do
+    if is_boolean(Keyword.get(opts, :verify, true)),
+      do: :ok,
+      else: {:error, Error.new(:invalid_input, ":verify must be a boolean", %{})}
+  end
+
   defp extract_id(%{"_id" => id}) when is_binary(id), do: {:ok, id}
 
   defp extract_id(payload) when is_binary(payload) do
@@ -127,14 +147,9 @@ defmodule BubbleEx.Secrets.Trufflehog do
   end
 
   defp run_port(file, cli, opts, output, timeout) do
-    args = [
-      "filesystem",
-      file.path,
-      "--json",
-      "--log-level=#{Keyword.get(opts, :log_level, "5")}",
-      "--results=verified,unknown",
-      "--no-update"
-    ]
+    args =
+      ["filesystem", file.path, "--json", "--log-level=#{Keyword.get(opts, :log_level, "5")}"] ++
+        verification_args(Keyword.get(opts, :verify, true)) ++ ["--no-update"]
 
     port =
       Port.open({:spawn_executable, cli}, [:binary, :exit_status, :stderr_to_stdout, args: args])
@@ -151,9 +166,17 @@ defmodule BubbleEx.Secrets.Trufflehog do
     :throw, {:scan_budget, reason} -> budget_error(reason)
   end
 
+  # A run without verification reports nothing as verified or unknown, so it
+  # must ask for unverified results or it would report none.
+  defp verification_args(true), do: ["--results=verified,unknown"]
+
+  defp verification_args(false),
+    do: ["--no-verification", "--results=verified,unknown,unverified"]
+
   defp collect_findings(port, output, file, opts, deadline) do
     remaining = max(deadline - System.monotonic_time(:millisecond), 0)
-    enhance = &enhance_result(&1, file, deadline)
+    verify = Keyword.get(opts, :verify, true)
+    enhance = &(&1 |> enhance_result(file, deadline) |> mark_verification(verify))
 
     if remaining == 0 do
       budget_error(:scan_timeout)
@@ -227,6 +250,10 @@ defmodule BubbleEx.Secrets.Trufflehog do
   end
 
   defp enhance_result(finding, _file, _deadline), do: finding
+
+  defp mark_verification(nil, _verify), do: nil
+  defp mark_verification(finding, true), do: finding
+  defp mark_verification(finding, false), do: Map.put(finding, "Verification", "skipped")
 
   defp stream(nil, _ref, _data), do: :ok
   defp stream(_pid, nil, _data), do: :ok
