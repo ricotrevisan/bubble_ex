@@ -40,15 +40,29 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   the instance's would be (`%{path: [], element: key}`), read only when
   the instance sets none. "This Reusable's <property>" reads
   `{:data, %{path: [], element: key}}`: it loads when every
-  instance's value of it (outside a repeating group's cell) and its
+  instance's value of it (those rendered per cell included) and its
   default load. A thing it holds is read where the instance is, through
   Ash with the actor, like any other source.
 
+  A reusable instance in a repeating group's cell (WTF-494) is rendered
+  once per cell, in a scope of its own (the cell's thing's): its own
+  data source and the properties it sets are computed per cell (they
+  read the cell's thing as `{:cell, rg}`, and depend on the list), and
+  its reusable element's sources run in each cell's scope. The runtime
+  reads a source for every cell together (`shared?`: one that reads
+  nothing of its scope, only the current user, the time or the URL, is
+  read once), so a search there must be shared: a reusable element (or
+  one it nests) with a search that reads its instance would query once
+  per cell, and its instances in cells are not rendered per cell
+  (`cell_instances/4`), nor is one whose own data source is a search.
+
   ## Residue added here
 
-    * `:page_data_in_cell` - a repeating group or reusable instance in a
-      repeating group's cell, or a search there: the page would read once
-      per cell
+    * `:page_data_in_cell` - a repeating group in a repeating group's
+      cell, or a search there: the page would read once per cell
+      (`detail.kind` `"list"` or `"query"`); a reusable instance in a cell
+      whose reusable element has a search reading its instance
+      (`"query"`, on the instance's sources)
     * `:uncompiled_expression` - constructs prefixed `ash:` (a search the
       Ash filter compiler rejects) or `elixir:`
     * `:unavailable_input` - an input the page does not provide, or
@@ -103,12 +117,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     do: for(s <- sources, s.kind != :param, into: MapSet.new(), do: s.element)
 
   # The reusable element properties (WTF-493): `params`, the property's
-  # key (`Spec.param_key/2`) => whether every value of it outside a cell
-  # (each instance's, its default) loads; `set`, `{instance, param} =>
-  # %{surface, key}` for the values instances outside a cell set that
-  # load.
+  # key (`Spec.param_key/2`) => whether every value of it (each
+  # instance's, those of instances rendered per cell included, WTF-494,
+  # and its default) loads; `set`, `{instance, param} => %{surface, key}`
+  # for the values instances outside a cell set that load.
   defp params(sources, loads?) do
-    values = for %{kind: :param, cell: nil} = s <- sources, do: s
+    # The lists that load: an instance in the cell of another is never
+    # rendered.
+    lists =
+      for s <- sources, s.kind == :list, loads?.(s), into: MapSet.new(), do: s.element
+
+    values = Enum.filter(sources, &counted_param?(&1, lists))
 
     %{
       params:
@@ -118,6 +137,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       set:
         for(
           s <- values,
+          s.cell == nil,
           s.element != s.holder,
           loads?.(s),
           into: %{},
@@ -126,6 +146,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         )
     }
   end
+
+  # A property value the reusable element's reads depend on: any but those
+  # of an instance in a cell that is not rendered per cell (the list is
+  # not loaded, or the instance cannot be read per cell): its values are
+  # never read.
+  defp counted_param?(%{kind: :param, cell: nil}, _lists), do: true
+
+  defp counted_param?(%{kind: :param, cell: cell, residue: residue}, lists) do
+    MapSet.member?(lists, cell) and not Enum.any?(residue, &(&1.reason == :page_data_in_cell))
+  end
+
+  defp counted_param?(_source, _lists), do: false
 
   # A displayed element with no source of its own (WTF-492) holds what the
   # step shows; one with a source keeps the source's entry. A source that
@@ -191,7 +223,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   @doc """
   Binds every source of `page_data`. `ctx` is the frontend workflows
-  binding's context (with `:project`, `:data` from `index/1`); `fns` has
+  binding's context (with `:project`, `:data` from `index/1`, and
+  `:nested`, see `cell_instances/4`); `fns` has
   `compile` (`fn expr, subject, ctx -> {compiled | nil, residue}`) and
   `bind` (`fn input, ctx -> {:ok, bind} | {:error, kind}`), the binding's
   own. Returns the bound sources by surface, in the order the page reads
@@ -219,8 +252,129 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
     (bound ++ shown)
     |> prune()
+    |> per_cell(ctx)
+    |> Enum.map(&Map.put(&1, :shared?, &1.residue == [] and shared?(&1)))
     |> Enum.group_by(& &1.surface)
     |> Map.new(fn {surface, bound} -> {surface, order(bound)} end)
+  end
+
+  # --- instances in cells (WTF-494) ----------------------------------------------------
+
+  # An instance in a cell that would query once per cell is not rendered
+  # per cell: its own sources are residue, and so is what reads them.
+  defp per_cell(bound, ctx) do
+    blocked = not_per_cell(bound, Map.get(ctx, :nested, %{}))
+
+    if MapSet.size(blocked) == 0,
+      do: bound,
+      else: bound |> Enum.map(&block_in_cell(&1, blocked)) |> prune()
+  end
+
+  defp block_in_cell(%{cell: cell, kind: kind, residue: []} = b, blocked)
+       when is_binary(cell) and kind in [:instance, :param] do
+    if MapSet.member?(blocked, b.element),
+      do: %{b | read: nil, residue: [in_cell_entry(b.symbol, :query)]},
+      else: b
+  end
+
+  defp block_in_cell(b, _blocked), do: b
+
+  # The instances in cells that cannot be read for every cell together:
+  # their own data source is a search (once per cell), or their reusable
+  # element's would be.
+  defp not_per_cell(bound, nested) do
+    holders = per_cell_blocked(bound, nested)
+
+    for %{cell: cell, kind: kind} = b <- bound,
+        is_binary(cell) and kind in [:instance, :param],
+        MapSet.member?(holders, b.holder) or
+          (kind == :instance and Enum.any?(b.residue, &(&1.reason == :page_data_in_cell))),
+        into: MapSet.new(),
+        do: b.element
+  end
+
+  # The reusable elements that cannot be read for every cell together: a
+  # search of theirs (or of a reusable element they nest, outside its own
+  # cells) that reads something of the instance's scope.
+  defp per_cell_blocked(bound, nested) do
+    direct =
+      for %{residue: [], read: {:query, _}, cell: nil} = b <- bound,
+          not shared?(b),
+          into: MapSet.new(),
+          do: b.surface
+
+    reusables =
+      bound |> Enum.map(& &1.surface) |> Enum.concat(Map.keys(nested)) |> Enum.uniq()
+
+    for r <- reusables, blocked?(r, direct, nested, MapSet.new()), into: MapSet.new(), do: r
+  end
+
+  defp blocked?(r, direct, nested, seen) do
+    cond do
+      MapSet.member?(direct, r) ->
+        true
+
+      MapSet.member?(seen, r) ->
+        false
+
+      true ->
+        nested
+        |> Map.get(r, [])
+        |> Enum.any?(&blocked?(&1, direct, nested, MapSet.put(seen, r)))
+    end
+  end
+
+  @doc """
+  Whether a bound source reads nothing of the scope it runs in (an
+  instance's, a cell's): only the current user, the current time or the
+  URL. The runtime reads it once for every cell of a repeating group
+  (WTF-494).
+  """
+  @spec shared?(map()) :: boolean()
+  def shared?(%{cell: nil, read: {kind, _}} = b) when kind in [:value, :query],
+    do: b |> read_bindings() |> Enum.all?(&unscoped?/1)
+
+  def shared?(_bound), do: false
+
+  defp read_bindings(%{read: {:value, %{bindings: bindings}}}), do: bindings
+
+  defp read_bindings(%{read: {:query, %{pins: pins}}}),
+    do: for(%{value: %{bindings: bindings}} <- pins, b <- bindings, do: b)
+
+  defp unscoped?(%{bind: bind}), do: bind in [:actor, :now] or match?({:url, _}, bind)
+
+  @doc """
+  The instances in repeating group cells (`structure`: instance =>
+  `%{surface, cell, holder}`) with whether the page renders each per cell
+  (WTF-494): `%{surface, cell, holder, residue}`, `residue` empty when it
+  does. It needs the list loaded (`wired`, from `wired_index/1`) and a
+  reusable element read for every cell together (`bound`, by surface;
+  `nested`: reusable => the reusable elements of its instances outside
+  its cells).
+  """
+  @spec cell_instances(map(), %{String.t() => [map()]}, map(), map()) :: map()
+  def cell_instances(structure, bound, wired, nested) do
+    all = for {_surface, list} <- bound, b <- list, do: b
+    blocked = not_per_cell(all, nested)
+    holders = per_cell_blocked(all, nested)
+
+    Map.new(structure, fn {instance, %{surface: surface, cell: rg, holder: holder} = s} ->
+      symbol = "element:" <> instance
+
+      residue =
+        cond do
+          not match?(%{kind: :list, cell: nil, surface: ^surface}, wired.elements[rg]) ->
+            [Residue.entry(symbol, :unavailable_input, %{inputs: ["data_source"]})]
+
+          MapSet.member?(blocked, instance) or MapSet.member?(holders, holder) ->
+            [in_cell_entry(symbol, :query)]
+
+          true ->
+            []
+        end
+
+      {instance, Map.put(s, :residue, residue)}
+    end)
   end
 
   # --- one source ---------------------------------------------------------------------
@@ -248,7 +402,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       s.residue != [] ->
         base
 
-      s.cell != nil and s.kind != :group ->
+      # A repeating group in a cell would read once per cell; a group, an
+      # instance (WTF-494) and its properties there are read per cell.
+      s.cell != nil and s.kind == :list ->
         in_cell(base, s.kind)
 
       s.kind == :page_thing ->
@@ -310,11 +466,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   defp key(%Source{element: e}), do: %{path: [], element: e}
 
-  defp in_cell(base, kind),
-    do: %{
-      base
-      | residue: [Residue.entry(base.symbol, :page_data_in_cell, %{kind: Atom.to_string(kind)})]
-    }
+  defp in_cell(base, kind), do: %{base | residue: [in_cell_entry(base.symbol, kind)]}
+
+  defp in_cell_entry(symbol, kind),
+    do: Residue.entry(symbol, :page_data_in_cell, %{kind: Atom.to_string(kind)})
 
   defp value(%Source{value: %{ir: ir}} = s, base, ctx, fns) do
     bctx =
@@ -335,6 +490,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       :value ->
         {compiled, residue} = fns.compile.(s.value, s.id, bctx)
         reads = if compiled, do: data_reads(compiled.bindings), else: []
+
+        # An instance in a cell, and its properties, are rendered per cell
+        # of the list (WTF-494): they need it loaded.
+        reads =
+          if s.cell != nil and s.kind in [:instance, :param],
+            do: Enum.uniq(reads ++ [{:cell, s.cell}]),
+            else: reads
 
         %{
           base
@@ -653,10 +815,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp prune_fixpoint(wired, bound) do
     by_element = Map.new(bound, &{id(&1), &1})
 
-    # The values of each property outside a cell: every one must load for
-    # the reusable element to read it.
+    # The values of each property: every one must load for the reusable
+    # element to read it (an instance's in a cell when it is rendered per
+    # cell, WTF-494).
     params =
-      for(%{kind: :param, cell: nil} = b <- bound, do: b)
+      bound
+      |> Enum.filter(&counted_param?(&1, wired))
       |> Enum.group_by(&Spec.param_key(&1.holder, &1.param), &id/1)
 
     next =

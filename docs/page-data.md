@@ -168,7 +168,7 @@ element (not a mobile view):
 | a page's "Type of content" | `:page_thing` | the record whose unique ID is the URL path segment after the page name (`/<page>/<id>`, a second route; for `index` it is `/index/<id>` (WTF-454), since a root catch-all would capture owned routes); the segment must look like a Bubble ID (`<digits>x<digits>`), else nothing is read; query parameters cannot select a thing |
 | a Group's, Popup's, Floating Group's or Group Focus's data source | `:group` | a search (below), or an Elixir value (`BubbleEx.Target.Elixir`); a thing given as a Bubble ID is read by ID |
 | a Repeating Group's data source | `:list` | a search, or a list value (IDs are read by ID); its cells render its template once per item |
-| a reusable-element instance's data source | `:instance` | the reusable element's thing for that instance (`Parent group` inside it) |
+| a reusable-element instance's data source | `:instance` | the reusable element's thing for that instance (`Parent group` inside it); in a repeating group's cell, per cell (WTF-494, below) |
 | a property a reusable-element instance sets (WTF-493) | `:param` | its value, computed where the instance is, kept under the instance (`This Reusable's <property>` inside it) |
 | a reusable element property's default value | `:param` | computed inside the reusable element, for an instance that sets no value |
 | a group, popup, repeating group or instance with no data source that a "Display data" / "Display list" step sets (WTF-492) | its kind | what the step showed (`read: :displayed`), read again as the current user; nothing before a step |
@@ -239,17 +239,16 @@ record the user may not view is nothing). Nothing reads around the
 policies.
 
 `This Reusable's <property>` is read only when **every** value of it
-loads: each instance's (outside a repeating group's cell) and its default.
+loads: each instance's (one in a repeating group's cell too, when it is
+rendered per cell, WTF-494) and its default.
 One that does not (it does not compile, or reads data the page does not
 load) leaves the reads residue (`:unavailable_input`,
 `element_state:param`) for every instance, never an empty value for some;
 the instance is marked `TODO(bubble:<id>) its property param_<id> is not
 passed (<reasons>)`.
 
-An instance in a repeating group's cell is not rendered as a surface of
-its own yet (WTF-476): every property its reusable element declares, set
-or not, is residue (`:page_data_in_cell`), marked on the instance, and
-does not block the reads for the other instances.
+An instance in a repeating group's cell sets its properties per cell
+(below).
 
 Bubble has no workflow action that changes a property (in the private
 fixture app, no action names one): properties are read only. A "Display
@@ -258,8 +257,89 @@ inside it, WTF-492), not its properties: they stay the values computed in
 the parent's scope.
 
 A group inside a repeating group's cell holds a value per cell. A
-repeating group, a reusable instance or a search inside a cell is residue
+repeating group or a search inside a cell is residue
 (`:page_data_in_cell`): the page would query once per cell.
+
+## Reusable instances in repeating group cells (WTF-494)
+
+A reusable-element instance in a repeating group's cell is rendered once
+per cell, in a scope of its own: the cell's thing's
+(`<Web>.Bubble.cell_scope/4`: `<scope>-<repeating group>~2<the thing's
+unique ID>`, then `-<instance>`; a list of texts or numbers, which has no
+unique ID, by the cell's position). A re-sorted list keeps what each
+thing's cell held, as "Display data" does in cells (WTF-492). In that
+scope:
+
+* its own data source and the properties it sets are computed in the
+  cell (`Current cell's X` is that cell's thing); they are sources of the
+  instance's surface with `cell` set, kept under the cell's scope like an
+  instance's outside a cell, and they need the list loaded;
+* its reusable element's sources (groups, lists, defaults, nested
+  instances' properties) run in the cell's scope, so a text, a visibility
+  conditional or a workflow inside it reads that cell's values;
+* its custom states and inputs are the cell's: a cell new to the page
+  starts with the defaults and first values, a cell the page already
+  showed keeps its own;
+* its workflows run in that scope (clicks, input changes, "Display
+  data", resets). Its page-load, condition-true and "do every" workflows
+  do not run in a cell (a condition would be evaluated in every cell on
+  every event): the instance is marked when its reusable element has
+  any.
+
+**Read for every cell together, never once per cell.** The loader reads
+each source for all the cells at once (`<Web>.BubbleData`):
+
+* a value computed per cell is Elixir on what the page loaded; the
+  relationships it reads through a source, a custom state or the current
+  user are read again for every cell first (`preloads:` in
+  `__bubble__(:data)`), through Ash as the current user, never reused
+  from what was loaded before (the current user is loaded with what the
+  policies read, without authorization: its relationships are read again
+  into a copy for the values, and the actor the policies read is left as
+  it is; a read that fails reads as empty, logged, never as the value
+  carried it); the relationships the page's bindings read through the value
+  are loaded for every cell after, one load per resource;
+* a thing given as a unique ID (`BubbleData.records/5`) is read with the
+  other cells' IDs, one read per resource;
+* a search that reads nothing of the instance or the cell (only the
+  current user, the time or the URL, `shared: true`) runs once and is
+  shared by every cell;
+* a search that reads the instance would run once per cell: a reusable
+  element with one (or nesting one, outside its own cells) is not
+  rendered per cell. Its instances in cells keep one fixed scope and are
+  marked, with their sources (`:page_data_in_cell`, `kind` `"query"`):
+  `TODO(bubble:<id>) rendered once for every cell, not per cell`.
+
+A repeating group's first page is at most `:max_items` cells, and the
+instances in cells of lists inside those instances are read the same
+way, at most `:max_cell_depth` levels down (default 3) and `:max_cells`
+scopes in all (default `:max_items` x 10; `config :<app>,
+<Web>.BubbleData`): past that the first scopes are kept, the rest show no
+data and take no events, logged once per page. An input change re-reads
+only what reads the input in every cell; when a list whose cells hold
+instances is re-read, the whole page is. When a cell leaves the list
+(its thing is gone, filtered out, or no longer readable), what the page
+kept for it (custom states, inputs, what "Display data" showed) is
+dropped, and its scope takes no event, a paused or scheduled workflow
+included. A list of texts or numbers has no unique ID: its cells are
+by position, duplicates included; a list holding the same thing twice
+gives both cells one scope (they share their states).
+
+An instance inside a runtime container of a cell (not the cell's own
+template) keeps one scope and is marked.
+
+**Privacy.** Every read goes through Ash with the current user as the
+actor, as anywhere else, the current user's own relationships included
+(`enforced_behavior.exs`: a member reads their team's name, not its
+secret, in a cell too). The cells are the list's items as the user read
+them: a thing the user may not read has no cell, so no instance and no
+scope.
+
+**Events.** A page lists the cell scopes it read (`@bubble_cells`) and
+accepts a click or an input change only in a scope it renders: the
+page's own, an instance's (`__bubble__(:instances)`) or a cell's it
+read; any other is ignored, so a browser cannot reach a cell of a thing
+the user was not shown, or make up a scope. The scope is never parsed.
 
 Sources are loaded in the order they read each other; a source that
 reads one that is not loaded is not loaded either (`:unavailable_input`,
@@ -287,7 +367,8 @@ while rendering.
 ## Security
 
 * **The browser chooses nothing.** A page reads only the sources its
-  module lists, with filters fixed in its code. From the browser come
+  module lists, with filters fixed in its code, in the scopes it renders
+  (a reusable instance in a cell: the cells it read, WTF-494). From the browser come
   input values, custom states and URL parameters, pinned into filters as
   values, and the page thing's unique ID from the URL path, which must
   look like a Bubble ID and is read through Ash like any other record. No
@@ -393,6 +474,33 @@ and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
 
+### Private fixture app (test version), 2026-10-04 (WTF-494)
+
+Reusable instances in repeating group cells. Of the 61 instances in a
+cell, 6 are rendered per cell; 53 wait on their list, which the page
+does not load yet (list operators such as sort, merge and unique,
+searches that do not state `ignore_empty_constraints`, search options),
+and 2 on a search of their reusable element that reads the instance.
+The 6 render 504 elements (their reusable elements', nested ones
+included) with each cell's data, where every cell showed the same empty
+instance before.
+
+| | before | after |
+|-|------:|------:|
+| data sources, total | 3,530 | 3,246 |
+| data sources, wired | 2,026 | 2,044 |
+| `:page_data_in_cell` residue entries | 531 | 22 |
+| instance sources wired | 107 | 113 |
+| visibility conditionals rendered | 569 | 607 |
+| workflows, native (generated code) | 737 | 750 |
+| workflows, wired | 502 | 511 |
+| `TODO` markers in the pages | 4,310 | 3,983 |
+
+The total drops because an instance in a cell now lists only the
+properties it sets (469 values in cells before, 185 now), as everywhere
+else. The 13 newly native workflows read a reusable element's thing that
+an instance rendered per cell now gives it.
+
 ### Private fixture app (test version), 2026-09-27
 
 Counts only; the snapshot is
@@ -459,8 +567,11 @@ where it runs (a privacy rule's condition).
   slug is not resolved.
 * A repeating group shows its first page; later pages ("Show next") are
   not loaded.
-* Reusable element properties in a repeating group's cell are not passed
-  (above).
+* A reusable instance in a repeating group's cell: that Bubble runs its
+  page-load workflows once per cell, and its condition-true ones per
+  cell, is not replayed (here neither runs in a cell); that two cells of
+  the same thing (a list holding it twice) share their custom states is
+  this target's choice (WTF-494).
 * A property an instance sets to a value that is empty at run time stays
   empty; whether Bubble shows the property's default then is not replayed
   (WTF-387).
