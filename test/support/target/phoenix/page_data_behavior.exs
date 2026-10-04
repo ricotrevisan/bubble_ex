@@ -642,8 +642,9 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     _ = render(view)
     whole = sql(view.pid)
 
-    # Only bList reads bQuery (and its cells' group reads bList): the two
-    # instances' searches, bFirstOpen and bRandom are not read again.
+    # Only bList and bStrict read bQuery (and bList's cells' group reads
+    # bList): the two instances' searches, bFirstOpen and bRandom are not
+    # read again.
     render_change(view, "bubble:change", %{
       "bubble" => %{"scope" => "", "element" => "bQuery", "value" => "ea", "on" => "blur"}
     })
@@ -657,11 +658,13 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     )
 
     assert cells(narrowed) == ["Clean"]
+    assert narrowed =~ "Strict: Clean"
 
     # Each source's own query, told apart by what it asks: bRandom's MD5
     # order, bFirstOpen's `done` constraint, bCard2's descending title,
-    # bCard1's plain one (as bList's with an empty input), bList's
-    # `contains` once typed.
+    # bCard1's plain one (as bList's with an empty input), bList's and
+    # bStrict's `contains` once typed (bStrict reads nothing while the
+    # input is empty: it does not ignore empty constraints, WTF-478).
     random? = &(&1 =~ "md5(")
     first_open? = &(&1 =~ ~r/WHERE \(t0\."done"/)
     card2? = &(&1 =~ ~r/ORDER BY t0\."title" DESC LIMIT/)
@@ -671,7 +674,7 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     for {source?, n} <- [{random?, 1}, {first_open?, 1}, {card2?, 1}, {plain?, 2}, {list?, 0}],
         do: assert(Enum.count(whole, source?) == n)
 
-    for {source?, n} <- [{random?, 0}, {first_open?, 0}, {card2?, 0}, {plain?, 0}, {list?, 1}],
+    for {source?, n} <- [{random?, 0}, {first_open?, 0}, {card2?, 0}, {plain?, 0}, {list?, 2}],
         do: assert(Enum.count(queries, source?) == n)
   end
 
