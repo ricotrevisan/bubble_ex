@@ -150,6 +150,7 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
     {_, w} = Enum.find(files, fn {p, _} -> String.ends_with?(p, "index_live/workflows.ex") end)
     assert {:ok, _} = Code.string_to_quoted(w)
     assert w =~ "query_1 =\n"
+    assert w =~ "require Ash.Query"
     assert w =~ "|> BubbleData.read(ctx, :all, nil)"
     assert w =~ "|> BubbleData.listed()"
     assert w =~ "Ash.Query.sort([{:rank, :desc}, {:title, :asc}])"

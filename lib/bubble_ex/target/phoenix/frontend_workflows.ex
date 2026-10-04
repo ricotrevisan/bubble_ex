@@ -128,7 +128,11 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     data_metas = Enum.map_join(data, ",\n", &data_meta(&1, s))
 
     uses_js? = Enum.any?(workflows, & &1.client?)
-    queries? = Enum.any?(data, &match?(%{read: {:query, _}}, &1))
+
+    queries? =
+      Enum.any?(data, fn d ->
+        match?(%{read: {:query, _}}, d) or match?(%{read: {:value, %{queries: [_ | _]}}}, d)
+      end)
 
     """
     defmodule #{s.module} do
