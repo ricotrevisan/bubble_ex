@@ -475,7 +475,14 @@ defmodule BubbleEx.Target.Ash.DecisionsCut2Test do
              }
 
       {:ok, source} = Source.render(project)
-      assert source =~ ~s(index [:status, :title], name: "card_status_title_index")
+
+      assert source =~
+               ~s(index [:status, :title], name: "card_status_title_index", concurrently: true)
+
+      # every index is concurrent (WTF-418): mix ash.codegen writes them as
+      # an index-only migration outside a transaction
+      assert length(Regex.scan(~r/^\s*index \[/m, source)) == 7
+      assert length(Regex.scan(~r/concurrently: true$/m, source)) == 7
       assert source =~ ~s(def installed_extensions, do: ["pg_trgm"])
     end
 

@@ -364,6 +364,15 @@ defmodule BubbleEx.Target.Ash do
   `<table>_<columns>_<kind>` within 63 bytes (cut and hashed when longer,
   and hashed when two tables would share one).
 
+  Every index is declared `concurrently: true` (WTF-418), so `mix
+  ash.codegen` writes the index additions as a migration of their own,
+  `CREATE INDEX CONCURRENTLY` with `@disable_ddl_transaction true` and
+  `@disable_migration_lock true` (Ecto's recipe), after the transactional
+  migration with the tables and columns: an index a re-publish adds to a
+  loaded table builds without locking its writes. A concurrent build that
+  fails (a deadlock, a cancelled migration) leaves an `INVALID` index:
+  drop it and migrate again.
+
   **Loading data (WTF-357).** `BubbleEx.Load` with the adapter
   `BubbleEx.Target.Ash.Loader` loads a Bubble export into the project's
   database by these rules. A derived field (calculation, aggregate,

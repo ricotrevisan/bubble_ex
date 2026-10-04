@@ -7,7 +7,10 @@
 #     code; the dependencies are the pinned BubbleEx.Target.Phoenix.deps/1,
 #     locked by scripts/phoenix_compile_check/mix.lock)
 #   * mix ash.codegen initial, then mix ash.codegen --check: the generated
-#     resources give migrations and nothing is left pending
+#     resources give migrations and nothing is left pending; for
+#     decided_cut3, scripts/phoenix_compile_check/index_snapshots.sh: a
+#     pre-WTF-418 project's snapshots upgraded by mix
+#     bubble.concurrent_index_snapshots give no migration
 #   * with PHOENIX_COMPILE_CHECK_DB set (a PostgreSQL URL without a
 #     database, with an explicit port that is not 5432 unless
 #     PHOENIX_COMPILE_CHECK_ALLOW_5432=1, e.g.
@@ -90,6 +93,12 @@ for fixture in $fixtures; do
   find priv/repo/migrations -name '*.exs' ! -name '20260101000000_add_oban_jobs_table.exs' -delete
   mix ash.codegen initial >/dev/null
   mix ash.codegen --check
+
+  # Upgrading a pre-WTF-418 project's snapshots to the concurrent index
+  # hints (mix bubble.concurrent_index_snapshots): no migration.
+  if [[ "$fixture" == decided_cut3 ]]; then
+    "$root/scripts/phoenix_compile_check/index_snapshots.sh" "$scratch"
+  fi
 
   if [[ -n "${PHOENIX_COMPILE_CHECK_DB:-}" ]]; then
     mix ecto.drop --quiet --force-drop >/dev/null 2>&1 || true

@@ -325,6 +325,78 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert Map.take(files, @owned) == Map.take(render!(), @owned)
     end
 
+    test "an index hint over the email alone is skipped: the unique identity serves it (WTF-418)" do
+      project = representative_project()
+
+      index = fn name, method, columns ->
+        %BubbleEx.Target.Ash.Index{
+          name: name,
+          method: method,
+          columns: columns,
+          fields: columns,
+          using: if(method == :gin, do: "gin"),
+          source: %{type: "user", key: "search_index:user", index: 0}
+        }
+      end
+
+      # what an `email equals` search hint maps to, a wider index starting
+      # with the email, and a non-btree index over it
+      hinted = [
+        index.("user_email_index", :btree, ["email"]),
+        index.("user_email_created_date_index", :btree, ["email", "created_date"]),
+        index.("user_email_gin_index", :gin, ["email"])
+      ]
+
+      project = %{
+        project
+        | resources:
+            Enum.map(project.resources, fn
+              %{source: %{type: "user"}} = r -> %{r | indexes: hinted}
+              r -> r
+            end)
+      }
+
+      user = render!(project)["lib/acme_import/user.ex"]
+      assert user =~ "identity :unique_email, [:email]"
+      refute user =~ ~s(name: "user_email_index")
+      assert user =~ ~s(index [:email, :created_date], name: "user_email_created_date_index")
+      assert user =~ ~s(name: "user_email_gin_index")
+
+      # the Ash target alone (no identity) keeps it
+      {:ok, source} = Source.render(project)
+      assert source =~ ~s(index [:email], name: "user_email_index")
+
+      # an index names columns: an email attribute stored in a column of
+      # another name is matched by its column
+      project = %{
+        project
+        | resources:
+            Enum.map(project.resources, fn
+              %{source: %{type: "user"}} = r ->
+                %{
+                  r
+                  | attributes:
+                      Enum.map(r.attributes, fn
+                        %{name: "email"} = a -> %{a | column: "email_address"}
+                        a -> a
+                      end),
+                    indexes: [
+                      index.("user_email_address_index", :btree, ["email_address"]),
+                      index.("user_slug_index", :btree, ["slug"])
+                    ]
+                }
+
+              r ->
+                r
+            end)
+      }
+
+      user = render!(project)["lib/acme_import/user.ex"]
+      assert user =~ "identity :unique_email, [:email]"
+      refute user =~ "user_email_address_index"
+      assert user =~ ~s(index [:slug], name: "user_slug_index")
+    end
+
     test "pins the Ash versions and the framework without PicoSAT" do
       mix = render!()["mix.exs"]
 

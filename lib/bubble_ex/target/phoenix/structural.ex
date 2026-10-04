@@ -240,11 +240,19 @@ defmodule BubbleEx.Target.Phoenix.Structural do
       {bypass, bypass_counts} =
         owned_bypasses(root, manifest, privacy_exceptions(opts[:resolved], opts[:owners]))
 
+      manifest_report = Manifest.check(manifest_json, root)
+
+      stale_snapshots =
+        case manifest_report do
+          {:ok, %{index_snapshots_stale: paths}} -> paths
+          _ -> []
+        end
+
       specs = [
-        manifest_result(Manifest.check(manifest_json, root)),
+        manifest_result(manifest_report),
         checks_result("compiles", :compiles, "compile_error", ctx),
         lint_result(ctx),
-        migrations_result(ctx),
+        migrations_result(ctx, stale_snapshots),
         bypass
       ]
 
@@ -854,6 +862,14 @@ defmodule BubbleEx.Target.Phoenix.Structural do
   defp difference(_, nil), do: "only in the first rendering"
   defp difference(_, _), do: "content differs"
 
+  defp stale([]), do: ""
+
+  defp stale(paths) do
+    "; #{length(paths)} resource snapshot(s) record generated indexes as not concurrent " <>
+      "(#{Enum.join(paths, ", ")}): run mix bubble.concurrent_index_snapshots --root <project> " <>
+      "from bubble_ex before mix ash.codegen, or it drops and rebuilds them"
+  end
+
   # --- owner-repository commands ----------------------------------------------------------
 
   defp checks_result(check, criterion, op, ctx) do
@@ -880,14 +896,22 @@ defmodule BubbleEx.Target.Phoenix.Structural do
 
   defp lint_result(ctx), do: checks_result("lint", :lint, "lint", ctx)
 
-  defp migrations_result(ctx) do
+  # With snapshots recording the index hints as not concurrent (WTF-418,
+  # `index_snapshots_stale`), the pending changes include dropping and
+  # rebuilding those indexes: the detail says how to avoid it.
+  defp migrations_result(ctx, stale_snapshots) do
     args = ~w(ash.codegen --check)
     {output, status} = ctx.cmd.(args, [])
 
     diff =
       if status == 0,
         do: [],
-        else: [%{op: "migration", detail: "mix ash.codegen --check: exit status #{status}"}]
+        else: [
+          %{
+            op: "migration",
+            detail: "mix ash.codegen --check: exit status #{status}" <> stale(stale_snapshots)
+          }
+        ]
 
     %{
       id: "structural.migrations_in_sync",

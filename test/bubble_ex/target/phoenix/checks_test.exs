@@ -176,6 +176,22 @@ defmodule BubbleEx.Target.Phoenix.ChecksTest do
                run(:compiles, %{}, ctx(root))
     end
 
+    test "a stale crux build (no SAT solver) says how to rebuild it (WTF-460)", %{tmp_dir: root} do
+      # what Ash prints when crux was built before picosat_elixir was added
+      Process.put(
+        :mix_result,
+        {"** (RuntimeError) No SAT solver available, although one was loaded.\n\n" <>
+           "This typically means that you need to run `mix deps.compile crux --force`", 1}
+      )
+
+      assert %{status: :fail, detail: detail} = run(:compiles, %{}, ctx(root))
+      assert detail =~ "exit status 1; crux, the SAT solver wrapper, was built without"
+      assert detail =~ ~r/`MIX_ENV=\w+ mix deps\.compile crux --force`/
+
+      Process.put(:mix_result, {"** (CompileError) lib/a.ex:1", 1})
+      assert %{detail: "exit status 1"} = run(:compiles, %{}, ctx(root))
+    end
+
     test "project-wide checks run once per cache", %{tmp_dir: root} do
       {_, cache} = Checks.run(%{check: :compiles, args: %{}}, ctx(root), %{})
       {_, _} = Checks.run(%{check: :compiles, args: %{}}, ctx(root), cache)

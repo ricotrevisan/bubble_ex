@@ -32,7 +32,9 @@ defmodule BubbleEx.Target.Phoenix do
     * AshAuthentication with the **magic link** strategy on the User
       (WTF-355: no password material is read from Bubble): the email
       becomes a trimmed `:ci_string` with a unique identity, so case and
-      whitespace never block sign-in; registration is disabled (only
+      whitespace never block sign-in (an index hint over the email alone,
+      an `email equals` search, is not created: the identity's unique
+      index serves it); registration is disabled (only
       stored users sign in); a token resource (`<Module>.Accounts.Token`,
       table `auth_tokens`); the authentication DSL lives in an owned
       `Spark.Dsl.Fragment` (`<Module>.Accounts.UserAuthentication`) the
@@ -785,7 +787,8 @@ defmodule BubbleEx.Target.Phoenix do
           %{
             r
             | attributes: Enum.map(r.attributes, &email_type(&1, ctx.email)),
-              identities: identities
+              identities: identities,
+              indexes: Enum.reject(r.indexes, &email_index?(&1, r, ctx.email))
           }
 
         r ->
@@ -839,6 +842,19 @@ defmodule BubbleEx.Target.Phoenix do
 
   defp user_extension(_project, ctx),
     do: %{fragments: [ctx.module <> ".Accounts.UserAuthentication"]}
+
+  # An `email equals` search hint's btree index over the email alone
+  # (WTF-418): the unique identity's index already serves it (citext
+  # compares ignoring case), so a second index would only slow writes.
+  # Wider indexes that start with the email are kept.
+  defp email_index?(%{method: :btree, columns: columns}, resource, email) do
+    case Enum.find(resource.attributes, &(&1.name == email)) do
+      %{} = attribute -> columns == [attribute.column || attribute.name]
+      nil -> false
+    end
+  end
+
+  defp email_index?(_index, _resource, _email), do: false
 
   defp email_type(%{name: email} = attribute, email),
     do: %{attribute | type: :ci_string, constraints: [trim?: true, allow_empty?: false]}

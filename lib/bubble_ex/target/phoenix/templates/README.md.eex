@@ -34,6 +34,19 @@ Every other file (this README, `mix.exs`, the config, the router, layouts,
 controllers, the magic-link sender, tests) is **owned**: scaffolded once,
 then yours. Regeneration never overwrites it.
 
+## Regenerating and migrations
+
+After regenerating, run `mix deps.get`, then `mix ash.codegen <name>` and
+`mix ash.migrate`. The indexes for the Bubble app's searches are declared
+`concurrently: true`, so `mix ash.codegen` writes the indexes it adds as a
+migration of their own, with `@disable_ddl_transaction true` and
+`@disable_migration_lock true` (the Ecto recipe for `CREATE INDEX
+CONCURRENTLY`): an index added to a loaded table builds without locking
+its writes. Keep anything else out of that migration: it runs outside a
+transaction. If a concurrent build fails (a deadlock, a cancelled
+migration), PostgreSQL leaves an `INVALID` index behind: run `DROP INDEX
+CONCURRENTLY <name>;` and migrate again.
+
 ## Data model
 
 - Every record keeps its Bubble `_id` as a writable string primary key `id`,
@@ -74,6 +87,11 @@ guarantees:
   constraints on a field the user may not view, and aggregates over hidden
   fields.
 
+If a build fails with `No SAT solver available, although one was
+loaded`, crux was built before `picosat_elixir` was added (a project
+first generated with `privacy: :omit`): run `mix deps.compile crux
+--force` for that `MIX_ENV`, with the Elixir version you build with.
+
 Page data and data workflows still load nothing until you set
 `config :<%= @app %>, <%= @web %>.BubbleWorkflows, data_access: true`, and the
 workflow API answers 503 until `serve_workflow_api: true`.
@@ -83,6 +101,15 @@ The resources are generated with `privacy: :omit`: they have **no
 authorization**. Bubble's privacy rules are not enforced, so any code path
 that reads a resource sees every record. Add Ash policies before exposing
 any resource through an API, a LiveView or a controller.
+
+Regenerating with `privacy: :enforced` adds `picosat_elixir` (the SAT
+solver Ash policies need) to `mix.exs`. After `mix deps.get`, rebuild
+crux, the solver wrapper Ash uses, in every environment you have built,
+with the same Elixir version: `mix deps.compile crux --force` and
+`MIX_ENV=test mix deps.compile crux --force`. Mix normally does this
+itself, but not when `deps.get` and the build ran under different Elixir
+versions (1.19 and later mark dependencies to rebuild differently), and
+then `No SAT solver available, although one was loaded` fails the build.
 <% end %>
 ## Migrated files
 

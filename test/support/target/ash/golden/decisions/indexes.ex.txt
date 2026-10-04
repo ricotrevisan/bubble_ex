@@ -36,8 +36,8 @@ defmodule MyApp.Board do
     end
 
     custom_indexes do
-      index [:card_count], name: "board_card_count_index"
-      index [:cards], name: "board_cards_gin_index", using: "gin"
+      index [:card_count], name: "board_card_count_index", concurrently: true
+      index [:cards], name: "board_cards_gin_index", using: "gin", concurrently: true
     end
   end
 
@@ -121,15 +121,19 @@ defmodule MyApp.Card do
     end
 
     custom_indexes do
-      index [:points], name: "card_points_index"
-      index [:status, :title], name: "card_status_title_index"
-      index [:tags], name: "card_tags_gin_index", using: "gin"
+      index [:points], name: "card_points_index", concurrently: true
+      index [:status, :title], name: "card_status_title_index", concurrently: true
+      index [:tags], name: "card_tags_gin_index", using: "gin", concurrently: true
 
       index ["to_tsvector('simple'::regconfig, coalesce(\"title\", ''))"],
         name: "card_title_fts_index",
-        using: "gin"
+        using: "gin",
+        concurrently: true
 
-      index ["\"title\" gin_trgm_ops"], name: "card_title_trgm_index", using: "gin"
+      index ["\"title\" gin_trgm_ops"],
+        name: "card_title_trgm_index",
+        using: "gin",
+        concurrently: true
     end
   end
 
