@@ -43,10 +43,11 @@ All notable changes to this project are documented here.
   `*_friendly` keys and unset dynamic sort fields no longer block a
   search. Structural coverage no longer counts a self-scheduling
   workflow blocked by a residue callee as uncovered. On the private
-  fixture app: data sources loaded 2,026 → 2,287 (lists 84 → 140 of
-  238), elements without data 1,918 → 1,494; frontend workflows native
-  737 → 788, wired 502 → 523; backend workflows native own body 142 →
-  155.
+  fixture app (against main with instances in cells, WTF-494): data
+  sources loaded 2,044 → 2,337 (lists 84 → 139 of 238, instances 113 →
+  126), elements without data 1,917 → 1,496, instances in cells
+  rendered per cell 6 → 17 of 61; frontend workflows native 750 → 805,
+  wired 511 → 536; backend workflows native own body 142 → 155.
 
 - **Reusable instances in repeating group cells are rendered per cell**
   (WTF-494, part of WTF-476). An instance in a cell rendered with one scope
