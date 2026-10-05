@@ -64,6 +64,10 @@
         "secret_boolean": {
           "display": "Secret",
           "value": "boolean"
+        },
+        "shown_boolean": {
+          "display": "Shown",
+          "value": "boolean"
         }
       },
       "privacy_role": {
@@ -95,6 +99,31 @@
             "search_for": true,
             "view_all": true,
             "view_attachments": false
+          }
+        },
+        "shown_": {
+          "display": "Shown",
+          "condition": {
+            "type": "InjectedValue",
+            "next": {
+              "type": "Message",
+              "name": "shown_boolean",
+              "next": {
+                "type": "Message",
+                "name": "is_true"
+              }
+            }
+          },
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": [
+              "title_text",
+              "rank_number",
+              "shown_boolean"
+            ]
           }
         }
       }
@@ -795,6 +824,178 @@
                         "type": "Message",
                         "name": "title_text"
                       }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bFieldRank": {
+          "id": "bFieldRank",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 10,
+            "order": 15,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "GetElement",
+              "properties": {
+                "element_id": "bProject"
+              },
+              "next": {
+                "type": "Message",
+                "name": "get_group_data",
+                "next": {
+                  "type": "Message",
+                  "name": "tasks_list_custom_task",
+                  "next": {
+                    "type": "Message",
+                    "name": "sorted",
+                    "properties": {
+                      "sort_field": "rank_number",
+                      "descending": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bFieldRankTitle": {
+              "id": "bFieldRankTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "R: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bCount": {
+          "id": "bCount",
+          "type": "Group",
+          "properties": {
+            "order": 13,
+            "width": 300,
+            "height": 40,
+            "group_type": "number",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "constraints": {
+                  "0": {
+                    "key": "done_boolean",
+                    "constraint_type": "equals",
+                    "value": true
+                  }
+                },
+                "sort_field": "title_text",
+                "descending": false
+              },
+              "next": {
+                "type": "Message",
+                "name": "merged_with",
+                "args": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.task",
+                    "constraints": {
+                      "0": {
+                        "key": "rank_number",
+                        "constraint_type": "less than",
+                        "value": 3
+                      }
+                    },
+                    "sort_field": "title_text",
+                    "descending": false
+                  }
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "count"
+                }
+              }
+            }
+          },
+          "elements": {
+            "bCountN": {
+              "id": "bCountN",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "N: ",
+                    "1": {
+                      "type": "ElementParent"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bFirstTitle": {
+          "id": "bFirstTitle",
+          "type": "Group",
+          "properties": {
+            "order": 14,
+            "width": 300,
+            "height": 40,
+            "group_type": "text",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "sort_field": "title_text",
+                "descending": false
+              },
+              "next": {
+                "type": "Message",
+                "name": "first_element",
+                "next": {
+                  "type": "Message",
+                  "name": "title_text"
+                }
+              }
+            }
+          },
+          "elements": {
+            "bFirstTitleT": {
+              "id": "bFirstTitleT",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "T: ",
+                    "1": {
+                      "type": "ElementParent"
                     }
                   }
                 }

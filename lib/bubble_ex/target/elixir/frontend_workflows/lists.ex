@@ -15,6 +15,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
       search, not of its first page);
     * a sort of any other list of things is a search for the records of
       that list (`unique id is in`), sorted;
+    * a count of searches of one type merged is one count of a search
+      for either's records (a merge holds each record once);
     * `:filtered` on any other list of things keeps the list's order: the
       list intersected with a search for its records that meet the
       constraints (`:intersect` keeps the first list's order and the
@@ -47,6 +49,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
     end
   end
 
+  # Counting merged searches of one type is one count of either search
+  # (`:or`): a merge holds each record once, and order does not count.
+  def lower(%IR{op: :count, args: [list]} = ir) do
+    list = lower(list)
+
+    case union(list) do
+      {:ok, %IR{} = search} -> %{ir | args: [search]}
+      :error -> %{ir | args: [list]}
+    end
+  end
+
   def lower(%IR{op: :filter, args: [list, pred]} = ir) do
     list = lower(list)
 
@@ -70,6 +83,21 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
 
   defp lower_arg(%IR{} = arg), do: lower(arg)
   defp lower_arg(arg), do: arg
+
+  # Searches merged (sorted or not) of one data type as one search.
+  defp union(%IR{op: :merge, args: [a, b], type: type}) do
+    with {:ok, %IR{op: :search, args: [t, p1]}} <- union(a),
+         {:ok, %IR{op: :search, args: [^t, p2]}} <- union(b) do
+      pred = if is_nil(p1) or is_nil(p2), do: nil, else: IR.node(:or, [p1, p2], "boolean")
+      {:ok, IR.node(:search, [t, pred], type)}
+    else
+      _ -> :error
+    end
+  end
+
+  defp union(%IR{op: :sort, args: [inner | _]}), do: union(inner)
+  defp union(%IR{op: :search} = ir), do: {:ok, ir}
+  defp union(_ir), do: :error
 
   @doc "Whether `ir` is a search, sorted or not (what a query reads whole)."
   @spec search?(IR.t()) :: boolean()

@@ -540,7 +540,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   # Compiles `expr` in Elixir, its searches first read as queries.
   defp compile_value(%Lowering.Expr{ir: ir} = expr, s, ctx, fns, acc) do
-    with {:ok, ir, acc} <- extract(ir, s, ctx, fns, acc) do
+    with {:ok, ir, acc} <- extract(ir, s, ctx, fns, acc),
+         :ok <- whole_lists(ir, s, acc) do
       case fns.compile.(%{expr | ir: ir}, s.id, ctx) do
         {%{} = compiled, []} -> {:ok, compiled, acc}
         {_compiled, residue} -> {:error, residue}
@@ -599,6 +600,46 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       error -> error
     end
   end
+
+  # A search read as a query stops at `:max_items`: what is shown from it
+  # may show less than Bubble, never more. Counting it, taking its last
+  # item or subtracting it from a list (`:minus list`) would show a
+  # different count or item, or items Bubble would remove: residue
+  # (`elixir:capped_list`). A listed query reads all of a list's records.
+  defp whole_lists(ir, s, acc) do
+    capped =
+      for q <- acc.queries,
+          q.take == :all,
+          !Map.get(q, :listed),
+          into: MapSet.new(),
+          do: Integer.to_string(q.n)
+
+    if needs_whole?(ir, capped),
+      do:
+        {:error,
+         [
+           Residue.entry(s.id, :uncompiled_expression, %{
+             expressions: 1,
+             constructs: ["elixir:capped_list"]
+           })
+         ]},
+      else: :ok
+  end
+
+  defp needs_whole?(%IR{op: op, args: [list | _]} = ir, capped) when op in [:count, :last],
+    do: capped?(list, capped) or Enum.any?(ir.args, &needs_whole?(&1, capped))
+
+  defp needs_whole?(%IR{op: :minus_list, args: [a, b]}, capped),
+    do: capped?(b, capped) or needs_whole?(a, capped) or needs_whole?(b, capped)
+
+  defp needs_whole?(%IR{args: args}, capped), do: Enum.any?(args, &needs_whole?(&1, capped))
+  defp needs_whole?(_arg, _capped), do: false
+
+  defp capped?(%IR{op: :input, args: [:query, %{"n" => n}]}, capped),
+    do: MapSet.member?(capped, n)
+
+  defp capped?(%IR{args: args}, capped), do: Enum.any?(args, &capped?(&1, capped))
+  defp capped?(_arg, _capped), do: false
 
   defp query_input(n, type), do: IR.node(:input, [:query, %{"n" => Integer.to_string(n)}], type)
 
@@ -755,8 +796,25 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp expr_refs(list) when is_list(list), do: Enum.flat_map(list, &expr_refs/1)
   defp expr_refs(_node), do: []
 
-  defp listed({:ok, query, acc}, true), do: {:ok, Map.put(query, :listed, true), acc}
+  # A query for the records a list holds names the pin of their IDs
+  # (`listed`): the loader reads all of them, in the list's order among
+  # equal sort keys.
+  defp listed({:ok, query, acc}, true) do
+    case Enum.find(query.pins, &(&1.ref == :listed)) do
+      %{var: var} -> {:ok, Map.put(query, :listed, var), acc}
+      nil -> {:ok, query, acc}
+    end
+  end
+
   defp listed(result, _listed?), do: result
+
+  # A list's things' IDs for a listed query, else what the pin holds.
+  defp pin_ref(arg, hoisted), do: if(pinned?(arg, hoisted), do: :listed, else: ref_kind(arg.type))
+
+  defp pinned?(%{input: {:hoisted, %{"n" => n}}}, hoisted),
+    do: match?(%IR{op: :pinned}, Map.get(hoisted, n))
+
+  defp pinned?(_arg, _hoisted), do: false
 
   # The filter with its context inputs and actor reads as pinned variables.
   defp pin(s, expr, take, hoisted, prefix, ctx, fns, acc) do
@@ -768,7 +826,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
         case pin_value(arg, hoisted, s, ctx, fns, acc) do
           {:ok, value, acc} ->
-            {[{arg.name, %{var: var, value: value, ref: ref_kind(arg.type)}} | args], residue,
+            {[{arg.name, %{var: var, value: value, ref: pin_ref(arg, hoisted)}} | args], residue,
              acc}
 
           {:error, r} ->
@@ -805,8 +863,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # A pinned argument: a hoisted value, compiled in Elixir (a list a
   # rewritten search reads, `:pinned`, with its own queries first), or a
   # context input bound as a workflow's.
-  defp pin_value(%{input: {:hoisted, %{"n" => n}}}, hoisted, s, ctx, fns, acc),
-    do: compile_pin(Map.fetch!(hoisted, n), s, ctx, fns, acc)
+  defp pin_value(%{input: {:hoisted, %{"n" => n}}}, hoisted, s, ctx, fns, acc) do
+    case Map.fetch!(hoisted, n) do
+      %IR{op: :pinned, args: [list]} -> compile_pin(list, s, ctx, fns, acc)
+      ir -> compile_pin(ir, s, ctx, fns, acc)
+    end
+  end
 
   defp pin_value(%{input: {kind, ref}, type: type}, _hoisted, s, ctx, fns, acc),
     do: compile_pin(IR.node(:input, [kind, ref], type), s, ctx, fns, acc)
@@ -895,8 +957,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp hoist_node(%IR{} = ir, hoisted, mode) do
     if hoistable?(ir, mode) do
       n = Integer.to_string(map_size(hoisted) + 1)
-      value = with %IR{op: :pinned, args: [list]} <- ir, do: list
-      {IR.node(:input, [:hoisted, %{"n" => n}], ir.type), Map.put(hoisted, n, value)}
+      {IR.node(:input, [:hoisted, %{"n" => n}], ir.type), Map.put(hoisted, n, ir)}
     else
       {args, hoisted} =
         Enum.map_reduce(ir.args, hoisted, fn

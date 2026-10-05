@@ -1069,7 +1069,7 @@ defmodule <%= @web %>.BubbleData do
     query
     |> Ash.Query.select([pk])
     |> Ash.Query.limit(cap + 1)
-    |> Ash.read(action: :search, actor: ctx.actor, authorize?: true)
+    |> Ash.read(action: read_action(query), actor: ctx.actor, authorize?: true)
     |> case do
       {:ok, records} when length(records) > cap ->
         Logger.warning(
@@ -1096,7 +1096,7 @@ defmodule <%= @web %>.BubbleData do
   def read(query, ctx, take, page_size) do
     {offset, limit} =
       case take do
-        :all -> {0, cap(page_size)}
+        :all -> {0, listed_cap(query, page_size)}
         :first -> {0, 1}
         {:item, n} -> {n - 1, 1}
         {:limit, n} -> {0, min(cap(page_size), n)}
@@ -1118,13 +1118,62 @@ defmodule <%= @web %>.BubbleData do
 
   @doc """
   Marks a query reading the records a list holds (WTF-495: a list of
-  things sorted or filtered in the database), which `read/4` reads as the
-  user may view them, like reading the list's things by ID, rather than
-  as a search (what the user may find).
+  things sorted or filtered in the database; `ids` from `listed_ids/1`),
+  which `read/4` reads as the user may view them, like reading the
+  list's things by ID, rather than as a search (what the user may find);
+  all of them when no page shows them, and in the list's order among
+  equal sort keys.
   """
-  def listed(query), do: Ash.Query.set_context(query, %{bubble_listed: true})
+  def listed(query, ids) when is_list(ids) do
+    [pk | _] = Ash.Resource.Info.primary_key(Ash.Query.new(query).resource)
+    key = Ash.Expr.ref(pk)
 
-<%= if @enforced? do %>  defp read_action(%Ash.Query{context: %{bubble_listed: true}}), do: :read
+    # Equal sort keys keep the list's order: its position last.
+    position =
+      Ash.Expr.calc(fragment("array_position(?::text[], CAST(? AS text))", ^ids, ^key),
+        type: :integer
+      )
+
+    query
+    |> Ash.Query.new()
+    |> Ash.Query.set_context(%{bubble_listed: length(ids)})
+    |> Ash.Query.sort([{position, :asc}])
+  end
+
+  def listed(query, _ids), do: listed(query, [])
+
+  @doc """
+  The unique IDs of the things a list holds, in its order, each once, for
+  `listed/2`: at most `:max_listed` (default 10_000), logged past it.
+  """
+  def listed_ids(value) do
+    cap = max_listed()
+    ids = value |> List.wrap() |> Runtime.ids() |> Kernel.||([]) |> Enum.uniq()
+
+    if length(ids) > cap do
+      Logger.warning(
+        "bubble page data: a list of #{length(ids)} things reached :max_listed (#{cap}); " <>
+          "only its first #{cap} are read"
+      )
+    end
+
+    Enum.take(ids, cap)
+  end
+
+  @doc "The most things a list sorted or filtered in the database reads (`:max_listed`, 10_000)."
+  def max_listed do
+    case Keyword.get(Application.get_env(:<%= @app %>, __MODULE__, []), :max_listed, 10_000) do
+      n when is_integer(n) and n > 0 -> n
+      _ -> 10_000
+    end
+  end
+
+  # A list's records read whole (none past its own length) unless a page
+  # shows them (its page size, capped by `max_items/0`).
+  defp listed_cap(%Ash.Query{context: %{bubble_listed: n}}, nil) when is_integer(n), do: max(n, 1)
+  defp listed_cap(_query, page_size), do: cap(page_size)
+
+<%= if @enforced? do %>  defp read_action(%Ash.Query{context: %{bubble_listed: n}}) when is_integer(n), do: :read
   defp read_action(_query), do: :search
 
 <% end %>  @doc "The most items a list of page size `page_size` reads (capped by `max_items/0`)."
@@ -1231,6 +1280,13 @@ defmodule <%= @web %>.BubbleData do
   def pin(value, _), do: value
 
   # --- reactivity ------------------------------------------------------------------------
+
+  # A value over queries (WTF-495) follows their resources' changes too.
+  defp topics(topics, %{query_topics: resources} = source, value) when is_list(resources) do
+    resources
+    |> Enum.reduce(topics, &MapSet.put(&2, Changes.topic(&1)))
+    |> topics(Map.delete(source, :query_topics), value)
+  end
 
   defp topics(topics, %{topic: nil}, _value), do: topics
 

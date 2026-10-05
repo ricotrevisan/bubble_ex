@@ -37,7 +37,14 @@ All notable changes to this project are documented here.
   `Bubble.Runtime` needs them added from the template). Options, texts
   and numbers are filtered in Elixir; `All <option set>` (option value
   `all values`) is every option. Every read is an Ash query as the
-  actor, bounded by `:max_items`. A page's `:filtered` that does not
+  actor, bounded by `:max_items`; what a capped read would overstate
+  (its count, its last item, or subtracting it) is residue
+  (`elixir:capped_list`), and a count of merged searches of one type is
+  one count query. A list's records read in the database are all its
+  matches (at most `:max_listed`, default 10,000), in its order among
+  equal sort keys, through the view action (counts too). A value over
+  queries follows the changes of every resource they search
+  (`query_topics`). A page's `:filtered` that does not
   state `ignore_empty_constraints` matches nothing on an empty value, as
   a page search does (not replayed; questions on WTF-387). The editor's
   `*_friendly` keys and unset dynamic sort fields no longer block a

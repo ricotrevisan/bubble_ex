@@ -692,7 +692,9 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert runtime =~ "defp visible_lists(record, changes) do"
 
       data = files["lib/acme_web/bubble_data.ex"]
-      assert data =~ "action: :search, actor: ctx.actor"
+      # Searches through :search; a list's own records (WTF-495) as viewed.
+      assert data =~ "action: read_action(query), actor: ctx.actor"
+      assert data =~ "defp read_action(_query), do: :search"
       assert data =~ "defp failed(_query, %Ash.Error.Forbidden{}), do: nil"
 
       workflows = files["lib/acme_web/bubble_workflows.ex"]
@@ -765,7 +767,8 @@ defmodule BubbleEx.Target.PhoenixTest do
     test "a page count reads keys through :search, capped", %{files: files} do
       data = files["lib/acme_web/bubble_data.ex"]
       refute data =~ "Ash.count("
-      assert data =~ "|> Ash.read(action: :search, actor: ctx.actor, authorize?: true)"
+      assert data =~ "|> Ash.read(action: read_action(query), actor: ctx.actor, authorize?: true)"
+      assert data =~ "defp read_action(_query), do: :search"
       assert data =~ "def max_count do"
     end
 

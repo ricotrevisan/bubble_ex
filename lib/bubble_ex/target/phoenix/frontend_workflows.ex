@@ -641,8 +641,26 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       "loads: #{source(loads)}, cell_loads: #{source(cell_loads(d.read))}, topic: #{topic}, " <>
       "inputs: #{source(data_inputs(d.read))}, reads: #{source(data_reads(d))}, " <>
       "blocked: #{source(Enum.uniq(Enum.map(d.residue, & &1.subject)))}" <>
-      "#{display_meta(d)}#{data_default(d)}#{batch_meta(d, s)}}"
+      "#{display_meta(d)}#{data_default(d)}#{batch_meta(d, s)}#{query_topics(d)}}"
   end
+
+  # The resources the queries a value reads first search (WTF-495): their
+  # changes read it again, whatever its own type.
+  defp query_topics(%{residue: [], read: read}) do
+    queries =
+      case read do
+        {:value, v} -> Map.get(v, :queries, [])
+        {:query, q} -> Map.get(q, :queries, [])
+        _ -> []
+      end
+
+    case queries |> Enum.map(& &1.resource) |> Enum.uniq() |> Enum.sort() do
+      [] -> ""
+      resources -> ", query_topics: #{source(resources)}"
+    end
+  end
+
+  defp query_topics(_d), do: ""
 
   # How a source is read for every cell of a repeating group together
   # (WTF-494): a reusable element's sources (its instances in cells) and a
@@ -874,6 +892,10 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       %{var: var, value: {:actor, path}} ->
         "#{var} = BubbleData.actor(ctx, #{source(path)}, #{source(q.actor_loads)})\n"
 
+      # A list's things' IDs, each once, bounded (WTF-495).
+      %{var: var, value: v, ref: :listed} ->
+        "#{var} = BubbleData.listed_ids((#{v.source}))\n"
+
       %{var: var, value: v, ref: ref} ->
         "#{var} = BubbleData.pin((#{v.source}), #{inspect(ref)})\n"
     end)
@@ -893,7 +915,12 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       end
 
     # A list's own records (WTF-495): read as the user may view them.
-    listed = if Map.get(q, :listed), do: "\n|> BubbleData.listed()", else: ""
+    listed =
+      case Map.get(q, :listed) do
+        var when is_binary(var) -> "\n|> BubbleData.listed(#{var})"
+        _ -> ""
+      end
+
     "#{ctx.module}.#{q.resource}\n|> Ash.Query.filter(#{Source.filter(q.filter)})#{sort}#{listed}"
   end
 

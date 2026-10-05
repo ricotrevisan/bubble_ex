@@ -80,14 +80,14 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
   end
 
   test "a list field sorted is a query for its records; filtered keeps its order", %{spec: spec} do
-    assert %{read: {:query, %{listed: true, sort: [{"title", :asc}], pins: [pin]}}} =
+    assert %{read: {:query, %{listed: "pin_1", sort: [{"title", :asc}], pins: [pin]}}} =
              data(spec, "bFieldSorted")
 
-    assert %{var: "pin_1", ref: :many} = pin
+    assert %{var: "pin_1", ref: :listed} = pin
     assert data(spec, "bFieldSorted").reads == [{:data, %{path: [], element: "bProject"}}]
 
     assert %{read: {:value, %{queries: [q], source: source}}} = data(spec, "bFieldFiltered")
-    assert q.listed
+    assert q.listed == "q1_pin_1"
     assert [%{var: "q1_pin_1"}] = q.pins
     assert source =~ "Runtime.intersect("
   end
@@ -132,6 +132,63 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
     assert kind in ["list", "query"]
   end
 
+  # M1: a search read as a query stops at :max_items; counting it, taking
+  # its last item or subtracting it would show more or other than Bubble.
+  test "counting, the last item or subtracting a capped query is residue" do
+    app = app()
+    els = ["pages", "index", "elements"]
+    tasks = get_in(app, els ++ ["bUnique", "properties", "data_source"])
+    merged = get_in(app, els ++ ["bMerged", "properties", "data_source"])
+    search = Map.delete(merged, "next")
+    put = fn app, id, next -> put_in(app, els ++ [id, "properties", "data_source"], next) end
+    chain = fn source, message -> put_in(source, ["next", "next", "next"], message) end
+
+    app =
+      app
+      # gProject's tasks :minus list Search for tasks
+      |> put.(
+        "bUnique",
+        chain.(tasks, %{"type" => "Message", "name" => "minus_list", "args" => search})
+      )
+      # Search for tasks :merged with gProject's tasks :count
+      |> put.(
+        "bSecond",
+        Map.put(search, "next", %{
+          "type" => "Message",
+          "name" => "merged_with",
+          "args" =>
+            Map.delete(tasks, "next")
+            |> Map.put("next", %{
+              "type" => "Message",
+              "name" => "get_group_data",
+              "next" => %{"type" => "Message", "name" => "tasks_list_custom_task"}
+            }),
+          "next" => %{"type" => "Message", "name" => "count"}
+        })
+      )
+      |> put.(
+        "bLimit",
+        put_in(merged, ["next", "next"], %{"type" => "Message", "name" => "last_element"})
+      )
+
+    %{spec: spec} = render(app)
+
+    for e <- ["bUnique", "bSecond", "bLimit"] do
+      assert [%{reason: :uncompiled_expression, detail: %{constructs: ["elixir:capped_list"]}}] =
+               data(spec, e).residue,
+             e
+    end
+
+    # A count of the list's own records reads them all: not capped.
+    filtered = get_in(app(), els ++ ["bFieldFiltered", "properties", "data_source"])
+
+    counted =
+      put_in(filtered, ["next", "next", "next"], %{"type" => "Message", "name" => "count"})
+
+    %{spec: spec} = render(put.(app(), "bCount", counted))
+    assert data(spec, "bCount").residue == []
+  end
+
   test "printed: queries before the value, listed reads, followed changes", %{
     project: project,
     frontend: frontend,
@@ -152,13 +209,20 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
     assert w =~ "query_1 =\n"
     assert w =~ "require Ash.Query"
     assert w =~ "|> BubbleData.read(ctx, :all, nil)"
-    assert w =~ "|> BubbleData.listed()"
+    assert w =~ "|> BubbleData.listed(pin_1)"
+    assert w =~ "pin_1 =\n      BubbleData.listed_ids("
+    # A text over a query follows the searched type's changes (M2).
+    assert w =~ ~r/element: "bFirstTitle",.*?topic: nil,.*?query_topics: \["Task"\]/s
+    # A count of merged searches is one count query.
+    assert w =~
+             "Ash.Query.filter(done == true or rank < 3)\n    |> BubbleData.read(ctx, :count, nil)"
+
     assert w =~ "Ash.Query.sort([{:rank, :desc}, {:title, :asc}])"
     # A value over queries is re-read on its type's changes.
     assert w =~ ~r/element: "bMerged",\s+fun: :\w+,\s+read: :query/
 
     {_, data} = Enum.find(files, fn {p, _} -> String.ends_with?(p, "/bubble_data.ex") end)
-    assert data =~ "def listed(query)"
+    assert data =~ "def listed(query, ids) when is_list(ids) do"
   end
 
   test "enforced: listed queries read through the view action" do
@@ -176,7 +240,13 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
 
     {_, data} = Enum.find(files, fn {p, _} -> String.ends_with?(p, "/bubble_data.ex") end)
     assert data =~ "action: read_action(query)"
-    assert data =~ "defp read_action(%Ash.Query{context: %{bubble_listed: true}}), do: :read"
+
+    assert data =~
+             "defp read_action(%Ash.Query{context: %{bubble_listed: n}}) when is_integer(n),"
+
+    # A listed count too (L3).
+    assert data =~ "|> Ash.read(action: read_action(query), actor: ctx.actor, authorize?: true)"
+    refute data =~ "action: :search"
   end
 
   describe "Lists.lower/1" do

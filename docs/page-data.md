@@ -226,14 +226,24 @@ database sorts and filters lists of things wherever it can:
 
 Every query reads as the current user, bounded by `:max_items`, like any
 other search: a merged list reads at most `:max_items` of each search,
-then shows one page. A query for a list's records reads them as the user
-may view them (the resource's read action, `BubbleData.listed/1`), as
-reading the list's things by ID does; a search, as the user may find
-them (`:search`). A record the list holds that the user may not read is
+then shows one page, so it may show less than Bubble, never more. What
+would show more or other than Bubble over such a capped read is residue
+(`elixir:capped_list`): its count, its last item, or subtracting it from
+a list (`:minus list`). A count of searches of one type merged is one
+count query for either's records. A query for a list's records reads
+them as the user may view them (the resource's read action, its count
+too, `BubbleData.listed/2`), as reading the list's things by ID does; a
+search, as the user may find them (`:search`). It reads all of the
+list's matches (the list's things' IDs, each once, at most
+`:max_listed`, default 10,000, logged past it) unless a page shows them,
+and equal sort keys keep the list's order (its position is the last
+sort key). A record the list holds that the user may not read is
 not shown; with enforced policies, neither is one whose sorted or
 filtered field the user may not view (`<App>.Privacy.SearchFields`, as
-for searches, WTF-457). A source over queries subscribes to its type's changes like a
-search (`read: :query`).
+for searches, WTF-457). A source over queries subscribes to its type's
+changes like a search (`read: :query`), and to those of every resource
+its queries search (`query_topics`), whatever its own type (a count, a
+text).
 
 Assumptions, not replayed (WTF-387; chosen to show less, never more):
 
@@ -245,7 +255,7 @@ Assumptions, not replayed (WTF-387; chosen to show less, never more):
   `:items until #` with an empty number shows nothing.
 * A list of things sorted or filtered shows each thing once (a query
   finds each record once), and a sort is stable: equal keys keep the
-  order of what is sorted. Empty values sort as PostgreSQL does (last
+  order of what is sorted (a search's, the database's). Empty values sort as PostgreSQL does (last
   ascending, first descending), as a search's sort already did.
 * A page's `:filtered` that does not state `ignore_empty_constraints`
   matches nothing on an empty constraint value, as a page search does
