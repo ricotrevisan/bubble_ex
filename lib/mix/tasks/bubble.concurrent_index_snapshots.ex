@@ -25,70 +25,24 @@ defmodule Mix.Tasks.Bubble.ConcurrentIndexSnapshots do
   warns about what it does not look at: a symbolically linked
   `priv/resource_snapshots` (or repo or table directory), and `_dev`
   snapshots.
+
+  Generated projects ship the same code (WTF-499), for owners without
+  bubble_ex: from the project root, `mix run --no-start
+  priv/bubble/concurrent_index_snapshots.exs [--dry-run]`.
   """
   use Mix.Task
 
-  alias BubbleEx.Target.Phoenix.IndexSnapshots
+  alias BubbleEx.Target.Phoenix.IndexSnapshots.Upgrader
 
   @impl Mix.Task
   def run(argv) do
-    {opts, rest, invalid} = OptionParser.parse(argv, strict: [root: :string, dry_run: :boolean])
-
-    root =
-      case {opts[:root], rest, invalid} do
-        {root, [], []} when is_binary(root) -> root
-        _ -> Mix.raise("usage: mix bubble.concurrent_index_snapshots --root DIR [--dry-run]")
-      end
-
-    dry_run? = Keyword.get(opts, :dry_run, false)
-
-    case IndexSnapshots.fix(root, dry_run: dry_run?) do
-      {:ok, report} -> print(report, dry_run?)
-      {:error, error} -> Mix.raise(Exception.message(error))
+    case Upgrader.cli(argv,
+           usage: "usage: mix bubble.concurrent_index_snapshots --root DIR [--dry-run]",
+           info: fn line -> Mix.shell().info(line) end,
+           error: fn line -> Mix.shell().error(line) end
+         ) do
+      :ok -> :ok
+      {:error, message} -> Mix.raise(message)
     end
-  end
-
-  defp print(report, dry_run?) do
-    verb = if dry_run?, do: "Would record", else: "Recorded"
-
-    for %{path: path, indexes: indexes} <- report.changes,
-        do: Mix.shell().info("#{verb} as concurrent in #{path}: #{Enum.join(indexes, ", ")}")
-
-    for warning <- report.warnings, do: Mix.shell().error("Warning: " <> warning)
-
-    for %{path: path, reason: reason} <- report.skipped,
-        do: Mix.shell().error("Skipped #{path}: #{reason}")
-
-    conclude(report, dry_run?)
-  end
-
-  defp conclude(%{skipped: [_ | _] = skipped} = report, dry_run?) do
-    Mix.raise(
-      "#{length(skipped)} snapshot(s) skipped: fix them as said above before mix " <>
-        "ash.codegen, or it drops and rebuilds their indexes (#{done(report)} " <>
-        if(dry_run?, do: "to record)", else: "recorded)")
-    )
-  end
-
-  defp conclude(%{changes: [], not_concurrent: n}, _dry_run?) when n > 0 do
-    Mix.raise(
-      "The generated resources declare #{n} index(es) without concurrently: true: " <>
-        "regenerate the project with this bubble_ex first, then run this task again " <>
-        "(before mix ash.codegen)."
-    )
-  end
-
-  defp conclude(%{changes: []}, _dry_run?),
-    do: Mix.shell().info("No snapshot records a generated index as not concurrent.")
-
-  defp conclude(report, true),
-    do: Mix.shell().info(done(report) <> "; nothing written (--dry-run).")
-
-  defp conclude(report, false),
-    do: Mix.shell().info(done(report) <> ". Now run mix ash.codegen.")
-
-  defp done(%{changes: changes}) do
-    count = changes |> Enum.map(&length(&1.indexes)) |> Enum.sum()
-    "#{count} index(es) in #{length(changes)} snapshot(s)"
   end
 end

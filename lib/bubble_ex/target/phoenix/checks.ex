@@ -695,8 +695,9 @@ defmodule BubbleEx.Target.Phoenix.Checks do
   # warning, the next `mix ash.codegen` would drop and rebuild them.
   defp snapshots_warning(%{index_snapshots_stale: [_ | _] = paths}) do
     "; warning: #{length(paths)} resource snapshot(s) record generated indexes as not " <>
-      "concurrent, so mix ash.codegen would drop and rebuild them: first run mix " <>
-      "bubble.concurrent_index_snapshots --root <project> from bubble_ex (" <>
+      "concurrent, so mix ash.codegen would drop and rebuild them: first run mix run " <>
+      "--no-start priv/bubble/concurrent_index_snapshots.exs in the project (or mix " <>
+      "bubble.concurrent_index_snapshots --root <project> from bubble_ex) (" <>
       summary(paths) <> ")"
   end
 

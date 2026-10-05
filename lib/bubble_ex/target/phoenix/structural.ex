@@ -866,8 +866,10 @@ defmodule BubbleEx.Target.Phoenix.Structural do
 
   defp stale(paths) do
     "; #{length(paths)} resource snapshot(s) record generated indexes as not concurrent " <>
-      "(#{Enum.join(paths, ", ")}): run mix bubble.concurrent_index_snapshots --root <project> " <>
-      "from bubble_ex before mix ash.codegen, or it drops and rebuilds them"
+      "(#{Enum.join(paths, ", ")}): run mix run --no-start " <>
+      "priv/bubble/concurrent_index_snapshots.exs in the project (or mix " <>
+      "bubble.concurrent_index_snapshots --root <project> from bubble_ex) before mix " <>
+      "ash.codegen, or it drops and rebuilds them"
   end
 
   # --- owner-repository commands ----------------------------------------------------------
