@@ -25,8 +25,9 @@ throwaway PostgreSQL; see `mix help wtf.task` there).
 They are derived from the Bubble app (the Ash resources, enums and types,
 the token resource, `Accounts.Resources`, the workflow API entry point, the
 file serving (`<%= @web %>.Uploads`, its controller and test), the
-Tailwind theme tokens in `assets/css/bubble.css` and the name map
-`.wtf/names.json`). Regeneration overwrites them, so do not edit them
+Tailwind theme tokens in `assets/css/bubble.css`, the name map
+`.wtf/names.json` and the snapshot upgrader
+`priv/bubble/concurrent_index_snapshots.exs`). Regeneration overwrites them, so do not edit them
 by hand: a hand edit is detected and blocks regeneration. Change the
 Bubble app or record an owner decision instead.
 
@@ -46,6 +47,26 @@ its writes. Keep anything else out of that migration: it runs outside a
 transaction. If a concurrent build fails (a deadlock, a cancelled
 migration), PostgreSQL leaves an `INVALID` index behind: run `DROP INDEX
 CONCURRENTLY <name>;` and migrate again.
+
+If this project's migrations were generated before its indexes were
+declared `concurrently: true`, its resource snapshots still record them as
+not concurrent. Once, after regenerating and before `mix ash.codegen`,
+run from the project root (no bubble_ex needed):
+
+    mix run --no-start priv/bubble/concurrent_index_snapshots.exs --dry-run
+    mix run --no-start priv/bubble/concurrent_index_snapshots.exs
+
+It sets `"concurrently": true` on those indexes in each table's latest
+snapshot (only the generated ones, never a unique index or one of your
+own), so `mix ash.codegen` sees no change for them. Running it again
+changes nothing. It exits non-zero when it skips a snapshot it cannot
+rewrite safely (fix that one by hand, as it says) or when the resources
+were not regenerated yet. If you skip it, the next `mix ash.codegen`
+writes a migration that drops every such index and builds it again: no
+data is lost, but searches on a large table are slow while its index is
+rebuilt. Before `mix ash.migrate`, you can still undo it: delete that
+migration and the snapshots it added, run the script, then `mix
+ash.codegen` again.
 
 ## Data model
 

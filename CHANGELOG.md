@@ -51,6 +51,23 @@ All notable changes to this project are documented here.
   signed out: 0 LiveView crashes and 0 page data failures (were 26 and 16
   sources); generator counts unchanged.
 
+- **Owners without bubble_ex can upgrade their index snapshots**
+  (WTF-499). A project downloaded as a ZIP has no bubble_ex dependency,
+  so `mix bubble.concurrent_index_snapshots` was out of reach and the
+  next `mix ash.codegen` dropped and rebuilt every index hint. Every
+  generated project now ships the upgrader as a generated file,
+  `priv/bubble/concurrent_index_snapshots.exs`: `mix run --no-start
+  priv/bubble/concurrent_index_snapshots.exs [--dry-run]` from the
+  project root. Its code is
+  `BubbleEx.Target.Phoenix.IndexSnapshots.Upgrader`'s source byte for
+  byte (Elixir and Jason only), the same code the task runs, so the two
+  cannot drift; same rules, atomic writes, skips and exit status. The
+  README's "Regenerating and migrations" names the command and what
+  skipping it costs; the stale-snapshot warnings name it too.
+  `scripts/phoenix_compile_check/index_snapshots.sh` runs the script in
+  the rendered project (old snapshots, then no changes from `mix
+  ash.codegen`), then the task, then a skipped snapshot failing the script.
+
 - **"Go to page" to an unknown page no longer goes to the current page**
   (WTF-429). Lowering took any target with whitespace for "Current
   page", so a page ID with a space or newline (hostile, or not a Bubble

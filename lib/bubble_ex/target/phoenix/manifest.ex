@@ -233,7 +233,8 @@ defmodule BubbleEx.Target.Phoenix.Manifest do
   that record a generated index hint as not concurrent (migrations
   generated before WTF-418), including those the task must skip: the
   next `mix ash.codegen` would drop and rebuild those indexes. A warning, not a hand edit: run `mix
-  bubble.concurrent_index_snapshots --root <project>` first
+  run --no-start priv/bubble/concurrent_index_snapshots.exs` in the project
+  (or `mix bubble.concurrent_index_snapshots --root <project>`) first
   (`BubbleEx.Target.Phoenix.IndexSnapshots`).
 
   `unrouted` lists the Bubble pages (by Bubble ID) that have no route:
