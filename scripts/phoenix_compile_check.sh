@@ -9,7 +9,8 @@
 #   * mix ash.codegen initial, then mix ash.codegen --check: the generated
 #     resources give migrations and nothing is left pending; for
 #     decided_cut3, scripts/phoenix_compile_check/index_snapshots.sh: a
-#     pre-WTF-418 project's snapshots upgraded by mix
+#     pre-WTF-418 project's snapshots upgraded by the project's
+#     priv/bubble/concurrent_index_snapshots.exs (WTF-499) and by mix
 #     bubble.concurrent_index_snapshots give no migration
 #   * with PHOENIX_COMPILE_CHECK_DB set (a PostgreSQL URL without a
 #     database, with an explicit port that is not 5432 unless
@@ -101,7 +102,8 @@ for fixture in $fixtures; do
   mix ash.codegen --check
 
   # Upgrading a pre-WTF-418 project's snapshots to the concurrent index
-  # hints (mix bubble.concurrent_index_snapshots): no migration.
+  # hints (the project's priv/bubble/concurrent_index_snapshots.exs and mix
+  # bubble.concurrent_index_snapshots): no migration.
   if [[ "$fixture" == decided_cut3 ]]; then
     "$root/scripts/phoenix_compile_check/index_snapshots.sh" "$scratch"
   fi

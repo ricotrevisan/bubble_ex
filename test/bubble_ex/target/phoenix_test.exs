@@ -27,6 +27,7 @@ defmodule BubbleEx.Target.PhoenixTest do
     "lib/acme_import_web/controllers/workflow_api_controller.ex",
     "lib/acme_import_web/uploads.ex",
     "lib/acme_import_web/uploads_host_guard.ex",
+    "priv/bubble/concurrent_index_snapshots.exs",
     "test/acme_import_web/uploads_test.exs"
   ]
 
@@ -94,8 +95,13 @@ defmodule BubbleEx.Target.PhoenixTest do
       assert files == render!(project)
       assert Enum.all?(files, fn {path, content} -> is_binary(path) and is_binary(content) end)
 
-      # No migrations or snapshots of the resources: mix ash.codegen makes them.
-      refute Enum.any?(Map.keys(files), &String.contains?(&1, "snapshot"))
+      # No migrations or snapshots of the resources: mix ash.codegen makes
+      # them. (The snapshot upgrader, WTF-499, is a script, not a snapshot.)
+      refute Enum.any?(
+               Map.keys(files),
+               &(String.contains?(&1, "snapshot") and
+                   &1 != "priv/bubble/concurrent_index_snapshots.exs")
+             )
     end
 
     test "fresh output is formatter-clean and the manifest hashes the formatted bytes" do
