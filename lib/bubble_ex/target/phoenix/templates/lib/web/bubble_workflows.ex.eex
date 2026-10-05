@@ -57,7 +57,8 @@ defmodule <%= @web %>.BubbleWorkflows do
   the log. Steps run in Bubble order; a step's "Only when"
   skips it; a failing step ends the workflow (steps before it keep their
   effects, as in Bubble). Custom states, input values, element steps and
-  navigation apply to the page when the event's workflows end.
+  navigation apply to the page when the event's workflows end; the first
+  navigation of an event wins (in Bubble the page is gone once one runs).
   "Terminate this workflow" ends it; a custom event's return values are
   its caller's step result.
 
@@ -1014,8 +1015,25 @@ defmodule <%= @web %>.BubbleWorkflows do
         do: socket,
         else: push_event(socket, "bubble:exec", %{ops: Enum.reverse(ctx.js)})
 
-    case ctx.navigate do
-      nil -> socket
+    apply_navigation(socket, ctx.navigate)
+  end
+
+  # The first navigation of an event wins (WTF-500): in Bubble the page is
+  # gone once a "Go to page" runs, so another workflow of the same event
+  # (two page-load workflows, each with a "Go to page") does not navigate
+  # again. LiveView raises on a second redirect of one socket.
+  defp apply_navigation(socket, nil), do: socket
+
+  defp apply_navigation(%{redirected: redirected} = socket, to) when not is_nil(redirected) do
+    Logger.debug(
+      "bubble: a later navigation of the same event is ignored: #{inspect(to)} (first: #{inspect(redirected)})"
+    )
+
+    socket
+  end
+
+  defp apply_navigation(socket, to) do
+    case to do
       {:patch, to, replace?} -> push_patch(socket, to: to, replace: replace?)
       {:navigate, to, replace?} -> push_navigate(socket, to: to, replace: replace?)
       {:redirect, to} -> redirect(socket, to: to)

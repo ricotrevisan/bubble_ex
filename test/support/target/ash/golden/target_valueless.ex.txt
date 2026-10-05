@@ -9,8 +9,12 @@
 defmodule MyApp.Enums.Tier do
   use Ash.Type.Enum, values: []
 
-  @doc "The attribute values of `value`. This option set has no values, so it always raises."
-  def attributes(value), do: raise(KeyError, key: value, term: %{})
+  @doc "The label of `value`; nil for anything that is not one of the values."
+  @impl Ash.Type.Enum
+  def label(value), do: if(value in values(), do: super(value))
+
+  @doc "The attribute values of `value`. This option set has no values, so every one is empty (nil)."
+  def attributes(_value), do: %{badge: nil, limit: nil}
 end
 
 defmodule MyApp.Privacy.KeyedRead do

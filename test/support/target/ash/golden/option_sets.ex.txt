@@ -8,13 +8,21 @@
 
 defmodule MyApp.Enums.Channel do
   use Ash.Type.Enum, values: [{"email", [label: "Email"]}, {"sms", [label: "SMS"]}]
+
+  @doc "The label of `value`; nil for anything that is not one of the values."
+  @impl Ash.Type.Enum
+  def label(value), do: if(value in values(), do: super(value))
 end
 
 defmodule MyApp.Enums.Orphan do
   use Ash.Type.Enum, values: []
 
-  @doc "The attribute values of `value`. This option set has no values, so it always raises."
-  def attributes(value), do: raise(KeyError, key: value, term: %{})
+  @doc "The label of `value`; nil for anything that is not one of the values."
+  @impl Ash.Type.Enum
+  def label(value), do: if(value in values(), do: super(value))
+
+  @doc "The attribute values of `value`. This option set has no values, so every one is empty (nil)."
+  def attributes(_value), do: %{parent: nil}
 end
 
 defmodule MyApp.Enums.Priority do
@@ -27,6 +35,10 @@ defmodule MyApp.Enums.Priority do
       {"bAf", [label: "Unkeyed"]},
       {"stale", [label: "Stale"]}
     ]
+
+  @doc "The label of `value`; nil for anything that is not one of the values."
+  @impl Ash.Type.Enum
+  def label(value), do: if(value in values(), do: super(value))
 
   @attributes %{
     "critical" => %{
@@ -72,8 +84,20 @@ defmodule MyApp.Enums.Priority do
     }
   }
 
-  @doc "The attribute values of `value`."
-  def attributes(value), do: Map.fetch!(@attributes, value)
+  @doc """
+  The attribute values of `value`. For anything that is not one of the
+  values (an empty option), every one is empty (nil), as in Bubble.
+  """
+  def attributes(value),
+    do:
+      Map.get(@attributes, value, %{
+        channels: nil,
+        color: nil,
+        escalates_to: nil,
+        icon: nil,
+        urgent: nil,
+        weight: nil
+      })
 end
 
 defmodule MyApp.Privacy.KeyedRead do

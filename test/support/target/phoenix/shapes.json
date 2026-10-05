@@ -1,0 +1,522 @@
+{
+ "_comment": "WTF-500: data shapes a generated page must never crash on. All data invented.",
+ "_id": "phoenix-shapes",
+ "option_sets": {
+  "kind": {
+   "_comment": "Bubble's editor stores an option-set list attribute as an object keyed by position",
+   "attributes": {
+    "statuses": {
+     "%d": "Statuses",
+     "%v": "list.option.status"
+    }
+   },
+   "display": "Kind",
+   "values": {
+    "kA": {
+     "db_value": "action",
+     "display": "Action",
+     "sort_factor": 1,
+     "statuses": {
+      "0": "active",
+      "1": "resolved",
+      "2": "cancelled"
+     }
+    },
+    "kG": {
+     "db_value": "goal",
+     "display": "Goal",
+     "sort_factor": 2,
+     "statuses": {
+      "0": "resolved"
+     }
+    }
+   }
+  },
+  "status": {
+   "display": "Status",
+   "values": {
+    "sA": {
+     "db_value": "active",
+     "display": "Active",
+     "sort_factor": 1
+    },
+    "sC": {
+     "db_value": "cancelled",
+     "display": "Cancelled",
+     "sort_factor": 3
+    },
+    "sR": {
+     "db_value": "resolved",
+     "display": "Resolved",
+     "sort_factor": 2
+    }
+   }
+  },
+  "tool": {
+   "display": "Tool",
+   "values": {
+    "tL": {
+     "db_value": "linear",
+     "display": "Linear",
+     "sort_factor": 1
+    },
+    "tS": {
+     "db_value": "slack",
+     "display": "Slack",
+     "sort_factor": 2
+    }
+   }
+  }
+ },
+ "pages": {
+  "accounts": {
+   "_comment": "A field of a list of things, alone on its page",
+   "elements": {
+    "bAccounts": {
+     "_comment": "Search for Roles:each item's Account:sorted by Name (get_in/2 on the list raised)",
+     "elements": {
+      "bAccountT": {
+       "id": "bAccountT",
+       "properties": {
+        "height": 40,
+        "order": 1,
+        "text": {
+         "entries": {
+          "0": "A: ",
+          "1": {
+           "next": {
+            "name": "name_text",
+            "type": "Message"
+           },
+           "type": "CurrentDataItem"
+          }
+         },
+         "type": "TextExpression"
+        },
+        "width": 300
+       },
+       "type": "Text"
+      }
+     },
+     "id": "bAccounts",
+     "properties": {
+      "columns": 1,
+      "data_source": {
+       "next": {
+        "name": "account_user",
+        "next": {
+         "name": "sorted",
+         "properties": {
+          "descending": false,
+          "sort_field": "name_text"
+         },
+         "type": "Message"
+        },
+        "type": "Message"
+       },
+       "properties": {
+        "type_to_find": "custom.role"
+       },
+       "type": "Search"
+      },
+      "group_type": "user",
+      "height": 40,
+      "order": 1,
+      "rows": 5,
+      "width": 300
+     },
+     "type": "RepeatingGroup"
+    }
+   },
+   "id": "bAccountsPage",
+   "name": "accounts",
+   "properties": {
+    "title": "Accounts"
+   },
+   "type": "Page"
+  },
+  "coach": {
+   "elements": {
+    "bCoachT": {
+     "id": "bCoachT",
+     "properties": {
+      "height": 40,
+      "order": 1,
+      "text": {
+       "entries": {
+        "0": "Coach page"
+       },
+       "type": "TextExpression"
+      },
+      "width": 300
+     },
+     "type": "Text"
+    }
+   },
+   "id": "bCoach",
+   "name": "coach",
+   "properties": {
+    "title": "Coach"
+   },
+   "type": "Page",
+   "workflows": {
+    "wGuard": {
+     "_comment": "Current User's Coach?:formatted as JSON-safe is not \"true\": go home (a boolean compared with text redirected coaches too)",
+     "actions": {
+      "0": {
+       "id": "aGuard1",
+       "properties": {
+        "element_id": "bShapes"
+       },
+       "type": "ChangePage"
+      }
+     },
+     "id": "wGuard",
+     "properties": {
+      "condition": {
+       "next": {
+        "name": "coach_boolean",
+        "next": {
+         "name": "format_json_encode",
+         "next": {
+          "args": {
+           "entries": {
+            "0": "true"
+           },
+           "type": "TextExpression"
+          },
+          "name": "not_equals",
+          "type": "Message"
+         },
+         "type": "Message"
+        },
+        "type": "Message"
+       },
+       "type": "CurrentUser"
+      }
+     },
+     "type": "PageLoaded"
+    },
+    "wOut": {
+     "_comment": "Logged out: go home. With wGuard, two navigations of one event",
+     "actions": {
+      "0": {
+       "id": "aOut1",
+       "properties": {
+        "element_id": "bShapes"
+       },
+       "type": "ChangePage"
+      }
+     },
+     "id": "wOut",
+     "properties": {
+      "condition": {
+       "next": {
+        "name": "not_logged_in",
+        "type": "Message"
+       },
+       "type": "CurrentUser"
+      }
+     },
+     "type": "PageLoaded"
+    },
+    "wTab": {
+     "_comment": "A coach without a tab: this page with ?v=actions (a second navigation of the same event raised)",
+     "actions": {
+      "0": {
+       "id": "aTab1",
+       "properties": {
+        "element_id": "Current page",
+        "url_parameters": {
+         "0": {
+          "key": "v",
+          "value": {
+           "entries": {
+            "0": "actions"
+           },
+           "type": "TextExpression"
+          }
+         }
+        }
+       },
+       "type": "ChangePage"
+      }
+     },
+     "id": "wTab",
+     "properties": {
+      "condition": {
+       "next": {
+        "name": "coach_boolean",
+        "next": {
+         "name": "is_true",
+         "next": {
+          "args": {
+           "next": {
+            "name": "is_empty",
+            "type": "Message"
+           },
+           "properties": {
+            "parameter_name": "v"
+           },
+           "type": "GetParamFromUrl"
+          },
+          "name": "and_",
+          "type": "Message"
+         },
+         "type": "Message"
+        },
+        "type": "Message"
+       },
+       "type": "CurrentUser"
+      }
+     },
+     "type": "PageLoaded"
+    }
+   }
+  },
+  "index": {
+   "elements": {
+    "bKindCount": {
+     "_comment": "Action's Statuses:count is 3 (length/1 on the position-keyed object raised)",
+     "elements": {
+      "bKindCountT": {
+       "id": "bKindCountT",
+       "properties": {
+        "height": 40,
+        "order": 1,
+        "text": {
+         "entries": {
+          "0": "Three statuses"
+         },
+         "type": "TextExpression"
+        },
+        "width": 300
+       },
+       "type": "Text"
+      }
+     },
+     "id": "bKindCount",
+     "properties": {
+      "height": 40,
+      "is_visible": false,
+      "order": 1,
+      "width": 300
+     },
+     "states": {
+      "0": {
+       "condition": {
+        "next": {
+         "name": "statuses",
+         "next": {
+          "name": "count",
+          "next": {
+           "args": 3,
+           "name": "equals",
+           "type": "Message"
+          },
+          "type": "Message"
+         },
+         "type": "Message"
+        },
+        "properties": {
+         "option_set": "option.kind",
+         "option_value": "kA"
+        },
+        "type": "OneOptionValue"
+       },
+       "properties": {
+        "is_visible": true
+       },
+       "type": "State"
+      }
+     },
+     "type": "Group"
+    },
+    "bLabels": {
+     "_comment": "Goal's Statuses:each item's Display (label/1 of the object raised)",
+     "elements": {
+      "bLabelT": {
+       "id": "bLabelT",
+       "properties": {
+        "height": 40,
+        "order": 1,
+        "text": {
+         "entries": {
+          "0": "L: ",
+          "1": {
+           "type": "CurrentDataItem"
+          }
+         },
+         "type": "TextExpression"
+        },
+        "width": 300
+       },
+       "type": "Text"
+      }
+     },
+     "id": "bLabels",
+     "properties": {
+      "columns": 1,
+      "data_source": {
+       "next": {
+        "name": "statuses",
+        "next": {
+         "name": "display",
+         "type": "Message"
+        },
+        "type": "Message"
+       },
+       "properties": {
+        "option_set": "option.kind",
+        "option_value": "kA"
+       },
+       "type": "OneOptionValue"
+      },
+      "group_type": "text",
+      "height": 40,
+      "order": 2,
+      "rows": 5,
+      "width": 300
+     },
+     "type": "RepeatingGroup"
+    }
+   },
+   "id": "bShapes",
+   "name": "index",
+   "properties": {
+    "title": "Shapes"
+   },
+   "type": "Page"
+  },
+  "tools": {
+   "_comment": "A hidden list field, alone on its page",
+   "elements": {
+    "bRole": {
+     "_comment": "Current User's Current role; its Integrations:count (hidden: ForbiddenField)",
+     "elements": {
+      "bToolCount": {
+       "id": "bToolCount",
+       "properties": {
+        "height": 40,
+        "order": 1,
+        "text": {
+         "entries": {
+          "0": "Tools: ",
+          "1": {
+           "next": {
+            "name": "integrations_list_option_tool",
+            "next": {
+             "name": "count",
+             "type": "Message"
+            },
+            "type": "Message"
+           },
+           "type": "ElementParent"
+          }
+         },
+         "type": "TextExpression"
+        },
+        "width": 300
+       },
+       "type": "Text"
+      }
+     },
+     "id": "bRole",
+     "properties": {
+      "data_source": {
+       "next": {
+        "name": "current_role_custom_role",
+        "type": "Message"
+       },
+       "type": "CurrentUser"
+      },
+      "group_type": "custom.role",
+      "height": 40,
+      "order": 1,
+      "width": 300
+     },
+     "type": "Group"
+    }
+   },
+   "id": "bTools",
+   "name": "tools",
+   "properties": {
+    "title": "Tools"
+   },
+   "type": "Page"
+  }
+ },
+ "user_types": {
+  "role": {
+   "_comment": "Integrations is a field no one may view: with privacy enforced it reads as %Ash.ForbiddenField{}",
+   "display": "Role",
+   "fields": {
+    "account_user": {
+     "display": "Account",
+     "value": "user"
+    },
+    "integrations_list_option_tool": {
+     "display": "Integrations",
+     "value": "list.option.tool"
+    },
+    "name_text": {
+     "display": "Name",
+     "value": "text"
+    }
+   },
+   "privacy_role": {
+    "everyone": {
+     "display": "everyone",
+     "permissions": {
+      "auto_binding": false,
+      "search_for": true,
+      "view_all": false,
+      "view_attachments": false,
+      "view_fields": [
+       "name_text",
+       "account_user"
+      ]
+     }
+    }
+   }
+  },
+  "user": {
+   "display": "User",
+   "fields": {
+    "coach_boolean": {
+     "display": "Coach?",
+     "value": "boolean"
+    },
+    "current_role_custom_role": {
+     "display": "Current role",
+     "value": "custom.role"
+    },
+    "email": {
+     "display": "email",
+     "value": "text"
+    },
+    "name_text": {
+     "display": "Name",
+     "value": "text"
+    }
+   },
+   "privacy_role": {
+    "everyone": {
+     "display": "everyone",
+     "permissions": {
+      "auto_binding": false,
+      "search_for": true,
+      "view_all": false,
+      "view_attachments": false,
+      "view_fields": [
+       "email",
+       "name_text",
+       "coach_boolean",
+       "current_role_custom_role"
+      ]
+     }
+    }
+   }
+  }
+ }
+}

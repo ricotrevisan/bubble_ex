@@ -9,10 +9,17 @@
 defmodule MyApp.Enums.Status do
   use Ash.Type.Enum, values: [{"open", [label: "Open"]}, {"closed", [label: "Closed"]}]
 
+  @doc "The label of `value`; nil for anything that is not one of the values."
+  @impl Ash.Type.Enum
+  def label(value), do: if(value in values(), do: super(value))
+
   @attributes %{"open" => %{color: "#00aa00"}, "closed" => %{color: "#aa0000"}}
 
-  @doc "The attribute values of `value`."
-  def attributes(value), do: Map.fetch!(@attributes, value)
+  @doc """
+  The attribute values of `value`. For anything that is not one of the
+  values (an empty option), every one is empty (nil), as in Bubble.
+  """
+  def attributes(value), do: Map.get(@attributes, value, %{color: nil})
 end
 
 defmodule MyApp.Types.DateRange do

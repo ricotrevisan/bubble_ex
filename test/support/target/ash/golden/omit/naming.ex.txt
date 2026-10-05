@@ -8,6 +8,10 @@
 
 defmodule MyApp.Enums.Levels do
   use Ash.Type.Enum, values: [{"id", [label: "id"]}, {"type", [label: "type"]}]
+
+  @doc "The label of `value`; nil for anything that is not one of the values."
+  @impl Ash.Type.Enum
+  def label(value), do: if(value in values(), do: super(value))
 end
 
 defmodule MyApp.ThingJoin do

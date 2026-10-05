@@ -252,15 +252,86 @@ defmodule BubbleEx.Target.AshTest do
              ] = values
     end
 
-    test "an option set with attributes but no values raises without an empty-map lookup" do
+    test "an option set with attributes but no values has empty attributes, no lookup table" do
       # WTF-394: Map.fetch!/2 on %{} is a type warning on Elixir 1.20.
+      # WTF-500: an unknown option's attributes are empty, never a raise.
       project = project!(fixture("target_valueless"))
 
       assert [%{module: "Enums.Tier", values: [], attributes: [_, _]}] = project.enums
 
       {:ok, source} = Source.render(project)
-      assert source =~ "def attributes(value), do: raise(KeyError, key: value, term: %{})"
+      assert source =~ ~r/def attributes\(_value\), do: %\{[a-z_]+: nil, [a-z_]+: nil\}/
       refute source =~ "@attributes %{}"
+      refute source =~ "KeyError"
+    end
+
+    # WTF-500: Bubble's editor stores an option-set list attribute as an
+    # object keyed by position; the page code reads it as a list (`length/1`,
+    # `Enum`), so the enum holds a list in Bubble's order.
+    test "a list attribute is a list in Bubble's order, whatever the app stores" do
+      app = %{
+        "option_sets" => %{
+          "status" => %{
+            "display" => "Status",
+            "values" => %{
+              "a" => %{"display" => "Active", "db_value" => "active", "sort_factor" => 1},
+              "r" => %{"display" => "Resolved", "db_value" => "resolved", "sort_factor" => 2}
+            }
+          },
+          "kind" => %{
+            "display" => "Kind",
+            "attributes" => %{
+              "statuses" => %{"%d" => "Statuses", "%v" => "list.option.status"},
+              "tags" => %{"%d" => "Tags", "%v" => "list.text"},
+              "icon" => %{"%d" => "Icon", "%v" => "text"}
+            },
+            "values" => %{
+              "k1" => %{
+                "display" => "Action",
+                "db_value" => "action",
+                "sort_factor" => 1,
+                "statuses" => %{"1" => "resolved", "0" => "active", "10" => "active"},
+                "tags" => ["x", "y"],
+                "icon" => %{"0" => "kept as supplied"}
+              },
+              "k2" => %{
+                "display" => "Goal",
+                "db_value" => "goal",
+                "sort_factor" => 2,
+                "statuses" => "active",
+                "tags" => %{}
+              },
+              "k3" => %{"display" => "Topic", "db_value" => "topic", "sort_factor" => 3}
+            }
+          }
+        }
+      }
+
+      project = project!(app)
+      kind = Enum.find(project.enums, &(&1.source.option_set == "kind"))
+
+      assert [
+               %{value: "action", attributes: action},
+               %{value: "goal", attributes: goal},
+               %{value: "topic", attributes: topic}
+             ] = kind.values
+
+      # Positions sort as numbers: "10" after "1".
+      assert action == %{
+               "statuses" => ["active", "resolved", "active"],
+               "tags" => ["x", "y"],
+               "icon" => %{"0" => "kept as supplied"}
+             }
+
+      assert goal == %{"statuses" => ["active"], "tags" => [], "icon" => nil}
+      assert topic == %{"statuses" => nil, "tags" => nil, "icon" => nil}
+
+      {:ok, source} = Source.render(project)
+      assert source =~ ~s(statuses: ["active", "resolved", "active"])
+      refute source =~ ~s("0" => "active")
+      # Lookups never raise on a value that is not one of the set's.
+      assert source =~ "def attributes(value), do: Map.get(@attributes, value, %{"
+      assert source =~ "def label(value), do: if(value in values(), do: super(value))"
     end
 
     test "structured values are typed structs from the Model's parts; bounds stay unverified",

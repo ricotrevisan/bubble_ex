@@ -27,9 +27,12 @@ defmodule <%= @module %>.Bubble.Runtime do
   stay ISO 8601 (what Bubble sends there is a replay question, WTF-358).
   Pages show values with `display/1`.
   """
-  def text(nil), do: ""<%= if @enforced? do %>
-  # A field the privacy rules hide from the user reads as empty, as in Bubble.
-  def text(%Ash.ForbiddenField{}), do: ""<% end %>
+  def text(nil), do: ""
+  # A field the privacy rules hide from the user (`%Ash.ForbiddenField{}`)
+  # reads as empty, as in Bubble (WTF-500: with or without generated
+  # policies, so policies added to the app later read the same; matched by
+  # its struct name, so this module compiles on its own).
+  def text(%{__struct__: Ash.ForbiddenField}), do: ""
   def text(true), do: "yes"
   def text(false), do: "no"
   def text(x) when is_float(x), do: js_number(x)
@@ -74,8 +77,8 @@ defmodule <%= @module %>.Bubble.Runtime do
   end
 
   @doc "`is empty`."
-<%= if @enforced? do %>  def empty?(%Ash.ForbiddenField{}), do: true
-<% end %>  def empty?(x), do: x in [nil, "", []]
+  def empty?(%{__struct__: Ash.ForbiddenField}), do: true
+  def empty?(x), do: x in [nil, "", []]
 
   @doc "`>`, `<`, `>=`, `<=`: false when either side is empty."
   def compare(op, a, b) do
@@ -196,6 +199,16 @@ defmodule <%= @module %>.Bubble.Runtime do
 
   # TODO(bubble:runtime) Bubble's JSON-safe text (quotes escaped, no outer quotes).
   def json_encode(x) when is_binary(x), do: x |> Jason.encode!() |> String.slice(1..-2//1)
+  # JSON-safe is text whatever it formats (WTF-500): a yes/no is `"true"` or
+  # `"false"` (never `"yes"`), a number or a date its machine text, so a
+  # comparison with a text such as `Coach? :formatted as JSON-safe is
+  # "true"` holds as in Bubble. An empty value stays empty.
+  def json_encode(x) when is_boolean(x), do: Atom.to_string(x)
+  def json_encode(x) when is_number(x), do: text(x)
+
+  def json_encode(%struct{} = x) when struct in [Decimal, Date, DateTime, NaiveDateTime],
+    do: text(x)
+  def json_encode(%{__struct__: Ash.ForbiddenField}), do: nil
   def json_encode(x), do: x
 
   def url_encode(x) when is_binary(x), do: URI.encode_www_form(x)

@@ -58,13 +58,21 @@ defmodule BubbleEx.Target.Elixir do
   which compares things by Bubble ID, records and IDs alike; `:filtered`
   over options, texts, numbers or dates is `Enum.filter/2` with the
   constraints per item (`item`). An option's label or attribute of a list
-  of options maps over it.
+  of options maps over it (a list attribute of each is one list of their
+  items).
+
+  Data shapes never raise (WTF-500): every list read (`count`, `:first
+  item`, `contains`, `:filtered`, a list of options or files) goes through
+  the runtime's `as_list/1`, so an empty value or a field the user may not
+  view (`%Ash.ForbiddenField{}`, `empty?/1`) is an empty list, and the
+  current user's operands are checked with `empty?/1`; a field of a list of
+  things (a search read first) is each item's, one list of their values.
 
   Not compiled yet (diagnosed with `:elixir_expr_unsupported`, stage
   `{:target, :elixir}`): searches, and `:filtered` or sorting of a list of
   things (these become Ash queries, `FrontendWorkflows.Lists`), other
-  sorting, API type fields, fields of list items (a list of things is a
-  list of IDs).
+  sorting, API type fields, fields of the items of a list-of-things field
+  (stored as a list of IDs).
 
   A format the runtime only approximates (an unknown number setting, a
   date pattern token or unit it does not implement, see
@@ -72,7 +80,8 @@ defmodule BubbleEx.Target.Elixir do
   `:elixir_format_approximated` warning naming the parts.
 
   An option is its stored key; its label is the generated enum's
-  `label/1` and an attribute its `attributes/1` entry.
+  `label/1` and an attribute its `attributes/1` entry. Both are total: an
+  empty or unknown option's are empty.
 
   With `:file_url` (a function name such as `"MyAppWeb.Uploads.url"`), a
   shown file or image value (the expression's result, or a part of a
@@ -249,8 +258,7 @@ defmodule BubbleEx.Target.Elixir do
 
       enum ->
         {part, st} = value(x, st)
-        fun = "&(&1 && #{st.namespace}.#{enum.module}.label(&1))"
-        {ok(part, &each(&1, fun, x)), st}
+        each(part, &"#{st.namespace}.#{enum.module}.label(#{&1})", x, false, st)
     end
   end
 
@@ -264,10 +272,11 @@ defmodule BubbleEx.Target.Elixir do
           nil ->
             unsupported(st, {"an unmapped option attribute", "#{set}.#{attr}"})
 
-          %{name: name} ->
+          %{name: name, bubble_type: bubble_type} ->
             {part, st} = value(x, st)
-            fun = "&(&1 && #{st.namespace}.#{enum.module}.attributes(&1).#{name})"
-            {ok(part, &each(&1, fun, x)), st}
+            call = &"#{st.namespace}.#{enum.module}.attributes(#{&1}).#{name}"
+            list? = match?(%Type{cardinality: :many}, classify(bubble_type))
+            each(part, call, x, list?, st)
         end
     end
   end
@@ -302,13 +311,15 @@ defmodule BubbleEx.Target.Elixir do
 
   defp value(%IR{op: :count, args: [list]}, st) do
     {l, st} = value(list, st)
-    {ok(l, &"length(#{&1} || [])"), st}
+    {l, st} = as_list(l, st)
+    {ok(l, &"length(#{&1})"), st}
   end
 
   defp value(%IR{op: op, args: [list]}, st) when op in [:first, :last] do
     fun = if op == :first, do: "List.first", else: "List.last"
     {l, st} = value(list, st)
-    {ok(l, &"#{fun}(#{&1} || [])"), st}
+    {l, st} = as_list(l, st)
+    {ok(l, &"#{fun}(#{&1})"), st}
   end
 
   # List algebra (WTF-495): items are compared by Bubble ID when they are
@@ -492,7 +503,7 @@ defmodule BubbleEx.Target.Elixir do
 
   defp atom(ir, st, positive) do
     case atom_(ir, st) do
-      {{pos, neg, operands}, st} -> {guard(if(positive, do: pos, else: neg), operands), st}
+      {{pos, neg, operands}, st} -> guard(if(positive, do: pos, else: neg), operands, st)
       {:error, st} -> {:error, st}
     end
   end
@@ -538,8 +549,9 @@ defmodule BubbleEx.Target.Elixir do
   defp atom_(%IR{op: :member, args: [list, item]}, st) do
     if member_list?(list) do
       {[l, i], st} = Enum.map_reduce([list, item], st, &id_value/2)
-      member = "Enum.member?(#{l} || [], #{i})"
-      {all_ok({member, "not #{member}", [{list, l}, {item, i}]}, [l, i]), st}
+      {items, st} = as_list(l, st)
+      member = "Enum.member?(#{items}, #{i})"
+      {all_ok({member, "not #{member}", [{list, l}, {item, i}]}, [items, i]), st}
     else
       unsupported(st, {"contains on a list of records", nil})
     end
@@ -564,16 +576,17 @@ defmodule BubbleEx.Target.Elixir do
   defp reads_actor?(list) when is_list(list), do: Enum.any?(list, &reads_actor?/1)
   defp reads_actor?(_), do: false
 
-  # Each item of `l` (`item`) that meets `pred`.
-  # `List.wrap/1`, not `|| []`: a set's options are never nil, and Elixir
-  # 1.20's type checker rejects the dead branch.
-  defp item_filter(l, nil, st), do: {ok(l, &"List.wrap(#{&1})"), st}
+  # Each item of `l` (`item`) that meets `pred`, `l` read as a list (the
+  # runtime's `as_list/1`, never `|| []`: Elixir 1.20's type checker
+  # rejects the dead branch on a set's options, and a hidden field is not
+  # nil, WTF-500).
+  defp item_filter(l, nil, st), do: as_list(l, st)
 
   defp item_filter(l, pred, st) do
+    {l, st} = as_list(l, st)
     {c, inner} = cond(pred, %{st | item?: true}, true)
 
-    {all_ok("Enum.filter(List.wrap(#{l}), fn item -> #{c} end)", [l, c]),
-     %{inner | item?: st.item?}}
+    {all_ok("Enum.filter(#{l}, fn item -> #{c} end)", [l, c]), %{inner | item?: st.item?}}
   end
 
   # A shown file or image value goes through `:file_url` (WTF-415).
@@ -583,8 +596,10 @@ defmodule BubbleEx.Target.Elixir do
   defp shown_file({part, st}, %IR{type: type}) when type in ["file", "image"],
     do: {"#{st.file_url}(#{part})", st}
 
-  defp shown_file({part, st}, %IR{type: type}) when type in ["list.file", "list.image"],
-    do: {"Enum.map(#{part} || [], &#{st.file_url}/1)", st}
+  defp shown_file({part, st}, %IR{type: type}) when type in ["list.file", "list.image"] do
+    {l, st} = as_list(part, st)
+    {"Enum.map(#{l}, &#{st.file_url}/1)", st}
+  end
 
   defp shown_file(result, _ir), do: result
 
@@ -604,14 +619,24 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   # `source`, required to have every operand read from the current user
-  # non-empty in Bubble's sense: not nil, `""` or `[]` (as the Ash
-  # backend). `operands` are `{ir, source}` pairs.
-  defp guard(:error, _operands), do: :error
+  # non-empty in Bubble's sense (the runtime's `empty?/1`: nil, `""`, `[]`,
+  # or a field the user may not view, WTF-500; as the Ash backend).
+  # `operands` are `{ir, source}` pairs.
+  defp guard(:error, _operands, st), do: {:error, st}
 
-  defp guard(source, operands) do
-    case for({ir, part} <- operands, actor?(ir), uniq: true, do: "#{part} not in [nil, \"\", []]") do
-      [] -> source
-      checks -> "(" <> Enum.join(checks ++ [source], " and ") <> ")"
+  defp guard(source, operands, st) do
+    case for({ir, part} <- operands, actor?(ir), uniq: true, do: part) do
+      [] ->
+        {source, st}
+
+      parts ->
+        {checks, st} =
+          Enum.map_reduce(parts, st, fn part, st ->
+            {empty, st} = runtime(st, :empty?, [part])
+            {"not " <> empty, st}
+          end)
+
+        {"(" <> Enum.join(checks ++ [source], " and ") <> ")", st}
     end
   end
 
@@ -621,13 +646,35 @@ defmodule BubbleEx.Target.Elixir do
   defp actor?(%IR{op: :fallback, args: args}), do: Enum.any?(args, &actor?/1)
   defp actor?(_ir), do: false
 
-  # `fun` applied to a value, or to each item of a list of them (an
-  # option's label or attribute, of all of a set's options).
-  defp each(part, fun, %IR{type: type}) do
-    if match?(%Type{cardinality: :many}, classify(type)),
-      do: "Enum.map(List.wrap(#{part}), #{fun})",
-      else: "then(#{part}, #{fun})"
+  # An option's lookup (`call` builds it from the option's variable)
+  # applied to an option, or to each option of a list of them (an option's
+  # label or attribute, of all of a set's options). The enum's lookups are
+  # total: an empty or unknown option's label and attributes are empty
+  # (WTF-500). A list attribute of each option of a list is one list of all
+  # of their items (`list?`), as Bubble's `each item's`.
+  defp each(:error, _call, _ir, _list?, st), do: {:error, st}
+
+  defp each(part, call, %IR{type: type}, list?, st) do
+    if match?(%Type{cardinality: :many}, classify(type)) do
+      {l, st} = as_list(part, st)
+
+      if list? do
+        {item, st} = as_list(call.("option"), st)
+        {"Enum.flat_map(#{l}, fn option -> #{item} end)", st}
+      else
+        {"Enum.map(#{l}, &#{call.("&1")})", st}
+      end
+    else
+      {"then(#{part}, &#{call.("&1")})", st}
+    end
   end
+
+  # A value read as a list (WTF-500): empty (nil, `""`, a field the user
+  # may not view) is `[]`, a list itself, any other value a list of it.
+  # Never `x || []`: a hidden field (`%Ash.ForbiddenField{}`) or any other
+  # value is truthy, and `Enum` raises on it.
+  defp as_list(:error, st), do: {:error, st}
+  defp as_list(part, st), do: runtime(st, :as_list, [part])
 
   defp record_type?(type), do: match?(%Type{kind: :ref, cardinality: :one}, classify(type))
   defp thing_list?(type), do: match?(%Type{kind: :ref, cardinality: :many}, classify(type))
@@ -701,18 +748,36 @@ defmodule BubbleEx.Target.Elixir do
 
       {:ok, keys, loads, list_id_key} ->
         st = if loads == [], do: st, else: add_load(st, var, loads)
-        path = "get_in(#{var}, [" <> Enum.map_join(keys, ", ", &"Access.key(#{atom(&1)})") <> "])"
+        access = "[" <> Enum.map_join(keys, ", ", &"Access.key(#{atom(&1)})") <> "]"
 
-        source =
-          if list_id_key,
-            do: "Enum.map(#{path} || [], &Map.get(&1, #{atom(list_id_key)}))",
-            else: path
+        # A field of a list of things (a search read first, an input's
+        # list) is each item's (WTF-500), as Bubble's `each item's`: one
+        # list of every item's values, empty ones dropped. `get_in/2` on
+        # the list itself raises.
+        {read, st} =
+          if thing_list?(base.type) do
+            {each, st} = field_value("get_in(thing, #{access})", list_id_key, st)
+            {each, st} = as_list(each, st)
+            {items, st} = as_list(var, st)
+            {"Enum.flat_map(#{items}, fn thing -> #{each} end)", st}
+          else
+            field_value("get_in(#{var}, #{access})", list_id_key, st)
+          end
 
-        {source, st}
+        {read, st}
 
       {:error, what} ->
         unsupported(st, what)
     end
+  end
+
+  # A field's value read by `path`: a list of things stored as their
+  # records is its items' IDs (`list_id_key`).
+  defp field_value(path, nil, st), do: {path, st}
+
+  defp field_value(path, list_id_key, st) do
+    {items, st} = as_list(path, st)
+    {"Enum.map(#{items}, &Map.get(&1, #{atom(list_id_key)}))", st}
   end
 
   # Access keys for a field chain. Relationship steps need loading; the

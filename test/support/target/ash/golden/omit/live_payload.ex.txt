@@ -9,10 +9,17 @@
 defmodule MyApp.Enums.Kind do
   use Ash.Type.Enum, values: [{"wholesale", [label: "Wholesale"]}, {"retail", [label: "Retail"]}]
 
+  @doc "The label of `value`; nil for anything that is not one of the values."
+  @impl Ash.Type.Enum
+  def label(value), do: if(value in values(), do: super(value))
+
   @attributes %{"wholesale" => %{code: 1}, "retail" => %{code: 2}}
 
-  @doc "The attribute values of `value`."
-  def attributes(value), do: Map.fetch!(@attributes, value)
+  @doc """
+  The attribute values of `value`. For anything that is not one of the
+  values (an empty option), every one is empty (nil), as in Bubble.
+  """
+  def attributes(value), do: Map.get(@attributes, value, %{code: nil})
 end
 
 defmodule MyApp.Order do

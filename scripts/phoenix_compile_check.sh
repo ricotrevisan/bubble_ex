@@ -34,7 +34,9 @@
 #     phoenix_reusable_params, reusable element properties
 #     (test/support/target/phoenix/reusable_params_behavior.exs); for
 #     phoenix_list_ops, list operators of page data (WTF-495,
-#     test/support/target/phoenix/list_ops_behavior.exs)
+#     test/support/target/phoenix/list_ops_behavior.exs); for
+#     phoenix_shapes, data shapes a page must never crash on (WTF-500,
+#     test/support/target/phoenix/shapes_behavior.exs)
 #   * the same checks with privacy: :enforced (WTF-423) on the fixtures
 #     with privacy rules, pages and workflows (a second scratch project,
 #     <scratch>_enforced), plus the generated privacy-matrix tests against
@@ -225,6 +227,15 @@ for fixture in $fixtures; do
       rm test/list_ops_behavior_test.exs
     fi
 
+    # Data shapes (WTF-500): option-set lists stored by position, hidden
+    # fields, fields of a list of things, JSON-safe yes/no, two navigations.
+    if [[ "$fixture" == phoenix_shapes ]]; then
+      cp "$root/test/support/target/phoenix/shapes_behavior.exs" \
+        test/shapes_behavior_test.exs
+      mix test test/shapes_behavior_test.exs
+      rm test/shapes_behavior_test.exs
+    fi
+
     # Page data (WTF-420): what the generated pages load, and never load.
     if [[ "$fixture" == phoenix_page_data ]]; then
       cp "$root/test/support/target/phoenix/page_data_behavior.exs" \
@@ -247,7 +258,7 @@ done
 # policies too; and test/support/target/phoenix/enforced_behavior.exs,
 # which must pass here and fail without policies (above).
 enforced_scratch="${scratch}_enforced"
-enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows phoenix_index_thing phoenix_visibility phoenix_reusable_params phoenix_list_ops workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
+enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows phoenix_index_thing phoenix_visibility phoenix_reusable_params phoenix_list_ops phoenix_shapes workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
 mkdir -p "$enforced_scratch"
 first=1
 
@@ -287,6 +298,7 @@ for fixture in $enforced_fixtures; do
       phoenix_visibility) behavior=test/support/target/phoenix/visibility_behavior.exs ;;
       phoenix_reusable_params) behavior=test/support/target/phoenix/reusable_params_behavior.exs ;;
       phoenix_list_ops) behavior=test/support/target/phoenix/list_ops_behavior.exs ;;
+      phoenix_shapes) behavior=test/support/target/phoenix/shapes_behavior.exs ;;
     esac
 
     if [[ -n "$behavior" ]]; then

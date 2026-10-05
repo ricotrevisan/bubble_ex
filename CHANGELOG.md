@@ -6,6 +6,51 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Generated pages no longer crash on a value's shape** (WTF-500). On
+  the private fixture app, signed in, four pages crashed their LiveViews
+  and 16 page data sources failed. Five root causes:
+  - **Option-set list attributes** are stored by Bubble's editor as an
+    object keyed by position (`%{"0" => "active", "1" => "resolved"}`), and
+    the enum's `@attributes` kept it as supplied, so `length/1`, `Enum`
+    and `label/1` raised on it. A list attribute is now a list in
+    Bubble's order (`Target.Ash`); an array is kept and a single value is
+    a list of it. The enum's lookups are total: `attributes/1` of a value
+    that is not one of the set's (empty, stale, any other shape) has
+    every attribute empty, and `label/1` is nil, as an empty option in
+    Bubble (it raised `KeyError` and `FunctionClauseError`).
+  - **A field the user may not view** (`%Ash.ForbiddenField{}`) is truthy,
+    so `x || []` kept it and `Enum` raised. Every list the compiled code
+    reads (`count`, `:first item`, `contains`, `:filtered`, a list of
+    options or files) now goes through the runtime's `as_list/1`, and the
+    current user's operands are checked with `empty?/1` (it was `not in
+    [nil, "", []]`): a hidden field is empty, in either polarity. The
+    runtime treats it as empty with or without generated policies.
+  - **A field of a list of things** (a search read first, then
+    `:each item's` field, as `Search for Roles's Account:sorted`) was
+    `get_in/2` on the list (`BadMapError`). It is now each item's: one
+    list of their values, empty ones dropped.
+  - **`:formatted as JSON-safe`** returned a yes/no or a number unchanged,
+    so `Coach? :formatted as JSON-safe is not "true"` held for every coach
+    (`true != "true"`) and sent them away. It is text, as the compiler
+    types it: `"true"`/`"false"`, a number or date's machine text.
+  - **Two "Go to page" of one event** (two page-load workflows) raised
+    "socket already prepared to redirect": each workflow applies to the
+    page as it ends. The first navigation of an event wins, as in Bubble
+    once the page is gone; later ones are logged at debug level.
+
+  The slice seed (`scripts/vertical_slice/seed.exs`) also keeps each
+  index one coherent world: a reference to another type points at the same
+  index (user 1's role is role 1, whose account is user 1), and only one
+  to its own type at the next record. It pointed every reference at the
+  next record, so the signed-in user's current role belonged to another
+  user. A new fixture, `phoenix_shapes`
+  (`test/support/target/phoenix/shapes.json`, invented data), reproduces
+  each crash in a generated app, with privacy `:omit` and `:enforced`
+  (`shapes_behavior.exs`; 7 of its 8 tests fail before the fix). On the
+  private fixture app (synthetic data, localhost), 29 pages signed in and
+  signed out: 0 LiveView crashes and 0 page data failures (were 26 and 16
+  sources); generator counts unchanged.
+
 - **"Go to page" to an unknown page no longer goes to the current page**
   (WTF-429). Lowering took any target with whitespace for "Current
   page", so a page ID with a space or newline (hostile, or not a Bubble
