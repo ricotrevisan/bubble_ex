@@ -77,6 +77,35 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @doc "`text contains`: Bubble's keyword match."
   @callback text_contains_words?(value(), value()) :: boolean()
 
+  @doc """
+  `:converted to list`: an empty value is `[]`, a list itself, any other
+  value a list of it.
+  """
+  @callback as_list(value()) :: list()
+  @doc """
+  `:unique elements`: the first occurrence of each item, in order. Things
+  (records or Bubble IDs) are the same item when their IDs are; other
+  values when equal.
+  """
+  @callback unique(value()) :: list()
+  @doc "`:merged with`: `a`'s items, then `b`'s not in `a`, without duplicates."
+  @callback merge(value(), value()) :: list()
+  @doc "`:minus list`: `a`'s items not in `b`, without duplicates."
+  @callback minus_list(value(), value()) :: list()
+  @doc """
+  `:intersect with`: `a`'s items also in `b`, in `a`'s order, without
+  duplicates; a thing is `b`'s copy of it (a record over its ID).
+  """
+  @callback intersect(value(), value()) :: list()
+  @doc "`:plus item`: `a` with `x` at the end, unless `x` is empty or already in it."
+  @callback plus_item(value(), value()) :: list()
+  @doc "`:minus item`: `a` without `x`."
+  @callback minus_item(value(), value()) :: list()
+  @doc "`:items until #n`: the first `n` items; none for an empty or non-positive `n`."
+  @callback limit(value(), value()) :: list()
+  @doc "`:item #n`: the `n`th item (from 1), else empty."
+  @callback item_at(value(), value()) :: value()
+
   @stubs ~w(format_boolean text_contains_words? capitalize_words json_encode url_encode is_email)a
 
   @doc "Every function of the contract."

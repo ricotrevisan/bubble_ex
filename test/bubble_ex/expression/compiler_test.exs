@@ -67,6 +67,30 @@ defmodule BubbleEx.Expression.CompilerTest do
                ir(chain(opt("status", "done"), [msg("display")]))
     end
 
+    # WTF-495: the editor's "All <set>" is an option value "all values".
+    test "an option value of \"all values\" is every option of the set" do
+      assert ir(opt("status", "all values")) == n(:all_options, ["status"], "list.option.status")
+
+      filtered =
+        chain(opt("status", "all values"), [
+          msg("filtered", nil, %{
+            "constraints" => %{
+              "0" => %{
+                "key" => "_advanced_search_constraint",
+                "constraint_type" => %{"type" => "Empty"},
+                "value" => chain(this(), [msg("urgent"), msg("is_true")])
+              }
+            }
+          })
+        ])
+
+      assert %IR{
+               op: :filter,
+               args: [%IR{op: :all_options}, %IR{op: :eq, args: [%IR{op: :option_attribute}, _]}],
+               type: "list.option.status"
+             } = ir(filtered, searches: :page)
+    end
+
     test "context sources become inputs named by Bubble IDs" do
       assert ir(chain(el("bI1"), [msg("get_data")])) ==
                n(:input, [:element_state, %{"element" => "bI1", "state" => "get_data"}], "number")
@@ -396,9 +420,12 @@ defmodule BubbleEx.Expression.CompilerTest do
                ir(raw, searches: :page)
     end
 
-    # Only searches were replayed: `:filtered` still follows its own option
-    # or the caller's default, wherever it runs.
-    test "a :filtered list is not decided by where searches run" do
+    # Only searches were replayed. A page's `:filtered` that does not state
+    # the option takes the page search's rule (WTF-495, a replay question
+    # on WTF-387): an empty value matches nothing. A stated option, or the
+    # caller's default, decides otherwise; on the backend it is still
+    # residue.
+    test "a :filtered list follows its own option; unstated on a page, as a page search" do
       raw = fn options ->
         chain(el("bR1"), [
           msg("get_list_data"),
@@ -414,10 +441,16 @@ defmodule BubbleEx.Expression.CompilerTest do
         ])
       end
 
-      for searches <- [:page, :backend] do
-        assert %{ir: nil, diagnostics: diags} = compile(raw.(%{}), searches: searches)
-        assert Enum.any?(diags, &(&1.details == %{construct: :ignore_empty_constraints}))
+      assert %{ir: nil, diagnostics: diags} = compile(raw.(%{}), searches: :backend)
+      assert Enum.any?(diags, &(&1.details == %{construct: :ignore_empty_constraints}))
 
+      assert %IR{op: :filter, args: [_, %IR{op: :and, args: [%IR{op: :not}, %IR{op: :gt}]}]} =
+               ir(raw.(%{}), searches: :page)
+
+      assert %IR{op: :filter, args: [_, %IR{op: :or}]} =
+               ir(raw.(%{}), searches: :page, ignore_empty_constraints: true)
+
+      for searches <- [:page, :backend] do
         assert %IR{op: :filter, args: [_, %IR{op: :or}]} =
                  ir(raw.(%{"ignore_empty_constraints" => true}), searches: searches)
 
@@ -433,6 +466,64 @@ defmodule BubbleEx.Expression.CompilerTest do
                ir: nil,
                diagnostics: [%{code: :expr_uncompiled, details: %{construct: :search_option}}]
              } = compile(raw)
+    end
+
+    # WTF-495: Bubble's further sort keys are nested sorts, the primary one
+    # outermost (a sort keeps the order of what it sorts among equal keys);
+    # the editor's display names and unset settings say nothing.
+    test "a search's further sort keys are nested sorts, the primary one outermost" do
+      empty = %{"type" => "Empty"}
+      key = fn field, desc -> %{"sort_field" => field, "descending" => desc} end
+
+      options = %{
+        "sort_field" => "title_text",
+        "descending" => true,
+        "dynamic_sort_field" => empty,
+        "sort_field_friendly" => "Title",
+        "type_to_find_friendly" => "Task",
+        "additional_sort_fields" => %{
+          "1" => key.("estimate_number", true),
+          "0" =>
+            Map.merge(key.("public_boolean", false), %{
+              "dynamic_sort_field" => empty,
+              "geo_reference" => empty
+            })
+        }
+      }
+
+      assert %IR{
+               op: :sort,
+               args: [
+                 %IR{
+                   op: :sort,
+                   args: [
+                     %IR{op: :sort, args: [%IR{op: :search}, "estimate_number", true]},
+                     "public_boolean",
+                     false
+                   ]
+                 },
+                 "title_text",
+                 true
+               ]
+             } = ir(search("custom.task", [], options))
+
+      # `:sorted` reads them too.
+      sorted = chain(search("custom.task", []), [msg("sorted", nil, options)])
+      assert %IR{op: :sort, args: [%IR{op: :sort}, "title_text", true]} = ir(sorted)
+
+      # A dynamic or geographic sort key is not compiled.
+      for extra <- [
+            %{"dynamic_sort_field" => text(["x"])},
+            %{
+              "additional_sort_fields" => %{
+                "0" => Map.put(key.("title_text", false), "geo_reference", cu())
+              }
+            },
+            %{"additional_sort_fields" => %{"0" => key.("_dynamic_sort_field", false)}}
+          ] do
+        assert %{ir: nil, diagnostics: [%{details: %{construct: :search_option}}]} =
+                 compile(search("custom.task", [], Map.merge(options, extra)))
+      end
     end
   end
 

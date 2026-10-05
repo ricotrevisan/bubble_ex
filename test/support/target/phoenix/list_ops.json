@@ -1,0 +1,1010 @@
+{
+  "_id": "list-ops-fixture",
+  "_comment": "WTF-495: list operators of page data sources. Synthetic.",
+  "option_sets": {
+    "color": {
+      "display": "Color",
+      "attributes": {
+        "warm": {
+          "display": "Warm",
+          "value": "boolean"
+        }
+      },
+      "values": {
+        "bC1": {
+          "db_value": "red",
+          "display": "Red",
+          "sort_factor": 1,
+          "warm": true
+        },
+        "bC2": {
+          "db_value": "blue",
+          "display": "Blue",
+          "sort_factor": 2,
+          "warm": false
+        },
+        "bC3": {
+          "db_value": "amber",
+          "display": "Amber",
+          "sort_factor": 3,
+          "warm": true
+        }
+      }
+    }
+  },
+  "user_types": {
+    "project": {
+      "display": "Project",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        },
+        "tasks_list_custom_task": {
+          "display": "Tasks",
+          "value": "list.custom.task"
+        }
+      }
+    },
+    "task": {
+      "display": "Task",
+      "fields": {
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        },
+        "rank_number": {
+          "display": "Rank",
+          "value": "number"
+        },
+        "done_boolean": {
+          "display": "Done",
+          "value": "boolean"
+        },
+        "secret_boolean": {
+          "display": "Secret",
+          "value": "boolean"
+        },
+        "shown_boolean": {
+          "display": "Shown",
+          "value": "boolean"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": []
+          }
+        },
+        "public_": {
+          "display": "Public",
+          "condition": {
+            "type": "InjectedValue",
+            "next": {
+              "type": "Message",
+              "name": "secret_boolean",
+              "next": {
+                "type": "Message",
+                "name": "is_false"
+              }
+            }
+          },
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
+        },
+        "shown_": {
+          "display": "Shown",
+          "condition": {
+            "type": "InjectedValue",
+            "next": {
+              "type": "Message",
+              "name": "shown_boolean",
+              "next": {
+                "type": "Message",
+                "name": "is_true"
+              }
+            }
+          },
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": [
+              "title_text",
+              "rank_number",
+              "shown_boolean"
+            ]
+          }
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        }
+      }
+    }
+  },
+  "pages": {
+    "index": {
+      "id": "bHome",
+      "name": "index",
+      "type": "Page",
+      "properties": {
+        "title": "Lists"
+      },
+      "elements": {
+        "bQuery": {
+          "id": "bQuery",
+          "type": "Input",
+          "properties": {
+            "content_format": "text",
+            "order": 1,
+            "width": 300,
+            "height": 40,
+            "placeholder": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Search"
+              }
+            }
+          }
+        },
+        "bProject": {
+          "id": "bProject",
+          "type": "Group",
+          "properties": {
+            "order": 2,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.project",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.project",
+                "sort_field": "name_text",
+                "descending": false
+              },
+              "next": {
+                "type": "Message",
+                "name": "first_element"
+              }
+            }
+          },
+          "elements": {
+            "bProjectName": {
+              "id": "bProjectName",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Project: ",
+                    "1": {
+                      "type": "ElementParent",
+                      "next": {
+                        "type": "Message",
+                        "name": "name_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bSorted": {
+          "id": "bSorted",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 10,
+            "order": 3,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "sort_field": "title_text",
+                "descending": false
+              },
+              "next": {
+                "type": "Message",
+                "name": "sorted",
+                "properties": {
+                  "sort_field": "rank_number",
+                  "descending": true
+                }
+              }
+            },
+            "_comment": "Search (by title):sorted by rank descending"
+          },
+          "elements": {
+            "bSortedTitle": {
+              "id": "bSortedTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "S: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bMulti": {
+          "id": "bMulti",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 10,
+            "order": 4,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "sort_field": "rank_number",
+                "descending": false,
+                "dynamic_sort_field": {
+                  "type": "Empty"
+                },
+                "sort_field_friendly": "Rank",
+                "type_to_find_friendly": "Task",
+                "additional_sort_fields": {
+                  "0": {
+                    "sort_field": "title_text",
+                    "descending": true,
+                    "dynamic_sort_field": {
+                      "type": "Empty"
+                    },
+                    "geo_reference": {
+                      "type": "Empty"
+                    }
+                  }
+                }
+              }
+            },
+            "_comment": "sorted by rank, then title descending"
+          },
+          "elements": {
+            "bMultiTitle": {
+              "id": "bMultiTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "M: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bMerged": {
+          "id": "bMerged",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 10,
+            "order": 5,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "constraints": {
+                  "0": {
+                    "key": "done_boolean",
+                    "constraint_type": "equals",
+                    "value": true
+                  }
+                },
+                "sort_field": "title_text",
+                "descending": false
+              },
+              "next": {
+                "type": "Message",
+                "name": "merged_with",
+                "args": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.task",
+                    "constraints": {
+                      "0": {
+                        "key": "rank_number",
+                        "constraint_type": "less than",
+                        "value": 3
+                      }
+                    },
+                    "sort_field": "title_text",
+                    "descending": false
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bMergedTitle": {
+              "id": "bMergedTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "G: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bUnique": {
+          "id": "bUnique",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 10,
+            "order": 6,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "GetElement",
+              "properties": {
+                "element_id": "bProject"
+              },
+              "next": {
+                "type": "Message",
+                "name": "get_group_data",
+                "next": {
+                  "type": "Message",
+                  "name": "tasks_list_custom_task",
+                  "next": {
+                    "type": "Message",
+                    "name": "unique"
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bUniqueTitle": {
+              "id": "bUniqueTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "U: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bFieldSorted": {
+          "id": "bFieldSorted",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 10,
+            "order": 7,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "GetElement",
+              "properties": {
+                "element_id": "bProject"
+              },
+              "next": {
+                "type": "Message",
+                "name": "get_group_data",
+                "next": {
+                  "type": "Message",
+                  "name": "tasks_list_custom_task",
+                  "next": {
+                    "type": "Message",
+                    "name": "sorted",
+                    "properties": {
+                      "sort_field": "title_text",
+                      "descending": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bFieldSortedTitle": {
+              "id": "bFieldSortedTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "F: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bFieldFiltered": {
+          "id": "bFieldFiltered",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 10,
+            "order": 8,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "GetElement",
+              "properties": {
+                "element_id": "bProject"
+              },
+              "next": {
+                "type": "Message",
+                "name": "get_group_data",
+                "next": {
+                  "type": "Message",
+                  "name": "tasks_list_custom_task",
+                  "next": {
+                    "type": "Message",
+                    "name": "filtered",
+                    "properties": {
+                      "constraints": {
+                        "0": {
+                          "key": "done_boolean",
+                          "constraint_type": "equals",
+                          "value": false
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bFieldFilteredTitle": {
+              "id": "bFieldFilteredTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "K: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bFilteredSearch": {
+          "id": "bFilteredSearch",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 10,
+            "order": 9,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "sort_field": "title_text",
+                "descending": false
+              },
+              "next": {
+                "type": "Message",
+                "name": "filtered",
+                "properties": {
+                  "constraints": {
+                    "0": {
+                      "key": "title_text",
+                      "constraint_type": "text contains string",
+                      "value": {
+                        "type": "GetElement",
+                        "properties": {
+                          "element_id": "bQuery"
+                        },
+                        "next": {
+                          "type": "Message",
+                          "name": "get_data"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bFilteredSearchTitle": {
+              "id": "bFilteredSearchTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Q: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bOptions": {
+          "id": "bOptions",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 10,
+            "order": 10,
+            "width": 300,
+            "height": 40,
+            "group_type": "option.color",
+            "data_source": {
+              "type": "OneOptionValue",
+              "properties": {
+                "option_set": "option.color",
+                "option_value": "all values"
+              },
+              "next": {
+                "type": "Message",
+                "name": "filtered",
+                "properties": {
+                  "constraints": {
+                    "0": {
+                      "key": "_advanced_search_constraint",
+                      "constraint_type": {
+                        "type": "Empty"
+                      },
+                      "value": {
+                        "type": "InjectedValue",
+                        "next": {
+                          "type": "Message",
+                          "name": "warm",
+                          "next": {
+                            "type": "Message",
+                            "name": "is_true"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bOptionsName": {
+              "id": "bOptionsName",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "O: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "display"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bSecond": {
+          "id": "bSecond",
+          "type": "Group",
+          "properties": {
+            "order": 11,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "constraints": {
+                  "0": {
+                    "key": "done_boolean",
+                    "constraint_type": "equals",
+                    "value": true
+                  }
+                },
+                "sort_field": "title_text",
+                "descending": false
+              },
+              "next": {
+                "type": "Message",
+                "name": "merged_with",
+                "args": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.task",
+                    "constraints": {
+                      "0": {
+                        "key": "rank_number",
+                        "constraint_type": "less than",
+                        "value": 3
+                      }
+                    },
+                    "sort_field": "title_text",
+                    "descending": false
+                  }
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "specific_item",
+                  "args": 2
+                }
+              }
+            }
+          },
+          "elements": {
+            "bSecondTitle": {
+              "id": "bSecondTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "I: ",
+                    "1": {
+                      "type": "ElementParent",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bLimit": {
+          "id": "bLimit",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 10,
+            "order": 12,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "GetElement",
+              "properties": {
+                "element_id": "bProject"
+              },
+              "next": {
+                "type": "Message",
+                "name": "get_group_data",
+                "next": {
+                  "type": "Message",
+                  "name": "tasks_list_custom_task",
+                  "next": {
+                    "type": "Message",
+                    "name": "limit_to",
+                    "args": 2
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bLimitTitle": {
+              "id": "bLimitTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "L: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bFieldRank": {
+          "id": "bFieldRank",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 10,
+            "order": 15,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "GetElement",
+              "properties": {
+                "element_id": "bProject"
+              },
+              "next": {
+                "type": "Message",
+                "name": "get_group_data",
+                "next": {
+                  "type": "Message",
+                  "name": "tasks_list_custom_task",
+                  "next": {
+                    "type": "Message",
+                    "name": "sorted",
+                    "properties": {
+                      "sort_field": "rank_number",
+                      "descending": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bFieldRankTitle": {
+              "id": "bFieldRankTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "R: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bCount": {
+          "id": "bCount",
+          "type": "Group",
+          "properties": {
+            "order": 13,
+            "width": 300,
+            "height": 40,
+            "group_type": "number",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "constraints": {
+                  "0": {
+                    "key": "done_boolean",
+                    "constraint_type": "equals",
+                    "value": true
+                  }
+                },
+                "sort_field": "title_text",
+                "descending": false
+              },
+              "next": {
+                "type": "Message",
+                "name": "merged_with",
+                "args": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.task",
+                    "constraints": {
+                      "0": {
+                        "key": "rank_number",
+                        "constraint_type": "less than",
+                        "value": 3
+                      }
+                    },
+                    "sort_field": "title_text",
+                    "descending": false
+                  }
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "count"
+                }
+              }
+            }
+          },
+          "elements": {
+            "bCountN": {
+              "id": "bCountN",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "N: ",
+                    "1": {
+                      "type": "ElementParent"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bFirstTitle": {
+          "id": "bFirstTitle",
+          "type": "Group",
+          "properties": {
+            "order": 14,
+            "width": 300,
+            "height": 40,
+            "group_type": "text",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "sort_field": "title_text",
+                "descending": false
+              },
+              "next": {
+                "type": "Message",
+                "name": "first_element",
+                "next": {
+                  "type": "Message",
+                  "name": "title_text"
+                }
+              }
+            }
+          },
+          "elements": {
+            "bFirstTitleT": {
+              "id": "bFirstTitleT",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "T: ",
+                    "1": {
+                      "type": "ElementParent"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "element_definitions": {}
+}

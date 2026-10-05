@@ -21,6 +21,15 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       (`BubbleEx.Target.Elixir`, `read: {:value, compiled}`); a thing or a
       list of things may be records or Bubble IDs, which the runtime reads
       through Ash (`resource`)
+    * list operators are lowered first (WTF-495,
+      `BubbleEx.Target.Elixir.FrontendWorkflows.Lists`): sorting and
+      filtering a list of things are queries; a search under any other
+      operator is a query read first (`queries`, each `%{n, ...}` read as
+      `query_<n>`, a query's own shape), its value compiled in Elixir;
+      a query for the records a list holds is `listed` (read as the user
+      may view them). A value the Ash filter cannot compute (a list
+      operator, a search, a dynamic text) is computed in Elixir and
+      pinned when the filter needs it
     * an element with no data source that a "Display data" step sets
       (WTF-492, `ctx.displayed`) reads what the step showed
       (`read: :displayed`); every source a step sets is `displayed?`
@@ -78,8 +87,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   alias BubbleEx.PageData.Source
   alias BubbleEx.Plan.Residue
   alias BubbleEx.Target.Ash.{Expr, Expressions, Project}
-  alias BubbleEx.Target.Elixir.FrontendWorkflows.Spec
+  alias BubbleEx.Target.Elixir.FrontendWorkflows.{Lists, Spec}
   alias BubbleEx.Workflows.Lowering
+
+  # Values the Ash filter does not compute: computed in Elixir and pinned
+  # when the filter needs them (see `hoistable?/2`).
+  @elixir_values ~w(search filter sort merge unique minus_item plus_item minus_list intersect
+                    limit item_at first last count as_list concat date_add split truncate replace
+                    format_date format_number format_boolean to_text)a
 
   @doc """
   The page's data holders (every source that lowered, and every element a
@@ -480,6 +495,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         workflow: %{bubble_id: nil, parameters: []}
       })
 
+    # Sorting and filtering lists of things in the database (WTF-495).
+    ir = Lists.lower(ir)
+
     case query(ir) do
       {:query, search, take} when s.cell == nil ->
         search_source(s, base, search, take, bctx, fns)
@@ -488,30 +506,161 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         in_cell(base, :query)
 
       :value ->
-        {compiled, residue} = fns.compile.(s.value, s.id, bctx)
-        reads = if compiled, do: data_reads(compiled.bindings), else: []
+        if s.cell != nil and queries?(ir),
+          do: in_cell(base, :query),
+          else: value_source(s, %{s.value | ir: ir}, base, bctx, fns)
+    end
+  end
+
+  # A value computed in Elixir, after the queries it reads (WTF-495: a
+  # search under a list operator, `query_<n>`), each read as a query is.
+  defp value_source(s, expr, base, ctx, fns) do
+    case compile_value(expr, s, ctx, fns, new_acc()) do
+      {:ok, compiled, acc} ->
+        queries = Enum.reverse(acc.queries)
+        compiled = if queries == [], do: compiled, else: Map.put(compiled, :queries, queries)
 
         # An instance in a cell, and its properties, are rendered per cell
         # of the list (WTF-494): they need it loaded.
+        reads = Enum.uniq(data_reads(compiled.bindings) ++ query_reads(queries))
+
         reads =
           if s.cell != nil and s.kind in [:instance, :param],
             do: Enum.uniq(reads ++ [{:cell, s.cell}]),
             else: reads
 
-        %{
-          base
-          | read: if(compiled, do: {:value, compiled}),
-            resource: resource(s.type, ctx),
-            reads: reads,
-            residue: residue
-        }
+        %{base | read: {:value, compiled}, resource: resource(s.type, ctx), reads: reads}
+
+      {:error, residue} ->
+        %{base | residue: residue}
     end
+  end
+
+  defp new_acc, do: %{queries: [], seen: %{}, next: 1}
+
+  # Compiles `expr` in Elixir, its searches first read as queries.
+  defp compile_value(%Lowering.Expr{ir: ir} = expr, s, ctx, fns, acc) do
+    with {:ok, ir, acc} <- extract(ir, s, ctx, fns, acc),
+         :ok <- whole_lists(ir, s, acc) do
+      case fns.compile.(%{expr | ir: ir}, s.id, ctx) do
+        {%{} = compiled, []} -> {:ok, compiled, acc}
+        {_compiled, residue} -> {:error, residue}
+      end
+    end
+  end
+
+  # Replaces each search under a list operator (with its sorts, and
+  # `first item`, `item #`, `items until #` or `count` over it) with the
+  # query reading it (`{:query, %{"n" => n}}`). Predicates are left as
+  # they are: a search inside one reads its own items.
+  defp extract(%IR{} = ir, s, ctx, fns, acc) do
+    case query(ir) do
+      {:query, search, take} ->
+        key = IR.strip_paths(ir)
+
+        case acc.seen do
+          %{^key => n} -> {:ok, query_input(n, ir.type), acc}
+          _ -> new_query(ir, key, search, take, s, ctx, fns, acc)
+        end
+
+      :value ->
+        extract_args(ir, s, ctx, fns, acc)
+    end
+  end
+
+  # A query read once per source, whatever reads it (`key`).
+  defp new_query(ir, key, search, take, s, ctx, fns, acc) do
+    n = acc.next
+
+    with {:ok, q, acc} <- build_query(search, take, "q#{n}_", s, ctx, fns, %{acc | next: n + 1}) do
+      queries = [Map.put(q, :n, n) | acc.queries]
+      {:ok, query_input(n, ir.type), %{acc | queries: queries, seen: Map.put(acc.seen, key, n)}}
+    end
+  end
+
+  defp extract_args(%IR{op: op, args: [list, pred]} = ir, s, ctx, fns, acc) when op == :filter do
+    with {:ok, list, acc} <- extract(list, s, ctx, fns, acc),
+         do: {:ok, %{ir | args: [list, pred]}, acc}
+  end
+
+  defp extract_args(%IR{args: args} = ir, s, ctx, fns, acc) do
+    args
+    |> Enum.reduce_while({:ok, [], acc}, fn
+      %IR{} = arg, {:ok, done, acc} ->
+        case extract(arg, s, ctx, fns, acc) do
+          {:ok, arg, acc} -> {:cont, {:ok, [arg | done], acc}}
+          error -> {:halt, error}
+        end
+
+      arg, {:ok, done, acc} ->
+        {:cont, {:ok, [arg | done], acc}}
+    end)
+    |> case do
+      {:ok, args, acc} -> {:ok, %{ir | args: Enum.reverse(args)}, acc}
+      error -> error
+    end
+  end
+
+  # A search read as a query stops at `:max_items`: what is shown from it
+  # may show less than Bubble, never more. Counting it, taking its last
+  # item or subtracting it from a list (`:minus list`) would show a
+  # different count or item, or items Bubble would remove: residue
+  # (`elixir:capped_list`). A listed query reads all of a list's records.
+  defp whole_lists(ir, s, acc) do
+    capped =
+      for q <- acc.queries,
+          q.take == :all,
+          !Map.get(q, :listed),
+          into: MapSet.new(),
+          do: Integer.to_string(q.n)
+
+    if needs_whole?(ir, capped),
+      do:
+        {:error,
+         [
+           Residue.entry(s.id, :uncompiled_expression, %{
+             expressions: 1,
+             constructs: ["elixir:capped_list"]
+           })
+         ]},
+      else: :ok
+  end
+
+  defp needs_whole?(%IR{op: op, args: [list | _]} = ir, capped) when op in [:count, :last],
+    do: capped?(list, capped) or Enum.any?(ir.args, &needs_whole?(&1, capped))
+
+  defp needs_whole?(%IR{op: :minus_list, args: [a, b]}, capped),
+    do: capped?(b, capped) or needs_whole?(a, capped) or needs_whole?(b, capped)
+
+  defp needs_whole?(%IR{args: args}, capped), do: Enum.any?(args, &needs_whole?(&1, capped))
+  defp needs_whole?(_arg, _capped), do: false
+
+  defp capped?(%IR{op: :input, args: [:query, %{"n" => n}]}, capped),
+    do: MapSet.member?(capped, n)
+
+  defp capped?(%IR{args: args}, capped), do: Enum.any?(args, &capped?(&1, capped))
+  defp capped?(_arg, _capped), do: false
+
+  defp query_input(n, type), do: IR.node(:input, [:query, %{"n" => Integer.to_string(n)}], type)
+
+  defp queries?(%IR{} = ir), do: query(ir) != :value or Enum.any?(ir.args, &queries?/1)
+  defp queries?(_arg), do: false
+
+  # The page data the queries' pins read.
+  defp query_reads(queries) do
+    for q <- queries,
+        %{value: %{bindings: bindings}} <- q.pins,
+        read <- data_reads(bindings),
+        do: read
   end
 
   # A search read as a query: the search (possibly sorted) and how much of
   # it the source takes.
   defp query(%IR{op: :search} = ir), do: {:query, ir, :all}
-  defp query(%IR{op: :sort, args: [%IR{op: :search} | _]} = ir), do: {:query, ir, :all}
+
+  defp query(%IR{op: :sort, args: [inner | _]} = ir) do
+    if Lists.search?(inner), do: {:query, ir, :all}, else: :value
+  end
 
   defp query(%IR{op: :first, args: [inner]}), do: take(inner, :first)
   defp query(%IR{op: :count, args: [inner]}), do: take(inner, :count)
@@ -534,16 +683,36 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   end
 
   defp search_source(s, base, search, take, ctx, fns) do
-    {search, hoisted} = hoist(search)
+    case build_query(search, take, "", s, ctx, fns, new_acc()) do
+      {:ok, query, acc} ->
+        queries = Enum.reverse(acc.queries)
+        query = if queries == [], do: query, else: Map.put(query, :queries, queries)
+
+        %{
+          base
+          | read: {:query, query},
+            resource: query.resource,
+            reads: Enum.uniq(query_reads([query]) ++ query_reads(queries))
+        }
+
+      {:error, residue} ->
+        %{base | residue: residue}
+    end
+  end
+
+  # The Ash query of a search, its pins named with `prefix`.
+  defp build_query(search, take, prefix, s, ctx, fns, acc) do
+    listed? = Lists.listed?(search)
+    {search, hoisted} = hoisted(search, ctx.project)
 
     case Expressions.search(search, ctx.project) do
       {:ok, %{expr: %Expr{} = expr}} ->
         case hidden_fields(expr, ctx.project) do
           [] ->
-            pin(s, base, expr, take, hoisted, ctx, fns)
+            s |> pin(expr, take, hoisted, prefix, ctx, fns, acc) |> listed(listed?)
 
           fields ->
-            %{base | residue: [Residue.entry(s.id, :search_field_hidden, %{fields: fields})]}
+            {:error, [Residue.entry(s.id, :search_field_hidden, %{fields: fields})]}
         end
 
       {:ok, %{diagnostics: diags}} ->
@@ -554,15 +723,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
           |> Enum.uniq()
           |> Enum.sort()
 
-        %{
-          base
-          | residue: [
-              Residue.entry(s.id, :uncompiled_expression, %{
-                expressions: 1,
-                constructs: if(constructs == [], do: ["ash:uncompiled"], else: constructs)
-              })
-            ]
-        }
+        {:error,
+         [
+           Residue.entry(s.id, :uncompiled_expression, %{
+             expressions: 1,
+             constructs: if(constructs == [], do: ["ash:uncompiled"], else: constructs)
+           })
+         ]}
     end
   end
 
@@ -629,23 +796,49 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp expr_refs(list) when is_list(list), do: Enum.flat_map(list, &expr_refs/1)
   defp expr_refs(_node), do: []
 
-  # The filter with its context inputs and actor reads as pinned variables.
-  defp pin(s, base, expr, take, hoisted, ctx, fns) do
-    {args, residue} =
-      Enum.map_reduce(Enum.with_index(expr.arguments, 1), [], fn {arg, i}, acc ->
-        var = "pin_#{i}"
+  # A query for the records a list holds names the pin of their IDs
+  # (`listed`): the loader reads all of them, in the list's order among
+  # equal sort keys.
+  defp listed({:ok, query, acc}, true) do
+    case Enum.find(query.pins, &(&1.ref == :listed)) do
+      %{var: var} -> {:ok, Map.put(query, :listed, var), acc}
+      nil -> {:ok, query, acc}
+    end
+  end
 
-        case pin_value(arg, hoisted, s, ctx, fns) do
-          {:ok, value} -> {{arg.name, %{var: var, value: value, ref: ref_kind(arg.type)}}, acc}
-          {:error, r} -> {nil, acc ++ r}
+  defp listed(result, _listed?), do: result
+
+  # A list's things' IDs for a listed query, else what the pin holds.
+  defp pin_ref(arg, hoisted), do: if(pinned?(arg, hoisted), do: :listed, else: ref_kind(arg.type))
+
+  defp pinned?(%{input: {:hoisted, %{"n" => n}}}, hoisted),
+    do: match?(%IR{op: :pinned}, Map.get(hoisted, n))
+
+  defp pinned?(_arg, _hoisted), do: false
+
+  # The filter with its context inputs and actor reads as pinned variables.
+  defp pin(s, expr, take, hoisted, prefix, ctx, fns, acc) do
+    {args, residue, acc} =
+      expr.arguments
+      |> Enum.with_index(1)
+      |> Enum.reduce({[], [], acc}, fn {arg, i}, {args, residue, acc} ->
+        var = "#{prefix}pin_#{i}"
+
+        case pin_value(arg, hoisted, s, ctx, fns, acc) do
+          {:ok, value, acc} ->
+            {[{arg.name, %{var: var, value: value, ref: pin_ref(arg, hoisted)}} | args], residue,
+             acc}
+
+          {:error, r} ->
+            {args, residue ++ r, acc}
         end
       end)
 
     if residue != [] do
-      %{base | residue: Residue.sort(Enum.uniq(residue))}
+      {:error, Residue.sort(Enum.uniq(residue))}
     else
       args = Map.new(args)
-      {node, actors} = rewrite(expr.expr, args, %{})
+      {node, actors} = rewrite(expr.expr, args, %{}, prefix)
 
       actor_pins =
         actors
@@ -663,32 +856,25 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         pins: pins
       }
 
-      reads =
-        pins
-        |> Enum.flat_map(fn
-          %{value: %{bindings: bindings}} -> data_reads(bindings)
-          _ -> []
-        end)
-        |> Enum.uniq()
-
-      %{base | read: {:query, query}, resource: expr.resource, reads: reads}
+      {:ok, query, acc}
     end
   end
 
-  # A pinned argument: a hoisted value, compiled in Elixir, or a context
-  # input bound as a workflow's.
-  defp pin_value(%{input: {:hoisted, %{"n" => n}}}, hoisted, s, ctx, fns),
-    do: compile_pin(Map.fetch!(hoisted, n), s, ctx, fns)
-
-  defp pin_value(%{input: {kind, ref}, type: type}, _hoisted, s, ctx, fns),
-    do: compile_pin(IR.node(:input, [kind, ref], type), s, ctx, fns)
-
-  defp compile_pin(ir, s, ctx, fns) do
-    case fns.compile.(%Lowering.Expr{path: s.path, ir: ir}, s.id, ctx) do
-      {%{} = compiled, []} -> {:ok, compiled}
-      {_compiled, residue} -> {:error, residue}
+  # A pinned argument: a hoisted value, compiled in Elixir (a list a
+  # rewritten search reads, `:pinned`, with its own queries first), or a
+  # context input bound as a workflow's.
+  defp pin_value(%{input: {:hoisted, %{"n" => n}}}, hoisted, s, ctx, fns, acc) do
+    case Map.fetch!(hoisted, n) do
+      %IR{op: :pinned, args: [list]} -> compile_pin(list, s, ctx, fns, acc)
+      ir -> compile_pin(ir, s, ctx, fns, acc)
     end
   end
+
+  defp pin_value(%{input: {kind, ref}, type: type}, _hoisted, s, ctx, fns, acc),
+    do: compile_pin(IR.node(:input, [kind, ref], type), s, ctx, fns, acc)
+
+  defp compile_pin(ir, s, ctx, fns, acc),
+    do: compile_value(%Lowering.Expr{path: s.path, ir: ir}, s, ctx, fns, acc)
 
   defp ref_kind(type) do
     case classify(type) do
@@ -699,13 +885,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   end
 
   # Replaces `^arg(name)` with its pin and every `^actor(path)` with one
-  # pin per path (`actor_<n>`).
-  defp rewrite({:arg, name}, args, actors), do: {{:pin, args[name].var}, actors}
+  # pin per path (`<prefix>actor_<n>`).
+  defp rewrite({:arg, name}, args, actors, _prefix), do: {{:pin, args[name].var}, actors}
 
-  defp rewrite({:actor, path}, _args, actors) do
+  defp rewrite({:actor, path}, _args, actors, prefix) do
     case actors[path] do
       nil ->
-        var = "actor_#{map_size(actors) + 1}"
+        var = "#{prefix}actor_#{map_size(actors) + 1}"
         {{:pin, var}, Map.put(actors, path, var)}
 
       var ->
@@ -713,53 +899,69 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     end
   end
 
-  defp rewrite({:op, op, l, r}, args, actors) do
-    {l, actors} = rewrite(l, args, actors)
-    {r, actors} = rewrite(r, args, actors)
+  defp rewrite({:op, op, l, r}, args, actors, prefix) do
+    {l, actors} = rewrite(l, args, actors, prefix)
+    {r, actors} = rewrite(r, args, actors, prefix)
     {{:op, op, l, r}, actors}
   end
 
-  defp rewrite({op, nodes}, args, actors) when op in [:and, :or] do
-    {nodes, actors} = Enum.map_reduce(nodes, actors, &rewrite(&1, args, &2))
+  defp rewrite({op, nodes}, args, actors, prefix) when op in [:and, :or] do
+    {nodes, actors} = Enum.map_reduce(nodes, actors, &rewrite(&1, args, &2, prefix))
     {{op, nodes}, actors}
   end
 
-  defp rewrite({:not, node}, args, actors) do
-    {node, actors} = rewrite(node, args, actors)
+  defp rewrite({:not, node}, args, actors, prefix) do
+    {node, actors} = rewrite(node, args, actors, prefix)
     {{:not, node}, actors}
   end
 
-  defp rewrite({:call, name, nodes}, args, actors) do
-    {nodes, actors} = Enum.map_reduce(nodes, actors, &rewrite(&1, args, &2))
+  defp rewrite({:call, name, nodes}, args, actors, prefix) do
+    {nodes, actors} = Enum.map_reduce(nodes, actors, &rewrite(&1, args, &2, prefix))
     {{:call, name, nodes}, actors}
   end
 
-  defp rewrite(node, _args, actors), do: {node, actors}
+  defp rewrite(node, _args, actors, _prefix), do: {node, actors}
 
   # Every maximal part of a search's constraints that does not read the
   # searched item and reads a context value through a field (which the
   # Ash filter cannot) is computed in Elixir and passed in as a hoisted
   # input.
-  defp hoist(%IR{op: :sort, args: [inner | rest]} = ir) do
-    {inner, hoisted} = hoist(inner)
+  # The search with what the filter cannot read itself hoisted: fields of
+  # context values, else every value of the context it cannot compute.
+  defp hoisted(search, project) do
+    {fields, _} = by_field = hoist(search)
+
+    with {:ok, %{expr: nil}} <- Expressions.search(fields, project),
+         {values, _} = by_value = hoist(search, :values),
+         {:ok, %{expr: %Expr{}}} <- Expressions.search(values, project) do
+      by_value
+    else
+      _ -> by_field
+    end
+  end
+
+  defp hoist(ir, mode \\ :fields)
+
+  defp hoist(%IR{op: :sort, args: [inner | rest]} = ir, mode) do
+    {inner, hoisted} = hoist(inner, mode)
     {%{ir | args: [inner | rest]}, hoisted}
   end
 
-  defp hoist(%IR{op: :search, args: [type, pred]} = ir) when not is_nil(pred) do
-    {pred, hoisted} = hoist_node(pred, %{})
+  defp hoist(%IR{op: :search, args: [type, pred]} = ir, mode) when not is_nil(pred) do
+    {pred, hoisted} = hoist_node(pred, %{}, mode)
     {%{ir | args: [type, pred]}, hoisted}
   end
 
-  defp hoist(ir), do: {ir, %{}}
+  defp hoist(ir, _mode), do: {ir, %{}}
 
-  defp hoist_node(%IR{} = ir, hoisted) do
-    if hoistable?(ir) do
+  defp hoist_node(%IR{} = ir, hoisted, mode) do
+    if hoistable?(ir, mode) do
       n = Integer.to_string(map_size(hoisted) + 1)
       {IR.node(:input, [:hoisted, %{"n" => n}], ir.type), Map.put(hoisted, n, ir)}
     else
       {args, hoisted} =
         Enum.map_reduce(ir.args, hoisted, fn
-          %IR{} = arg, acc -> hoist_node(arg, acc)
+          %IR{} = arg, acc -> hoist_node(arg, acc, mode)
           other, acc -> {other, acc}
         end)
 
@@ -769,13 +971,25 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   # A field (or anything over one) of a context input, not of the item;
   # whether a context value is empty (a search ignoring empty constraints)
-  # is known before the query, so it is computed first too.
-  defp hoistable?(%IR{op: op} = ir) when op in [:field, :is_empty],
+  # is known before the query, so it is computed first too. A list a
+  # rewritten search reads (`Lists`, `:pinned`) is computed first, whole.
+  # When the filter does not compile so (`:values`, WTF-495), so is any
+  # value not of the item that the Ash filter cannot compute (a list
+  # operator, a search, a dynamic text, a date's arithmetic).
+  defp hoistable?(%IR{op: :pinned}, _mode), do: true
+
+  defp hoistable?(%IR{op: op} = ir, _mode) when op in [:field, :is_empty],
     do: not reads_item?(ir) and reads_input?(ir)
 
-  defp hoistable?(_ir), do: false
+  defp hoistable?(%IR{} = ir, :values),
+    do: not reads_item?(ir) and Enum.any?(IR.ops(ir), &(&1 in @elixir_values))
+
+  defp hoistable?(_ir, _mode), do: false
 
   defp reads_item?(%IR{op: :this}), do: true
+  # A nested `:filtered`'s or search's constraints read their own items.
+  defp reads_item?(%IR{op: :filter, args: [list, _pred]}), do: reads_item?(list)
+  defp reads_item?(%IR{op: :search}), do: false
   defp reads_item?(%IR{args: args}), do: Enum.any?(args, &reads_item?/1)
   defp reads_item?(list) when is_list(list), do: Enum.any?(list, &reads_item?/1)
   defp reads_item?(_), do: false

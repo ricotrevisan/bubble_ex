@@ -52,11 +52,19 @@ defmodule BubbleEx.Target.Elixir do
   | `format_date(x, format[, zone])`, `format_number(x, options)`, `date_floor(x, unit[, zone])`, `date_part(x, unit[, zone])`, `date_add(x, n, unit)` | Bubble's date and number formats and calendar operators (`BubbleEx.Target.Elixir.Formats`); `zone` only when the expression names one |
   | `format_boolean(x, yes, no)`, `truncate(x, n)`, `replace(x, find, replace, regex?)`, `split(x, sep)`, `text_contains?(a, b)`, `text_contains_words?(a, b)` | the other formatting and text operators |
 
+  List algebra (`:merged with`, `:unique elements`, `:minus list`,
+  `:intersect with`, `:plus item`, `:minus item`, `:items until #`, `:item
+  #`, `:converted to list`, WTF-495) calls the runtime (`merge/2`, …),
+  which compares things by Bubble ID, records and IDs alike; `:filtered`
+  over options, texts, numbers or dates is `Enum.filter/2` with the
+  constraints per item (`item`). An option's label or attribute of a list
+  of options maps over it.
+
   Not compiled yet (diagnosed with `:elixir_expr_unsupported`, stage
-  `{:target, :elixir}`): searches and `:filtered` (these become Ash
-  queries), sorting, API type fields, fields of list items (a list of
-  things is a list of IDs), list algebra other than `count`, `first`,
-  `last` and `contains`.
+  `{:target, :elixir}`): searches, and `:filtered` or sorting of a list of
+  things (these become Ash queries, `FrontendWorkflows.Lists`), other
+  sorting, API type fields, fields of list items (a list of things is a
+  list of IDs).
 
   A format the runtime only approximates (an unknown number setting, a
   date pattern token or unit it does not implement, see
@@ -99,6 +107,7 @@ defmodule BubbleEx.Target.Elixir do
   @runtime_unary ~w(lowercase uppercase trim capitalize_words text_length json_encode url_encode
                     is_email abs round to_text to_number)a
   @arithmetic ~w(add sub mul div mod)a
+  @list_ops ~w(as_list unique merge minus_list intersect plus_item minus_item limit item_at)a
   @conditions ~w(eq neq gt lt gte lte and or not is_empty logged_in member text_contains
                  text_contains_words)a
   @boolean_values [:field, :input, :fallback, :option_attribute, :option_label]
@@ -141,7 +150,8 @@ defmodule BubbleEx.Target.Elixir do
       loads: %{},
       used: MapSet.new(),
       unsupported: [],
-      approximated: []
+      approximated: [],
+      item?: false
     }
 
     {source, st} = ir |> value(st) |> shown_file(ir)
@@ -239,7 +249,8 @@ defmodule BubbleEx.Target.Elixir do
 
       enum ->
         {part, st} = value(x, st)
-        {ok(part, &"then(#{&1}, &(&1 && #{st.namespace}.#{enum.module}.label(&1)))"), st}
+        fun = "&(&1 && #{st.namespace}.#{enum.module}.label(&1))"
+        {ok(part, &each(&1, fun, x)), st}
     end
   end
 
@@ -255,14 +266,17 @@ defmodule BubbleEx.Target.Elixir do
 
           %{name: name} ->
             {part, st} = value(x, st)
-            module = "#{st.namespace}.#{enum.module}"
-            {ok(part, &"then(#{&1}, &(&1 && #{module}.attributes(&1).#{name}))"), st}
+            fun = "&(&1 && #{st.namespace}.#{enum.module}.attributes(&1).#{name})"
+            {ok(part, &each(&1, fun, x)), st}
         end
     end
   end
 
   defp value(%IR{op: :current_user}, st),
     do: {"current_user", bind(st, "current_user", :current_user, "user")}
+
+  # The item a `:filtered` tests (its `This <item>`).
+  defp value(%IR{op: :this, args: [:filter_item]}, %{item?: true} = st), do: {"item", st}
 
   defp value(%IR{op: :this, args: [binder], type: t}, st),
     do: {"this", bind(st, "this", {:this, binder}, t)}
@@ -295,6 +309,25 @@ defmodule BubbleEx.Target.Elixir do
     fun = if op == :first, do: "List.first", else: "List.last"
     {l, st} = value(list, st)
     {ok(l, &"#{fun}(#{&1} || [])"), st}
+  end
+
+  # List algebra (WTF-495): items are compared by Bubble ID when they are
+  # records or IDs, by value otherwise (the runtime's `list_key/1`).
+  defp value(%IR{op: op, args: args}, st) when op in @list_ops do
+    {parts, st} = Enum.map_reduce(args, st, &value/2)
+    runtime(st, op, parts)
+  end
+
+  # `:filtered` over options, texts, numbers, dates or yes/no values: the
+  # constraints per item. A list of things is filtered by its target (a
+  # database query: the items' fields are not read here).
+  defp value(%IR{op: :filter, args: [list, pred]}, st) do
+    if thing_list?(list.type) do
+      unsupported(st, {"filter on a list of things", nil})
+    else
+      {l, st} = value(list, st)
+      item_filter(l, pred, st)
+    end
   end
 
   defp value(%IR{op: op, args: [l, r]}, st) when op in @arithmetic do
@@ -531,6 +564,18 @@ defmodule BubbleEx.Target.Elixir do
   defp reads_actor?(list) when is_list(list), do: Enum.any?(list, &reads_actor?/1)
   defp reads_actor?(_), do: false
 
+  # Each item of `l` (`item`) that meets `pred`.
+  # `List.wrap/1`, not `|| []`: a set's options are never nil, and Elixir
+  # 1.20's type checker rejects the dead branch.
+  defp item_filter(l, nil, st), do: {ok(l, &"List.wrap(#{&1})"), st}
+
+  defp item_filter(l, pred, st) do
+    {c, inner} = cond(pred, %{st | item?: true}, true)
+
+    {all_ok("Enum.filter(List.wrap(#{l}), fn item -> #{c} end)", [l, c]),
+     %{inner | item?: st.item?}}
+  end
+
   # A shown file or image value goes through `:file_url` (WTF-415).
   defp shown_file({:error, _} = result, _ir), do: result
   defp shown_file({_, %{file_url: nil}} = result, _ir), do: result
@@ -576,7 +621,16 @@ defmodule BubbleEx.Target.Elixir do
   defp actor?(%IR{op: :fallback, args: args}), do: Enum.any?(args, &actor?/1)
   defp actor?(_ir), do: false
 
+  # `fun` applied to a value, or to each item of a list of them (an
+  # option's label or attribute, of all of a set's options).
+  defp each(part, fun, %IR{type: type}) do
+    if match?(%Type{cardinality: :many}, classify(type)),
+      do: "Enum.map(List.wrap(#{part}), #{fun})",
+      else: "then(#{part}, #{fun})"
+  end
+
   defp record_type?(type), do: match?(%Type{kind: :ref, cardinality: :one}, classify(type))
+  defp thing_list?(type), do: match?(%Type{kind: :ref, cardinality: :many}, classify(type))
 
   # A list whose items are values or Bubble IDs: a list-of-things field is
   # an array of IDs, other lists of records (inputs, searches) hold records.
@@ -598,6 +652,9 @@ defmodule BubbleEx.Target.Elixir do
 
   defp path(%IR{op: :field, args: [base, type, field]}, steps, mode, st),
     do: path(base, [{type, field} | steps], mode, st)
+
+  defp path(%IR{op: :this, args: [:filter_item]} = base, steps, mode, %{item?: true} = st),
+    do: access(base, "item", steps, mode, st)
 
   defp path(%IR{op: :this} = base, steps, mode, st), do: access(base, "this", steps, mode, st)
 

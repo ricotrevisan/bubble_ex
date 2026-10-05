@@ -74,11 +74,12 @@ defmodule BubbleEx.Expression.Parser do
     with_props(raw, path, ~w(option_set option_value), fn props, meta ->
       %{"option_set" => set, "option_value" => value} = props
 
+      # "all values" is the editor's "All <option set>" (WTF-495).
       if is_binary(set) and is_binary(value),
         do: %OptionValue{
           option_set: set,
           value: value,
-          type: set,
+          type: if(value == "all values", do: "list." <> set, else: set),
           meta: Map.put(meta, :source_type, type)
         }
     end)

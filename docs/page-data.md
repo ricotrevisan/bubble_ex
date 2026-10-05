@@ -200,6 +200,72 @@ the search fields check sees the sort, and no field policy is involved
 (no `:search_field_hidden`). Any other sort field that maps to no
 attribute leaves the search uncompiled (residue).
 
+A search may name **further sort keys** (`additional_sort_fields`):
+the list is sorted by the first key, then the next among equal ones, and
+so on, in the database (`Ash.Query.sort([{:rank, :asc}, {:title,
+:desc}])`). The editor's display names (`*_friendly`) and an unset
+dynamic sort field or geographic reference are ignored; a dynamic sort
+field (one an expression picks) or a geographic sort is residue
+(`:search_option`).
+
+### List operators (WTF-495)
+
+A source's list operators are lowered by
+`BubbleEx.Target.Elixir.FrontendWorkflows.Lists` before binding, so the
+database sorts and filters lists of things wherever it can:
+
+| Bubble | Generated read |
+|--------|----------------|
+| a search `:sorted by` (again) | one query sorted by both keys, the outer one first |
+| a search `:filtered` | the search with the filter's constraints added: what the filter keeps of the whole search, not of its first page |
+| any other list of things `:sorted by` | a query for the list's records (`id in ^ids`), sorted |
+| any other list of things `:filtered` | a query for the list's records that meet the constraints, shown in the list's order (`Runtime.intersect/2`) |
+| `:merged with`, `:unique elements`, `:minus list`, `:intersect with`, `:plus item`, `:minus item`, `:items until #`, `:item #`, `:converted to list` | Elixir over the lists (the generated `Bubble.Runtime`); a search under them is a query read first (`query_<n>`) |
+| options, texts, numbers or dates `:filtered` | Elixir (`Enum.filter/2`, the constraints per item) |
+| `All <option set>` (an option value of `all values`) | every option of the set |
+
+Every query reads as the current user, bounded by `:max_items`, like any
+other search: a merged list reads at most `:max_items` of each search,
+then shows one page, so it may show less than Bubble, never more. What
+would show more or other than Bubble over such a capped read is residue
+(`elixir:capped_list`): its count, its last item, or subtracting it from
+a list (`:minus list`). A count of searches of one type merged is one
+count query for either's records. A query for a list's records reads
+them as the user may view them (the resource's read action, its count
+too, `BubbleData.listed/2`), as reading the list's things by ID does; a
+search, as the user may find them (`:search`). It reads all of the
+list's matches (the list's things' IDs, each once, at most
+`:max_listed`, default 10,000, logged past it) unless a page shows them,
+and equal sort keys keep the list's order (its position is the last
+sort key). A record the list holds that the user may not read is
+not shown; with enforced policies, neither is one whose sorted or
+filtered field the user may not view (`<App>.Privacy.SearchFields`, as
+for searches, WTF-457). A source over queries subscribes to its type's
+changes like a search (`read: :query`), and to those of every resource
+its queries search (`query_topics`), whatever its own type (a count, a
+text).
+
+Assumptions, not replayed (WTF-387; chosen to show less, never more):
+
+* `:merged with` keeps the first list's items, then the second's not in
+  it, each once; `:unique elements`, `:minus list` and `:intersect with`
+  keep each item's first occurrence; things are the same item when
+  their unique IDs are.
+* `:plus item` does not add an item already listed, nor an empty one;
+  `:items until #` with an empty number shows nothing.
+* A list of things sorted or filtered shows each thing once (a query
+  finds each record once), and a sort is stable: equal keys keep the
+  order of what is sorted (a search's, the database's). Empty values sort as PostgreSQL does (last
+  ascending, first descending), as a search's sort already did.
+* A page's `:filtered` that does not state `ignore_empty_constraints`
+  matches nothing on an empty constraint value, as a page search does
+  (below).
+
+Not lowered yet: sorting a list of options, texts or numbers (residue
+`elixir:sort`), a field of each item of a list, a list operator inside a
+repeating group's cell (`:page_data_in_cell`, `kind: query`), dynamic sort
+fields.
+
 **Display data (WTF-492).** An element a "Display data in a group /
 popup" or "Display list in a repeating group" step sets shows what the
 step showed until a reset or the page's next load, in place of its own
@@ -548,14 +614,20 @@ logged-out visitor is Bubble's temporary user), so `X = Current User`
 matches nothing for them rather than being dropped.
 
 Only searches were replayed. A `:filtered` list follows its own
-`ignore_empty_constraints` (`true` drops, `false` compares) and is
-otherwise residue unless `BubbleEx.PageData.build/3` is given a default
-(`ignore_empty_constraints:`), as is a search where it is not known
-where it runs (a privacy rule's condition).
+`ignore_empty_constraints` (`true` drops, `false` compares). On a page,
+one that does not state it takes the page search's rule (WTF-495: an
+empty value matches nothing; not replayed for `:filtered`, a question on
+WTF-387) unless `BubbleEx.PageData.build/3` is given a default
+(`ignore_empty_constraints:`); elsewhere it is residue, as is a search
+where it is not known where it runs (a privacy rule's condition).
 
 ## Unverified Bubble behavior and open questions
 
-* **`:filtered` with an empty constraint value.** Not replayed (above).
+* **`:filtered` with an empty constraint value.** Not replayed (above):
+  unstated on a page, it matches nothing (WTF-495).
+* **List operators** (WTF-495): duplicates, `:plus item` of a listed
+  item, `:items until #` of an empty number, the order of empty sort
+  values. See "List operators" above (WTF-387).
 * **Server actions in page workflows ignore the flag.** A page workflow's
   server-side action (`BubbleEx.Index.WorkflowAnalysis`) takes the
   backend rule; whether Bubble evaluates its searches like a page search

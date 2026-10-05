@@ -493,6 +493,28 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
       assert inputs.files[".wtf/bypasses.json"] =~ ~s("purpose": "confirm_email")
     end
 
+    # WTF-495: a workflow scheduling itself lists itself among what blocks
+    # it; it is accounted for by its other callees.
+    test "a workflow blocked by itself and a residue callee is blocked by that callee", %{
+      inputs: inputs
+    } do
+      resources =
+        Enum.map(inputs.workflows.resources, fn r ->
+          actions =
+            Enum.map(r.actions, fn a ->
+              if a.blocked_by != [] and a.residue == [],
+                do: %{a | blocked_by: a.blocked_by ++ [a.symbol]},
+                else: a
+            end)
+
+          %{r | actions: actions}
+        end)
+
+      report = run!(put_in(inputs.workflows.resources, resources))
+      assert symbols(report, "workflows")["reasons"]["residue:blocked_by_callee"] == 1
+      assert symbols(report, "workflows")["uncovered"] == 0
+    end
+
     # H2: nothing checked is not a pass.
     test "without a workflow Spec it is skipped; without files the bodies are not checked",
          %{inputs: inputs} do

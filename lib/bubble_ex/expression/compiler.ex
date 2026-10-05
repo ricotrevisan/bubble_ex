@@ -14,7 +14,7 @@ defmodule BubbleEx.Expression.Compiler do
 
   What has no IR yet: raw nodes (the parser's unmodeled operators and
   sources), searches and filters with unmodeled constraints or options
-  (`dynamic_sort_field`, `additional_sort_fields`), elements used as values
+  (a dynamic or geographic sort), elements used as values
   without a state, and constraints whose value may be empty where what
   Bubble does with them is not known.
 
@@ -38,7 +38,19 @@ defmodule BubbleEx.Expression.Compiler do
   User` is not dropped for them. Where `Env.searches` is nil (a privacy
   condition), and for `:filtered`, the search's own option or
   `Env.ignore_empty_constraints` decides: `true` drops, `false` compares,
-  and nil leaves the constraint uncompiled.
+  and nil leaves the constraint uncompiled, except a page's `:filtered`
+  (`:page`, no default), which matches nothing as a page search does
+  (WTF-495; not replayed for `:filtered`).
+
+  ## Sorts
+
+  A search's, `:filtered`'s or `:sorted`'s sort is `:sort` over the list;
+  Bubble's further sort keys (`additional_sort_fields`) are nested sorts,
+  the primary key outermost (a sort keeps the order of what it sorts
+  among equal keys). The editor's display names (`*_friendly`) and unset
+  settings (an `Empty` dynamic sort field or geographic reference) are
+  ignored; a dynamic or geographic sort has no IR. An option value of
+  `"all values"` is the editor's `All <option set>` (`:all_options`).
   """
 
   alias BubbleEx.{Diagnostic, Error, Expression, Model}
@@ -108,7 +120,7 @@ defmodule BubbleEx.Expression.Compiler do
     "convert_to_number" => :to_number,
     "url" => :to_text
   }
-  @search_options ~w(sort_field descending ignore_empty_constraints)
+  @search_options ~w(sort_field descending ignore_empty_constraints additional_sort_fields)
 
   @doc "Types and compiles `ast` in `env`. See the moduledoc."
   @spec compile(Ast.t(), Env.t()) :: {:ok, result()} | {:error, Error.t()}
@@ -148,6 +160,19 @@ defmodule BubbleEx.Expression.Compiler do
   defp lower(%Empty{}, base, _ctx), do: {IR.node(:empty), base, []}
   defp lower(%CurrentUser{}, base, _ctx), do: {IR.node(:current_user, [], "user"), base, []}
   defp lower(%ThisThing{binder: b, type: t}, base, _ctx), do: {IR.node(:this, [b], t), base, []}
+
+  # The editor's "All <option set>" (an option value of "all values"),
+  # unless the set has an option stored as that.
+  defp lower(
+         %OptionValue{option_set: set, value: "all values", type: "list." <> _} = n,
+         base,
+         ctx
+       ) do
+    case option_key(ctx.env.model, strip_option(set), n.value) do
+      nil -> {IR.node(:all_options, [strip_option(set)], n.type), base, []}
+      _ -> lower(%{n | type: set}, base, ctx)
+    end
+  end
 
   defp lower(%OptionValue{option_set: set, value: value, type: type}, base, ctx) do
     set_id = strip_option(set)
@@ -216,11 +241,11 @@ defmodule BubbleEx.Expression.Compiler do
     item = %{ctx | this_type: n.data_type, this_binder: :filter_item}
 
     with {:ok, type_id} <- data_type_id(n.data_type),
-         :ok <- search_options(n.options, pbase) do
+         {:ok, sorts} <- search_options(n.options, pbase) do
       cbase = pbase ++ [n.meta[:prop_keys][:constraints] || "constraints"]
       {pred, diags} = constraints(n, n.data_type, cbase, item)
       search = combine(IR.node(:search, [type_id, pred], n.type), [pred])
-      {sorted(search, n.options), base, diags}
+      {sorted(search, sorts), base, diags}
     else
       {:error, diag} -> {:error, base, [diag]}
       :error -> {:error, base, [uncompiled(pbase, "a search of an unknown data type", :search)]}
@@ -297,7 +322,7 @@ defmodule BubbleEx.Expression.Compiler do
     path = spath ++ [link(n)]
 
     case search_options(n.options, path ++ [key(n, :properties)]) do
-      :ok -> {sorted(subject, n.options), path, diags}
+      {:ok, sorts} -> {sorted(subject, sorts), path, diags}
       {:error, diag} -> {:error, path, diags ++ [diag]}
     end
   end
@@ -327,11 +352,11 @@ defmodule BubbleEx.Expression.Compiler do
     item = %{ctx | this_type: item_type, this_binder: :filter_item}
 
     case search_options(n.options, pbase) do
-      :ok ->
+      {:ok, sorts} ->
         cbase = pbase ++ [n.meta[:prop_keys][:constraints] || "constraints"]
         {pred, more} = constraints(n, item_type, cbase, item)
         ir = combine(IR.node(:filter, [subject, pred], n.type), [subject, pred])
-        {sorted(ir, n.options), path, diags ++ more}
+        {sorted(ir, sorts), path, diags ++ more}
 
       {:error, diag} ->
         {:error, path, diags ++ [diag]}
@@ -632,23 +657,96 @@ defmodule BubbleEx.Expression.Compiler do
 
   # --- searches, filters and constraints ----------------------------------------------
 
+  # The sort keys of a search's, filter's or `:sorted`'s options, the
+  # primary one first: `{:ok, [{field, descending?}]}`, or an uncompiled
+  # diagnostic for an option with no IR (a dynamic sort field, a
+  # geographic sort). The editor's display names (`*_friendly`) and unset
+  # settings (an `Empty` dynamic sort field or geographic reference) say
+  # nothing.
   defp search_options(options, path) do
-    case Map.keys(options) -- @search_options do
-      [] ->
-        :ok
+    options = settings(options)
 
-      unknown ->
-        {:error,
-         uncompiled(path, "the search options #{inspect(Enum.sort(unknown))}", :search_option)}
+    with {:unknown, []} <- {:unknown, Map.keys(options) -- @search_options},
+         {:ok, more} <- additional_sorts(options["additional_sort_fields"]) do
+      {:ok, primary_sort(options) ++ more}
+    else
+      {:unknown, unknown} -> {:error, unknown_options(path, unknown)}
+      :error -> {:error, unknown_options(path, ["additional_sort_fields"])}
     end
   end
 
-  defp sorted(:error, _options), do: :error
+  defp unknown_options(path, keys),
+    do: uncompiled(path, "the search options #{inspect(Enum.sort(keys))}", :search_option)
 
-  defp sorted(ir, %{"sort_field" => field} = options) when is_binary(field),
-    do: IR.node(:sort, [ir, field, options["descending"] == true], ir.type)
+  defp settings(options) when is_map(options) do
+    for {k, v} <- options,
+        not (is_binary(k) and String.ends_with?(k, "_friendly")),
+        not (k in ["dynamic_sort_field", "geo_reference"] and empty_setting?(v)),
+        into: %{},
+        do: {k, v}
+  end
 
-  defp sorted(ir, _options), do: ir
+  defp settings(_options), do: %{}
+
+  defp empty_setting?(nil), do: true
+  defp empty_setting?(v) when is_map(v), do: Keys.value(v, :type) == "Empty"
+  defp empty_setting?(_v), do: false
+
+  # `{field, descending?}` of the primary sort; `_dynamic_sort_field` names
+  # a dynamic one, which has no IR (its options keep `dynamic_sort_field`).
+  defp primary_sort(%{"sort_field" => field} = options)
+       when is_binary(field) and field not in ["", "_dynamic_sort_field"],
+       do: [{field, options["descending"] == true}]
+
+  defp primary_sort(_options), do: []
+
+  # Bubble's further sort keys, in order (`"0"`, `"1"`, …): each a static
+  # field with its direction; anything else has no IR.
+  defp additional_sorts(nil), do: {:ok, []}
+
+  defp additional_sorts(entries) when is_map(entries) or is_list(entries) do
+    ordered =
+      if is_map(entries),
+        do: entries |> Enum.sort_by(fn {k, _} -> sort_index(k) end) |> Enum.map(&elem(&1, 1)),
+        else: entries
+
+    Enum.reduce_while(ordered, {:ok, []}, fn entry, {:ok, acc} ->
+      case sort_key(settings(entry)) do
+        {:ok, key} -> {:cont, {:ok, acc ++ [key]}}
+        :error -> {:halt, :error}
+      end
+    end)
+  end
+
+  defp additional_sorts(_entries), do: :error
+
+  defp sort_key(%{"sort_field" => field} = e)
+       when is_binary(field) and field not in ["", "_dynamic_sort_field"] do
+    if Map.keys(e) -- ["sort_field", "descending"] == [],
+      do: {:ok, {field, e["descending"] == true}},
+      else: :error
+  end
+
+  defp sort_key(_entry), do: :error
+
+  defp sort_index(k) when is_binary(k) do
+    case Integer.parse(k) do
+      {n, ""} -> {0, n}
+      _ -> {1, k}
+    end
+  end
+
+  defp sort_index(k), do: {1, k}
+
+  # A sort by several keys is nested sorts, the primary one outermost: a
+  # sort keeps the order of what it sorts among equal keys.
+  defp sorted(:error, _sorts), do: :error
+
+  defp sorted(ir, sorts) do
+    sorts
+    |> Enum.reverse()
+    |> Enum.reduce(ir, fn {field, desc}, acc -> IR.node(:sort, [acc, field, desc], ir.type) end)
+  end
 
   # The constraints of a search or filter as one predicate over the item
   # (nil when there are none).
@@ -752,6 +850,13 @@ defmodule BubbleEx.Expression.Compiler do
     do: if(options["ignore_empty_constraints"] == true, do: :drop, else: :nothing)
 
   defp empty_mode(%Search{}, %Env{searches: :backend}), do: :nothing
+
+  # A page's `:filtered` that does not state the option, with no default
+  # from the caller: as a page search (WTF-495; not replayed for
+  # `:filtered`, WTF-387). Matching nothing shows less, never more.
+  defp empty_mode(%Filter{options: options}, %Env{searches: :page, ignore_empty_constraints: nil})
+       when not is_map_key(options, "ignore_empty_constraints"),
+       do: :nothing
 
   defp empty_mode(n, env) do
     case Map.get(n.options, "ignore_empty_constraints", env.ignore_empty_constraints) do

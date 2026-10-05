@@ -474,7 +474,13 @@ defmodule BubbleEx.Target.Phoenix.Structural.Coverage do
         entry
 
       uncovered ->
-        blocked = Map.get(known.actions, bubble_id(id), %{}) |> Map.get(:blocked_by, [])
+        # A workflow that schedules itself lists itself: it is blocked by
+        # its other callees.
+        blocked =
+          known.actions
+          |> Map.get(bubble_id(id), %{})
+          |> Map.get(:blocked_by, [])
+          |> List.delete(id)
 
         if blocked != [] and Enum.all?(blocked, &callee_accounted?(&1, known, seen)),
           do: entry(id, :residue, :blocked_by_callee, subjects),

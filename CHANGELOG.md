@@ -19,6 +19,43 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **List operators of page data load** (WTF-495, part of WTF-476).
+  Repeating group lists (and groups, properties) using `:sorted by`,
+  `:filtered`, `:merged with`, `:unique elements` and the other list
+  operators were `:uncompiled_expression` residue, so 53 of 61 instances
+  in cells waited on lists the page did not load. Now
+  (`Target.Elixir.FrontendWorkflows.Lists`): a sorted search sorted
+  again, and a search's further sort keys (`additional_sort_fields`), are
+  one query sorted by several keys; a filtered search is the search with
+  the filter's constraints; sorting or filtering any other list of
+  things is a query for its records (`id in ^ids`, read as the user may
+  view them, `BubbleData.listed/1`; filtered keeps the list's order);
+  searches under other operators are queries read first (`query_<n>`),
+  combined in Elixir by new runtime functions (`merge/2`, `unique/1`,
+  `minus_list/2`, `intersect/2`, `plus_item/2`, `minus_item/2`,
+  `limit/2`, `item_at/2`, `as_list/1`; an existing app's owned
+  `Bubble.Runtime` needs them added from the template). Options, texts
+  and numbers are filtered in Elixir; `All <option set>` (option value
+  `all values`) is every option. Every read is an Ash query as the
+  actor, bounded by `:max_items`; what a capped read would overstate
+  (its count, its last item, or subtracting it) is residue
+  (`elixir:capped_list`), and a count of merged searches of one type is
+  one count query. A list's records read in the database are all its
+  matches (at most `:max_listed`, default 10,000), in its order among
+  equal sort keys, through the view action (counts too). A value over
+  queries follows the changes of every resource they search
+  (`query_topics`). A page's `:filtered` that does not
+  state `ignore_empty_constraints` matches nothing on an empty value, as
+  a page search does (not replayed; questions on WTF-387). The editor's
+  `*_friendly` keys and unset dynamic sort fields no longer block a
+  search. Structural coverage no longer counts a self-scheduling
+  workflow blocked by a residue callee as uncovered. On the private
+  fixture app (against main with instances in cells, WTF-494): data
+  sources loaded 2,044 → 2,337 (lists 84 → 139 of 238, instances 113 →
+  126), elements without data 1,917 → 1,496, instances in cells
+  rendered per cell 6 → 17 of 61; frontend workflows native 750 → 805,
+  wired 511 → 536; backend workflows native own body 142 → 155.
+
 - **Reusable instances in repeating group cells are rendered per cell**
   (WTF-494, part of WTF-476). An instance in a cell rendered with one scope
   for every cell, so its thing, its properties, what "Display data"
