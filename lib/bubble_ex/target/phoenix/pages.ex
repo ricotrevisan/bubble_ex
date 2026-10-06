@@ -45,7 +45,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       every render, until a workflow step acts on it; from then on the
       step decides (see `<Web>.Bubble`). With workflows, the helpers read
       the current user from `@bubble_viewer`, which the runtime reads
-      afresh with field policies, never the session's user. A helper
+      afresh with field policies, never the session's user, and a URL
+      parameter read as text from `@bubble_url` (the URL's query the
+      runtime keeps; a reusable's component gets it from its caller). A
+      reusable instance's property read where the instance is reads the
+      instance's value, or its reusable element's default when it sets
+      none (`FrontendWorkflows.Spec.read/4`). A helper
       raises on a relationship it reads that was not loaded rather than
       decide on an empty value. Conditionals that do not compile, read
       what the page does not keep or load, or belong to an overlay or a
@@ -1772,7 +1777,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       Enum.any?(node.bindings, fn
         {_slot, %{kind: kind, id: id}} when kind in [:value, :condition] ->
           case expressions[id] do
-            %{bindings: vars} -> Enum.any?(vars, &data_input?(&1.input))
+            %{bindings: vars} -> Enum.any?(vars, &(data_input?(&1.input) or url_input?(&1.input)))
             _ -> false
           end
 
@@ -1793,6 +1798,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp data_input?({kind, _}), do: kind in [:page_thing, :cell_thing, :cell_index]
   defp data_input?(_), do: false
+
+  # A URL parameter (read as text): the page keeps the URL's query, and a
+  # component reads it from the `bubble_url` its caller passes down.
+  defp url_input?({:url_parameter, _}), do: true
+  defp url_input?(_), do: false
 
   # The elements whose data source (or, for an instance, a property it
   # sets, WTF-493) the page does not load, with why.
@@ -2802,7 +2812,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       do: [
         {"bubble_states", {:expr, "@bubble_states"}},
         {"bubble_inputs", {:expr, "@bubble_inputs"}},
-        {"bubble_data", {:expr, "@bubble_data"}}
+        {"bubble_data", {:expr, "@bubble_data"}},
+        {"bubble_url", {:expr, "@bubble_url"}}
       ],
       else: []
   end
@@ -2812,8 +2823,19 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp read_arg(%{input: :current_user}, %{viewer: true, flows: %FlowSpec{}}),
     do: "@bubble_viewer"
 
-  defp read_arg(%{var: var, input: input}, ctx) do
-    case ctx.flows && FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell)) do
+  defp read_arg(%{var: var, input: input}, ctx),
+    do:
+      read_source(
+        ctx.flows && FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell)),
+        var,
+        ctx
+      )
+
+  defp read_arg(%{var: var}, _ctx), do: "@" <> var
+
+  # How a helper's argument reads what the page keeps (`FlowSpec.read/4`).
+  defp read_source(read, var, ctx) do
+    case read do
       {:data, k} ->
         "Bubble.data(@bubble_data, #{key_scope(k.path, ctx)}, #{literal(k.element)})"
 
@@ -2834,12 +2856,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       {:input, k} ->
         "Bubble.input(@bubble_inputs, #{key_scope(k.path, ctx)}, #{literal(k.element)})"
 
+      {:url, name} ->
+        "Map.get(@bubble_url, #{literal(name)})"
+
       _ ->
         "@" <> var
     end
   end
-
-  defp read_arg(%{var: var}, _ctx), do: "@" <> var
 
   defp key_scope([], ctx), do: scope_var(ctx)
   defp key_scope([id], %{surface: :page}), do: literal(nest("", id))
@@ -3504,7 +3527,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       )
       |> Kernel.++(
         if base.flows && MapSet.member?(base.scoped, entry.node.map_key),
-          do: [{"bubble_states", "%{}"}, {"bubble_inputs", "%{}"}, {"bubble_data", "%{}"}],
+          do: [
+            {"bubble_states", "%{}"},
+            {"bubble_inputs", "%{}"},
+            {"bubble_data", "%{}"},
+            {"bubble_url", "%{}"}
+          ],
           else: []
       )
       |> Enum.uniq_by(&elem(&1, 0))

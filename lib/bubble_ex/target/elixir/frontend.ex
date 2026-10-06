@@ -37,6 +37,10 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   visibility on page load, so the result never changes). Anything else conditionals set (colors, text…) is
   not compiled here.
 
+  A condition may read a URL parameter read as text (the page keeps the
+  URL's query); one reading a URL parameter of another type (a yes/no, a
+  number, a thing) or a path does not compile.
+
   A visibility conditional that does not compile (a condition with no IR
   or no Elixir, a non-literal visibility, an overlay's: a Popup, Group
   Focus or Floating Group is shown and hidden by workflows) is absent too;
@@ -54,7 +58,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   """
 
   alias BubbleEx.{Error, Expression, Model}
-  alias BubbleEx.Expression.{Compiler, Env, IR, Tree}
+  alias BubbleEx.Expression.{Compiler, Env, IR, Keys, Tree}
   alias BubbleEx.Frontend.{Conditions, Normalized}
   alias BubbleEx.Frontend.Normalized.Node
   alias BubbleEx.Plan.Residue
@@ -178,11 +182,12 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   end
 
   # What a page can supply a condition with: the current user, an
-  # element's state (custom states, input values, a group's data) and the
-  # page's or the current cell's thing (the target decides per page
-  # whether it does). Anything else (URL parameters, the page's width or
-  # name…) would be a value nothing sets, never the one Bubble reads.
-  @page_inputs [:element_state, :page_thing, :cell_thing, :cell_index]
+  # element's state (custom states, input values, a group's data), the
+  # page's or the current cell's thing and a URL parameter read as text
+  # (the target decides per page whether it does). Anything else (the
+  # page's width or name…) would be a value nothing sets, never the one
+  # Bubble reads.
+  @page_inputs [:element_state, :page_thing, :cell_thing, :cell_index, :url_parameter]
 
   defp page_input?(:current_user), do: true
   defp page_input?({kind, _ref}) when kind in @page_inputs, do: true
@@ -215,7 +220,8 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   # A condition is a yes/no expression; compiled as a value (not shown).
   defp compile_condition(condition, env, project, opts) when is_map(condition) do
-    with {:ok, %{ast: ast}} <- Expression.parse(condition, schema: env.schema),
+    with true <- text_url_parameters?(condition),
+         {:ok, %{ast: ast}} <- Expression.parse(condition, schema: env.schema),
          {:ok, %{ir: %IR{type: "boolean"} = ir}} <- Compiler.compile(ast, env),
          {:ok, %{source: code} = result} when is_binary(code) <-
            ElixirTarget.compile(ir, project, Keyword.delete(target_opts(opts), :display)) do
@@ -226,6 +232,25 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   end
 
   defp compile_condition(_condition, _env, _project, _opts), do: :error
+
+  # Whether every URL parameter a condition reads is read as text: the
+  # typing reads every URL parameter as text, which compares a yes/no, a
+  # number or a thing read from the URL as Bubble does not (and a path is
+  # not a parameter). A condition reading one stays a marker.
+  defp text_url_parameters?(%{} = expr) do
+    props =
+      case Keys.value(expr, :properties) do
+        %{} = props -> props
+        _ -> %{}
+      end
+
+    (Keys.value(expr, :type) != "GetParamFromUrl" or
+       (props["type"] in [nil, "parameter"] and Keys.value(props, :value) in [nil, "text"])) and
+      Enum.all?(Map.values(expr), &text_url_parameters?/1)
+  end
+
+  defp text_url_parameters?(list) when is_list(list), do: Enum.all?(list, &text_url_parameters?/1)
+  defp text_url_parameters?(_value), do: true
 
   # One variable per input across the states (variables are named from
   # their input, so a name naming two inputs cannot be shared).

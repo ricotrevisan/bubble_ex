@@ -119,6 +119,19 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
 
     # Read from outside the instance.
     assert view |> element(~s([data-bubble-id="bOutside"])) |> render() =~ "Outside: Hello A"
+
+    # An instance that sets no value of a property: its default, computed
+    # in the instance (here reading its Title), read from outside too.
+    assert view |> element(~s([data-bubble-id="bOutsideDefault"])) |> render() =~
+             "Outside default: Re: Hello B"
+
+    [open] =
+      Regex.run(
+        ~r/\A<[^>]*>/s,
+        view |> element(~s([data-bubble-id="bOutsideShown"])) |> render()
+      )
+
+    refute open =~ ~r/\shidden(\s|>|=)/
   end
 
   test "properties nest: a reusable two levels down takes its default; IDs are per reusable",

@@ -70,6 +70,22 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     assert hidden?(view, "bCardT")
   end
 
+  test "a URL parameter shows what reads it, on the page and in a reusable element",
+       %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/")
+    assert hidden?(view, "bTabOpen")
+    assert hidden?(view, "bCardTab", "bMember")
+
+    {:ok, view, _html} = live(conn, "/?tab=open")
+    refute hidden?(view, "bTabOpen")
+    refute hidden?(view, "bCardTab", "bMember")
+
+    # The URL changing on the same page (a patch) re-renders it.
+    render_patch(view, "/?tab=closed")
+    assert hidden?(view, "bTabOpen")
+    assert hidden?(view, "bCardTab", "bMember")
+  end
+
   test "logged in: the other group, and in a reusable element", %{conn: conn, user: user} do
     {:ok, view, _html} = live(sign_in(conn, user), "/")
     assert hidden?(view, "bOut")

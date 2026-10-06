@@ -131,6 +131,46 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
              "bubble_viewer={@bubble_viewer}"
   end
 
+  test "a URL parameter read as text is read from the URL the page keeps", %{files: files} do
+    assert tag(files["lib/shop_web/live/index_live.html.heex"], "bTabOpen") =~
+             ~s|hidden={!visible_btabopen(Map.get(@bubble_url, "tab"))}|
+
+    assert files["lib/shop_web/live/index_live.ex"] =~ ~s|url_parameter_tab == "open"|
+
+    # In a reusable element, from the map its caller passes down.
+    assert files["lib/shop_web/components/reusables/card.ex"] =~
+             "attr :bubble_url, :any, default: %{}"
+
+    assert files["lib/shop_web/components/reusables/card.html.heex"] =~
+             ~s|hidden={!visible_bcardtab(Map.get(@bubble_url, "tab"))}|
+
+    assert tag(files["lib/shop_web/live/index_live.html.heex"], "bMember") =~
+             "bubble_url={@bubble_url}"
+  end
+
+  test "a URL parameter read as another type than text stays marked", %{} do
+    condition = %{
+      "type" => "GetParamFromUrl",
+      "properties" => %{
+        "parameter_name" => %{"type" => "TextExpression", "entries" => %{"0" => "on"}},
+        "value" => "boolean"
+      },
+      "next" => %{"type" => "Message", "name" => "is_true"}
+    }
+
+    template =
+      app()
+      |> put_in(["pages", "index", "elements", "bTabOpen", "states", "0", "condition"], condition)
+      |> build()
+      |> Map.fetch!(:files)
+      |> Map.fetch!("lib/shop_web/live/index_live.html.heex")
+
+    assert template =~
+             "TODO(bubble:bTabOpen) visibility: 1 conditional not lowered (it does not compile)"
+
+    assert tag(template, "bTabOpen") =~ ~r/\shidden[\s>]/
+  end
+
   test "not visible on page load is the hidden attribute, which workflow steps change", %{
     files: files
   } do
@@ -187,12 +227,12 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
   } do
     {:ok, report} = Phoenix.frontend_report(project, Keyword.delete(opts, :frontend_workflows))
 
-    # Without the workflows the page keeps no custom state or input value
-    # and loads no data: bFlagged's, bOpen's, bCellNoProject's and
-    # bHasProject's conditionals are marked too.
+    # Without the workflows the page keeps no custom state, input value or
+    # URL and loads no data: bFlagged's, bOpen's, bCellNoProject's,
+    # bHasProject's, bTabOpen's and bCardTab's conditionals are marked too.
     assert %{
              "visibility_conditions_compiled" => 8,
-             "visibility_conditions_marked" => 6,
+             "visibility_conditions_marked" => 8,
              "conditions_other_properties" => 2
            } = report
   end
@@ -212,7 +252,7 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
              "TODO(bubble:bIn) visibility: 1 conditional not lowered (it does not compile)"
 
     assert tag(template, "bIn") =~ ~r/\shidden[\s>]/
-    refute files["lib/shop_web/live/index_live.ex"] =~ "url_parameter"
+    refute files["lib/shop_web/live/index_live.ex"] =~ "defp visible_bin(url_parameter"
 
     # An element's built-in state compiles, but no page keeps it.
     template =

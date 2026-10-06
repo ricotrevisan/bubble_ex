@@ -34,6 +34,52 @@
             }
           },
           "type": "Text"
+        },
+        "bCardTab": {
+          "id": "bCardTab",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 2,
+            "text": {
+              "entries": {
+                "0": "Card tab open"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "args": {
+                    "entries": {
+                      "0": "open"
+                    },
+                    "type": "TextExpression"
+                  },
+                  "name": "equals",
+                  "type": "Message"
+                },
+                "properties": {
+                  "parameter_name": {
+                    "entries": {
+                      "0": "tab"
+                    },
+                    "type": "TextExpression"
+                  }
+                },
+                "type": "GetParamFromUrl"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
         }
       },
       "id": "bCard",
@@ -471,6 +517,52 @@
               },
               "properties": {
                 "font_color": "#333333",
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bTabOpen": {
+          "id": "bTabOpen",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 18,
+            "text": {
+              "entries": {
+                "0": "Tab open"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "args": {
+                    "entries": {
+                      "0": "open"
+                    },
+                    "type": "TextExpression"
+                  },
+                  "name": "equals",
+                  "type": "Message"
+                },
+                "properties": {
+                  "parameter_name": {
+                    "entries": {
+                      "0": "tab"
+                    },
+                    "type": "TextExpression"
+                  }
+                },
+                "type": "GetParamFromUrl"
+              },
+              "properties": {
                 "is_visible": true
               },
               "type": "State"

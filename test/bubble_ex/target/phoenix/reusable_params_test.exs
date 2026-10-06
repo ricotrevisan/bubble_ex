@@ -151,8 +151,20 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       assert read.("bTaskPage", "bCardA", "param_pTitle") ==
                {:data, %{path: ["bCardA"], element: "param_pTitle/bCard"}}
 
-      # Not set by that instance (its default is computed inside it).
-      assert read.("bTaskPage", "bCardB", "param_pTask") == nil
+      # Not set by that instance: its default, computed in the instance's
+      # scope under the same key, read when the page renders (here none:
+      # empty). The page's sources and workflows do not read it.
+      assert read.("bTaskPage", "bCardB", "param_pTask") ==
+               {:data, %{path: ["bCardB"], element: "param_pTask/bCard"}}
+
+      assert {:error, "element_state:param"} =
+               Spec.data_read(
+                 spec.data_index,
+                 "bTaskPage",
+                 nil,
+                 {:element_state, %{"element" => "bCardB", "state" => "param_pTask"}}
+               )
+
       # In a cell: kept per cell, not read from the page.
       assert read.("bTaskPage", "bCardC", "param_pTitle") == nil
       assert read.("bTaskPage", "bRowC", "param_pLabel") == nil
@@ -205,6 +217,11 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
 
       assert files["lib/shop_web/live/task_live.html.heex"] =~
                "TODO(bubble:bCardB) its property param_pTitle is not passed (uncompiled_expression)"
+
+      # Nor is the default from outside the instance.
+      assert files["lib/shop_web/live/task_live.html.heex"] =~
+               "TODO(bubble:bOutsideDefault) text: reads page data that is not loaded " <>
+                 "(element_state:param_pHeading)"
     end
   end
 
@@ -315,6 +332,13 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
 
       page = files["lib/shop_web/live/task_live.html.heex"]
       assert page =~ ~s|Bubble.data(@bubble_data, "bCardA", "param_pTitle/bCard")|
+
+      # An instance's default, from outside it: where the instance's value
+      # would be.
+      assert page =~ ~s|Bubble.data(@bubble_data, "bCardB", "param_pHeading/bCard")|
+
+      assert page =~
+               ~s|visible_boutsideshown(Bubble.data(@bubble_data, "bCardA", "param_pNote/bCard"))|
 
       # In a cell where the instance is not rendered per cell, what it sets
       # is marked (WTF-494).
