@@ -6,6 +6,37 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Signed-in panels hidden by what the page already had** (WTF-476
+  follow-up). Measured on the private fixture app's five signed-in pages
+  (their reusables included), counts only: of the elements that render
+  hidden or empty, the two largest tractable root causes were:
+  - **A reusable instance's property read from outside the instance,
+    when the instance keeps its default.** A page's text or visibility
+    condition reading `<instance>'s <property>` was page data only when
+    the instance set the property; the default, which the page already
+    computes in the instance's scope under the same key, was not read,
+    so the condition stayed a marker and the panel stayed hidden. Pages
+    now read it (`FrontendWorkflows.Spec.instance_property/4`), only when
+    every value of the property loads and the instance is outside a
+    repeating group's cell; data sources and workflows still read only a
+    value the instance sets (they run before the default is computed).
+  - **URL parameters in visibility conditions and shown values.** A
+    condition reading `Get <name> from page URL` (text) did not compile
+    for pages, and a text showing one read an assign nothing set (always
+    empty), though the runtime keeps the URL's query. Both now read
+    `@bubble_url`, passed down to reusable components (at any depth) as
+    `bubble_url`. A URL parameter read as another type (yes/no, number,
+    thing), as a list, or a path does not compile in either (a marker,
+    shown empty), since the typing reads every URL parameter as text.
+
+  Counted statically over the 10,163 elements of the four page modules
+  behind the five routes, the elements that can show content went from
+  3,405 to 4,378 (hidden 6,458 to 5,391); signed in on synthetic data,
+  the visible elements went from 89 to 100 on one page and from 6 to 40
+  on another, the rest unchanged. The largest remaining root cause is a
+  URL's path segments read as a list (`path_segment`), whose Bubble
+  semantics are not yet replayed; it stays untyped.
+
 - **Generated pages no longer crash on a value's shape** (WTF-500). On
   the private fixture app, signed in, four pages crashed their LiveViews
   (26 crashes in one scan's server log) and 16 page data sources failed.

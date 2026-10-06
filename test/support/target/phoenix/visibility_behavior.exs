@@ -70,6 +70,32 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     assert hidden?(view, "bCardT")
   end
 
+  test "a URL parameter shows what reads it, on the page and in a reusable element",
+       %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/")
+    assert hidden?(view, "bTabOpen")
+    assert hidden?(view, "bCardTab", "bMember")
+
+    {:ok, view, _html} = live(conn, "/?tab=open")
+    refute hidden?(view, "bTabOpen")
+    refute hidden?(view, "bCardTab", "bMember")
+    # A reusable two levels down.
+    refute hidden?(view, "bBadgeTab", "bMember-bCardBadge")
+
+    # A text shows a text parameter; a typed or list one stays empty.
+    {:ok, view, _html} = live(conn, "/?tab=open&n=7&tags=a")
+    assert view |> element(~s([data-bubble-id="bTabText"])) |> render() =~ "Tab: open"
+    refute view |> element(~s([data-bubble-id="bTabCount"])) |> render() =~ "7"
+    refute view |> element(~s([data-bubble-id="bTabMany"])) |> render() =~ ~r/Many:\s*a/
+
+    # The URL changing on the same page (a patch) re-renders it.
+    render_patch(view, "/?tab=closed")
+    assert hidden?(view, "bTabOpen")
+    assert hidden?(view, "bCardTab", "bMember")
+    assert hidden?(view, "bBadgeTab", "bMember-bCardBadge")
+    assert view |> element(~s([data-bubble-id="bTabText"])) |> render() =~ "Tab: closed"
+  end
+
   test "logged in: the other group, and in a reusable element", %{conn: conn, user: user} do
     {:ok, view, _html} = live(sign_in(conn, user), "/")
     assert hidden?(view, "bOut")

@@ -152,10 +152,20 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   How a value read of a compiled page binding (`input`, as
   `BubbleEx.Target.Elixir` names it: `{:element_state, %{"element" => id,
   "state" => state}}`) is stored when read in `surface`: `{:state, key}`,
-  `{:input, key}` or nil when the page does not keep it.
+  `{:input, key}`, page data (see `data_read/4`), `{:url, name}` (a URL
+  parameter read as text, kept by the runtime from the URL's query) or
+  nil when the page does not keep it.
+
+  A reusable instance's property read where the instance is (`Card A's
+  Title` on the page) is also its reusable element's default when the
+  instance sets none (see `instance_property/4`).
   """
   @spec read(t(), String.t(), term(), String.t() | nil) :: {atom(), term()} | nil
   def read(spec, surface, input, cell \\ nil)
+
+  def read(%__MODULE__{}, _surface, {:url_parameter, %{"name" => name}}, _cell)
+      when is_binary(name),
+      do: {:url, name}
 
   def read(%__MODULE__{} = spec, surface, {:element_state, %{"state" => s}} = input, cell)
       when s in ["get_group_data", "get_list_data"] do
@@ -169,12 +179,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   def read(
         %__MODULE__{} = spec,
         surface,
-        {:element_state, %{"state" => "param_" <> _}} = input,
+        {:element_state, %{"element" => element, "state" => "param_" <> _ = param}} = input,
         cell
       ) do
     case data_read(spec.data_index, surface, cell, input) do
       {:ok, bind} -> bind
-      {:error, _} -> nil
+      {:error, _} -> instance_property(spec, surface, element, param)
     end
   end
 
@@ -301,6 +311,33 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     do: {:error, Atom.to_string(kind)}
 
   def data_read(_index, _surface, _cell, _input), do: {:error, "unknown"}
+
+  @doc """
+  Property `param` of reusable instance `instance`, read in `surface`
+  where the instance is, when the instance sets no value of it that loads
+  (`data_read/4` reads those): `{:data, %{path: [instance], element:
+  key}}`, the reusable element's default, which the page computes in the
+  instance's scope and keeps under the same key as a value the instance
+  sets (WTF-493), or nil. Only when every value of the property loads
+  (`index.params`, so the instance's own value too, and the default), for
+  an instance outside a repeating group's cell (rendered once, in one
+  scope). Read when the page renders, after its data loaded; the page's
+  data sources and workflows do not read it (they run before the
+  instance's sources, or the default would be read before it is
+  computed).
+  """
+  @spec instance_property(t(), String.t(), String.t(), String.t()) :: {:data, map()} | nil
+  def instance_property(%__MODULE__{} = spec, surface, instance, param) do
+    with %{surface: ^surface, instance_of: reusable} when is_binary(reusable) <-
+           spec.elements[instance],
+         false <- Map.has_key?(spec.cells, instance),
+         key = param_key(reusable, param),
+         true <- Map.get(spec.data_index.params, key) == true do
+      {:data, %{path: [instance], element: key}}
+    else
+      _ -> nil
+    end
+  end
 
   @doc """
   Where the page keeps property `param` (`"param_<id>"`) of reusable

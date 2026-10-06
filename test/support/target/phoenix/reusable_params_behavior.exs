@@ -119,6 +119,29 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
 
     # Read from outside the instance.
     assert view |> element(~s([data-bubble-id="bOutside"])) |> render() =~ "Outside: Hello A"
+
+    # An instance that sets no value of a property: its default, computed
+    # in the instance (here reading its Title), read from outside too.
+    assert view |> element(~s([data-bubble-id="bOutsideDefault"])) |> render() =~
+             "Outside default: Re: Hello B"
+
+    [open] =
+      Regex.run(
+        ~r/\A<[^>]*>/s,
+        view |> element(~s([data-bubble-id="bOutsideShown"])) |> render()
+      )
+
+    refute open =~ ~r/\shidden(\s|>|=)/
+
+    # From inside another reusable: Card reads its nested Badge's default.
+    assert text(view, "bCardA", "bInnerDefault") == "Inner default: Badge task"
+    assert text(view, "bCardB", "bInnerDefault") == "Inner default: Badge task"
+
+    # From a repeating group's cell, an instance outside the list.
+    html = render(view)
+    cells = length(Regex.scan(~r/data-bubble-id="bCellOutside"/, html))
+    assert cells > 0
+    assert length(Regex.scan(~r/Cell outside: Re: Hello B/, html)) == cells
   end
 
   test "properties nest: a reusable two levels down takes its default; IDs are per reusable",

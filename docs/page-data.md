@@ -296,7 +296,27 @@ both), so `This Reusable's <property>` reads the value of the
 instance being rendered, in texts, visibility conditions, data sources
 (a group whose data source is the property) and workflows, and nested
 reusables pass theirs down the same way. A page may read an instance's
-property too (`<instance>'s <property>`) when the instance sets it.
+property too (`<instance>'s <property>`): the value the instance sets,
+or, when it sets none, its default (with no default, empty), which the
+page computed in the instance's scope under the same key. The page's
+texts and visibility conditions read it when they render, after the
+page's data loaded, and only when every value of the property loads
+(below) and the instance is outside a repeating group's cell; the page's
+own data sources and workflows read only a value the instance sets
+(they run before the instance's sources compute its default).
+
+Visibility conditions and shown values (a text's dynamic content, an
+input's placeholder...) may also read a URL parameter read as a single
+text (`Get <name> from page URL`, Bubble's default type): the runtime
+keeps the URL's query (`@bubble_url`, decoded by Phoenix: text values
+only, a repeated key reads its last value, `+` reads as a space, and a
+key written `x[]` is not a text value, so it reads as empty; Bubble's
+reading of these is a replay question, WTF-387), and a reusable element's
+component gets it from its caller (`bubble_url`), at any depth. A URL
+parameter of another type (a yes/no, a number, a thing), a list or a
+path is not read by either: the condition or the value stays a marker
+(the typing reads every URL parameter as text, which would compare or
+show it wrongly).
 
 A thing or list of things a property holds is what the parent's
 expression read: through Ash, with the current user as the actor, like
