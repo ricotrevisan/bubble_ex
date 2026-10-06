@@ -75,6 +75,18 @@ defmodule <%= @web %>.BubbleData do
   list) reads at most `related_cap/0` records (`:max_items`, at most 100)
   per record, in all when lists nest (a record's tasks' comments share it).
 
+  ## Each read once (WTF-501)
+
+  A page load reads the current user once at mount for its first load
+  (a later load, a patch or an event reads them again; the page-loaded
+  workflows, which may write, read the actor again). One read of the page's data (`read_pass/1`) makes each
+  query, each read of things by unique ID and each relationship load
+  once, as that user, however many sources ask for it (the current
+  user's relationships, a search two elements share, the same records'
+  relationships in every cell's instance), and forgets it when it ends:
+  the next read (a change notification, an event) reads again. The
+  records of a list that holds none are nothing, without a query.
+
   ## Random order
 
   A search sorted by Bubble's random sort reads its records ordered by
@@ -174,6 +186,7 @@ defmodule <%= @web %>.BubbleData do
   alias <%= @web %>.BubbleWorkflows
 
   @id ~r/\A[0-9]{1,20}x[0-9]{1,24}\z/
+  @pass {__MODULE__, :read_pass}
 
   @doc "Whether pages may read stored data (the workflows' opt-in)."
   def data_access?,
@@ -267,13 +280,16 @@ defmodule <%= @web %>.BubbleData do
       # committed: this read covers them.
       _ = take_changes(Map.get(socket.assigns, :bubble_topics, MapSet.new()), false)
 
-      {data, by_source} =
-        Enum.reduce(BubbleWorkflows.surfaces(page), {%{}, %{}}, fn {scope, module}, acc ->
-          load_surface(socket, module, scope, acc)
-        end)
+      {data, by_source, cells} =
+        read_pass(fn ->
+          {data, by_source} =
+            Enum.reduce(BubbleWorkflows.surfaces(page), {%{}, %{}}, fn {scope, module}, acc ->
+              load_surface(socket, module, scope, acc)
+            end)
 
-      # The reusable instances in cells (WTF-494): one scope per cell read.
-      {data, by_source, cells} = load_cells(socket, page, {data, by_source})
+          # The reusable instances in cells (WTF-494): one scope per cell read.
+          load_cells(socket, page, {data, by_source})
+        end)
 
       socket
       |> assign(:bubble_data, data)
@@ -375,19 +391,41 @@ defmodule <%= @web %>.BubbleData do
 
         by_source = Map.get(socket.assigns, :bubble_source_topics, %{})
 
-        {data, by_source} =
-          Enum.reduce(BubbleWorkflows.surfaces(page), {data, by_source}, fn {scope, module},
-                                                                           acc ->
-            load_surface(socket, module, scope, acc, affected)
-          end)
+        {data, by_source, cells} =
+          read_pass(fn ->
+            {data, by_source} =
+              Enum.reduce(BubbleWorkflows.surfaces(page), {data, by_source}, fn {scope, module},
+                                                                               acc ->
+                load_surface(socket, module, scope, acc, affected)
+              end)
 
-        {data, by_source, cells} = load_cells(socket, page, {data, by_source}, affected)
+            load_cells(socket, page, {data, by_source}, affected)
+          end)
 
         socket
         |> assign(:bubble_data, data)
         |> BubbleWorkflows.put_cells(cells)
         |> assign(:bubble_source_topics, by_source)
         |> subscribe(all_topics(by_source))
+    end
+  end
+
+  @doc """
+  Runs `fun` as one read (WTF-501): a read of the page's data (a load, or
+  an input's sources read again) or a check of the page's conditions,
+  during which nothing is written. In it, the same read as the same actor
+  (`once/3`: a query, things by unique ID, the current user's
+  relationships) is made once, however many sources or conditions make
+  it, and it is forgotten when `fun` returns: the next read (another
+  event, a change notification) reads again.
+  """
+  def read_pass(fun) do
+    previous = Process.put(@pass, %{})
+
+    try do
+      fun.()
+    after
+      if previous, do: Process.put(@pass, previous), else: Process.delete(@pass)
     end
   end
 
@@ -646,7 +684,9 @@ defmodule <%= @web %>.BubbleData do
   # it reads), read again for every unit at once, through Ash with the
   # current user as the actor (never reused from what was loaded before:
   # the current user's own relationships are loaded for the policies,
-  # without authorization). Each unit's `load_value/3` then finds them:
+  # without authorization; the current user's are read as the user once
+  # per read of the page's data, `actor_loads/2`). Each unit's
+  # `load_value/3` then finds them:
   # the records read, each with the paths read through it
   # (`batch.loaded`), and the current user's in a copy (`batch.actor`,
   # with `batch.actor_paths`), never in the actor the policies read.
@@ -659,7 +699,10 @@ defmodule <%= @web %>.BubbleData do
 
       Enum.reduce(Map.get(source, :preloads, []), init, fn
         {:actor, loads}, {data, states, batch} ->
-          [copy] = load_values([actor], loads, actor)
+          # Read as the current user for this batch, never the actor the
+          # policies read; once per read of the page's data for the same
+          # paths (`actor_loads/2`, WTF-501).
+          copy = actor_loads(actor, loads)
           {data, states, %{batch | actor: copy, actor_paths: Enum.into(loads, batch.actor_paths)}}
 
         {:data, path, element, loads}, {data, states, batch} ->
@@ -780,15 +823,17 @@ defmodule <%= @web %>.BubbleData do
   defp from_ids(found, id, false, _page_size), do: Map.get(found, id)
 
   defp read_ids(actor, resource, ids) do
-    ids = MapSet.to_list(ids)
+    ids = ids |> Enum.uniq() |> Enum.sort()
     [pk] = Ash.Resource.Info.primary_key(resource)
     filter = [{pk, [in: ids]}]
 
-    resource
-    |> Ash.Query.new()
-    |> Ash.Query.filter(^filter)
-    |> Ash.Query.limit(length(ids))
-    |> Ash.read(actor: actor, authorize?: true)
+    once({:ids, resource, ids}, actor, fn ->
+      resource
+      |> Ash.Query.new()
+      |> Ash.Query.filter(^filter)
+      |> Ash.Query.limit(length(ids))
+      |> Ash.read(actor: actor, authorize?: true)
+    end)
     |> case do
       {:ok, records} ->
         Map.new(records, &{Map.get(&1, pk), &1})
@@ -810,7 +855,7 @@ defmodule <%= @web %>.BubbleData do
       |> Enum.flat_map(&records_in/1)
       |> Enum.group_by(& &1.__struct__)
       |> Map.new(fn {resource, records} ->
-        {resource, Runtime.load_page(records, loads, Runtime.root(nil, actor), related_cap(), opts)}
+        {resource, load_page(records, loads, actor, opts)}
       end)
 
     {loaded, _} = Enum.map_reduce(values, by_resource, &take_loaded/2)
@@ -935,7 +980,7 @@ defmodule <%= @web %>.BubbleData do
 
     if ctx.batch,
       do: shown,
-      else: Runtime.load_page(shown, source.loads, Runtime.root(nil, ctx.actor), related_cap())
+      else: load_page(shown, source.loads, ctx.actor)
   rescue
     error ->
       Logger.error(
@@ -986,7 +1031,7 @@ defmodule <%= @web %>.BubbleData do
   defp run(module, source, ctx) do
     module
     |> apply(source.fun, [ctx])
-    |> Runtime.load_page(source.loads, Runtime.root(nil, ctx.actor), related_cap())
+    |> load_page(source.loads, ctx.actor)
   rescue
     error ->
       Logger.error(
@@ -1010,7 +1055,56 @@ defmodule <%= @web %>.BubbleData do
       not data_access?() -> value
       actor? and actor_read?(batch, loads) -> batch.actor
       not actor? and read?(batch, value, loads) -> value
-      true -> Runtime.load_page(value, loads, Runtime.root(nil, ctx.actor), related_cap())
+      actor? -> actor_loads(value, loads)
+      true -> load_page(value, loads, ctx.actor)
+    end
+  end
+
+  # The current user with `loads`, read as the current user: once per read
+  # of the page's data (`read_pass/1`, WTF-501) for the same paths, however
+  # many sources read them. Kept with the actor it was read as (the very
+  # term), never served for another.
+  defp actor_loads(actor, loads) do
+    once({:actor, Enum.sort(loads)}, actor, fn ->
+      Runtime.load_page(actor, loads, Runtime.root(nil, actor), related_cap())
+    end)
+  end
+
+  # `value`'s relationships `loads` (paths of names), read as `actor` with
+  # the related lists capped (`related_cap/0`): once per read of the
+  # page's data for the very same value and loads (`once/3`, WTF-501), so
+  # sources (or the instances of one reusable element in a list's cells)
+  # showing the same records load their relationships once.
+  defp load_page(value, loads, actor, opts \\ [])
+  defp load_page(value, [], _actor, _opts), do: value
+  defp load_page(value, _loads, _actor, _opts) when value in [nil, []], do: value
+
+  defp load_page(value, loads, actor, opts) do
+    once({:load, value, loads, opts}, actor, fn ->
+      Runtime.load_page(value, loads, Runtime.root(nil, actor), related_cap(), opts)
+    end)
+  end
+
+  @doc """
+  `fun`'s result, read once per `read_pass/1` for `key` as `actor` (the
+  very term: a result is never served to another actor); outside one,
+  `fun` runs every time.
+  """
+  def once(key, actor, fun) do
+    case Process.get(@pass) do
+      %{} = pass ->
+        case Map.fetch(pass, key) do
+          {:ok, {^actor, value}} ->
+            value
+
+          _ ->
+            value = fun.()
+            Process.put(@pass, Map.put(Process.get(@pass), key, {actor, value}))
+            value
+        end
+
+      _ ->
+        fun.()
     end
   end
 
@@ -1057,7 +1151,11 @@ defmodule <%= @web %>.BubbleData do
   @doc """
   A query's result: `take` is `:all` (at most the page size, capped at
   `max_items/0`), `:first`, `{:item, n}`, `{:limit, n}` or `:count`.
+  The records of a list that holds none (`listed/2` with no IDs) are
+  nothing, without a read (WTF-501).
   """
+  def read(%Ash.Query{context: %{bubble_listed: 0}}, _ctx, take, _page_size), do: none(take)
+
 <%= if @enforced? do %>  def read(query, ctx, :count, _page_size) do
     # Counted by reading the records' keys through `:search`, not with
     # `Ash.count/2`: Ash's count aggregate under-counts with policies that
@@ -1066,10 +1164,11 @@ defmodule <%= @web %>.BubbleData do
     [pk] = Ash.Resource.Info.primary_key(query.resource)
     cap = max_count()
 
-    query
-    |> Ash.Query.select([pk])
-    |> Ash.Query.limit(cap + 1)
-    |> Ash.read(action: read_action(query), actor: ctx.actor, authorize?: true)
+    query = query |> Ash.Query.select([pk]) |> Ash.Query.limit(cap + 1)
+
+    once({:read, query}, ctx.actor, fn ->
+      Ash.read(query, action: read_action(query), actor: ctx.actor, authorize?: true)
+    end)
     |> case do
       {:ok, records} when length(records) > cap ->
         Logger.warning(
@@ -1104,7 +1203,10 @@ defmodule <%= @web %>.BubbleData do
 
     query = query |> Ash.Query.offset(offset) |> Ash.Query.limit(limit)
 
-    case Ash.read(query, <%= if @enforced? do %>action: read_action(query), <% end %>actor: ctx.actor, authorize?: true) do
+    once({:read, query}, ctx.actor, fn ->
+      Ash.read(query, <%= if @enforced? do %>action: read_action(query), <% end %>actor: ctx.actor, authorize?: true)
+    end)
+    |> case do
       {:ok, records} when take in [:first] or is_tuple(take) and elem(take, 0) == :item ->
         List.first(records)
 
@@ -1115,6 +1217,10 @@ defmodule <%= @web %>.BubbleData do
         failed(query, error)
     end
   end
+
+  defp none(:count), do: 0
+  defp none(take) when take in [:all] or (is_tuple(take) and elem(take, 0) == :limit), do: []
+  defp none(_take), do: nil
 
   @doc """
   Marks a query reading the records a list holds (WTF-495: a list of
@@ -1215,25 +1321,7 @@ defmodule <%= @web %>.BubbleData do
     value = Enum.take(value, cap(page_size))
     ids = for id <- value, is_binary(id), do: id
 
-    found =
-      if ids == [] do
-        %{}
-      else
-        [pk] = Ash.Resource.Info.primary_key(resource)
-        filter = [{pk, [in: ids]}]
-
-        resource
-        |> Ash.Query.new()
-        |> Ash.Query.filter(^filter)
-        |> Ash.Query.limit(length(ids))
-        |> Ash.read(actor: ctx.actor, authorize?: true)
-        |> case do
-          {:ok, records} -> Map.new(records, &{Map.get(&1, pk), &1})
-          {:error, error} ->
-            failed(Ash.Query.new(resource), error)
-            %{}
-        end
-      end
+    found = if ids == [], do: %{}, else: read_ids(ctx.actor, resource, ids)
 
     value
     |> Enum.map(fn
@@ -1248,7 +1336,10 @@ defmodule <%= @web %>.BubbleData do
 
   defp get(resource, id, ctx) do
     if Regex.match?(@id, id) do
-      case Ash.get(resource, id, actor: ctx.actor, authorize?: true, not_found_error?: false) do
+      once({:get, resource, id}, ctx.actor, fn ->
+        Ash.get(resource, id, actor: ctx.actor, authorize?: true, not_found_error?: false)
+      end)
+      |> case do
         {:ok, record} -> record
         {:error, error} -> failed(Ash.Query.new(resource), error)
       end

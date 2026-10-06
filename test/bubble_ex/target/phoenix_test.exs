@@ -773,7 +773,10 @@ defmodule BubbleEx.Target.PhoenixTest do
     test "a page count reads keys through :search, capped", %{files: files} do
       data = files["lib/acme_web/bubble_data.ex"]
       refute data =~ "Ash.count("
-      assert data =~ "|> Ash.read(action: read_action(query), actor: ctx.actor, authorize?: true)"
+
+      assert data =~
+               "Ash.read(query, action: read_action(query), actor: ctx.actor, authorize?: true)"
+
       assert data =~ "defp read_action(_query), do: :search"
       assert data =~ "def max_count do"
     end
