@@ -77,9 +77,9 @@ defmodule <%= @web %>.BubbleData do
 
   ## Each read once (WTF-501)
 
-  A page load reads the current user once: at mount, for the first load
-  and its page-loaded workflows (a later load, a patch or an event reads
-  them again). One read of the page's data (`read_pass/1`) makes each
+  A page load reads the current user once at mount for its first load
+  (a later load, a patch or an event reads them again; the page-loaded
+  workflows, which may write, read the actor again). One read of the page's data (`read_pass/1`) makes each
   query, each read of things by unique ID and each relationship load
   once, as that user, however many sources ask for it (the current
   user's relationships, a search two elements share, the same records'

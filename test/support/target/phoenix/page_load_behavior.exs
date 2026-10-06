@@ -7,8 +7,8 @@ defmodule PhxCheckWeb.PageLoadBehaviorTest do
   # and :enforced. Its board page has eight sources: three read the
   # current user's team (one its lead), three the same search of the
   # team's tasks (a list, the same list again, its first item) and one
-  # its open ones, one the user's own tasks; the lists' cells read each
-  # task's owner and team. A page load (the disconnected render, the
+  # its open ones, one the user's own tasks, one the tasks an input
+  # finds; the lists' cells read each task's owner and team. A page load (the disconnected render, the
   # connected mount and its page-loaded event) reads the current user
   # once per mount, each relationship path of theirs once, and each query
   # once, and shows the same as before.
@@ -26,7 +26,9 @@ defmodule PhxCheckWeb.PageLoadBehaviorTest do
   # disconnected render and the connected mount together, sign-in token
   # checks included (WTF-501: 51 without privacy and 54 with privacy
   # enforced before the current user, their relationships and repeated
-  # queries were read once per page load; 24 and 26 since).
+  # queries were read once per page load, without the input's list; 24
+  # and 26 since; 25 and 28 with it, the page-loaded workflows reading
+  # the actor again).
   @budget 30
 
   setup do
@@ -77,6 +79,22 @@ defmodule PhxCheckWeb.PageLoadBehaviorTest do
     |> AshAuthentication.Plug.Helpers.store_in_session(
       Ash.Resource.put_metadata(user, :token, token)
     )
+  end
+
+  defp enforced?, do: Ash.Resource.Info.authorizers(PhxCheck.Task) != []
+
+  # Moves a user to another team without a change notification (the
+  # page reads again only when it reads the user again).
+  defp move(user, team), do: Ash.Seed.update!(user, %{team_id: team})
+
+  defp type(view, value) do
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bQ", "value" => value, "on" => "blur"}
+    })
+
+    # The debounced read (`BubbleData.defer/2`).
+    Process.sleep(300)
+    render(view)
   end
 
   defp shown(html, prefix),
@@ -142,6 +160,12 @@ defmodule PhxCheckWeb.PageLoadBehaviorTest do
 
     assert shown(html, "Listed") == ["Alpha", "Beta", "Gamma"]
 
+    assert shown(html, "Found") ==
+             if(enforced?(),
+               do: ["Alpha", "Beta", "Gamma"],
+               else: ~w(Alpha Beta Delta Echo Gamma)
+             )
+
     assert total <= @budget,
            "/board made #{total} queries, more than #{@budget}: #{inspect(by_table)}"
   end
@@ -159,6 +183,89 @@ defmodule PhxCheckWeb.PageLoadBehaviorTest do
     assert shown(cy, "Task") == ["Delta", "Echo"]
     assert shown(cy, "Mine") == ["Delta", "Echo"]
     assert shown(cy, "Open") == ["Delta"]
+  end
+
+  test "one page: after the user changes team, an input's read reads as the user now", %{
+    conn: conn,
+    users: users
+  } do
+    {view, html} = board(sign_in(conn, users["Ada"]))
+
+    assert shown(html, "Found") ==
+             if(enforced?(),
+               do: ["Alpha", "Beta", "Gamma"],
+               else: ~w(Alpha Beta Delta Echo Gamma)
+             )
+
+    move(users["Ada"], @south)
+    html = type(view, "l")
+
+    if enforced?() do
+      # The same LiveView process: nothing read as Ada of North is served
+      # to Ada of South. The actor changed, so the whole page reads again.
+      assert shown(html, "Found") == ["Delta"]
+      assert shown(html, "Team") == ["South"]
+      assert shown(html, "Lead") == ["Cy"]
+      assert shown(html, "Task") == ["Delta", "Echo"]
+      assert shown(html, "Mine") == []
+    else
+      # Without policies every task is found.
+      assert shown(html, "Found") == ["Alpha", "Delta"]
+    end
+  end
+
+  test "a patch reads the current user again", %{conn: conn, users: users} do
+    {view, html} = board(sign_in(conn, users["Ada"]))
+    assert shown(html, "Team") == ["North"]
+
+    move(users["Ada"], @south)
+    html = render_patch(view, "/board?tab=next")
+
+    assert shown(html, "Team") == ["South"]
+
+    # The actor is read again (privacy enforced); without policies a
+    # search reads the session's user's own fields as they were at sign-in.
+    if enforced?(), do: assert(shown(html, "Task") == ["Delta", "Echo"])
+  end
+
+  test "a read pass is forgotten after a raise, and a nested pass is its own" do
+    alias PhxCheckWeb.BubbleData
+
+    ran = :counters.new(1, [])
+
+    read = fn ->
+      BubbleData.once(:key, :ada, fn ->
+        :counters.add(ran, 1, 1)
+        :counters.get(ran, 1)
+      end)
+    end
+
+    assert_raise RuntimeError, fn ->
+      BubbleData.read_pass(fn ->
+        assert read.() == 1
+        raise "boom"
+      end)
+    end
+
+    # Nothing is kept: outside a pass every read is made.
+    refute Process.get({BubbleData, :read_pass})
+    assert read.() == 2
+    assert read.() == 3
+
+    BubbleData.read_pass(fn ->
+      assert read.() == 4
+
+      # A nested pass starts empty, and the outer one is back after it.
+      BubbleData.read_pass(fn ->
+        assert read.() == 5
+        assert read.() == 5
+      end)
+
+      assert read.() == 4
+    end)
+
+    refute Process.get({BubbleData, :read_pass})
+    assert read.() == 6
   end
 
   test "a read pass serves a read once per actor, and forgets it when it ends" do

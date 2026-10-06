@@ -214,7 +214,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   Assigns the page's custom states (defaults) and input values (first
   values) for the page and every reusable-element instance it renders, and
   once connected, schedules its page-loaded workflows. It reads the
-  current user for this page load (<%= if @enforced? do %>the actor, and <% end %>the user as the visibility
+  current user for this page load (<%= if @enforced? do %>the actor, with data access on, and <% end %>the user as the visibility
   conditionals see them, WTF-501) and loads no data (`handle_params/4`
   does, WTF-420).
   """
@@ -260,7 +260,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_cells, [])
     |> assign(:bubble_committed, %{})
     |> assign(:bubble_thing, nil)<%= if @enforced? do %>
-    |> refresh_actor()<% end %>
+    |> then(&if(BubbleData.data_access?(), do: refresh_actor(&1), else: &1))<% end %>
     |> refresh_viewer()
     |> assign(:bubble_mounted, true)
   end
@@ -305,7 +305,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   conditionals see them) is read afresh, unless `mount/2` has just read
   it for this very page load (WTF-501): the first `handle_params` after a
   mount, never a later one (a patch, a URL parameter). A connected mount's page-loaded
-  workflows then run on what this load read (`handle_info/3`).
+  workflows run on the data this load read<%= if @enforced? do %>, as the actor read again<% end %> (`handle_info/3`).
   """
   def handle_params(socket, page, params, uri) do
     mounted? = Map.get(socket.assigns, :bubble_mounted, false)
@@ -447,7 +447,8 @@ defmodule <%= @web %>.BubbleWorkflows do
     # Sent from a connected mount: handle_params/4 has loaded the data
     # already. The page-load workflows and conditions run on that load; a
     # workflow that changes it marks it stale and the page reads again.
-    # The current user that load read is theirs too (WTF-501), unless
+    # Its workflows may write: they run as the current user read afresh
+    # (WTF-501); the viewer the load rendered with is kept, unless
     # anything ran since (a patch's own handle_params read it again).
     fresh? = Map.get(socket.assigns, :bubble_load_fresh, false)
     socket = assign(socket, :bubble_load_fresh, false)
@@ -786,12 +787,12 @@ defmodule <%= @web %>.BubbleWorkflows do
       reload == :deferred and BubbleData.data_access?() and
         Enum.any?(surfaces(page), fn {_, m} -> BubbleData.sources(m) != [] end)
 
-    # A connected mount's page load (`:mount_loaded`) runs on the current
-    # user its handle_params/4 has just read (WTF-501).
-    fresh? = queued? or reload == :mount_loaded
+    # A connected mount's page load (`:mount_loaded`) reads the actor
+    # afresh (its workflows may write) and keeps the viewer its
+    # handle_params/4 has just read (WTF-501).
 <%= if @enforced? do %>
-    socket = if fresh?, do: socket, else: refresh_actor(socket)<% end %>
-    socket = if fresh?, do: socket, else: refresh_viewer(socket)
+    socket = if queued?, do: socket, else: refresh_actor(socket)<% end %>
+    socket = if queued? or reload == :mount_loaded, do: socket, else: refresh_viewer(socket)
     run = start(socket, budget)
 
     case reload do

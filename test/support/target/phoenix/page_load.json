@@ -572,6 +572,84 @@
       }
      }
     },
+    "bQ": {
+     "id": "bQ",
+     "type": "Input",
+     "properties": {
+      "order": 9,
+      "width": 300,
+      "height": 40,
+      "content_format": "text",
+      "placeholder": {
+       "type": "TextExpression",
+       "entries": {
+        "0": "Find"
+       }
+      }
+     }
+    },
+    "bFound": {
+     "id": "bFound",
+     "type": "RepeatingGroup",
+     "properties": {
+      "order": 10,
+      "width": 300,
+      "height": 40,
+      "columns": 1,
+      "rows": 5,
+      "group_type": "custom.task",
+      "data_source": {
+       "type": "Search",
+       "properties": {
+        "type_to_find": "custom.task",
+        "sort_field": "title_text",
+        "descending": false,
+        "ignore_empty_constraints": true,
+        "constraints": {
+         "0": {
+          "constraint_type": "text contains string",
+          "key": "title_text",
+          "value": {
+           "type": "GetElement",
+           "properties": {
+            "element_id": "bQ"
+           },
+           "next": {
+            "type": "Message",
+            "name": "get_data"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "elements": {
+      "bFoundTitle": {
+       "id": "bFoundTitle",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Found: ",
+          "1": {
+           "type": "CurrentDataItem",
+           "next": {
+            "type": "Message",
+            "name": "title_text"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
     "bOpen": {
      "id": "bOpen",
      "type": "Group",
