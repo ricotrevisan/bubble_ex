@@ -385,6 +385,32 @@
           },
           "type": "Text"
         },
+        "bInnerDefault": {
+          "id": "bInnerDefault",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 17,
+            "text": {
+              "entries": {
+                "0": "Inner default: ",
+                "1": {
+                  "next": {
+                    "name": "param_pTask",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bBadge"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
         "bN": {
           "id": "bN",
           "properties": {
@@ -611,7 +637,7 @@
       "name": "Card",
       "properties": {
         "group_type": "custom.task",
-        "height": 760,
+        "height": 800,
         "parameters": {
           "0": {
             "btype_id": "text",
@@ -1562,6 +1588,32 @@
               },
               "type": "CustomElement"
             },
+            "bCellOutside": {
+              "id": "bCellOutside",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 3,
+                "text": {
+                  "entries": {
+                    "0": "Cell outside: ",
+                    "1": {
+                      "next": {
+                        "name": "param_pHeading",
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "element_id": "bCardB"
+                      },
+                      "type": "GetElement"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            },
             "bRowC": {
               "id": "bRowC",
               "properties": {
@@ -1677,6 +1729,71 @@
               "type": "TextExpression"
             },
             "width": 300
+          },
+          "type": "Text"
+        },
+        "bOutsideDefault": {
+          "id": "bOutsideDefault",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 9,
+            "text": {
+              "entries": {
+                "0": "Outside default: ",
+                "1": {
+                  "next": {
+                    "name": "param_pHeading",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bCardB"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bOutsideShown": {
+          "id": "bOutsideShown",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 10,
+            "text": {
+              "entries": {
+                "0": "Card A has a note"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "param_pNote",
+                  "next": {
+                    "name": "is_not_empty",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bCardA"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
           },
           "type": "Text"
         },
