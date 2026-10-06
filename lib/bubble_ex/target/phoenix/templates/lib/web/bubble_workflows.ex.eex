@@ -213,8 +213,10 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc """
   Assigns the page's custom states (defaults) and input values (first
   values) for the page and every reusable-element instance it renders, and
-  once connected, schedules its page-loaded workflows. It loads no data
-  (`handle_params/4` does, WTF-420).
+  once connected, schedules its page-loaded workflows. It reads the
+  current user for this page load (<%= if @enforced? do %>the actor, and <% end %>the user as the visibility
+  conditionals see them, WTF-501) and loads no data (`handle_params/4`
+  does, WTF-420).
   """
   def mount(socket, page) do
     surfaces = surfaces(page)
@@ -257,8 +259,10 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_displayed, %{})
     |> assign(:bubble_cells, [])
     |> assign(:bubble_committed, %{})
-    |> assign(:bubble_thing, nil)
+    |> assign(:bubble_thing, nil)<%= if @enforced? do %>
+    |> refresh_actor()<% end %>
     |> refresh_viewer()
+    |> assign(:bubble_mounted, true)
   end
 
   @doc """
@@ -296,14 +300,30 @@ defmodule <%= @web %>.BubbleWorkflows do
   As `handle_params/3`, then keeps the unique ID of the page's thing from
   the URL path (a Bubble ID, else none) and loads the page's data
   (`<%= @web %>.BubbleData`, WTF-420).
+
+  The current user (<%= if @enforced? do %>the actor, and <% end %>the user as the visibility
+  conditionals see them) is read afresh, unless `mount/2` has just read
+  it for this very page load (WTF-501): the first `handle_params` after a
+  mount, never a later one (a patch, a URL parameter). A connected mount's page-loaded
+  workflows then run on what this load read (`handle_info/3`).
   """
   def handle_params(socket, page, params, uri) do
+    mounted? = Map.get(socket.assigns, :bubble_mounted, false)
+
+    socket =
+      if mounted?,
+        do: socket,
+        else: socket<%= if @enforced? do %>
+          |> refresh_actor()<% end %>
+          |> refresh_viewer()
+
     socket
+    |> assign(:bubble_mounted, false)
+    |> assign(:bubble_load_fresh, mounted? and connected?(socket))
     |> handle_params(params, uri)
     |> assign(:bubble_thing, BubbleData.thing_id(params, URI.parse(uri).path))
     |> assign(:bubble_takes_thing, takes_thing?(page))
-    |> refresh_viewer()
-    |> BubbleData.load(page)
+    |> BubbleData.load(page, actor_fresh?: true)
   end
 
   # The page's own path. When the router took `bubble_thing` from the
@@ -427,7 +447,11 @@ defmodule <%= @web %>.BubbleWorkflows do
     # Sent from a connected mount: handle_params/4 has loaded the data
     # already. The page-load workflows and conditions run on that load; a
     # workflow that changes it marks it stale and the page reads again.
-    {:noreply, event(socket, page, runs, nil, :already_loaded)}
+    # The current user that load read is theirs too (WTF-501), unless
+    # anything ran since (a patch's own handle_params read it again).
+    fresh? = Map.get(socket.assigns, :bubble_load_fresh, false)
+    socket = assign(socket, :bubble_load_fresh, false)
+    {:noreply, event(socket, page, runs, nil, if(fresh?, do: :mount_loaded, else: :already_loaded))}
   end
 
   def handle_info(socket, page, {:bubble, :run, scope, module, id, args, budget}) do
@@ -761,13 +785,17 @@ defmodule <%= @web %>.BubbleWorkflows do
     queued? =
       reload == :deferred and BubbleData.data_access?() and
         Enum.any?(surfaces(page), fn {_, m} -> BubbleData.sources(m) != [] end)
+
+    # A connected mount's page load (`:mount_loaded`) runs on the current
+    # user its handle_params/4 has just read (WTF-501).
+    fresh? = queued? or reload == :mount_loaded
 <%= if @enforced? do %>
-    socket = if queued?, do: socket, else: refresh_actor(socket)<% end %>
-    socket = if queued?, do: socket, else: refresh_viewer(socket)
+    socket = if fresh?, do: socket, else: refresh_actor(socket)<% end %>
+    socket = if fresh?, do: socket, else: refresh_viewer(socket)
     run = start(socket, budget)
 
     case reload do
-      :already_loaded ->
+      loaded when loaded in [:already_loaded, :mount_loaded] ->
         {socket, run} = run_events(socket, page, runs, run)
         {socket, run} = settle_after_events(socket, page, runs, run)
         dispatch(socket, run)
@@ -1071,22 +1099,33 @@ defmodule <%= @web %>.BubbleWorkflows do
   defp settle(socket, page, run, round \\ 0) do
     seen = socket.assigns.bubble_conditions
 
+    # One read pass (`BubbleData.read_pass/1`): checking conditions writes
+    # nothing, so what they read of the current user is read once.
     {fire, seen} =
-      for {scope, module} <- surfaces(page),
-          {id, run_when} <- module.__bubble__(:surface).conditions,
-          reduce: {[], seen} do
-        {fire, seen} ->
-          key = {scope, id}
-          now = condition?(socket, module, scope, id)
-          before = Map.get(seen, key, %{now: false, ran: false})
-
-          if now and not before.now and not (run_when == :once and before.ran),
-            do: {[{scope, module, id} | fire], Map.put(seen, key, %{now: true, ran: true})},
-            else: {fire, Map.put(seen, key, %{before | now: now})}
-      end
+      BubbleData.read_pass(fn -> fire(socket, page, seen) end)
 
     socket = assign(socket, :bubble_conditions, seen)
+    settle_fired(socket, page, run, round, fire)
+  end
 
+  # The condition-true workflows to run now (`settle/4`), and what each
+  # condition is.
+  defp fire(socket, page, seen) do
+    for {scope, module} <- surfaces(page),
+        {id, run_when} <- module.__bubble__(:surface).conditions,
+        reduce: {[], seen} do
+      {fire, seen} ->
+        key = {scope, id}
+        now = condition?(socket, module, scope, id)
+        before = Map.get(seen, key, %{now: false, ran: false})
+
+        if now and not before.now and not (run_when == :once and before.ran),
+          do: {[{scope, module, id} | fire], Map.put(seen, key, %{now: true, ran: true})},
+          else: {fire, Map.put(seen, key, %{before | now: now})}
+    end
+  end
+
+  defp settle_fired(socket, page, run, round, fire) do
     cond do
       fire == [] ->
         {socket, run}
@@ -1357,8 +1396,17 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc "The result of an earlier step."
   def step(ctx, action, loads), do: ctx.steps |> Map.get(action) |> load(loads, ctx)
 
-  @doc "The current user, with `loads`."
-  def actor(ctx, loads), do: load(ctx.actor, loads, ctx)
+  @doc """
+  The current user, with `loads`. While the page checks its conditions
+  (`settle/4`, nothing written meanwhile) the same loads are read once
+  for all of them (`BubbleData.once/3`, WTF-501).
+  """
+  def actor(ctx, []), do: ctx.actor
+
+  def actor(ctx, loads) do
+    key = {:workflow_actor, Enum.sort(loads), backend(ctx).authorize?}
+    BubbleData.once(key, ctx.actor, fn -> load(ctx.actor, loads, ctx) end)
+  end
 
   @doc "`value` with the relationship `loads` loaded (`Runtime.load/3`)."
   #

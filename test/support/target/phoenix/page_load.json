@@ -1,0 +1,644 @@
+{
+ "_comment": "WTF-501: a signed-in page with several sources reading the current user's relationships, the same search twice and relationships through their records (all data invented); test/support/target/phoenix/page_load_behavior.exs counts its queries.",
+ "_id": "page-load-fixture",
+ "user_types": {
+  "user": {
+   "display": "User",
+   "fields": {
+    "email": {
+     "display": "email",
+     "value": "text"
+    },
+    "name_text": {
+     "display": "Name",
+     "value": "text"
+    },
+    "team_custom_team": {
+     "display": "Team",
+     "value": "custom.team"
+    }
+   },
+   "privacy_role": {
+    "everyone": {
+     "display": "everyone",
+     "permissions": {
+      "auto_binding": false,
+      "search_for": true,
+      "view_all": false,
+      "view_attachments": false,
+      "view_fields": [
+       "email",
+       "name_text",
+       "team_custom_team"
+      ]
+     }
+    }
+   }
+  },
+  "team": {
+   "display": "Team",
+   "fields": {
+    "name_text": {
+     "display": "Name",
+     "value": "text"
+    },
+    "lead_user": {
+     "display": "Lead",
+     "value": "user"
+    }
+   },
+   "privacy_role": {
+    "everyone": {
+     "display": "everyone",
+     "permissions": {
+      "auto_binding": false,
+      "search_for": true,
+      "view_all": true,
+      "view_attachments": false
+     }
+    }
+   }
+  },
+  "task": {
+   "display": "Task",
+   "fields": {
+    "title_text": {
+     "display": "Title",
+     "value": "text"
+    },
+    "done_boolean": {
+     "display": "Done",
+     "value": "boolean"
+    },
+    "team_custom_team": {
+     "display": "Team",
+     "value": "custom.team"
+    },
+    "owner_user": {
+     "display": "Owner",
+     "value": "user"
+    }
+   },
+   "privacy_role": {
+    "everyone": {
+     "display": "everyone",
+     "permissions": {
+      "auto_binding": false,
+      "search_for": false,
+      "view_all": false,
+      "view_attachments": false,
+      "view_fields": []
+     }
+    },
+    "team_": {
+     "display": "Team",
+     "condition": {
+      "type": "InjectedValue",
+      "next": {
+       "type": "Message",
+       "name": "team_custom_team",
+       "next": {
+        "type": "Message",
+        "name": "equals",
+        "args": {
+         "type": "CurrentUser",
+         "next": {
+          "type": "Message",
+          "name": "team_custom_team"
+         }
+        }
+       }
+      }
+     },
+     "permissions": {
+      "auto_binding": false,
+      "search_for": true,
+      "view_all": true,
+      "view_attachments": false
+     }
+    }
+   }
+  }
+ },
+ "pages": {
+  "index": {
+   "id": "bIndex",
+   "name": "index",
+   "type": "Page",
+   "properties": {
+    "title": "Home"
+   },
+   "elements": {
+    "bHello": {
+     "id": "bHello",
+     "type": "Text",
+     "properties": {
+      "order": 1,
+      "width": 300,
+      "height": 40,
+      "text": {
+       "type": "TextExpression",
+       "entries": {
+        "0": "Hello"
+       }
+      }
+     }
+    }
+   }
+  },
+  "board": {
+   "id": "bBoard",
+   "name": "board",
+   "type": "Page",
+   "properties": {
+    "title": "Board"
+   },
+   "elements": {
+    "bTeam": {
+     "id": "bTeam",
+     "type": "Group",
+     "properties": {
+      "order": 1,
+      "width": 300,
+      "height": 40,
+      "group_type": "custom.team",
+      "data_source": {
+       "type": "CurrentUser",
+       "next": {
+        "type": "Message",
+        "name": "team_custom_team"
+       }
+      }
+     },
+     "elements": {
+      "bTeamName": {
+       "id": "bTeamName",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Team: ",
+          "1": {
+           "type": "ElementParent",
+           "next": {
+            "type": "Message",
+            "name": "name_text"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "bLead": {
+     "id": "bLead",
+     "type": "Group",
+     "properties": {
+      "order": 2,
+      "width": 300,
+      "height": 40,
+      "group_type": "user",
+      "data_source": {
+       "type": "CurrentUser",
+       "next": {
+        "type": "Message",
+        "name": "team_custom_team",
+        "next": {
+         "type": "Message",
+         "name": "lead_user"
+        }
+       }
+      }
+     },
+     "elements": {
+      "bLeadName": {
+       "id": "bLeadName",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Lead: ",
+          "1": {
+           "type": "ElementParent",
+           "next": {
+            "type": "Message",
+            "name": "name_text"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "bTeamAgain": {
+     "id": "bTeamAgain",
+     "type": "Group",
+     "properties": {
+      "order": 3,
+      "width": 300,
+      "height": 40,
+      "group_type": "custom.team",
+      "data_source": {
+       "type": "CurrentUser",
+       "next": {
+        "type": "Message",
+        "name": "team_custom_team"
+       }
+      }
+     },
+     "elements": {
+      "bTeamAgainName": {
+       "id": "bTeamAgainName",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Again: ",
+          "1": {
+           "type": "ElementParent",
+           "next": {
+            "type": "Message",
+            "name": "name_text"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "bTasks": {
+     "id": "bTasks",
+     "type": "RepeatingGroup",
+     "properties": {
+      "order": 4,
+      "width": 300,
+      "height": 40,
+      "columns": 1,
+      "rows": 5,
+      "group_type": "custom.task",
+      "data_source": {
+       "type": "Search",
+       "properties": {
+        "type_to_find": "custom.task",
+        "sort_field": "title_text",
+        "descending": false,
+        "ignore_empty_constraints": false,
+        "constraints": {
+         "0": {
+          "constraint_type": "equals",
+          "key": "team_custom_team",
+          "value": {
+           "type": "CurrentUser",
+           "next": {
+            "type": "Message",
+            "name": "team_custom_team"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "elements": {
+      "bTaskTitle": {
+       "id": "bTaskTitle",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Task: ",
+          "1": {
+           "type": "CurrentDataItem",
+           "next": {
+            "type": "Message",
+            "name": "title_text"
+           }
+          }
+         }
+        }
+       }
+      },
+      "bTaskOwner": {
+       "id": "bTaskOwner",
+       "type": "Text",
+       "properties": {
+        "order": 2,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Owner: ",
+          "1": {
+           "type": "CurrentDataItem",
+           "next": {
+            "type": "Message",
+            "name": "owner_user",
+            "next": {
+             "type": "Message",
+             "name": "name_text"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "bFirst": {
+     "id": "bFirst",
+     "type": "Group",
+     "properties": {
+      "order": 5,
+      "width": 300,
+      "height": 40,
+      "group_type": "custom.task",
+      "data_source": {
+       "type": "Search",
+       "properties": {
+        "type_to_find": "custom.task",
+        "sort_field": "title_text",
+        "descending": false,
+        "ignore_empty_constraints": false,
+        "constraints": {
+         "0": {
+          "constraint_type": "equals",
+          "key": "team_custom_team",
+          "value": {
+           "type": "CurrentUser",
+           "next": {
+            "type": "Message",
+            "name": "team_custom_team"
+           }
+          }
+         }
+        }
+       },
+       "next": {
+        "type": "Message",
+        "name": "first_element"
+       }
+      }
+     },
+     "elements": {
+      "bFirstTitle": {
+       "id": "bFirstTitle",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "First: ",
+          "1": {
+           "type": "ElementParent",
+           "next": {
+            "type": "Message",
+            "name": "title_text"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "bMine": {
+     "id": "bMine",
+     "type": "RepeatingGroup",
+     "properties": {
+      "order": 6,
+      "width": 300,
+      "height": 40,
+      "columns": 1,
+      "rows": 5,
+      "group_type": "custom.task",
+      "data_source": {
+       "type": "Search",
+       "properties": {
+        "type_to_find": "custom.task",
+        "sort_field": "title_text",
+        "descending": false,
+        "ignore_empty_constraints": false,
+        "constraints": {
+         "0": {
+          "constraint_type": "equals",
+          "key": "owner_user",
+          "value": {
+           "type": "CurrentUser"
+          }
+         }
+        }
+       }
+      }
+     },
+     "elements": {
+      "bMineTitle": {
+       "id": "bMineTitle",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Mine: ",
+          "1": {
+           "type": "CurrentDataItem",
+           "next": {
+            "type": "Message",
+            "name": "title_text"
+           }
+          }
+         }
+        }
+       }
+      },
+      "bMineTeam": {
+       "id": "bMineTeam",
+       "type": "Text",
+       "properties": {
+        "order": 2,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "In: ",
+          "1": {
+           "type": "CurrentDataItem",
+           "next": {
+            "type": "Message",
+            "name": "team_custom_team",
+            "next": {
+             "type": "Message",
+             "name": "name_text"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "bTasksAgain": {
+     "id": "bTasksAgain",
+     "type": "RepeatingGroup",
+     "properties": {
+      "order": 8,
+      "width": 300,
+      "height": 40,
+      "columns": 1,
+      "rows": 5,
+      "group_type": "custom.task",
+      "data_source": {
+       "type": "Search",
+       "properties": {
+        "type_to_find": "custom.task",
+        "sort_field": "title_text",
+        "descending": false,
+        "ignore_empty_constraints": false,
+        "constraints": {
+         "0": {
+          "constraint_type": "equals",
+          "key": "team_custom_team",
+          "value": {
+           "type": "CurrentUser",
+           "next": {
+            "type": "Message",
+            "name": "team_custom_team"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "elements": {
+      "bAgainTitle": {
+       "id": "bAgainTitle",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Listed: ",
+          "1": {
+           "type": "CurrentDataItem",
+           "next": {
+            "type": "Message",
+            "name": "title_text"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "bOpen": {
+     "id": "bOpen",
+     "type": "Group",
+     "properties": {
+      "order": 7,
+      "width": 300,
+      "height": 40,
+      "group_type": "custom.task",
+      "data_source": {
+       "type": "Search",
+       "properties": {
+        "type_to_find": "custom.task",
+        "sort_field": "title_text",
+        "descending": false,
+        "ignore_empty_constraints": false,
+        "constraints": {
+         "0": {
+          "constraint_type": "equals",
+          "key": "team_custom_team",
+          "value": {
+           "type": "CurrentUser",
+           "next": {
+            "type": "Message",
+            "name": "team_custom_team"
+           }
+          }
+         },
+         "1": {
+          "constraint_type": "equals",
+          "key": "done_boolean",
+          "value": false
+         }
+        }
+       },
+       "next": {
+        "type": "Message",
+        "name": "first_element"
+       }
+      }
+     },
+     "elements": {
+      "bOpenTitle": {
+       "id": "bOpenTitle",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Open: ",
+          "1": {
+           "type": "ElementParent",
+           "next": {
+            "type": "Message",
+            "name": "title_text"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

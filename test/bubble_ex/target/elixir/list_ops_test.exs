@@ -247,7 +247,9 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
              "defp read_action(%Ash.Query{context: %{bubble_listed: n}}) when is_integer(n),"
 
     # A listed count too (L3).
-    assert data =~ "|> Ash.read(action: read_action(query), actor: ctx.actor, authorize?: true)"
+    assert data =~
+             "Ash.read(query, action: read_action(query), actor: ctx.actor, authorize?: true)"
+
     refute data =~ "action: :search"
   end
 
