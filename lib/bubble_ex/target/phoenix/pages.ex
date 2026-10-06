@@ -46,8 +46,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       step decides (see `<Web>.Bubble`). With workflows, the helpers read
       the current user from `@bubble_viewer`, which the runtime reads
       afresh with field policies, never the session's user, and a URL
-      parameter read as text from `@bubble_url` (the URL's query the
-      runtime keeps; a reusable's component gets it from its caller). A
+      parameter read as a single text from `@bubble_url` (the URL's query
+      the runtime keeps; a reusable's component gets it from its caller),
+      as shown values do; one of another type, a list or a path does not
+      compile (`BubbleEx.Target.Elixir.Frontend`). A
       reusable instance's property read where the instance is reads the
       instance's value, or its reusable element's default when it sets
       none (`FrontendWorkflows.Spec.read/4`). A helper

@@ -146,9 +146,49 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
 
     assert tag(files["lib/shop_web/live/index_live.html.heex"], "bMember") =~
              "bubble_url={@bubble_url}"
+
+    # Two levels down: the outer component passes it on.
+    assert tag(files["lib/shop_web/components/reusables/card.html.heex"], "bCardBadge") =~
+             "bubble_url={@bubble_url}"
+
+    assert files["lib/shop_web/components/reusables/badge.html.heex"] =~
+             ~s|hidden={!visible_bbadgetab(Map.get(@bubble_url, "tab"))}|
   end
 
-  test "a URL parameter read as another type than text stays marked", %{} do
+  test "a text shows a text URL parameter; a typed or list one is not compiled", %{
+    files: files
+  } do
+    template = files["lib/shop_web/live/index_live.html.heex"]
+    assert template =~ ~s|{text_btabtext(Map.get(@bubble_url, "tab"))}|
+    assert template =~ "TODO(bubble:bTabCount) text: dynamic value not compiled"
+    assert template =~ "TODO(bubble:bTabMany) text: dynamic value not compiled"
+    refute template =~ ~s|Map.get(@bubble_url, "n")|
+    refute template =~ ~s|Map.get(@bubble_url, "tags")|
+  end
+
+  test "a URL parameter read as another type than text, or as a list, stays marked", %{} do
+    list = %{
+      "type" => "GetParamFromUrl",
+      "properties" => %{
+        "parameter_name" => %{"type" => "TextExpression", "entries" => %{"0" => "tab"}},
+        "is_list" => true
+      },
+      "next" => %{
+        "type" => "Message",
+        "name" => "is_not_empty"
+      }
+    }
+
+    template =
+      app()
+      |> put_in(["pages", "index", "elements", "bTabOpen", "states", "0", "condition"], list)
+      |> build()
+      |> Map.fetch!(:files)
+      |> Map.fetch!("lib/shop_web/live/index_live.html.heex")
+
+    assert template =~
+             "TODO(bubble:bTabOpen) visibility: 1 conditional not lowered (it does not compile)"
+
     condition = %{
       "type" => "GetParamFromUrl",
       "properties" => %{
@@ -229,10 +269,11 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
 
     # Without the workflows the page keeps no custom state, input value or
     # URL and loads no data: bFlagged's, bOpen's, bCellNoProject's,
-    # bHasProject's, bTabOpen's and bCardTab's conditionals are marked too.
+    # bHasProject's, bTabOpen's, bCardTab's and bBadgeTab's conditionals
+    # are marked too.
     assert %{
              "visibility_conditions_compiled" => 8,
-             "visibility_conditions_marked" => 8,
+             "visibility_conditions_marked" => 9,
              "conditions_other_properties" => 2
            } = report
   end

@@ -305,12 +305,18 @@ page's data loaded, and only when every value of the property loads
 own data sources and workflows read only a value the instance sets
 (they run before the instance's sources compute its default).
 
-Visibility conditions may also read a URL parameter read as text
-(`Get <name> from page URL`, Bubble's default type): the runtime keeps
-the URL's query (`@bubble_url`, text values only), and a reusable
-element's component gets it from its caller (`bubble_url`). A URL
-parameter of another type (a yes/no, a number, a thing) or a path is not
-read by a condition: it stays a marker.
+Visibility conditions and shown values (a text's dynamic content, an
+input's placeholder...) may also read a URL parameter read as a single
+text (`Get <name> from page URL`, Bubble's default type): the runtime
+keeps the URL's query (`@bubble_url`, decoded by Phoenix: text values
+only, a repeated key reads its last value, `+` reads as a space, and a
+key written `x[]` is not a text value, so it reads as empty; Bubble's
+reading of these is a replay question, WTF-387), and a reusable element's
+component gets it from its caller (`bubble_url`), at any depth. A URL
+parameter of another type (a yes/no, a number, a thing), a list or a
+path is not read by either: the condition or the value stays a marker
+(the typing reads every URL parameter as text, which would compare or
+show it wrongly).
 
 A thing or list of things a property holds is what the parent's
 expression read: through Ash, with the current user as the actor, like

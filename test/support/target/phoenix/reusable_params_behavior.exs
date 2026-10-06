@@ -132,6 +132,16 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
       )
 
     refute open =~ ~r/\shidden(\s|>|=)/
+
+    # From inside another reusable: Card reads its nested Badge's default.
+    assert text(view, "bCardA", "bInnerDefault") == "Inner default: Badge task"
+    assert text(view, "bCardB", "bInnerDefault") == "Inner default: Badge task"
+
+    # From a repeating group's cell, an instance outside the list.
+    html = render(view)
+    cells = length(Regex.scan(~r/data-bubble-id="bCellOutside"/, html))
+    assert cells > 0
+    assert length(Regex.scan(~r/Cell outside: Re: Hello B/, html)) == cells
   end
 
   test "properties nest: a reusable two levels down takes its default; IDs are per reusable",

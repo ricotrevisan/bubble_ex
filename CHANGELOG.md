@@ -20,12 +20,14 @@ All notable changes to this project are documented here.
     every value of the property loads and the instance is outside a
     repeating group's cell; data sources and workflows still read only a
     value the instance sets (they run before the default is computed).
-  - **URL parameters in visibility conditions.** A condition reading
-    `Get <name> from page URL` (text) did not compile for pages, though
-    the runtime keeps the URL's query. It now reads `@bubble_url`, passed
-    down to reusable components as `bubble_url`; a URL parameter read as
-    another type (yes/no, number, thing) or a path stays a marker, since
-    the typing reads every URL parameter as text.
+  - **URL parameters in visibility conditions and shown values.** A
+    condition reading `Get <name> from page URL` (text) did not compile
+    for pages, and a text showing one read an assign nothing set (always
+    empty), though the runtime keeps the URL's query. Both now read
+    `@bubble_url`, passed down to reusable components (at any depth) as
+    `bubble_url`. A URL parameter read as another type (yes/no, number,
+    thing), as a list, or a path does not compile in either (a marker,
+    shown empty), since the typing reads every URL parameter as text.
 
   Counted statically over the 10,163 elements of the four page modules
   behind the five routes, the elements that can show content went from

@@ -37,9 +37,11 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   visibility on page load, so the result never changes). Anything else conditionals set (colors, text…) is
   not compiled here.
 
-  A condition may read a URL parameter read as text (the page keeps the
-  URL's query); one reading a URL parameter of another type (a yes/no, a
-  number, a thing) or a path does not compile.
+  A condition, like a shown value, may read a URL parameter read as a
+  single text (the page keeps the URL's query). One reading a URL
+  parameter of another type (a yes/no, a number, a thing), a list or a
+  path does not compile, nor does a value binding reading one: the
+  typing reads every URL parameter as text.
 
   A visibility conditional that does not compile (a condition with no IR
   or no Elixir, a non-literal visibility, an overlay's: a Popup, Group
@@ -233,10 +235,11 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   defp compile_condition(_condition, _env, _project, _opts), do: :error
 
-  # Whether every URL parameter a condition reads is read as text: the
-  # typing reads every URL parameter as text, which compares a yes/no, a
-  # number or a thing read from the URL as Bubble does not (and a path is
-  # not a parameter). A condition reading one stays a marker.
+  # Whether every URL parameter an expression (a condition or a shown
+  # value) reads is a single text: the typing reads every URL parameter as
+  # text, which would compare or show a yes/no, a number, a thing or a
+  # list read from the URL as Bubble does not (and a path is not a
+  # parameter). An expression reading another one stays a marker.
   defp text_url_parameters?(%{} = expr) do
     props =
       case Keys.value(expr, :properties) do
@@ -244,13 +247,22 @@ defmodule BubbleEx.Target.Elixir.Frontend do
         _ -> %{}
       end
 
-    (Keys.value(expr, :type) != "GetParamFromUrl" or
-       (props["type"] in [nil, "parameter"] and Keys.value(props, :value) in [nil, "text"])) and
+    (Keys.value(expr, :type) != "GetParamFromUrl" or text_url_parameter?(props)) and
       Enum.all?(Map.values(expr), &text_url_parameters?/1)
   end
 
   defp text_url_parameters?(list) when is_list(list), do: Enum.all?(list, &text_url_parameters?/1)
   defp text_url_parameters?(_value), do: true
+
+  # A parameter (not a path) of Bubble's default type, text, not a list:
+  # any list-like property (`is_list`, `list`, ...) set to anything but
+  # false makes it one.
+  defp text_url_parameter?(props) do
+    props["type"] in [nil, "parameter"] and Keys.value(props, :value) in [nil, "text"] and
+      not Enum.any?(props, fn {key, value} ->
+        is_binary(key) and String.contains?(key, "list") and value not in [nil, false, "false"]
+      end)
+  end
 
   # One variable per input across the states (variables are named from
   # their input, so a name naming two inputs cannot be shared).
@@ -301,7 +313,8 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   defp compile_binding(payload, %Node{source: source}, env, project, opts) do
     env = %{env | host: source && source.bubble_id}
 
-    with {:ok, %{ast: ast}} <- Expression.parse(payload, schema: env.schema),
+    with true <- text_url_parameters?(payload),
+         {:ok, %{ast: ast}} <- Expression.parse(payload, schema: env.schema),
          {:ok, %{ir: ir}} when not is_nil(ir) <- Compiler.compile(ast, env),
          {:ok, %{source: code} = result} when is_binary(code) <-
            ElixirTarget.compile(ir, project, target_opts(opts)) do

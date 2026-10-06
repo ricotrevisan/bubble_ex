@@ -337,6 +337,16 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       # would be.
       assert page =~ ~s|Bubble.data(@bubble_data, "bCardB", "param_pHeading/bCard")|
 
+      # From a repeating group's cell, an instance outside the list: the
+      # page's scope for it, not the cell's.
+      assert page =~
+               ~s|text_bcelloutside(Bubble.data(@bubble_data, "bCardB", "param_pHeading/bCard"))|
+
+      # From inside another reusable, its nested instance's default.
+      assert template =~
+               ~s|text_binnerdefault(Bubble.data(@bubble_data, Bubble.nest(@scope, "bBadge"), | <>
+                 ~s|"param_pTask/bBadgeDef"))|
+
       assert page =~
                ~s|visible_boutsideshown(Bubble.data(@bubble_data, "bCardA", "param_pNote/bCard"))|
 

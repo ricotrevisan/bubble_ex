@@ -1,8 +1,76 @@
 {
   "_id": "visibility-conditions-fixture",
   "element_definitions": {
+    "badge": {
+      "elements": {
+        "bBadgeTab": {
+          "id": "bBadgeTab",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Badge tab open"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "args": {
+                    "entries": {
+                      "0": "open"
+                    },
+                    "type": "TextExpression"
+                  },
+                  "name": "equals",
+                  "type": "Message"
+                },
+                "properties": {
+                  "parameter_name": {
+                    "entries": {
+                      "0": "tab"
+                    },
+                    "type": "TextExpression"
+                  }
+                },
+                "type": "GetParamFromUrl"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bBadge",
+      "name": "Badge",
+      "properties": {
+        "height": 40,
+        "width": 300
+      },
+      "type": "CustomDefinition"
+    },
     "card": {
       "elements": {
+        "bCardBadge": {
+          "id": "bCardBadge",
+          "properties": {
+            "custom_id": "bBadge",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 3,
+            "width": 300
+          },
+          "type": "CustomElement"
+        },
         "bCardT": {
           "id": "bCardT",
           "properties": {
@@ -524,6 +592,62 @@
           },
           "type": "Text"
         },
+        "bTabCount": {
+          "id": "bTabCount",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 20,
+            "text": {
+              "entries": {
+                "0": "Count: ",
+                "1": {
+                  "properties": {
+                    "parameter_name": {
+                      "entries": {
+                        "0": "n"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "value": "number"
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bTabMany": {
+          "id": "bTabMany",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 21,
+            "text": {
+              "entries": {
+                "0": "Many: ",
+                "1": {
+                  "properties": {
+                    "is_list": true,
+                    "parameter_name": {
+                      "entries": {
+                        "0": "tags"
+                      },
+                      "type": "TextExpression"
+                    }
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
         "bTabOpen": {
           "id": "bTabOpen",
           "properties": {
@@ -567,6 +691,33 @@
               },
               "type": "State"
             }
+          },
+          "type": "Text"
+        },
+        "bTabText": {
+          "id": "bTabText",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 19,
+            "text": {
+              "entries": {
+                "0": "Tab: ",
+                "1": {
+                  "properties": {
+                    "parameter_name": {
+                      "entries": {
+                        "0": "tab"
+                      },
+                      "type": "TextExpression"
+                    }
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
           },
           "type": "Text"
         },
