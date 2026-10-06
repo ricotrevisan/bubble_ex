@@ -8,6 +8,10 @@
 
 defmodule MyApp.Enums.Color do
   use Ash.Type.Enum, values: [{"red", [label: "Red"]}, {"blue", [label: "Blue"]}]
+
+  @doc "The label of `value`; nil for anything that is not one of the values."
+  @impl Ash.Type.Enum
+  def label(value), do: if(value in values(), do: super(value))
 end
 
 defmodule MyApp.Privacy.KeyedRead do

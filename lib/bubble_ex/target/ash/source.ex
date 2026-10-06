@@ -310,26 +310,33 @@ defmodule BubbleEx.Target.Ash.Source do
     """
   end
 
+  # Lookups never raise on a value that is not one of the set's (WTF-500):
+  # a page reads options from stored data, URLs and other options'
+  # attributes, and an empty or unknown option is empty in Bubble. Ash's
+  # own `label/1` has no clause for one.
   defp enum(enum, ctx) do
     values = Enum.map_join(enum.values, ", ", &enum_value/1)
 
     """
     defmodule #{module(enum.module, ctx)} do
       #{moduledoc(enum.description)}use Ash.Type.Enum, values: [#{values}]
+
+      @doc "The label of `value`; nil for anything that is not one of the values."
+      @impl Ash.Type.Enum
+      def label(value), do: if(value in values(), do: super(value))
     #{attribute_lookup(enum)}end
     """
   end
 
   defp attribute_lookup(%{attributes: []}), do: ""
 
-  # An option set with attributes but no values (WTF-394): Map.fetch!/2 on
-  # the empty map is a type warning on Elixir 1.20 (it always raises), so
-  # raise the same KeyError explicitly.
-  defp attribute_lookup(%{values: []}) do
+  # An option set with attributes but no values (WTF-394): no lookup table,
+  # every attribute is empty.
+  defp attribute_lookup(%{values: []} = enum) do
     """
 
-    @doc "The attribute values of `value`. This option set has no values, so it always raises."
-    def attributes(value), do: raise(KeyError, key: value, term: %{})
+    @doc "The attribute values of `value`. This option set has no values, so every one is empty (nil)."
+    def attributes(_value), do: #{no_attributes(enum)}
     """
   end
 
@@ -348,10 +355,16 @@ defmodule BubbleEx.Target.Ash.Source do
 
     @attributes %{#{entries}}
 
-    @doc "The attribute values of `value`."
-    def attributes(value), do: Map.fetch!(@attributes, value)
+    @doc \"""
+    The attribute values of `value`. For anything that is not one of the
+    values (an empty option), every one is empty (nil), as in Bubble.
+    \"""
+    def attributes(value), do: Map.get(@attributes, value, #{no_attributes(enum)})
     """
   end
+
+  defp no_attributes(enum),
+    do: "%{" <> Enum.map_join(enum.attributes, ", ", &(key(&1.name) <> "nil")) <> "}"
 
   defp enum_value(%{label: nil, value: value}), do: literal(value)
 

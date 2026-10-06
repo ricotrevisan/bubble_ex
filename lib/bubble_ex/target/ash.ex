@@ -1687,12 +1687,36 @@ defmodule BubbleEx.Target.Ash do
         value: value.key,
         label: value.name,
         source: %{option_set: set.id, value: value.id},
-        attributes: Map.new(attrs, fn {attr, name} -> {name, value.attributes[attr.id]} end)
+        attributes:
+          Map.new(attrs, fn {attr, name} ->
+            {name, attribute_value(value.attributes[attr.id], attr.type)}
+          end)
       }
 
       {[mapped], {diags, MapSet.put(seen, value.key)}}
     end
   end
+
+  # An option value's attribute as the enum's lookup holds it (WTF-500): a
+  # list attribute is a list in Bubble's order, whether the app stores it
+  # as an array or as an object keyed by position (`%{"0" => a, "1" => b}`,
+  # as Bubble's editor saves option-set lists); a single value given for a
+  # list is a list of it. Other values are kept as supplied.
+  defp attribute_value(nil, _type), do: nil
+  defp attribute_value(value, %Type{cardinality: :many}), do: positional_list(value)
+  defp attribute_value(value, _type), do: value
+
+  defp positional_list(list) when is_list(list), do: list
+
+  defp positional_list(map) when is_map(map) do
+    if Enum.all?(Map.keys(map), &position?/1),
+      do: map |> Enum.sort_by(fn {k, _} -> String.to_integer(k) end) |> Enum.map(&elem(&1, 1)),
+      else: [map]
+  end
+
+  defp positional_list(value), do: [value]
+
+  defp position?(key), do: is_binary(key) and Regex.match?(~r/\A\d+\z/, key)
 
   # --- typed structs -------------------------------------------------------------
 

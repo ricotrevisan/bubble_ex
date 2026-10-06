@@ -19,8 +19,14 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @callback text(value()) :: String.t()
   @doc "A value as Bubble shows it on a page: `text/1` with dates in Bubble's default format."
   @callback display(value()) :: String.t()
-  @doc "`is empty`: nil, `\"\"` or `[]`."
+  @doc "`is empty`: nil, `\"\"`, `[]`, or a field the user may not view (`%Ash.ForbiddenField{}`)."
   @callback empty?(value()) :: boolean()
+  @doc """
+  A compared value as Bubble reads it: a field the user may not view
+  (`%Ash.ForbiddenField{}`) is empty (nil), any other value itself. `is` and
+  `is not` between values that may both be empty compare through it.
+  """
+  @callback unhidden(value()) :: value()
   @doc "`>`, `<`, `>=`, `<=`: false when either side is empty; dates compare as instants."
   @callback compare(:gt | :lt | :gte | :lte, value(), value()) :: boolean()
   @doc "`+` (numbers; a date plus an interval). Empty if either side is empty, as in Ash filters (Bubble's behavior with empty operands is not verified)."
@@ -40,6 +46,11 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @callback trim(value()) :: value()
   @callback capitalize_words(value()) :: value()
   @callback text_length(value()) :: value()
+  @doc """
+  `:formatted as JSON-safe`: always text when not empty. A text is
+  escaped; a yes/no is `"true"` or `"false"`; a number or a date is its
+  machine text (`text/1`). Compared with a text, it compares as text.
+  """
   @callback json_encode(value()) :: value()
   @callback url_encode(value()) :: value()
   @callback is_email(value()) :: boolean()
@@ -78,8 +89,10 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @callback text_contains_words?(value(), value()) :: boolean()
 
   @doc """
-  `:converted to list`: an empty value is `[]`, a list itself, any other
-  value a list of it.
+  `:converted to list`: an empty value (`empty?/1`, a field the user may
+  not view included) is `[]`, a list itself, any other value a list of
+  it. Every list the compiled code reads goes through it (WTF-500), so it
+  must never raise.
   """
   @callback as_list(value()) :: list()
   @doc """

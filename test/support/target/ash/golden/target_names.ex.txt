@@ -9,13 +9,21 @@
 defmodule MyApp.Enums.Tier do
   use Ash.Type.Enum, values: [{"Gold Tier", [label: "Gold"]}, {"silver", [label: "Silver"]}]
 
+  @doc "The label of `value`; nil for anything that is not one of the values."
+  @impl Ash.Type.Enum
+  def label(value), do: if(value in values(), do: super(value))
+
   @attributes %{
     "Gold Tier" => %{nil_field: "n", rank: 1, rank_2: nil},
     "silver" => %{nil_field: nil, rank: nil, rank_2: 2}
   }
 
-  @doc "The attribute values of `value`."
-  def attributes(value), do: Map.fetch!(@attributes, value)
+  @doc """
+  The attribute values of `value`. For anything that is not one of the
+  values (an empty option), every one is empty (nil), as in Bubble.
+  """
+  def attributes(value),
+    do: Map.get(@attributes, value, %{nil_field: nil, rank: nil, rank_2: nil})
 end
 
 defmodule MyApp.Privacy.KeyedRead do

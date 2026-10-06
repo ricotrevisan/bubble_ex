@@ -44,6 +44,55 @@ defmodule BubbleEx.Scripts.VerticalSliceTest do
     end
   end
 
+  describe "Synthetic.rows/2" do
+    # WTF-500: user i's membership must belong to user i. Pointing every
+    # reference at the next record made the signed-in user's membership
+    # belong to another user, and the policies refused every read through it.
+    test "keeps each index one world: references to another type point at the same index" do
+      app = %{
+        "user_types" => %{
+          "user" => %{
+            "display" => "User",
+            "fields" => %{
+              "membership_custom_membership" => %{
+                "display" => "Membership",
+                "value" => "custom.membership"
+              }
+            }
+          },
+          "membership" => %{
+            "display" => "Membership",
+            "fields" => %{
+              "member_user" => %{"display" => "Member", "value" => "user"},
+              "parent_custom_membership" => %{
+                "display" => "Parent",
+                "value" => "custom.membership"
+              },
+              "guests_list_user" => %{"display" => "Guests", "value" => "list.user"}
+            }
+          }
+        }
+      }
+
+      {:ok, model} = BubbleEx.Model.build(app)
+      rows = Synthetic.rows(model, 3)
+      ids = Synthetic.ids(model, 3)
+      id = fn type, i -> Enum.at(ids[type], i - 1) end
+
+      for i <- 1..3 do
+        user = Enum.at(rows["user"], i - 1)
+        membership = Enum.at(rows["membership"], i - 1)
+
+        assert user["membership_custom_membership"] == id.("membership", i)
+        assert membership["member_user"] == id.("user", i)
+        assert membership["Created By"] == id.("user", i)
+        # Its own type: the next record, never itself.
+        assert membership["parent_custom_membership"] == id.("membership", rem(i, 3) + 1)
+        assert hd(membership["guests_list_user"]) == id.("user", i)
+      end
+    end
+  end
+
   describe "Synthetic.persona/2" do
     test "defaults to user 1 and takes an index up to n" do
       assert Synthetic.persona(nil, 3) == 1

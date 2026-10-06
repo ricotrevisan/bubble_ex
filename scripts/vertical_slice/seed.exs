@@ -4,8 +4,12 @@
 # the Ash/PostgreSQL adapter), exactly as a Bubble export would be. No
 # value comes from the app's data: texts are "Sample <field> <n>", numbers
 # and dates are counters, options rotate through the option set, and
-# references point at the other synthetic records. Users get emails on the
-# reserved `example.test` domain; the first one is the slice's sign-in user.
+# references keep each index one coherent world (WTF-500): record `i` of a
+# type points at record `i` of another type (user 1's membership is
+# membership 1, whose member is user 1, as an app's own data would be),
+# and at the next record of its own type (never itself). Users get emails
+# on the reserved `example.test` domain; the first one is the slice's
+# sign-in user.
 defmodule VerticalSlice.Synthetic do
   @moduledoc false
 
@@ -56,7 +60,7 @@ defmodule VerticalSlice.Synthetic do
 
     Map.new(types, fn type ->
       t = index[type.id]
-      {type.id, for(i <- 1..n, do: row(type, t, i, ctx))}
+      {type.id, for(i <- 1..n, do: row(type, t, i, Map.put(ctx, :self, type.id)))}
     end)
   end
 
@@ -136,7 +140,8 @@ defmodule VerticalSlice.Synthetic do
   defp value(%Field{type: %Type{kind: :ref, target: target}}, i, ctx) do
     case ctx.index[target] do
       nil -> nil
-      t -> id(t, rem(i, ctx.n) + 1)
+      t when target == ctx.self -> id(t, rem(i, ctx.n) + 1)
+      t -> id(t, rem(i - 1, ctx.n) + 1)
     end
   end
 

@@ -36,6 +36,10 @@ end
 
 defmodule MyApp.Enums.Phase do
   use Ash.Type.Enum, values: [{"Plan", [label: "Plan"]}, {"in progress", [label: "In progress"]}]
+
+  @doc "The label of `value`; nil for anything that is not one of the values."
+  @impl Ash.Type.Enum
+  def label(value), do: if(value in values(), do: super(value))
 end
 
 defmodule MyApp.Types.DateRange do

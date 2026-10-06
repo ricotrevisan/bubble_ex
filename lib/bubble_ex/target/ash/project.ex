@@ -1005,8 +1005,10 @@ defmodule BubbleEx.Target.Ash.EnumValue do
 
     * `value` - the stored string: the option value's `db_value`
     * `label` - its display text, or nil
-    * `attributes` - attribute values by `EnumAttribute.name`, as supplied
-      (nil when the value has none)
+    * `attributes` - attribute values by `EnumAttribute.name` (nil when the
+      value has none): a list attribute's value is a list in Bubble's
+      order (an app's position-keyed object, `%{"0" => a}`, becomes one);
+      other values as supplied
     * `source` - `%{option_set: _, value: _}` Bubble IDs
   """
 

@@ -194,7 +194,7 @@ defmodule BubbleEx.PageDataTest do
       assert %{read: {:value, compiled}, residue: [], resource: "Task"} =
                data(spec, "rgJoinedTasks")
 
-      assert compiled.source =~ "Enum.map(get_in(page_thing_phome, [Access.key(:tasks)])"
+      assert compiled.source =~ "Runtime.as_list(get_in(page_thing_phome, [Access.key(:tasks)]))"
       assert [%{bind: {:data, %{element: "pHome"}}, loads: [["tasks"]]}] = compiled.bindings
       assert %{read: :url_thing, resource: "Project", residue: []} = data(spec, "pHome")
 

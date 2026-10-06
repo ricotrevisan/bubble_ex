@@ -27,6 +27,9 @@ defmodule BubbleEx.Target.ElixirTest do
     def compare(:lt, a, b), do: a < b
     def uppercase(x), do: x && String.upcase(x)
     def default(x, d), do: if(empty?(x), do: d, else: x)
+    def as_list(x) when is_list(x), do: x
+    def as_list(x), do: if(empty?(x), do: [], else: [x])
+    def unhidden(x), do: x
   end
 
   @runtime inspect(Runtime)
@@ -79,21 +82,22 @@ defmodule BubbleEx.Target.ElixirTest do
     {:ok, %{ir: list}} = Compiler.compile(parse!(raw, env), env)
     assert list.type == "list.custom.task"
 
-    {:ok, result} = Target.compile(list, project)
+    {:ok, result} = Target.compile(list, project, runtime: @runtime)
 
     assert result.diagnostics == []
     assert result.loads == %{"this" => [["tasks"]]}
     assert eval(result, this: %{tasks: [%{id: "t1"}, %{id: "t2"}]}) == ["t1", "t2"]
     assert eval(result, this: %{tasks: nil}) == []
 
-    {:ok, count} = Target.compile(IR.node(:count, [list], "number"), project)
+    {:ok, count} = Target.compile(IR.node(:count, [list], "number"), project, runtime: @runtime)
     assert count.loads == %{"this" => [["tasks"]]}
     assert eval(count, this: %{tasks: [%{id: "t1"}]}) == 1
 
     {:ok, member} =
       Target.compile(
         IR.node(:member, [list, IR.node(:literal, ["t2"], "custom.task")], "boolean"),
-        project
+        project,
+        runtime: @runtime
       )
 
     assert eval(member, this: %{tasks: [%{id: "t1"}, %{id: "t2"}]})
@@ -121,7 +125,7 @@ defmodule BubbleEx.Target.ElixirTest do
     frontend = %BubbleEx.Frontend.Normalized{pages: [node], reusables: []}
 
     {:ok, %{"favorites" => compiled}} =
-      BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend)
+      BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend, runtime: @runtime)
 
     assert compiled.loads == %{"current_user" => [["favorites"]]}
     assert eval(compiled, current_user: %{favorites: [%{id: "p1"}]}) == ["p1"]
