@@ -25,6 +25,16 @@ defmodule BubbleEx.Target.Elixir.ShapesTest do
     def empty?(x), do: x in [nil, "", []]
     def as_list(x) when is_list(x), do: x
     def as_list(x), do: if(empty?(x), do: [], else: [x])
+    def unhidden(%Hidden{}), do: nil
+    def unhidden(x), do: x
+
+    def compare(op, a, b) do
+      cond do
+        empty?(a) or empty?(b) -> false
+        op == :gt -> a > b
+        op == :lt -> a < b
+      end
+    end
   end
 
   @runtime inspect(Runtime)
@@ -95,5 +105,47 @@ defmodule BubbleEx.Target.Elixir.ShapesTest do
 
     is = compile!(IR.node(:eq, [name, lit("Ada", "text")], "boolean"), project)
     assert eval(is, current_user: %{name: "Ada"})
+  end
+
+  # Review of WTF-500: a hidden field passed where a really empty value
+  # failed. Both read as empty now, in either polarity.
+  test "a hidden side of an ordering is empty: neither it nor its negation holds",
+       %{project: project} do
+    estimate = IR.node(:field, [this(), "task", "estimate_number"], "number")
+    gt = IR.node(:gt, [estimate, lit(3.0, "number")], "boolean")
+    not_gt = IR.node(:not, [gt], "boolean")
+
+    for {ir, label} <- [{gt, "> 3"}, {not_gt, "not (> 3)"}] do
+      result = compile!(ir, project)
+      refute eval(result, this: %{estimate: %Hidden{}}), "#{label} on a hidden estimate"
+      refute eval(result, this: %{estimate: nil}), "#{label} on an empty estimate"
+    end
+
+    assert eval(compile!(not_gt, project), this: %{estimate: 2})
+  end
+
+  test "is / is not between a hidden field and an empty value: as between two empty ones",
+       %{project: project} do
+    title = IR.node(:field, [this(), "task", "title_text"], "text")
+    parent = IR.node(:field, [this(), "task", "parent_custom_task"], "custom.task")
+    parent_title = IR.node(:field, [parent, "task", "title_text"], "text")
+
+    is = compile!(IR.node(:eq, [title, parent_title], "boolean"), project)
+    is_not = compile!(IR.node(:neq, [title, parent_title], "boolean"), project)
+
+    for value <- [nil, %Hidden{}], other <- [nil, %Hidden{}] do
+      this = %{title: value, parent: %{title: other}}
+      assert eval(is, this: this), "#{inspect(value)} is #{inspect(other)}"
+      refute eval(is_not, this: this), "#{inspect(value)} is not #{inspect(other)}"
+    end
+
+    refute eval(is, this: %{title: "Plan", parent: %{title: %Hidden{}}})
+    assert eval(is_not, this: %{title: "Plan", parent: %{title: %Hidden{}}})
+
+    # Against a value literal nothing changes: `==`/`!=` already answer as
+    # for empty, so the source stays plain.
+    plain = compile!(IR.node(:neq, [title, lit("Plan", "text")], "boolean"), project)
+    refute plain.source =~ "unhidden"
+    assert eval(plain, this: %{title: %Hidden{}})
   end
 end

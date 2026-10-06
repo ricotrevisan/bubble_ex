@@ -509,9 +509,18 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   # `is` / `is not`: records compare by ID; empty equals empty unless a side
-  # is read from the current user (guarded).
+  # is read from the current user (guarded). A field the user may not view
+  # is empty (WTF-500): it differs from nil only against a side that may be
+  # empty too, so there the operands go through the runtime's `unhidden/1`;
+  # against a value literal, `==` and `!=` already answer as for empty.
   defp atom_(%IR{op: op, args: [l, r]}, st) when op in [:eq, :neq] do
     {[a, b], st} = Enum.map_reduce([l, r], st, &id_value/2)
+
+    {[a, b], st} =
+      if present_literal?(l) or present_literal?(r),
+        do: {[a, b], st},
+        else: Enum.map_reduce([{l, a}, {r, b}], st, &unhidden/2)
+
     eq = "(#{a} == #{b})"
 
     # WTF-471: between yes/no values with a stored side, `is not` reads an
@@ -528,8 +537,11 @@ defmodule BubbleEx.Target.Elixir do
     {[a, b], st} = Enum.map_reduce([l, r], st, &value/2)
     {cmp, st} = runtime(st, :compare, [inspect(Map.fetch!(@compare, op)), a, b])
 
-    negated = ok(cmp, &"(not is_nil(#{a}) and not is_nil(#{b}) and not #{&1})")
-    {all_ok({cmp, negated, [{l, a}, {r, b}]}, [a, b, cmp]), st}
+    # Both sides non-empty (`empty?/1`: a field the user may not view is
+    # empty too, WTF-500), and the ordering does not hold.
+    {[ea, eb], st} = Enum.map_reduce([a, b], st, &runtime(&2, :empty?, [&1]))
+    negated = ok(cmp, &"(not #{ea} and not #{eb} and not #{&1})")
+    {all_ok({cmp, negated, [{l, a}, {r, b}]}, [a, b, cmp, ea, eb]), st}
   end
 
   defp atom_(%IR{op: :is_empty, args: [x]}, st) do
@@ -570,6 +582,21 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   defp atom_(%IR{op: op}, st), do: unsupported(st, {"#{op}", nil})
+
+  # A literal that is not empty, or an option: never a hidden field.
+  defp present_literal?(%IR{op: :literal, args: [v]}), do: v not in [nil, "", []]
+  defp present_literal?(%IR{op: :option}), do: true
+  defp present_literal?(_ir), do: false
+
+  # A compared value that may be a field the user may not view, as empty
+  # (literals, options and records' IDs never are).
+  defp unhidden({_ir, :error}, st), do: {:error, st}
+
+  defp unhidden({%IR{op: op} = ir, part}, st) do
+    if op in [:literal, :empty, :option, :all_options] or record_type?(ir.type),
+      do: {part, st},
+      else: runtime(st, :unhidden, [part])
+  end
 
   defp reads_actor?(%IR{op: op}) when op in [:current_user, :logged_in], do: true
   defp reads_actor?(%IR{args: args}), do: Enum.any?(args, &reads_actor?/1)

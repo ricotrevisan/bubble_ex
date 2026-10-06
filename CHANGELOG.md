@@ -8,48 +8,60 @@ All notable changes to this project are documented here.
 
 - **Generated pages no longer crash on a value's shape** (WTF-500). On
   the private fixture app, signed in, four pages crashed their LiveViews
-  and 16 page data sources failed. Five root causes:
+  (26 crashes in one scan's server log) and 16 page data sources failed.
+  Five root causes:
   - **Option-set list attributes** are stored by Bubble's editor as an
-    object keyed by position (`%{"0" => "active", "1" => "resolved"}`), and
-    the enum's `@attributes` kept it as supplied, so `length/1`, `Enum`
-    and `label/1` raised on it. A list attribute is now a list in
-    Bubble's order (`Target.Ash`); an array is kept and a single value is
-    a list of it. The enum's lookups are total: `attributes/1` of a value
-    that is not one of the set's (empty, stale, any other shape) has
-    every attribute empty, and `label/1` is nil, as an empty option in
-    Bubble (it raised `KeyError` and `FunctionClauseError`).
+    object keyed by position (`%{"0" => "open", "1" => "done"}`), and the
+    enum's `@attributes` kept it as supplied, so `length/1`, `Enum` and
+    `label/1` raised on it. A list attribute is now a list in Bubble's
+    order (`Target.Ash`; positions sort as numbers); an array is kept and
+    a single value is a list of it. The enum's lookups are total:
+    `attributes/1` of a value that is not one of the set's (empty, stale,
+    any other shape) has every attribute empty, and `label/1` is nil, as
+    an empty option in Bubble (it raised `KeyError` and
+    `FunctionClauseError`).
   - **A field the user may not view** (`%Ash.ForbiddenField{}`) is truthy,
-    so `x || []` kept it and `Enum` raised. Every list the compiled code
-    reads (`count`, `:first item`, `contains`, `:filtered`, a list of
-    options or files) now goes through the runtime's `as_list/1`, and the
-    current user's operands are checked with `empty?/1` (it was `not in
-    [nil, "", []]`): a hidden field is empty, in either polarity. The
+    so `x || []` kept it and `Enum` raised, and it passed where an empty
+    value failed. A hidden field now reads exactly as empty: every list
+    the compiled code reads (`count`, `:first item`, `contains`,
+    `:filtered`, a list of options or files) goes through the runtime's
+    `as_list/1`; the current user's operands are checked with `empty?/1`
+    (it was `not in [nil, "", []]`); an ordering's negation requires both
+    sides non-empty (`empty?/1`, it was `not is_nil/1`); `is` and `is not`
+    between two values that may be empty compare through the new
+    `unhidden/1` (a hidden field `is not` an empty value was true). The
     runtime treats it as empty with or without generated policies.
-  - **A field of a list of things** (a search read first, then
-    `:each item's` field, as `Search for Roles's Account:sorted`) was
-    `get_in/2` on the list (`BadMapError`). It is now each item's: one
-    list of their values, empty ones dropped.
+  - **A field of a list of things** (a search read first, then a field of
+    each item, then `:sorted`) was `get_in/2` on the list (`BadMapError`).
+    It is now each item's: one list of their values, empty ones dropped.
   - **`:formatted as JSON-safe`** returned a yes/no or a number unchanged,
-    so `Coach? :formatted as JSON-safe is not "true"` held for every coach
-    (`true != "true"`) and sent them away. It is text, as the compiler
-    types it: `"true"`/`"false"`, a number or date's machine text.
-  - **Two "Go to page" of one event** (two page-load workflows) raised
-    "socket already prepared to redirect": each workflow applies to the
-    page as it ends. The first navigation of an event wins, as in Bubble
-    once the page is gone; later ones are logged at debug level.
+    so a guard such as `Admin? :formatted as JSON-safe is not "true"` held
+    for every admin (`true != "true"`) and sent them away. It is text, as
+    the compiler types it: `"true"`/`"false"`, a number or date's machine
+    text. API calls are not lowered yet; their request bodies must insert
+    raw JSON, not this text (`TODO(bubble:api-body)`,
+    `docs/frontend-workflows.md`).
+  - **Two navigations of one event** (two page-load workflows, each with
+    a "Go to page") raised "socket already prepared to redirect": each
+    workflow applies to the page as it ends. The first page-leaving
+    navigation (another page, a reload, a URL, "Log out") wins, from a
+    later step or a later workflow; a same-page one (a URL parameter)
+    never blocks and is replaced by any later navigation, so changing a
+    parameter can never skip a "Log out". Bubble does not guarantee the
+    order of workflows on one trigger; the outcome no longer depends on it.
 
   The slice seed (`scripts/vertical_slice/seed.exs`) also keeps each
   index one coherent world: a reference to another type points at the same
-  index (user 1's role is role 1, whose account is user 1), and only one
-  to its own type at the next record. It pointed every reference at the
-  next record, so the signed-in user's current role belonged to another
-  user. A new fixture, `phoenix_shapes`
-  (`test/support/target/phoenix/shapes.json`, invented data), reproduces
-  each crash in a generated app, with privacy `:omit` and `:enforced`
-  (`shapes_behavior.exs`; 7 of its 8 tests fail before the fix). On the
-  private fixture app (synthetic data, localhost), 29 pages signed in and
-  signed out: 0 LiveView crashes and 0 page data failures (were 26 and 16
-  sources); generator counts unchanged.
+  index (user 1's membership is membership 1, whose member is user 1), and
+  only one to its own type at the next record. It pointed every reference
+  at the next record, so the signed-in user's own records belonged to
+  another user. A new fixture, `phoenix_shapes`
+  (`test/support/target/phoenix/shapes.json`, invented names and data),
+  reproduces each crash and navigation case in a generated app, with
+  privacy `:omit` and `:enforced` (`shapes_behavior.exs`). On the private
+  fixture app (synthetic data, localhost), 29 pages signed in and signed
+  out: 0 LiveView crashes and 0 page data failures; generator counts
+  unchanged.
 
 - **Owners without bubble_ex can upgrade their index snapshots**
   (WTF-499). A project downloaded as a ZIP has no bubble_ex dependency,

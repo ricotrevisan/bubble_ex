@@ -57,8 +57,12 @@ defmodule <%= @web %>.BubbleWorkflows do
   the log. Steps run in Bubble order; a step's "Only when"
   skips it; a failing step ends the workflow (steps before it keep their
   effects, as in Bubble). Custom states, input values, element steps and
-  navigation apply to the page when the event's workflows end; the first
-  navigation of an event wins (in Bubble the page is gone once one runs).
+  navigation apply to the page when the event's workflows end. The first
+  page-leaving navigation of an event (another page, a reload, a URL, log
+  out) wins, in a later step or a later workflow (in Bubble the page is
+  gone once one runs); a same-page one (a URL parameter) never blocks
+  another. Bubble does not guarantee the order of workflows on the same
+  trigger, and neither does this.
   "Terminate this workflow" ends it; a custom event's return values are
   its caller's step result.
 
@@ -1018,21 +1022,30 @@ defmodule <%= @web %>.BubbleWorkflows do
     apply_navigation(socket, ctx.navigate)
   end
 
-  # The first navigation of an event wins (WTF-500): in Bubble the page is
-  # gone once a "Go to page" runs, so another workflow of the same event
-  # (two page-load workflows, each with a "Go to page") does not navigate
-  # again. LiveView raises on a second redirect of one socket.
+  # The workflows of one event apply their navigation as each ends
+  # (WTF-500), and LiveView raises on a second redirect of one socket. The
+  # first page-leaving navigation (another page, a reload, a URL, log out)
+  # wins: in Bubble the page is gone once it runs, and Bubble does not
+  # guarantee the order of workflows on the same trigger, so neither does
+  # this. A same-page one (`:patch`, a URL parameter) never blocks: a later
+  # navigation of any kind replaces it, so changing a parameter can never
+  # skip a "Log out".
   defp apply_navigation(socket, nil), do: socket
 
-  defp apply_navigation(%{redirected: redirected} = socket, to) when not is_nil(redirected) do
-    Logger.debug(
-      "bubble: a later navigation of the same event is ignored: #{inspect(to)} (first: #{inspect(redirected)})"
-    )
+  defp apply_navigation(%{redirected: redirected} = socket, to) do
+    if leaves_page?(redirected) do
+      Logger.debug(
+        "bubble: a later navigation of the same event is ignored: #{inspect(to)} (first: #{inspect(redirected)})"
+      )
 
-    socket
+      socket
+    else
+      # An earlier same-page patch (or none) gives way.
+      navigate_now(%{socket | redirected: nil}, to)
+    end
   end
 
-  defp apply_navigation(socket, to) do
+  defp navigate_now(socket, to) do
     case to do
       {:patch, to, replace?} -> push_patch(socket, to: to, replace: replace?)
       {:navigate, to, replace?} -> push_navigate(socket, to: to, replace: replace?)
@@ -1554,8 +1567,8 @@ defmodule <%= @web %>.BubbleWorkflows do
 
     cond do
       new_tab? -> {:cont, %{ctx | js: [%{op: "open", url: url} | ctx.js]}}
-      to == :current or path == ctx.path -> {:cont, %{ctx | navigate: {:patch, url, replace?}}}
-      true -> {:cont, %{ctx | navigate: {:navigate, url, replace?}}}
+      to == :current or path == ctx.path -> {:cont, navigation(ctx, {:patch, url, replace?})}
+      true -> {:cont, navigation(ctx, {:navigate, url, replace?})}
     end
   end
 
@@ -1629,8 +1642,8 @@ defmodule <%= @web %>.BubbleWorkflows do
       {kind, url} ->
         cond do
           new_tab? -> {:cont, %{ctx | js: [%{op: "open", url: url} | ctx.js]}}
-          kind == :path -> {:cont, %{ctx | navigate: {:redirect, url}}}
-          true -> {:cont, %{ctx | navigate: {:external, url}}}
+          kind == :path -> {:cont, navigation(ctx, {:redirect, url})}
+          true -> {:cont, navigation(ctx, {:external, url})}
         end
     end
   end
@@ -1662,11 +1675,28 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc "Refresh the page (a full reload)."
   def refresh(ctx) do
     to = if ctx.url == %{}, do: ctx.path, else: ctx.path <> "?" <> URI.encode_query(ctx.url)
-    {:cont, %{ctx | navigate: {:redirect, to}}}
+    {:cont, navigation(ctx, {:redirect, to})}
   end
 
   @doc "Log the user out (the sign-out route)."
-  def log_out(ctx), do: {:cont, %{ctx | navigate: {:redirect, "/sign-out"}}}
+  def log_out(ctx), do: {:cont, navigation(ctx, {:redirect, "/sign-out"})}
+
+  # A step's navigation (WTF-500): a page-leaving one (another page, a
+  # reload, a URL, log out) is never replaced, by a later step or a later
+  # workflow of the same event; a same-page one (`:patch`, a URL parameter)
+  # is replaced by any later one. So "change a parameter" never cancels a
+  # "Log out" or a "Go to page", whichever runs first.
+  defp navigation(%Ctx{navigate: current} = ctx, to) do
+    if leaves_page?(current), do: ctx, else: %{ctx | navigate: to}
+  end
+
+  # Page-leaving: a step's `{:navigate, _, _}`, `{:redirect, _}` or
+  # `{:external, _}`, and a socket's `redirected` from them (LiveView's
+  # `{:live, :redirect, _}` or `{:redirect, _}`); `:patch` stays.
+  defp leaves_page?({kind, _}) when kind in [:redirect, :external], do: true
+  defp leaves_page?({:navigate, _, _}), do: true
+  defp leaves_page?({:live, :redirect, _}), do: true
+  defp leaves_page?(_navigation), do: false
 
   # --- custom events ------------------------------------------------------------------------
 

@@ -1,7 +1,22 @@
 {
- "_comment": "WTF-500: data shapes a generated page must never crash on. All data invented.",
+ "_comment": "WTF-500: data shapes and navigations a generated page must never crash on. All names and data invented.",
  "_id": "phoenix-shapes",
  "option_sets": {
+  "feature": {
+   "display": "Feature",
+   "values": {
+    "fA": {
+     "db_value": "feature_a",
+     "display": "Feature A",
+     "sort_factor": 1
+    },
+    "fB": {
+     "db_value": "feature_b",
+     "display": "Feature B",
+     "sort_factor": 2
+    }
+   }
+  },
   "kind": {
    "_comment": "Bubble's editor stores an option-set list attribute as an object keyed by position",
    "attributes": {
@@ -12,22 +27,22 @@
    },
    "display": "Kind",
    "values": {
-    "kA": {
-     "db_value": "action",
-     "display": "Action",
+    "kB": {
+     "db_value": "bug",
+     "display": "Bug",
      "sort_factor": 1,
      "statuses": {
-      "0": "active",
-      "1": "resolved",
-      "2": "cancelled"
+      "0": "open",
+      "1": "done",
+      "2": "dropped"
      }
     },
-    "kG": {
-     "db_value": "goal",
-     "display": "Goal",
+    "kC": {
+     "db_value": "chore",
+     "display": "Chore",
      "sort_factor": 2,
      "statuses": {
-      "0": "resolved"
+      "0": "done"
      }
     }
    }
@@ -35,116 +50,35 @@
   "status": {
    "display": "Status",
    "values": {
-    "sA": {
-     "db_value": "active",
-     "display": "Active",
+    "sD": {
+     "db_value": "done",
+     "display": "Done",
+     "sort_factor": 2
+    },
+    "sO": {
+     "db_value": "open",
+     "display": "Open",
      "sort_factor": 1
     },
-    "sC": {
-     "db_value": "cancelled",
-     "display": "Cancelled",
+    "sX": {
+     "db_value": "dropped",
+     "display": "Dropped",
      "sort_factor": 3
-    },
-    "sR": {
-     "db_value": "resolved",
-     "display": "Resolved",
-     "sort_factor": 2
-    }
-   }
-  },
-  "tool": {
-   "display": "Tool",
-   "values": {
-    "tL": {
-     "db_value": "linear",
-     "display": "Linear",
-     "sort_factor": 1
-    },
-    "tS": {
-     "db_value": "slack",
-     "display": "Slack",
-     "sort_factor": 2
     }
    }
   }
  },
  "pages": {
-  "accounts": {
-   "_comment": "A field of a list of things, alone on its page",
+  "console": {
    "elements": {
-    "bAccounts": {
-     "_comment": "Search for Roles:each item's Account:sorted by Name (get_in/2 on the list raised)",
-     "elements": {
-      "bAccountT": {
-       "id": "bAccountT",
-       "properties": {
-        "height": 40,
-        "order": 1,
-        "text": {
-         "entries": {
-          "0": "A: ",
-          "1": {
-           "next": {
-            "name": "name_text",
-            "type": "Message"
-           },
-           "type": "CurrentDataItem"
-          }
-         },
-         "type": "TextExpression"
-        },
-        "width": 300
-       },
-       "type": "Text"
-      }
-     },
-     "id": "bAccounts",
-     "properties": {
-      "columns": 1,
-      "data_source": {
-       "next": {
-        "name": "account_user",
-        "next": {
-         "name": "sorted",
-         "properties": {
-          "descending": false,
-          "sort_field": "name_text"
-         },
-         "type": "Message"
-        },
-        "type": "Message"
-       },
-       "properties": {
-        "type_to_find": "custom.role"
-       },
-       "type": "Search"
-      },
-      "group_type": "user",
-      "height": 40,
-      "order": 1,
-      "rows": 5,
-      "width": 300
-     },
-     "type": "RepeatingGroup"
-    }
-   },
-   "id": "bAccountsPage",
-   "name": "accounts",
-   "properties": {
-    "title": "Accounts"
-   },
-   "type": "Page"
-  },
-  "coach": {
-   "elements": {
-    "bCoachT": {
-     "id": "bCoachT",
+    "bConsoleT": {
+     "id": "bConsoleT",
      "properties": {
       "height": 40,
       "order": 1,
       "text": {
        "entries": {
-        "0": "Coach page"
+        "0": "Console page"
        },
        "type": "TextExpression"
       },
@@ -153,15 +87,15 @@
      "type": "Text"
     }
    },
-   "id": "bCoach",
-   "name": "coach",
+   "id": "bConsole",
+   "name": "console",
    "properties": {
-    "title": "Coach"
+    "title": "Console"
    },
    "type": "Page",
    "workflows": {
     "wGuard": {
-     "_comment": "Current User's Coach?:formatted as JSON-safe is not \"true\": go home (a boolean compared with text redirected coaches too)",
+     "_comment": "Current User's Admin?:formatted as JSON-safe is not \"true\": go home (a yes/no compared with text redirected admins too)",
      "actions": {
       "0": {
        "id": "aGuard1",
@@ -175,7 +109,7 @@
      "properties": {
       "condition": {
        "next": {
-        "name": "coach_boolean",
+        "name": "admin_boolean",
         "next": {
          "name": "format_json_encode",
          "next": {
@@ -221,7 +155,7 @@
      "type": "PageLoaded"
     },
     "wTab": {
-     "_comment": "A coach without a tab: this page with ?v=actions (a second navigation of the same event raised)",
+     "_comment": "An admin without a tab: this page with ?tab=overview (a second navigation of the same event raised)",
      "actions": {
       "0": {
        "id": "aTab1",
@@ -229,10 +163,10 @@
         "element_id": "Current page",
         "url_parameters": {
          "0": {
-          "key": "v",
+          "key": "tab",
           "value": {
            "entries": {
-            "0": "actions"
+            "0": "overview"
            },
            "type": "TextExpression"
           }
@@ -246,7 +180,7 @@
      "properties": {
       "condition": {
        "next": {
-        "name": "coach_boolean",
+        "name": "admin_boolean",
         "next": {
          "name": "is_true",
          "next": {
@@ -256,7 +190,7 @@
             "type": "Message"
            },
            "properties": {
-            "parameter_name": "v"
+            "parameter_name": "tab"
            },
            "type": "GetParamFromUrl"
           },
@@ -274,10 +208,67 @@
     }
    }
   },
+  "features": {
+   "_comment": "A hidden list field, alone on its page",
+   "elements": {
+    "bMembership": {
+     "_comment": "Current User's Membership; its Features:count (hidden: ForbiddenField)",
+     "elements": {
+      "bFeatureCount": {
+       "id": "bFeatureCount",
+       "properties": {
+        "height": 40,
+        "order": 1,
+        "text": {
+         "entries": {
+          "0": "Features: ",
+          "1": {
+           "next": {
+            "name": "features_list_option_feature",
+            "next": {
+             "name": "count",
+             "type": "Message"
+            },
+            "type": "Message"
+           },
+           "type": "ElementParent"
+          }
+         },
+         "type": "TextExpression"
+        },
+        "width": 300
+       },
+       "type": "Text"
+      }
+     },
+     "id": "bMembership",
+     "properties": {
+      "data_source": {
+       "next": {
+        "name": "membership_custom_membership",
+        "type": "Message"
+       },
+       "type": "CurrentUser"
+      },
+      "group_type": "custom.membership",
+      "height": 40,
+      "order": 1,
+      "width": 300
+     },
+     "type": "Group"
+    }
+   },
+   "id": "bFeatures",
+   "name": "features",
+   "properties": {
+    "title": "Features"
+   },
+   "type": "Page"
+  },
   "index": {
    "elements": {
     "bKindCount": {
-     "_comment": "Action's Statuses:count is 3 (length/1 on the position-keyed object raised)",
+     "_comment": "Bug's Statuses:count is 3 (length/1 on the position-keyed object raised)",
      "elements": {
       "bKindCountT": {
        "id": "bKindCountT",
@@ -320,7 +311,7 @@
         },
         "properties": {
          "option_set": "option.kind",
-         "option_value": "kA"
+         "option_value": "kB"
         },
         "type": "OneOptionValue"
        },
@@ -333,7 +324,7 @@
      "type": "Group"
     },
     "bLabels": {
-     "_comment": "Goal's Statuses:each item's Display (label/1 of the object raised)",
+     "_comment": "Bug's Statuses:each item's Display (label/1 of the object raised)",
      "elements": {
       "bLabelT": {
        "id": "bLabelT",
@@ -368,7 +359,7 @@
        },
        "properties": {
         "option_set": "option.kind",
-        "option_value": "kA"
+        "option_value": "kB"
        },
        "type": "OneOptionValue"
       },
@@ -388,30 +379,26 @@
    },
    "type": "Page"
   },
-  "tools": {
-   "_comment": "A hidden list field, alone on its page",
+  "members": {
+   "_comment": "A field of a list of things, alone on its page",
    "elements": {
-    "bRole": {
-     "_comment": "Current User's Current role; its Integrations:count (hidden: ForbiddenField)",
+    "bMembers": {
+     "_comment": "Search for Memberships:each item's Member:sorted by Name (get_in/2 on the list raised)",
      "elements": {
-      "bToolCount": {
-       "id": "bToolCount",
+      "bMemberT": {
+       "id": "bMemberT",
        "properties": {
         "height": 40,
         "order": 1,
         "text": {
          "entries": {
-          "0": "Tools: ",
+          "0": "M: ",
           "1": {
            "next": {
-            "name": "integrations_list_option_tool",
-            "next": {
-             "name": "count",
-             "type": "Message"
-            },
+            "name": "name_text",
             "type": "Message"
            },
-           "type": "ElementParent"
+           "type": "CurrentDataItem"
           }
          },
          "type": "TextExpression"
@@ -421,46 +408,289 @@
        "type": "Text"
       }
      },
-     "id": "bRole",
+     "id": "bMembers",
      "properties": {
+      "columns": 1,
       "data_source": {
        "next": {
-        "name": "current_role_custom_role",
+        "name": "member_user",
+        "next": {
+         "name": "sorted",
+         "properties": {
+          "descending": false,
+          "sort_field": "name_text"
+         },
+         "type": "Message"
+        },
         "type": "Message"
        },
-       "type": "CurrentUser"
+       "properties": {
+        "type_to_find": "custom.membership"
+       },
+       "type": "Search"
       },
-      "group_type": "custom.role",
+      "group_type": "user",
       "height": 40,
       "order": 1,
+      "rows": 5,
       "width": 300
      },
-     "type": "Group"
+     "type": "RepeatingGroup"
     }
    },
-   "id": "bTools",
-   "name": "tools",
+   "id": "bMembersPage",
+   "name": "members",
    "properties": {
-    "title": "Tools"
+    "title": "Members"
    },
    "type": "Page"
+  },
+  "nav": {
+   "_comment": "A same-page navigation (a URL parameter) never cancels a page-leaving one, in either order, across workflows of one trigger or steps of one workflow",
+   "elements": {
+    "bOutPatch": {
+     "id": "bOutPatch",
+     "properties": {
+      "height": 40,
+      "order": 3,
+      "text": {
+       "entries": {
+        "0": "Log out, then patch"
+       },
+       "type": "TextExpression"
+      },
+      "width": 200
+     },
+     "type": "Button"
+    },
+    "bPatchGo": {
+     "id": "bPatchGo",
+     "properties": {
+      "height": 40,
+      "order": 2,
+      "text": {
+       "entries": {
+        "0": "Patch, then go home"
+       },
+       "type": "TextExpression"
+      },
+      "width": 200
+     },
+     "type": "Button"
+    },
+    "bPatchOut": {
+     "id": "bPatchOut",
+     "properties": {
+      "height": 40,
+      "order": 1,
+      "text": {
+       "entries": {
+        "0": "Patch, then log out"
+       },
+       "type": "TextExpression"
+      },
+      "width": 200
+     },
+     "type": "Button"
+    },
+    "bStepsOut": {
+     "id": "bStepsOut",
+     "properties": {
+      "height": 40,
+      "order": 4,
+      "text": {
+       "entries": {
+        "0": "One workflow: log out, then patch"
+       },
+       "type": "TextExpression"
+      },
+      "width": 200
+     },
+     "type": "Button"
+    }
+   },
+   "id": "bNav",
+   "name": "nav",
+   "properties": {
+    "title": "Navigation"
+   },
+   "type": "Page",
+   "workflows": {
+    "wA1Patch": {
+     "actions": {
+      "0": {
+       "id": "aA1",
+       "properties": {
+        "element_id": "Current page",
+        "url_parameters": {
+         "0": {
+          "key": "tab",
+          "value": {
+           "entries": {
+            "0": "two"
+           },
+           "type": "TextExpression"
+          }
+         }
+        }
+       },
+       "type": "ChangePage"
+      }
+     },
+     "id": "wA1Patch",
+     "properties": {
+      "element_id": "bPatchOut"
+     },
+     "type": "ButtonClicked"
+    },
+    "wA2Out": {
+     "actions": {
+      "0": {
+       "id": "aA2",
+       "properties": {},
+       "type": "LogOut"
+      }
+     },
+     "id": "wA2Out",
+     "properties": {
+      "element_id": "bPatchOut"
+     },
+     "type": "ButtonClicked"
+    },
+    "wB1Patch": {
+     "actions": {
+      "0": {
+       "id": "aB1",
+       "properties": {
+        "element_id": "Current page",
+        "url_parameters": {
+         "0": {
+          "key": "tab",
+          "value": {
+           "entries": {
+            "0": "two"
+           },
+           "type": "TextExpression"
+          }
+         }
+        }
+       },
+       "type": "ChangePage"
+      }
+     },
+     "id": "wB1Patch",
+     "properties": {
+      "element_id": "bPatchGo"
+     },
+     "type": "ButtonClicked"
+    },
+    "wB2Go": {
+     "actions": {
+      "0": {
+       "id": "aB2",
+       "properties": {
+        "element_id": "bShapes"
+       },
+       "type": "ChangePage"
+      }
+     },
+     "id": "wB2Go",
+     "properties": {
+      "element_id": "bPatchGo"
+     },
+     "type": "ButtonClicked"
+    },
+    "wC1Out": {
+     "actions": {
+      "0": {
+       "id": "aC1",
+       "properties": {},
+       "type": "LogOut"
+      }
+     },
+     "id": "wC1Out",
+     "properties": {
+      "element_id": "bOutPatch"
+     },
+     "type": "ButtonClicked"
+    },
+    "wC2Patch": {
+     "actions": {
+      "0": {
+       "id": "aC2",
+       "properties": {
+        "element_id": "Current page",
+        "url_parameters": {
+         "0": {
+          "key": "tab",
+          "value": {
+           "entries": {
+            "0": "two"
+           },
+           "type": "TextExpression"
+          }
+         }
+        }
+       },
+       "type": "ChangePage"
+      }
+     },
+     "id": "wC2Patch",
+     "properties": {
+      "element_id": "bOutPatch"
+     },
+     "type": "ButtonClicked"
+    },
+    "wD1Steps": {
+     "actions": {
+      "0": {
+       "id": "aD1",
+       "properties": {},
+       "type": "LogOut"
+      },
+      "1": {
+       "id": "aD2",
+       "properties": {
+        "element_id": "Current page",
+        "url_parameters": {
+         "0": {
+          "key": "tab",
+          "value": {
+           "entries": {
+            "0": "two"
+           },
+           "type": "TextExpression"
+          }
+         }
+        }
+       },
+       "type": "ChangePage"
+      }
+     },
+     "id": "wD1Steps",
+     "properties": {
+      "element_id": "bStepsOut"
+     },
+     "type": "ButtonClicked"
+    }
+   }
   }
  },
  "user_types": {
-  "role": {
-   "_comment": "Integrations is a field no one may view: with privacy enforced it reads as %Ash.ForbiddenField{}",
-   "display": "Role",
+  "membership": {
+   "_comment": "Features is a field no one may view: with privacy enforced it reads as %Ash.ForbiddenField{}",
+   "display": "Membership",
    "fields": {
-    "account_user": {
-     "display": "Account",
+    "features_list_option_feature": {
+     "display": "Features",
+     "value": "list.option.feature"
+    },
+    "member_user": {
+     "display": "Member",
      "value": "user"
     },
-    "integrations_list_option_tool": {
-     "display": "Integrations",
-     "value": "list.option.tool"
-    },
-    "name_text": {
-     "display": "Name",
+    "team_text": {
+     "display": "Team",
      "value": "text"
     }
    },
@@ -473,8 +703,8 @@
       "view_all": false,
       "view_attachments": false,
       "view_fields": [
-       "name_text",
-       "account_user"
+       "team_text",
+       "member_user"
       ]
      }
     }
@@ -483,17 +713,17 @@
   "user": {
    "display": "User",
    "fields": {
-    "coach_boolean": {
-     "display": "Coach?",
+    "admin_boolean": {
+     "display": "Admin?",
      "value": "boolean"
-    },
-    "current_role_custom_role": {
-     "display": "Current role",
-     "value": "custom.role"
     },
     "email": {
      "display": "email",
      "value": "text"
+    },
+    "membership_custom_membership": {
+     "display": "Membership",
+     "value": "custom.membership"
     },
     "name_text": {
      "display": "Name",
@@ -511,8 +741,8 @@
       "view_fields": [
        "email",
        "name_text",
-       "coach_boolean",
-       "current_role_custom_role"
+       "admin_boolean",
+       "membership_custom_membership"
       ]
      }
     }

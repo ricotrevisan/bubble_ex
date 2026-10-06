@@ -274,8 +274,8 @@ defmodule BubbleEx.Target.AshTest do
           "status" => %{
             "display" => "Status",
             "values" => %{
-              "a" => %{"display" => "Active", "db_value" => "active", "sort_factor" => 1},
-              "r" => %{"display" => "Resolved", "db_value" => "resolved", "sort_factor" => 2}
+              "o" => %{"display" => "Open", "db_value" => "open", "sort_factor" => 1},
+              "d" => %{"display" => "Done", "db_value" => "done", "sort_factor" => 2}
             }
           },
           "kind" => %{
@@ -287,21 +287,22 @@ defmodule BubbleEx.Target.AshTest do
             },
             "values" => %{
               "k1" => %{
-                "display" => "Action",
-                "db_value" => "action",
+                "display" => "Bug",
+                "db_value" => "bug",
                 "sort_factor" => 1,
-                "statuses" => %{"1" => "resolved", "0" => "active", "10" => "active"},
+                # "10" before "2" as text; Bubble's order is by number.
+                "statuses" => %{"10" => "dropped", "2" => "done", "0" => "open"},
                 "tags" => ["x", "y"],
                 "icon" => %{"0" => "kept as supplied"}
               },
               "k2" => %{
-                "display" => "Goal",
-                "db_value" => "goal",
+                "display" => "Chore",
+                "db_value" => "chore",
                 "sort_factor" => 2,
-                "statuses" => "active",
+                "statuses" => "open",
                 "tags" => %{}
               },
-              "k3" => %{"display" => "Topic", "db_value" => "topic", "sort_factor" => 3}
+              "k3" => %{"display" => "Spike", "db_value" => "spike", "sort_factor" => 3}
             }
           }
         }
@@ -311,24 +312,24 @@ defmodule BubbleEx.Target.AshTest do
       kind = Enum.find(project.enums, &(&1.source.option_set == "kind"))
 
       assert [
-               %{value: "action", attributes: action},
-               %{value: "goal", attributes: goal},
-               %{value: "topic", attributes: topic}
+               %{value: "bug", attributes: bug},
+               %{value: "chore", attributes: chore},
+               %{value: "spike", attributes: spike}
              ] = kind.values
 
-      # Positions sort as numbers: "10" after "1".
-      assert action == %{
-               "statuses" => ["active", "resolved", "active"],
+      # Positions sort as numbers: "2" before "10" (a text sort fails).
+      assert bug == %{
+               "statuses" => ["open", "done", "dropped"],
                "tags" => ["x", "y"],
                "icon" => %{"0" => "kept as supplied"}
              }
 
-      assert goal == %{"statuses" => ["active"], "tags" => [], "icon" => nil}
-      assert topic == %{"statuses" => nil, "tags" => nil, "icon" => nil}
+      assert chore == %{"statuses" => ["open"], "tags" => [], "icon" => nil}
+      assert spike == %{"statuses" => nil, "tags" => nil, "icon" => nil}
 
       {:ok, source} = Source.render(project)
-      assert source =~ ~s(statuses: ["active", "resolved", "active"])
-      refute source =~ ~s("0" => "active")
+      assert source =~ ~s(statuses: ["open", "done", "dropped"])
+      refute source =~ ~s("0" => "open")
       # Lookups never raise on a value that is not one of the set's.
       assert source =~ "def attributes(value), do: Map.get(@attributes, value, %{"
       assert source =~ "def label(value), do: if(value in values(), do: super(value))"

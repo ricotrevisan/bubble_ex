@@ -122,6 +122,29 @@ workflows read them; a workflow that does is a data workflow (it runs
 only with the data-access opt-in). Bubble has no action that changes a
 reusable element's property: workflows only read it.
 
+### Navigation and JSON-safe text (WTF-500)
+
+Each workflow of an event applies its navigation when it ends. The first
+page-leaving navigation of an event ("Go to page" to another page, a
+reload, "Open an external website", "Log out") wins, from a later step
+of the same workflow or from another workflow on the same trigger: the
+page is gone once it runs. A same-page navigation (a URL parameter of the
+current page) never blocks: any later navigation replaces it, so a
+workflow that only changes a parameter can never skip another one's
+"Log out". **Bubble does not guarantee the order of workflows on the same
+trigger**, and the generated runtime does not either; with this rule the
+outcome of a page-leaving and a same-page navigation does not depend on
+it.
+
+`:formatted as JSON-safe` is text on pages, as typed: a yes/no is `"true"`
+or `"false"`, a number or a date its machine text, so comparing it with a
+text (`Admin? :formatted as JSON-safe is "true"`) holds as in Bubble.
+**API calls are not lowered yet** (plugin and API Connector actions are
+residue). When they are, a request body must insert a value's raw JSON
+(`true`, `3`, a quoted and escaped string), never this text form: the
+runtime's `json_encode/1` (`TODO(bubble:api-body)`) must not be reused
+for bodies as is.
+
 ### Display data (WTF-492)
 
 "Display data in a group / popup" sets what a group, popup, floating

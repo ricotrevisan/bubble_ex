@@ -80,6 +80,10 @@ defmodule <%= @module %>.Bubble.Runtime do
   def empty?(%{__struct__: Ash.ForbiddenField}), do: true
   def empty?(x), do: x in [nil, "", []]
 
+  @doc "A compared value: a field the user may not view is empty (nil), as in Bubble."
+  def unhidden(%{__struct__: Ash.ForbiddenField}), do: nil
+  def unhidden(x), do: x
+
   @doc "`>`, `<`, `>=`, `<=`: false when either side is empty."
   def compare(op, a, b) do
     if empty?(a) or empty?(b) do
@@ -201,8 +205,11 @@ defmodule <%= @module %>.Bubble.Runtime do
   def json_encode(x) when is_binary(x), do: x |> Jason.encode!() |> String.slice(1..-2//1)
   # JSON-safe is text whatever it formats (WTF-500): a yes/no is `"true"` or
   # `"false"` (never `"yes"`), a number or a date its machine text, so a
-  # comparison with a text such as `Coach? :formatted as JSON-safe is
+  # comparison with a text such as `Admin? :formatted as JSON-safe is
   # "true"` holds as in Bubble. An empty value stays empty.
+  # TODO(bubble:api-body) This is the text pages compare. An API call's
+  # request body (not lowered yet) must insert the raw JSON value instead
+  # (`true`, `3`, a quoted string): do not reuse this function for bodies.
   def json_encode(x) when is_boolean(x), do: Atom.to_string(x)
   def json_encode(x) when is_number(x), do: text(x)
 

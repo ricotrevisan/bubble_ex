@@ -29,6 +29,7 @@ defmodule BubbleEx.Target.ElixirTest do
     def default(x, d), do: if(empty?(x), do: d, else: x)
     def as_list(x) when is_list(x), do: x
     def as_list(x), do: if(empty?(x), do: [], else: [x])
+    def unhidden(x), do: x
   end
 
   @runtime inspect(Runtime)

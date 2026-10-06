@@ -21,6 +21,12 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @callback display(value()) :: String.t()
   @doc "`is empty`: nil, `\"\"`, `[]`, or a field the user may not view (`%Ash.ForbiddenField{}`)."
   @callback empty?(value()) :: boolean()
+  @doc """
+  A compared value as Bubble reads it: a field the user may not view
+  (`%Ash.ForbiddenField{}`) is empty (nil), any other value itself. `is` and
+  `is not` between values that may both be empty compare through it.
+  """
+  @callback unhidden(value()) :: value()
   @doc "`>`, `<`, `>=`, `<=`: false when either side is empty; dates compare as instants."
   @callback compare(:gt | :lt | :gte | :lte, value(), value()) :: boolean()
   @doc "`+` (numbers; a date plus an interval). Empty if either side is empty, as in Ash filters (Bubble's behavior with empty operands is not verified)."

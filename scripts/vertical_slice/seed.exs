@@ -5,10 +5,11 @@
 # value comes from the app's data: texts are "Sample <field> <n>", numbers
 # and dates are counters, options rotate through the option set, and
 # references keep each index one coherent world (WTF-500): record `i` of a
-# type points at record `i` of another type (user 1's role is role 1, whose
-# account is user 1, as an app's own data would be), and at the next record
-# of its own type (never itself). Users get emails on the reserved
-# `example.test` domain; the first one is the slice's sign-in user.
+# type points at record `i` of another type (user 1's membership is
+# membership 1, whose member is user 1, as an app's own data would be),
+# and at the next record of its own type (never itself). Users get emails
+# on the reserved `example.test` domain; the first one is the slice's
+# sign-in user.
 defmodule VerticalSlice.Synthetic do
   @moduledoc false
 

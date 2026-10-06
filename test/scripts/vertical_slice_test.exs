@@ -45,24 +45,30 @@ defmodule BubbleEx.Scripts.VerticalSliceTest do
   end
 
   describe "Synthetic.rows/2" do
-    # WTF-500: user i's role must belong to user i. Pointing every
-    # reference at the next record made user 1's current role belong to
-    # user 3 in the slice, and the policies refused every read through it.
+    # WTF-500: user i's membership must belong to user i. Pointing every
+    # reference at the next record made the signed-in user's membership
+    # belong to another user, and the policies refused every read through it.
     test "keeps each index one world: references to another type point at the same index" do
       app = %{
         "user_types" => %{
           "user" => %{
             "display" => "User",
             "fields" => %{
-              "current_role_custom_role" => %{"display" => "Role", "value" => "custom.role"}
+              "membership_custom_membership" => %{
+                "display" => "Membership",
+                "value" => "custom.membership"
+              }
             }
           },
-          "role" => %{
-            "display" => "Role",
+          "membership" => %{
+            "display" => "Membership",
             "fields" => %{
-              "account_user" => %{"display" => "Account", "value" => "user"},
-              "parent_custom_role" => %{"display" => "Parent", "value" => "custom.role"},
-              "peers_list_user" => %{"display" => "Peers", "value" => "list.user"}
+              "member_user" => %{"display" => "Member", "value" => "user"},
+              "parent_custom_membership" => %{
+                "display" => "Parent",
+                "value" => "custom.membership"
+              },
+              "guests_list_user" => %{"display" => "Guests", "value" => "list.user"}
             }
           }
         }
@@ -75,14 +81,14 @@ defmodule BubbleEx.Scripts.VerticalSliceTest do
 
       for i <- 1..3 do
         user = Enum.at(rows["user"], i - 1)
-        role = Enum.at(rows["role"], i - 1)
+        membership = Enum.at(rows["membership"], i - 1)
 
-        assert user["current_role_custom_role"] == id.("role", i)
-        assert role["account_user"] == id.("user", i)
-        assert role["Created By"] == id.("user", i)
+        assert user["membership_custom_membership"] == id.("membership", i)
+        assert membership["member_user"] == id.("user", i)
+        assert membership["Created By"] == id.("user", i)
         # Its own type: the next record, never itself.
-        assert role["parent_custom_role"] == id.("role", rem(i, 3) + 1)
-        assert hd(role["peers_list_user"]) == id.("user", i)
+        assert membership["parent_custom_membership"] == id.("membership", rem(i, 3) + 1)
+        assert hd(membership["guests_list_user"]) == id.("user", i)
       end
     end
   end
