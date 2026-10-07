@@ -108,7 +108,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   def index(nil, displayed),
     do:
       with_displayed(
-        %{elements: %{}, roots: MapSet.new(), params: %{}, set: %{}},
+        %{
+          elements: %{},
+          roots: MapSet.new(),
+          params: %{},
+          set: %{},
+          defaults: MapSet.new(),
+          valued: MapSet.new()
+        },
         displayed,
         MapSet.new()
       )
@@ -135,7 +142,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # key (`Spec.param_key/2`) => whether every value of it (each
   # instance's, those of instances rendered per cell included, WTF-494,
   # and its default) loads; `set`, `{instance, param} => %{surface, key}`
-  # for the values instances outside a cell set that load.
+  # for the values instances outside a cell set that load; `defaults`, the
+  # keys of the properties with a default; `valued`, every `{instance,
+  # param}` an instance sets (loaded or not, in a cell or not).
   defp params(sources, loads?) do
     # The lists that load: an instance in the cell of another is never
     # rendered.
@@ -158,6 +167,19 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
           into: %{},
           do:
             {{s.element, s.param}, %{surface: s.surface, key: Spec.param_key(s.holder, s.param)}}
+        ),
+      defaults:
+        for(
+          %{kind: :param, element: e, holder: e} = s <- sources,
+          into: MapSet.new(),
+          do: Spec.param_key(s.holder, s.param)
+        ),
+      valued:
+        for(
+          %{kind: :param} = s <- sources,
+          s.element != s.holder,
+          into: MapSet.new(),
+          do: {s.element, s.param}
         )
     }
   end

@@ -55,7 +55,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       (`BubbleEx.Target.Elixir.Frontend`). A
       reusable instance's property read where the instance is reads the
       instance's value, or its reusable element's default when it sets
-      none (`FrontendWorkflows.Spec.read/4`). A helper
+      none (`FrontendWorkflows.Spec.read/4`); one with no value (no
+      default, not set) is not decided on: where no instance has one the
+      conditionals are marked, where only some do the helper decides for
+      those (`Bubble.set?/3`), and the others keep the page-load
+      visibility, or with privacy: :enforced stay hidden when a
+      conditional may hide them (WTF-505). A helper
       raises on a relationship it reads that was not loaded rather than
       decide on an empty value. Conditionals that do not compile, read
       what the page does not keep or load, or belong to an overlay or a
@@ -164,7 +169,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       icon_assets: Keyword.get(opts, :assets, %{}),
       asset_store: Keyword.get(opts, :asset_store),
       overrides: overrides(frontend),
-      flows: flows
+      flows: flows,
+      enforced?: Map.get(ctx, :enforced?, false)
     }
 
     base =
@@ -725,6 +731,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         "elements_with_residue" => 0,
         "visibility_conditions_compiled" => 0,
         "visibility_conditions_marked" => 0,
+        "visibility_conditions_unset_property" => 0,
         "conditions_other_properties" => 0
       }
     }
@@ -2097,15 +2104,101 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp conditional_visibility(node, %{bindings: vars} = compiled, states, static, ctx, acc) do
     case Enum.find(vars, &(not kept_input?(&1, ctx))) do
       nil ->
-        {call, acc} =
-          add_helper(node, "visible", compiled, false, Map.put(ctx, :viewer, true), acc)
-
-        {[{"hidden", {:raw, "{!" <> call <> "}"}}],
-         count(acc, "visibility_conditions_compiled", states)}
+        unset_visibility(node, compiled, states, static, unset_reads(vars, ctx), ctx, acc)
 
       var ->
         {static, mark_visibility(acc, node, states, unkept(var))}
     end
+  end
+
+  # A condition reading a reusable element's property with no value (no
+  # default, and the instance sets none, `FlowSpec.unset_property/3`) is
+  # not decided as if it were empty: Bubble's value there is not known.
+  # Where no instance has one, the conditionals are marked; where only
+  # some do, the helper decides for those and the others keep the
+  # fallback (`Bubble.set?/3` tells them apart by scope). The fallback is
+  # the page-load visibility, or with privacy: :enforced hidden when a
+  # conditional may hide the element: what a condition hides is never
+  # shown for want of a value.
+  defp unset_visibility(node, compiled, states, _static, {[], []}, ctx, acc) do
+    {call, acc} = add_helper(node, "visible", compiled, false, Map.put(ctx, :viewer, true), acc)
+
+    {[{"hidden", {:raw, "{!" <> call <> "}"}}],
+     count(acc, "visibility_conditions_compiled", states)}
+  end
+
+  defp unset_visibility(node, _compiled, states, static, {[_ | _] = unset, _some}, ctx, acc) do
+    {fallback, why} = unset_fallback(node, static, ctx)
+
+    acc =
+      acc
+      |> mark_visibility(
+        node,
+        states,
+        "it reads a reusable element's property that is not set and has no default: " <>
+          Enum.join(unset, ", "),
+        why
+      )
+      |> count("visibility_conditions_unset_property", states)
+
+    {fallback, acc}
+  end
+
+  defp unset_visibility(node, compiled, states, static, {[], some}, ctx, acc) do
+    {fallback, why} = unset_fallback(node, static, ctx)
+    {call, acc} = add_helper(node, "visible", compiled, false, Map.put(ctx, :viewer, true), acc)
+    keys = Enum.map_join(some, ", ", &literal/1)
+    hidden = if fallback == [], do: "false", else: "true"
+
+    attr =
+      "{if(Bubble.set?(@bubble_data, #{scope_var(ctx)}, [#{keys}]), do: !#{call}, else: #{hidden})}"
+
+    noun = if states == 1, do: "conditional", else: "conditionals"
+
+    acc =
+      acc
+      |> mark(
+        node,
+        "visibility: #{states} #{noun} not lowered for the instances that do not set " <>
+          "#{Enum.join(some, ", ")} (no default); #{why} there"
+      )
+      |> count("visibility_conditions_compiled", states)
+      |> count("visibility_conditions_unset_property", states)
+
+    {[{"hidden", {:raw, attr}}], acc}
+  end
+
+  # The properties a condition reads with no value (`{unset, some}`): those
+  # set nowhere they are read (`"element_state:param_<id>"`), and the keys
+  # of those only some instances set.
+  defp unset_reads(vars, %{flows: %FlowSpec{} = flows} = ctx) do
+    reads =
+      for %{input: input} <- vars,
+          r = FlowSpec.unset_property(flows, ctx.entry.id, input),
+          r != nil,
+          uniq: true,
+          do: {r, input}
+
+    {for({:unset, {_, ref}} <- reads, do: "element_state:" <> ref["state"]),
+     for({{:some, key}, _} <- reads, uniq: true, do: key)}
+  end
+
+  defp unset_reads(_vars, _ctx), do: {[], []}
+
+  # The visibility kept when a condition is not decided: as on page load,
+  # or with privacy: :enforced hidden when a conditional may hide it.
+  defp unset_fallback(node, static, ctx) do
+    payload =
+      case node.bindings["condition"] do
+        %{kind: :condition, payload: payload} -> payload
+        _ -> nil
+      end
+
+    # Fail closed: a conditional whose visibility is not a yes/no literal
+    # may hide the element too (`Conditions.may_hide?/1`).
+    if Map.get(ctx, :enforced?, false) and Conditions.may_hide?(payload) and static == [],
+      do: {[{"hidden", true}], "hidden (privacy: enforced, a conditional may hide it)"},
+      else: {static, "shown as on page load"}
   end
 
   defp kept_input?(%{input: :current_user}, _ctx), do: true
@@ -2124,11 +2217,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp unkept(_var), do: "it reads a value the page does not keep"
 
-  defp mark_visibility(acc, node, states, why) do
+  defp mark_visibility(acc, node, states, why, kept \\ "shown as on page load") do
     noun = if states == 1, do: "conditional", else: "conditionals"
 
     acc
-    |> mark(node, "visibility: #{states} #{noun} not lowered (#{why}); shown as on page load")
+    |> mark(node, "visibility: #{states} #{noun} not lowered (#{why}); #{kept}")
     |> count("visibility_conditions_marked", states)
   end
 

@@ -297,13 +297,29 @@ instance being rendered, in texts, visibility conditions, data sources
 (a group whose data source is the property) and workflows, and nested
 reusables pass theirs down the same way. A page may read an instance's
 property too (`<instance>'s <property>`): the value the instance sets,
-or, when it sets none, its default (with no default, empty), which the
+or, when it sets none, its default (with no default, see below), which the
 page computed in the instance's scope under the same key. The page's
 texts and visibility conditions read it when they render, after the
 page's data loaded, and only when every value of the property loads
 (below) and the instance is outside a repeating group's cell; the page's
 own data sources and workflows read only a value the instance sets
 (they run before the instance's sources compute its default).
+
+A property with no value (no default, and the instance sets none) reads
+as empty in texts, but a visibility condition reading it is not decided
+(WTF-505): Bubble's value there is not verified, and an empty value would
+decide it wrongly (a panel shown whenever the property differs from
+something). Read from where the instance is, or in a reusable element no
+instance of which sets it, the conditionals are not lowered (a marker,
+counted in `visibility_conditions_unset_property` too) and the element
+keeps its fallback visibility. When only some instances set it, the
+helper decides for those, and an instance with no value keeps the
+fallback: `Bubble.set?/3` checks that the instance's scope has a value
+under the property's key, and a value the instance sets (even an empty
+one) or a default is always there. The fallback is the page-load
+visibility; with privacy: :enforced, an element shown on page load that a
+conditional may hide stays hidden, so content a condition hides is never
+shown for want of a value.
 
 Visibility conditions, shown values (a text's dynamic content, an
 input's placeholder...), data sources and workflows also read the page's

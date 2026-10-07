@@ -172,6 +172,44 @@
           },
           "type": "Text"
         },
+        "bDueKnown": {
+          "id": "bDueKnown",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 19,
+            "text": {
+              "entries": {
+                "0": "Due date known"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "param_pDue",
+                  "next": {
+                    "name": "is_empty",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bCard"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": false
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
         "bDueSet": {
           "id": "bDueSet",
           "properties": {
@@ -192,6 +230,45 @@
               "condition": {
                 "next": {
                   "name": "param_pDue",
+                  "next": {
+                    "name": "is_not_empty",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bCard"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bExtraShown": {
+          "id": "bExtraShown",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 18,
+            "text": {
+              "entries": {
+                "0": "Has an extra"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "param_pExtra",
                   "next": {
                     "name": "is_not_empty",
                     "type": "Message"
@@ -732,6 +809,14 @@
             "optional": true,
             "param_id": "pQuery",
             "param_name": "Query"
+          },
+          "9": {
+            "btype_id": "text",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pExtra",
+            "param_name": "Extra"
           }
         },
         "width": 300
@@ -1808,6 +1893,48 @@
           },
           "type": "Input"
         },
+        "bSameTask": {
+          "id": "bSameTask",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 13,
+            "text": {
+              "entries": {
+                "0": "Card A shows this task"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "param_pTask",
+                  "next": {
+                    "args": {
+                      "type": "CurrentPageItem"
+                    },
+                    "name": "equals",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bCardA"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
         "bShowB": {
           "id": "bShowB",
           "properties": {
@@ -1857,6 +1984,83 @@
             "width": 300
           },
           "type": "RepeatingGroup"
+        },
+        "bUnsetKept": {
+          "id": "bUnsetKept",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 12,
+            "text": {
+              "entries": {
+                "0": "Card B task known"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "param_pTask",
+                  "next": {
+                    "name": "is_empty",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bCardB"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": false
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bUnsetShown": {
+          "id": "bUnsetShown",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 11,
+            "text": {
+              "entries": {
+                "0": "Card B has no task"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "param_pTask",
+                  "next": {
+                    "name": "is_empty",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bCardB"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
         }
       },
       "id": "bTaskPage",

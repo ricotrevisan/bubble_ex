@@ -29,6 +29,15 @@ defmodule BubbleEx.Frontend.ConditionsTest do
 
     assert Conditions.visibility(payload) == [{"c0", true}, {"c1", nil}]
     assert Conditions.other_properties(payload) == 1
+    # Fail closed: a visibility that is not a yes/no literal may hide.
+    assert Conditions.may_hide?(payload)
+  end
+
+  test "may hide: a state setting no, or a value that is not a yes/no literal" do
+    refute Conditions.may_hide?(%{"0" => state("c0", %{"is_visible" => true})})
+    assert Conditions.may_hide?(%{"0" => state("c0", %{"is_visible" => false})})
+    assert Conditions.may_hide?(%{"0" => state("c0", %{"is_visible" => "maybe"})})
+    refute Conditions.may_hide?(nil)
   end
 
   test "no states" do

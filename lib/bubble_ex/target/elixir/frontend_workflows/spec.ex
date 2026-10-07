@@ -48,7 +48,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
             surfaces: %{},
             elements: %{},
             diagnostics: [],
-            data_index: %{elements: %{}, roots: MapSet.new(), params: %{}, set: %{}},
+            data_index: %{
+              elements: %{},
+              roots: MapSet.new(),
+              params: %{},
+              set: %{},
+              defaults: MapSet.new(),
+              valued: MapSet.new()
+            },
             cells: %{}
 
   @type t :: %__MODULE__{}
@@ -379,6 +386,65 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
       {:data, %{path: [instance], element: key}}
     else
       _ -> nil
+    end
+  end
+
+  @doc """
+  Whether `input` read in `surface` is a reusable element's property with
+  no value: one with no default that an instance does not set. Bubble's
+  value there is not known (the property's default is, when it has one:
+  `instance_property/4` reads it), so a visibility condition reading it is
+  not decided as if it were empty.
+
+    * `:unset` - the instance read from where it is (`Card A's Title`)
+      sets none, or no instance of the surface's own reusable element sets
+      it (`This Card's Title`)
+    * `{:some, key}` - some instances of the surface's own reusable
+      element set it and some do not: an instance setting none has nothing
+      under `key` (`param_key/2`) in its scope, which the page tells apart
+      from a value that is empty
+    * nil - it has a value (or a default) wherever it is read, or it is
+      not a property
+  """
+  @spec unset_property(t(), String.t(), term()) :: :unset | {:some, String.t()} | nil
+  def unset_property(
+        %__MODULE__{} = spec,
+        surface,
+        {:element_state, %{"element" => element, "state" => "param_" <> _ = param}}
+      )
+      when is_binary(element) do
+    index = spec.data_index
+    has? = &MapSet.member?(Map.get(index, &1, MapSet.new()), &2)
+
+    case spec.elements[element] do
+      %{instance_of: reusable} when is_binary(reusable) and element != surface ->
+        if has?.(:valued, {element, param}) or has?.(:defaults, param_key(reusable, param)),
+          do: nil,
+          else: :unset
+
+      _ when element == surface ->
+        own_unset(spec, element, param, has?)
+
+      _ ->
+        nil
+    end
+  end
+
+  def unset_property(_spec, _surface, _input), do: nil
+
+  # `This <reusable>'s <property>`: unset when no instance sets it (and it
+  # has no default), `{:some, key}` when only some do.
+  defp own_unset(spec, reusable, param, has?) do
+    key = param_key(reusable, param)
+
+    set =
+      for {id, %{instance_of: ^reusable}} <- spec.elements,
+          do: has?.(:valued, {id, param})
+
+    cond do
+      has?.(:defaults, key) or Enum.all?(set) -> nil
+      Enum.any?(set) -> {:some, key}
+      true -> :unset
     end
   end
 
