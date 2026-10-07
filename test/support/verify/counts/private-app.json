@@ -76,6 +76,11 @@
     "seed_values_equal_to_default": 802,
     "unmodeled": 0
   },
+  "deleted_type_rules": {
+    "solved": 0,
+    "total": 5,
+    "unsolved": 5
+  },
   "differences": {
     "observations": 156,
     "policy": [
@@ -107,16 +112,16 @@
   "personas": 6,
   "records": 170,
   "rules": {
-    "conditional": 90,
-    "everyone": 49,
+    "conditional": 87,
+    "everyone": 47,
     "false_branch_only_via_actor_guard": 0,
     "observable": 85,
-    "observable_percent": 61.2,
+    "observable_percent": 63.4,
     "solved": 125,
-    "solved_percent": 89.9,
-    "total": 139,
+    "solved_percent": 93.3,
+    "total": 134,
     "true_branch_only_via_empty_actor": 0,
-    "unsolved": 14
+    "unsolved": 9
   },
   "scenarios": 504,
   "seed_values_from_condition_literals": 0,
