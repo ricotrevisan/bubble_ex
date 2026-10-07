@@ -6,6 +6,31 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **`Get data from page URL`: path segments and typed URL parameters**
+  (WTF-508), as replayed against Bubble on 2026-10-07 (WTF-387). Texts,
+  visibility conditions, data sources and workflows now read:
+  - **the path's segments** (a list of texts from 1: the Bubble page's
+    name, then the route's `/:bubble_thing` segment, the index page's
+    `/index/<x>`; empty segments and a trailing slash dropped, nothing
+    decoded) and **the path** (the first segment after the page's name);
+  - **query parameters as their type**, from the URL as written rather
+    than Phoenix's params: `+` and `%20` are spaces, a repeated key joins
+    its values with `,` (`tags[]` is its own key); numbers (`3`, `-2`,
+    `3.5`), yes/no (`yes`, `true`, `1` / `no`, `false`, any case; else
+    empty) and dates (ISO, `m/d/y`, `Oct 7, 2026`, unix ms, ISO with a
+    zone; a bare date is midnight in the app's time zone);
+  - **things** by unique ID, read through Ash as the current user (an
+    unknown ID or a record the user may not view is empty), in data
+    sources and workflows; a text or condition reading one directly
+    stays a marker. "Is a list" was not replayed and stays residue.
+
+  Measured on the private fixture app's five signed-in pages (four page
+  modules and their reusables, 10,181 elements, current export), counts
+  only: elements that can show content went from 4,265 to 5,439 (hidden
+  5,541 to 4,237); data sources wired from 2,008 to 2,030 of 2,727;
+  visibility conditionals rendered from 683 to 720 of 1,390. No root
+  cause reading the URL remains among them.
+
 - **A thing held by an element compared with a reference field** (found
   on the page WTF-505 started from). `is`, `is not` and `contains` compare
   things by ID, and a field path reads its reference's `_id` attribute.

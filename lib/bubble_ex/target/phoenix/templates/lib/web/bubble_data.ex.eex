@@ -56,11 +56,13 @@ defmodule <%= @web %>.BubbleData do
 
   Nothing but the page's own state. A page reads only the sources its
   module lists, with their filters fixed in the code; the browser supplies
-  input values, custom states and URL parameters (text, pinned into
-  filters as values) and, for a page with a type of content, the thing's
-  unique ID in the URL path, which must look like a Bubble ID and is read
-  through Ash like any other record. No event names a resource, a record
-  or a query, and nothing from the browser becomes an atom.
+  input values, custom states and the URL (its parameters and path
+  segments, read as Bubble reads them as text, numbers, yes/no or dates,
+  pinned into filters as values) and the unique IDs of things in the URL
+  (the page's thing in its path, a thing parameter), which must look like
+  a Bubble ID and are read through Ash like any other record, as the
+  current user. No event or URL names a resource, a field, a record's
+  type or a query, and nothing from the browser becomes an atom.
 
   ## Bounds
 

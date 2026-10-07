@@ -82,10 +82,11 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     # A reusable two levels down.
     refute hidden?(view, "bBadgeTab", "bMember-bCardBadge")
 
-    # A text shows a text parameter; a typed or list one stays empty.
+    # A text shows a parameter as its type (WTF-508); a list one stays
+    # empty.
     {:ok, view, _html} = live(conn, "/?tab=open&n=7&tags=a")
     assert view |> element(~s([data-bubble-id="bTabText"])) |> render() =~ "Tab: open"
-    refute view |> element(~s([data-bubble-id="bTabCount"])) |> render() =~ "7"
+    assert view |> element(~s([data-bubble-id="bTabCount"])) |> render() =~ ~r/Count:\s*7/
     refute view |> element(~s([data-bubble-id="bTabMany"])) |> render() =~ ~r/Many:\s*a/
 
     # The URL changing on the same page (a patch) re-renders it.

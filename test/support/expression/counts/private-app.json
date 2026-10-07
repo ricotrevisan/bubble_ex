@@ -8,80 +8,81 @@
           "date_part_unit:day": 4
         },
         "by_kind": {
-          "element": 11006,
-          "workflow": 8499
+          "element": 10761,
+          "workflow": 8955
         },
-        "elixir_compiled": 15688,
-        "ir_compiled": 16721,
-        "roots": 19505,
-        "searches": 640,
-        "searches_ash_compiled": 328,
+        "elixir_compiled": 15500,
+        "ir_compiled": 16623,
+        "roots": 19716,
+        "searches": 718,
+        "searches_ash_compiled": 410,
         "unsupported": {
           "ash_search": {
-            "ash_expr_unmapped_reference:the data type": 1,
             "ash_expr_unmapped_reference:the option": 1,
-            "ash_expr_unsupported:a field of filter": 3,
+            "ash_expr_unsupported:a field of filter": 4,
+            "ash_expr_unsupported:a field of first": 1,
             "ash_expr_unsupported:a field of input": 263,
             "ash_expr_unsupported:the condition :text_contains_words": 2,
-            "ash_expr_unsupported:the value :concat": 47,
+            "ash_expr_unsupported:the value :concat": 42,
             "ash_expr_unsupported:the value :date_add": 60,
             "ash_expr_unsupported:the value :date_floor": 3,
             "ash_expr_unsupported:the value :filter": 29,
-            "ash_expr_unsupported:the value :first": 17,
+            "ash_expr_unsupported:the value :first": 16,
             "ash_expr_unsupported:the value :item_at": 3,
             "ash_expr_unsupported:the value :minus_list": 1,
             "ash_expr_unsupported:the value :option_attribute": 4,
             "ash_expr_unsupported:the value :plus_item": 1
           },
           "elixir": {
+            "elixir_expr_unsupported:a URL path segment after the second (pages route up to /<page>/<x>)": 4,
             "elixir_expr_unsupported:a field of as_list": 1,
-            "elixir_expr_unsupported:a field of filter": 23,
-            "elixir_expr_unsupported:a field of first": 91,
+            "elixir_expr_unsupported:a field of filter": 25,
+            "elixir_expr_unsupported:a field of first": 134,
             "elixir_expr_unsupported:a field of item_at": 4,
             "elixir_expr_unsupported:a field of merge": 9,
-            "elixir_expr_unsupported:a field of search": 43,
+            "elixir_expr_unsupported:a field of search": 44,
             "elixir_expr_unsupported:a field of sort": 22,
             "elixir_expr_unsupported:a field of unique": 1,
-            "elixir_expr_unsupported:a path through a list or value": 43,
+            "elixir_expr_unsupported:a path through a list or value": 42,
             "elixir_expr_unsupported:an unmapped option set": 12,
-            "elixir_expr_unsupported:contains on a list of records": 111,
+            "elixir_expr_unsupported:contains on a list of records": 119,
             "elixir_expr_unsupported:contains_all": 4,
-            "elixir_expr_unsupported:filter on a list of things": 168,
-            "elixir_expr_unsupported:search": 257,
-            "elixir_expr_unsupported:sort": 273,
+            "elixir_expr_unsupported:filter on a list of things": 172,
+            "elixir_expr_unsupported:search": 300,
+            "elixir_expr_unsupported:sort": 265,
             "elixir_expr_unsupported:this": 1
           },
           "ir": {
-            "expr_uncompiled:constraint": 77,
-            "expr_uncompiled:field": 14,
-            "expr_uncompiled:raw": 472,
-            "expr_uncompiled:search_option": 31,
-            "expr_unresolved_accessor": 1349,
+            "expr_uncompiled:constraint": 87,
+            "expr_uncompiled:field": 13,
+            "expr_uncompiled:raw": 527,
+            "expr_uncompiled:search_option": 32,
+            "expr_unresolved_accessor": 1341,
             "expr_untyped_scope:ancestor_group": 41,
             "expr_untyped_scope:breakpoint": 118,
             "expr_untyped_scope:element": 17,
             "expr_untyped_scope:page_data": 11,
             "expr_untyped_scope:parent_group": 4,
-            "expr_untyped_scope:previous_step": 929,
-            "expr_untyped_scope:url_parameter": 30,
+            "expr_untyped_scope:previous_step": 1427,
+            "expr_untyped_scope:url_parameter": 3,
             "expr_untyped_scope:workflow_parameter": 21,
-            "unknown_operator": 213,
+            "unknown_operator": 206,
             "unknown_source": 3,
             "unresolved_field": 10
           }
         }
       },
       "privacy": {
-        "ash_compiled": 90,
-        "ash_with_actor_loads": 50,
-        "conditions": 91,
+        "ash_compiled": 87,
+        "ash_with_actor_loads": 48,
+        "conditions": 90,
         "diagnostics": {
-          "ash_expr_unmapped_reference": 1
+          "ash_expr_unmapped_reference": 3
         },
-        "rules": 144,
-        "rules_without_condition": 53,
+        "rules": 139,
+        "rules_without_condition": 49,
         "unsupported": {
-          "ash_expr_unmapped_reference:the data type": 1
+          "ash_expr_unmapped_reference:the data type": 3
         }
       }
     },
@@ -93,80 +94,81 @@
           "date_part_unit:day": 4
         },
         "by_kind": {
-          "element": 11006,
-          "workflow": 8499
+          "element": 10761,
+          "workflow": 8955
         },
-        "elixir_compiled": 15688,
-        "ir_compiled": 16721,
-        "roots": 19505,
-        "searches": 640,
-        "searches_ash_compiled": 328,
+        "elixir_compiled": 15500,
+        "ir_compiled": 16623,
+        "roots": 19716,
+        "searches": 718,
+        "searches_ash_compiled": 410,
         "unsupported": {
           "ash_search": {
-            "ash_expr_unmapped_reference:the data type": 1,
             "ash_expr_unmapped_reference:the option": 1,
-            "ash_expr_unsupported:a field of filter": 3,
+            "ash_expr_unsupported:a field of filter": 4,
+            "ash_expr_unsupported:a field of first": 1,
             "ash_expr_unsupported:a field of input": 263,
             "ash_expr_unsupported:the condition :text_contains_words": 2,
-            "ash_expr_unsupported:the value :concat": 47,
+            "ash_expr_unsupported:the value :concat": 42,
             "ash_expr_unsupported:the value :date_add": 60,
             "ash_expr_unsupported:the value :date_floor": 3,
             "ash_expr_unsupported:the value :filter": 29,
-            "ash_expr_unsupported:the value :first": 17,
+            "ash_expr_unsupported:the value :first": 16,
             "ash_expr_unsupported:the value :item_at": 3,
             "ash_expr_unsupported:the value :minus_list": 1,
             "ash_expr_unsupported:the value :option_attribute": 4,
             "ash_expr_unsupported:the value :plus_item": 1
           },
           "elixir": {
+            "elixir_expr_unsupported:a URL path segment after the second (pages route up to /<page>/<x>)": 4,
             "elixir_expr_unsupported:a field of as_list": 1,
-            "elixir_expr_unsupported:a field of filter": 23,
-            "elixir_expr_unsupported:a field of first": 91,
+            "elixir_expr_unsupported:a field of filter": 25,
+            "elixir_expr_unsupported:a field of first": 134,
             "elixir_expr_unsupported:a field of item_at": 4,
             "elixir_expr_unsupported:a field of merge": 9,
-            "elixir_expr_unsupported:a field of search": 43,
+            "elixir_expr_unsupported:a field of search": 44,
             "elixir_expr_unsupported:a field of sort": 22,
             "elixir_expr_unsupported:a field of unique": 1,
-            "elixir_expr_unsupported:a path through a list or value": 43,
+            "elixir_expr_unsupported:a path through a list or value": 42,
             "elixir_expr_unsupported:an unmapped option set": 12,
-            "elixir_expr_unsupported:contains on a list of records": 111,
+            "elixir_expr_unsupported:contains on a list of records": 119,
             "elixir_expr_unsupported:contains_all": 4,
-            "elixir_expr_unsupported:filter on a list of things": 168,
-            "elixir_expr_unsupported:search": 257,
-            "elixir_expr_unsupported:sort": 273,
+            "elixir_expr_unsupported:filter on a list of things": 172,
+            "elixir_expr_unsupported:search": 300,
+            "elixir_expr_unsupported:sort": 265,
             "elixir_expr_unsupported:this": 1
           },
           "ir": {
-            "expr_uncompiled:constraint": 77,
-            "expr_uncompiled:field": 14,
-            "expr_uncompiled:raw": 472,
-            "expr_uncompiled:search_option": 31,
-            "expr_unresolved_accessor": 1349,
+            "expr_uncompiled:constraint": 87,
+            "expr_uncompiled:field": 13,
+            "expr_uncompiled:raw": 527,
+            "expr_uncompiled:search_option": 32,
+            "expr_unresolved_accessor": 1341,
             "expr_untyped_scope:ancestor_group": 41,
             "expr_untyped_scope:breakpoint": 118,
             "expr_untyped_scope:element": 17,
             "expr_untyped_scope:page_data": 11,
             "expr_untyped_scope:parent_group": 4,
-            "expr_untyped_scope:previous_step": 929,
-            "expr_untyped_scope:url_parameter": 30,
+            "expr_untyped_scope:previous_step": 1427,
+            "expr_untyped_scope:url_parameter": 3,
             "expr_untyped_scope:workflow_parameter": 21,
-            "unknown_operator": 213,
+            "unknown_operator": 206,
             "unknown_source": 3,
             "unresolved_field": 10
           }
         }
       },
       "privacy": {
-        "ash_compiled": 90,
-        "ash_with_actor_loads": 50,
-        "conditions": 91,
+        "ash_compiled": 87,
+        "ash_with_actor_loads": 48,
+        "conditions": 90,
         "diagnostics": {
-          "ash_expr_unmapped_reference": 1
+          "ash_expr_unmapped_reference": 3
         },
-        "rules": 144,
-        "rules_without_condition": 53,
+        "rules": 139,
+        "rules_without_condition": 49,
         "unsupported": {
-          "ash_expr_unmapped_reference:the data type": 1
+          "ash_expr_unmapped_reference:the data type": 3
         }
       }
     },
@@ -178,80 +180,81 @@
           "date_part_unit:day": 4
         },
         "by_kind": {
-          "element": 11006,
-          "workflow": 8499
+          "element": 10761,
+          "workflow": 8955
         },
-        "elixir_compiled": 15688,
-        "ir_compiled": 16682,
-        "roots": 19505,
-        "searches": 633,
-        "searches_ash_compiled": 327,
+        "elixir_compiled": 15500,
+        "ir_compiled": 16582,
+        "roots": 19716,
+        "searches": 710,
+        "searches_ash_compiled": 408,
         "unsupported": {
           "ash_search": {
-            "ash_expr_unmapped_reference:the data type": 1,
             "ash_expr_unmapped_reference:the option": 1,
-            "ash_expr_unsupported:a field of filter": 3,
+            "ash_expr_unsupported:a field of filter": 4,
+            "ash_expr_unsupported:a field of first": 1,
             "ash_expr_unsupported:a field of input": 259,
             "ash_expr_unsupported:the condition :text_contains_words": 2,
-            "ash_expr_unsupported:the value :concat": 46,
+            "ash_expr_unsupported:the value :concat": 41,
             "ash_expr_unsupported:the value :date_add": 58,
             "ash_expr_unsupported:the value :date_floor": 3,
             "ash_expr_unsupported:the value :filter": 28,
-            "ash_expr_unsupported:the value :first": 17,
+            "ash_expr_unsupported:the value :first": 16,
             "ash_expr_unsupported:the value :item_at": 3,
             "ash_expr_unsupported:the value :option_attribute": 4,
             "ash_expr_unsupported:the value :plus_item": 1
           },
           "elixir": {
+            "elixir_expr_unsupported:a URL path segment after the second (pages route up to /<page>/<x>)": 4,
             "elixir_expr_unsupported:a field of as_list": 1,
             "elixir_expr_unsupported:a field of filter": 15,
-            "elixir_expr_unsupported:a field of first": 90,
+            "elixir_expr_unsupported:a field of first": 133,
             "elixir_expr_unsupported:a field of item_at": 4,
             "elixir_expr_unsupported:a field of merge": 8,
-            "elixir_expr_unsupported:a field of search": 43,
+            "elixir_expr_unsupported:a field of search": 44,
             "elixir_expr_unsupported:a field of sort": 21,
             "elixir_expr_unsupported:a field of unique": 1,
-            "elixir_expr_unsupported:a path through a list or value": 43,
+            "elixir_expr_unsupported:a path through a list or value": 42,
             "elixir_expr_unsupported:an unmapped option set": 12,
-            "elixir_expr_unsupported:contains on a list of records": 111,
+            "elixir_expr_unsupported:contains on a list of records": 119,
             "elixir_expr_unsupported:contains_all": 4,
-            "elixir_expr_unsupported:filter on a list of things": 139,
-            "elixir_expr_unsupported:search": 257,
-            "elixir_expr_unsupported:sort": 266,
+            "elixir_expr_unsupported:filter on a list of things": 142,
+            "elixir_expr_unsupported:search": 300,
+            "elixir_expr_unsupported:sort": 259,
             "elixir_expr_unsupported:this": 1
           },
           "ir": {
-            "expr_uncompiled:constraint": 77,
-            "expr_uncompiled:field": 14,
-            "expr_uncompiled:ignore_empty_constraints": 50,
-            "expr_uncompiled:raw": 472,
-            "expr_uncompiled:search_option": 31,
-            "expr_unresolved_accessor": 1349,
+            "expr_uncompiled:constraint": 87,
+            "expr_uncompiled:field": 13,
+            "expr_uncompiled:ignore_empty_constraints": 52,
+            "expr_uncompiled:raw": 527,
+            "expr_uncompiled:search_option": 32,
+            "expr_unresolved_accessor": 1341,
             "expr_untyped_scope:ancestor_group": 41,
             "expr_untyped_scope:breakpoint": 118,
             "expr_untyped_scope:element": 17,
             "expr_untyped_scope:page_data": 11,
             "expr_untyped_scope:parent_group": 4,
-            "expr_untyped_scope:previous_step": 929,
-            "expr_untyped_scope:url_parameter": 30,
+            "expr_untyped_scope:previous_step": 1427,
+            "expr_untyped_scope:url_parameter": 3,
             "expr_untyped_scope:workflow_parameter": 21,
-            "unknown_operator": 213,
+            "unknown_operator": 206,
             "unknown_source": 3,
             "unresolved_field": 10
           }
         }
       },
       "privacy": {
-        "ash_compiled": 90,
-        "ash_with_actor_loads": 50,
-        "conditions": 91,
+        "ash_compiled": 87,
+        "ash_with_actor_loads": 48,
+        "conditions": 90,
         "diagnostics": {
-          "ash_expr_unmapped_reference": 1
+          "ash_expr_unmapped_reference": 3
         },
-        "rules": 144,
-        "rules_without_condition": 53,
+        "rules": 139,
+        "rules_without_condition": 49,
         "unsupported": {
-          "ash_expr_unmapped_reference:the data type": 1
+          "ash_expr_unmapped_reference:the data type": 3
         }
       }
     }

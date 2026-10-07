@@ -157,18 +157,21 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
              ~s|hidden={!visible_bbadgetab(Map.get(@bubble_url, "tab"))}|
   end
 
-  test "a text shows a text URL parameter; a typed or list one is not compiled", %{
+  test "a text shows a URL parameter as its type; a list one is not compiled", %{
     files: files
   } do
     template = files["lib/shop_web/live/index_live.html.heex"]
     assert template =~ ~s|{text_btabtext(Map.get(@bubble_url, "tab"))}|
-    assert template =~ "TODO(bubble:bTabCount) text: dynamic value not compiled"
+
+    # A number (WTF-508), read as Bubble reads one.
+    assert template =~
+             ~s|{text_btabcount(Bubble.url_value(@bubble_url, @bubble_segments, {:query, "n"}, "number"))}|
+
     assert template =~ "TODO(bubble:bTabMany) text: dynamic value not compiled"
-    refute template =~ ~s|Map.get(@bubble_url, "n")|
     refute template =~ ~s|Map.get(@bubble_url, "tags")|
   end
 
-  test "a URL parameter read as another type than text, or as a list, stays marked", %{} do
+  test "a URL parameter read as a list stays marked; a yes/no one compiles", %{} do
     list = %{
       "type" => "GetParamFromUrl",
       "properties" => %{
@@ -207,10 +210,8 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
       |> Map.fetch!(:files)
       |> Map.fetch!("lib/shop_web/live/index_live.html.heex")
 
-    assert template =~
-             "TODO(bubble:bTabOpen) visibility: 1 conditional not lowered (it does not compile)"
-
-    assert tag(template, "bTabOpen") =~ ~r/\shidden[\s>]/
+    assert tag(template, "bTabOpen") =~
+             ~s|Bubble.url_value(@bubble_url, @bubble_segments, {:query, "on"}, "boolean")|
   end
 
   test "not visible on page load is the hidden attribute, which workflow steps change", %{
