@@ -42,8 +42,11 @@ defmodule BubbleEx.Verify.MatrixTest do
              {"task", "everyone", :blocked_by_unsupported_rule}
            ]
 
-    assert %{total: 49, solved: 44, conditional: 44, everyone: 5} =
+    # The deleted type's two rules are reported apart, not in coverage.
+    assert %{total: 47, solved: 44, conditional: 43, everyone: 4, solved_percent: 93.6} =
              expression.report.rules
+
+    assert expression.report.deleted_type_rules == %{total: 2, solved: 0, unsolved: 2}
 
     assert expression.report.unsolved_by_reason == %{
              "blocked_by_unsupported_rule" => 1,
@@ -51,6 +54,44 @@ defmodule BubbleEx.Verify.MatrixTest do
              "no_true_witness" => 1,
              "not_compiled" => 1
            }
+  end
+
+  test "coverage counts the rules of live types; deleted is the app's own flag",
+       %{expression: matrix} do
+    app = File.read!("test/support/expression/app.json") |> Jason.decode!()
+
+    # The report reads "deleted" from the interpreter's types, so the
+    # matrix synthesized once is re-reported against edited apps.
+    report = fn app ->
+      {:ok, model} = Model.build(app)
+      {:ok, interpreter} = Interpreter.new(model)
+      Matrix.report(matrix, interpreter)
+    end
+
+    # Unflagged, a type named like an archive is live: its rules count.
+    live = report.(update_in(app, ["user_types", "archived_thing"], &Map.delete(&1, "deleted")))
+    assert live.deleted_type_rules == %{total: 0, solved: 0, unsolved: 0}
+    assert live.rules.total == 49
+
+    # Flagged with the live payload's `%del`, a type with a neutral name is
+    # deleted: its rules leave coverage and are reported apart.
+    task_rules = Enum.count(matrix.rules, &(&1.type == "task"))
+    task_solved = Enum.count(matrix.rules, &(&1.type == "task" and &1.status == :solved))
+    assert task_rules > 0
+
+    deleted = report.(put_in(app, ["user_types", "task", "%del"], true))
+
+    assert deleted.deleted_type_rules == %{
+             total: 2 + task_rules,
+             solved: task_solved,
+             unsolved: 2 + task_rules - task_solved
+           }
+
+    assert deleted.rules.total == 47 - task_rules
+    assert deleted.rules.unsolved == deleted.rules.total - deleted.rules.solved
+
+    assert Matrix.counts(matrix.report)["deleted_type_rules"] ==
+             %{"total" => 2, "solved" => 0, "unsolved" => 2}
   end
 
   test "each solved conditional rule holds for some cell and fails for another",

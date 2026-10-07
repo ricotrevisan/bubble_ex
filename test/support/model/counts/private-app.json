@@ -1,48 +1,47 @@
 {
   "counts": {
-    "api_calls": 204,
-    "api_calls_named": 203,
-    "api_calls_with_host": 203,
-    "api_connectors": 31,
+    "api_calls": 172,
+    "api_calls_named": 171,
+    "api_calls_with_host": 171,
+    "api_connectors": 29,
     "api_parameters": {
-      "body": 440,
-      "header": 137,
+      "body": 377,
+      "header": 110,
       "param": 22,
       "query": 47,
-      "url": 116
+      "url": 103
     },
-    "api_parameters_named": 689,
-    "api_parameters_private": 73,
+    "api_parameters_named": 658,
+    "api_parameters_private": 66,
     "cycle_cuts": 0,
-    "data_types": 101,
-    "deleted_data_types": 4,
-    "deleted_fields": 15,
-    "deleted_option_sets": 4,
-    "deleted_option_values": 8,
+    "data_types": 93,
+    "deleted_data_types": 9,
+    "deleted_fields": 28,
+    "deleted_option_sets": 9,
+    "deleted_option_values": 17,
     "diagnostics": {
       "exact_type_definition_missing": 7,
-      "invalid_descriptor": 8,
+      "invalid_descriptor": 7,
       "model_option_key_missing": 9,
       "model_undeclared_option_attribute_value": 40,
-      "model_unresolved_target": 4
+      "model_unresolved_target": 5
     },
     "external_fields": 0,
     "external_types": {
       "opaque": 5
     },
-    "fields": 1332,
+    "fields": 1299,
     "fields_by_kind": {
       "external": 3,
       "file_ref": 11,
       "list external": 4,
-      "list opaque": 1,
       "list option": 19,
-      "list ref": 114,
+      "list ref": 113,
       "list scalar": 9,
       "opaque": 7,
       "option": 116,
-      "ref": 322,
-      "scalar": 722,
+      "ref": 311,
+      "scalar": 702,
       "structured": 4
     },
     "malformed_data_types": 0,
@@ -55,15 +54,15 @@
       "scalar": 294
     },
     "option_sets": 148,
-    "option_values": 1158,
-    "privacy_rules": 144,
+    "option_values": 1162,
+    "privacy_rules": 139,
     "relationships": {
-      "many": 113,
-      "one": 316,
+      "many": 107,
+      "one": 300,
       "unresolved": 4
     },
     "synthesized_data_types": 0,
-    "system_fields": 506
+    "system_fields": 466
   },
   "schema_version": 4
 }

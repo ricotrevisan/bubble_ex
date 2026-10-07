@@ -8,7 +8,9 @@ defmodule BubbleEx.Verify.MatrixPrivateFixtureTest do
   #
   # Both measures are reported: rules solved (each condition exercised both
   # ways) and rules observable (mutation coverage), with per-flag counts of
-  # the checks that depend on each assumption.
+  # the checks that depend on each assumption. Both count the rules of live
+  # data types only; rules of types the app flags deleted protect nothing
+  # and are reported apart (`deleted_type_rules`).
   #
   # The report's counts (no names or Bubble IDs; `Matrix.counts/1`) are
   # compared with a committed snapshot, by default the private fixture
@@ -47,7 +49,9 @@ defmodule BubbleEx.Verify.MatrixPrivateFixtureTest do
 
     IO.puts("""
 
-    privacy matrix coverage:
+    privacy matrix coverage (live types): #{matrix.report.rules.solved}/#{matrix.report.rules.total} rules solved (#{matrix.report.rules.solved_percent}%)
+    rules on deleted types (not in coverage): #{matrix.report.deleted_type_rules.total}
+    privacy matrix counts:
     #{counts |> CanonicalJson.ordered() |> Jason.encode!(pretty: true)}
     unsolved rules:
     #{Enum.map_join(matrix.report.unsolved, "\n", &"  #{&1.type}/#{&1.rule}: #{&1.reason} (#{&1.detail})")}
