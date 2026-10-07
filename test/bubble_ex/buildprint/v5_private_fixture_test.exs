@@ -8,10 +8,10 @@ defmodule BubbleEx.Buildprint.V5PrivateFixtureTest do
   #
   # With a split export or `.bubble` file there it does nothing. It checks
   # that the Model built from the workspace matches the workspace's own
-  # `symbols` index and stays close to the counts recorded from the private
-  # fixture app's last split (v4) export, which predates later app changes
-  # (pinned below: the count snapshots are now recorded from the v5
-  # workspace).
+  # `symbols` index and stays close to the baseline counts pinned below,
+  # recorded from the private fixture app's 2026-10-07 v5 workspace (the
+  # canonical export; earlier baselines came from older exports and drifted
+  # with app edits). Re-pin them when the canonical export is replaced.
   # It prints aggregates only, never names or IDs.
   use ExUnit.Case, async: true
 
@@ -21,20 +21,21 @@ defmodule BubbleEx.Buildprint.V5PrivateFixtureTest do
   @moduletag :private_fixture
   @moduletag timeout: :infinity
 
-  # `BubbleEx.Model.summary/1` of the last split (v4) export.
-  @v4_counts %{
-    "data_types" => 97,
-    "fields" => 1257,
-    "option_sets" => 145,
-    "api_connectors" => 30,
-    "api_calls" => 203,
-    "option_values" => 694,
-    "privacy_rules" => 125
+  # `BubbleEx.Model.summary/1` of the canonical export (2026-10-07, format
+  # bubblescript-32).
+  @baseline_counts %{
+    "data_types" => 93,
+    "fields" => 1299,
+    "option_sets" => 148,
+    "api_connectors" => 29,
+    "api_calls" => 172,
+    "option_values" => 1162,
+    "privacy_rules" => 139
   }
-  # The v4 counts predate app changes; each kind stays within this share.
-  @v4_tolerance 0.1
-  # Where Bubble's JSON holds entries the index leaves out (e.g. a call entry
-  # without a name, a workflow entry without an event type).
+  # A later export may differ by app edits; each kind stays within this share.
+  @baseline_tolerance 0.1
+  # Where Bubble's JSON holds workflow entries the index leaves out (e.g. one
+  # without an event type). Unnamed API calls are counted apart instead.
   @index_tolerance 0.005
 
   setup_all do
@@ -79,9 +80,15 @@ defmodule BubbleEx.Buildprint.V5PrivateFixtureTest do
       snapshot hash reproduced: #{result.snapshot.reproduced}
       """)
 
-      # The loader counts what the Model reads.
-      for kind <- ~w(data_types fields option_sets api_calls),
+      # The loader counts what the Model reads; Buildprint indexes only
+      # named API calls, and the unnamed rest is counted apart.
+      for kind <- ~w(data_types fields option_sets),
           do: assert(result.counts[kind] == summary[kind], kind)
+
+      assert result.counts["api_calls"] == summary["api_calls_named"]
+
+      assert result.counts["api_calls"] + result.counts["api_calls_unnamed"] ==
+               summary["api_calls"]
 
       mismatched =
         for %{code: :buildprint_count_mismatch, details: %{kind: kind}} <- result.diagnostics,
@@ -90,7 +97,7 @@ defmodule BubbleEx.Buildprint.V5PrivateFixtureTest do
       for {kind, symbols} <- result.symbol_counts do
         loaded = result.counts[kind]
 
-        if kind in ~w(data_types fields option_sets pages) do
+        if kind in ~w(data_types fields option_sets pages api_calls) do
           assert loaded == symbols, "#{kind}: #{loaded} loaded, #{symbols} indexed"
         else
           assert loaded == symbols or
@@ -103,26 +110,21 @@ defmodule BubbleEx.Buildprint.V5PrivateFixtureTest do
     end
   end
 
-  test "the Model stays close to the split export's counts", %{result: result} = context do
+  test "the Model stays close to the baseline export's counts", %{result: result} = context do
     if result do
       summary = Model.summary(context.model)
-      v4 = @v4_counts
-
-      # Option values and privacy rules are printed only: app edits since the
-      # split export changed them by more than the tolerance (a new option
-      # set with hundreds of values, new and edited rules).
-      asserted = ~w(data_types fields option_sets api_connectors api_calls)
-      kinds = asserted ++ ~w(option_values privacy_rules)
+      baseline = @baseline_counts
+      kinds = Map.keys(baseline) |> Enum.sort()
 
       IO.puts("""
 
-      v4 split export -> v5 workspace:
-      #{Enum.map_join(kinds, "\n", &"  #{&1}: #{v4[&1]} -> #{summary[&1]}")}
+      baseline export -> this workspace:
+      #{Enum.map_join(kinds, "\n", &"  #{&1}: #{baseline[&1]} -> #{summary[&1]}")}
       """)
 
-      for kind <- asserted do
-        assert abs(summary[kind] - v4[kind]) <= v4[kind] * @v4_tolerance,
-               "#{kind}: #{v4[kind]} (v4) vs #{summary[kind]} (v5)"
+      for kind <- kinds do
+        assert abs(summary[kind] - baseline[kind]) <= baseline[kind] * @baseline_tolerance,
+               "#{kind}: #{baseline[kind]} (baseline) vs #{summary[kind]} (workspace)"
       end
     end
   end
