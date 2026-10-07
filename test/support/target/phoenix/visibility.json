@@ -242,6 +242,61 @@
           },
           "type": "Text"
         },
+        "bFlagHide": {
+          "id": "bFlagHide",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 26,
+            "text": {
+              "entries": {
+                "0": "Flag and hide"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bFlagOff": {
+          "id": "bFlagOff",
+          "properties": {
+            "height": 40,
+            "is_visible": true,
+            "min_height_css": "40px",
+            "order": 23,
+            "text": {
+              "entries": {
+                "0": "Flag off"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "custom.flag_",
+                  "next": {
+                    "name": "is_true",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bVis"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": false
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
         "bFlagged": {
           "id": "bFlagged",
           "properties": {
@@ -297,6 +352,22 @@
           },
           "type": "Button"
         },
+        "bHideKeep": {
+          "id": "bHideKeep",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 24,
+            "text": {
+              "entries": {
+                "0": "Hide keep"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
         "bIn": {
           "elements": {
             "bInT": {
@@ -340,6 +411,45 @@
             }
           },
           "type": "Group"
+        },
+        "bKeep": {
+          "id": "bKeep",
+          "properties": {
+            "height": 40,
+            "is_visible": true,
+            "min_height_css": "40px",
+            "order": 22,
+            "text": {
+              "entries": {
+                "0": "Keep"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "custom.flag_",
+                  "next": {
+                    "name": "is_true",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bVis"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
         },
         "bMember": {
           "id": "bMember",
@@ -524,6 +634,22 @@
             "text": {
               "entries": {
                 "0": "Flag"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bShowFlagOff": {
+          "id": "bShowFlagOff",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 25,
+            "text": {
+              "entries": {
+                "0": "Show flag off"
               },
               "type": "TextExpression"
             },
@@ -901,6 +1027,31 @@
           },
           "type": "ButtonClicked"
         },
+        "wFlagHide": {
+          "actions": {
+            "0": {
+              "id": "aFlagHide1",
+              "properties": {
+                "custom_state": "custom.flag_",
+                "element_id": "bVis",
+                "value": true
+              },
+              "type": "SetCustomState"
+            },
+            "1": {
+              "id": "aFlagHide2",
+              "properties": {
+                "element_id": "bFlagged"
+              },
+              "type": "HideElement"
+            }
+          },
+          "id": "wFlagHide",
+          "properties": {
+            "element_id": "bFlagHide"
+          },
+          "type": "ButtonClicked"
+        },
         "wHide": {
           "actions": {
             "0": {
@@ -917,6 +1068,22 @@
           },
           "type": "ButtonClicked"
         },
+        "wHideKeep": {
+          "actions": {
+            "0": {
+              "id": "aHideKeep1",
+              "properties": {
+                "element_id": "bKeep"
+              },
+              "type": "HideElement"
+            }
+          },
+          "id": "wHideKeep",
+          "properties": {
+            "element_id": "bHideKeep"
+          },
+          "type": "ButtonClicked"
+        },
         "wShow": {
           "actions": {
             "0": {
@@ -930,6 +1097,22 @@
           "id": "wShow",
           "properties": {
             "element_id": "bShowWf"
+          },
+          "type": "ButtonClicked"
+        },
+        "wShowFlagOff": {
+          "actions": {
+            "0": {
+              "id": "aShowFlagOff1",
+              "properties": {
+                "element_id": "bFlagOff"
+              },
+              "type": "ShowElement"
+            }
+          },
+          "id": "wShowFlagOff",
+          "properties": {
+            "element_id": "bShowFlagOff"
           },
           "type": "ButtonClicked"
         },

@@ -286,6 +286,14 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
                  ~s|        do: !visible_bdueknown(Bubble.data(@bubble_data, @scope, "param_pDue/bCard")),\n| <>
                  ~s|        else: false|
 
+      # The condition-derived visibility the page hook compares (WTF-509):
+      # the fallback where the property has no value.
+      assert template =~
+               ~r/data-bubble-id="bDueKnown"[^>]*data-bubble-visible=\{\s*to_string\(\s*if\(Bubble\.set\?\(/s
+
+      # A property with no value anywhere: no condition decides, none.
+      refute template =~ ~r/data-bubble-id="bExtraShown"[^>]*data-bubble-visible/s
+
       # A thing a property holds compares with the page's thing by ID.
       assert page =~ "visible_bsametask("
 

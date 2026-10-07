@@ -306,6 +306,34 @@ render keeps an overlay open:
   by then (inside a Group Focus the Popup closed), the focus goes to what
   opened that Group Focus, else it is released.
 
+Elements that are not overlays follow Bubble's rule for a step against
+their visibility conditions (WTF-509, replay 2026-10-07): a show, hide or
+toggle step holds until one of the element's conditions changes the
+visibility the conditions give it; then the condition wins and the step
+is dropped. The page renders that visibility as `data-bubble-visible`
+next to `hidden`; the hook compares it across renders (steps of the same
+event run after the render they follow, so a step after "Set state"
+wins). Replay, on a synthetic page with a custom state `s` (no on load)
+and three texts, T1 visible on load with "when s is yes: visible" (the
+same as on load), T2 hidden on load with "when s is yes: visible", T3
+visible on load with "when s is yes: hidden" (shown, hidden, shown on
+load):
+
+* hide T1: hidden hidden shown; s yes: hidden shown hidden; s no:
+  hidden hidden shown
+* s yes: shown shown hidden; hide T1: hidden shown hidden; s no: hidden
+  hidden shown; s yes: hidden shown hidden
+* s yes: shown shown hidden; hide T2: shown hidden hidden; s no: shown
+  hidden shown; s yes: shown shown hidden
+* s yes: shown shown hidden; show T3: shown shown shown; s no: shown
+  hidden shown; s yes: shown shown hidden
+
+A hide of T1 holds through every change (its condition never changes
+its visibility); a step on an element with no conditions holds until the
+page reloads. A LiveView reconnect mounts the page again (custom states
+and inputs start over); its render is compared with the last one like
+any other.
+
 ## Known differences from Bubble
 
 * **"Go to page" with a list as the data to send.** Bubble sends the
@@ -330,6 +358,14 @@ the data to a page with no type of content (the path segment), a date
 inside a dynamic text a page workflow writes (a custom state, a field),
 and a value a workflow sends to an API call take the same display text;
 a backend workflow's in UTC.
+
+**A show or hide step, then "Set state" in the same workflow.** The
+replay measured a state change and a step in separate workflows. Here a
+step runs after the render of the event it belongs to, so it wins over a
+condition change made in the same workflow whatever their order: "hide,
+then set state" keeps the element hidden even when the new state changes
+the visibility its conditions give it. Bubble may apply the steps in
+order (the condition winning there); not replayed.
 
 To confirm by replay (WTF-358): what "Go to page" appends when the data
 sent to a page with no type of content is a value

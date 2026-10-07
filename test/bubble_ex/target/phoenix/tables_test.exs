@@ -159,11 +159,12 @@ defmodule BubbleEx.Target.Phoenix.TablesTest do
       assert page =~ "{text_browtitle(cell_btable)}"
       assert page =~ ~s|Bubble.data(@bubble_data, "", "bRankGroup", cell_btable_i)|
       # The hidden column's cells, in every row; a cell's own visibility
-      # conditionals win over it, loudly.
+      # conditionals win over it, loudly (with the condition-derived
+      # visibility a workflow step yields to, WTF-509).
       assert page =~ ~r/<th data-bubble-id="bHeadNote" [^>]*hidden/
 
       assert page =~
-               ~r/data-bubble-id="bCellNote"\s+class="relative"\s+hidden=\{\s*!visible_bcellnote/
+               ~r/data-bubble-id="bCellNote"\s+class="relative"\s+data-bubble-visible=\{\s*to_string\(\s*visible_bcellnote[^}]*\}\s+hidden=\{\s*!visible_bcellnote/
 
       assert page =~
                "TODO(bubble:bCellNote) its column is hidden on page load; its own visibility conditionals decide"

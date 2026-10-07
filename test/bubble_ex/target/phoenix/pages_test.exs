@@ -185,7 +185,7 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       # first one (T5 saved the focus again); an opener hidden since (in a
       # Group Focus the Popup closed) gives way to what opened that one.
       assert helpers =~ "if (!el.hidden) {"
-      assert helpers =~ ~s|if (!overlay) this.js().removeAttribute(el, "hidden")|
+      assert helpers =~ ~s|if (!overlay) this.override(el, false)|
       assert helpers =~ "this.openers.set(el, document.activeElement)"
       assert helpers =~ "const closed = opener.closest && opener.closest(OVERLAYS)"
       assert helpers =~ "if (opener && isOpen(opener)) opener.focus()"
