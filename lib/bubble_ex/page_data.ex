@@ -26,6 +26,7 @@ defmodule BubbleEx.PageData do
   | a page's "Type of content" | `:page_thing` | none: the thing whose unique ID is the URL's path segment after the page name (`/<page>/<id>`) |
   | a Group's, Popup's, Floating Group's or Group Focus's data source | `:group` | the thing (or value) it holds |
   | a Repeating Group's data source | `:list` | its list (a search with constraints and sort, a list field, option values, …); `page_size` the items a page of it shows (rows × columns), nil when it shows them all |
+  | a Table's data source | `:list` | its list, one repeated row per item; `page_size` its repeated row's fixed number of rows, nil when it shows them all |
   | a reusable-element instance's data source | `:instance` | the reusable element's thing, for that instance (`holder`: the reusable element) |
   | a property a reusable-element instance sets (WTF-493) | `:param` | its value, computed where the instance is (`holder`: the reusable element; `param`: `"param_<id>"`) |
   | a reusable element property's default value | `:param` | computed inside the reusable element (`element` and `holder` are the reusable element), for the instances that do not set it |
@@ -39,10 +40,11 @@ defmodule BubbleEx.PageData do
   value, and does not decide a visibility condition on it, WTF-505).
   Bubble has no action that changes a property: workflows only read it.
 
-  `cell` is the repeating group whose cell holds the element (nil outside
-  one): its value is computed per cell. Other elements' data sources (a
-  dropdown's choices, a table, a plugin's) are not group data and not
-  listed.
+  `cell` is the repeating group whose cell holds the element, or the table
+  whose repeated row holds it (nil outside one): its value is computed
+  per cell (per row). A table's other rows (its header) are outside its
+  cells. Other elements' data sources (a dropdown's choices, a plugin's)
+  are not group data and not listed.
 
   A search's constraint whose value is empty matches nothing unless the
   search states `ignore_empty_constraints: true`, which drops it (Bubble's
@@ -85,10 +87,9 @@ defmodule BubbleEx.PageData do
     "FloatingGroup" => :group,
     "GroupFocus" => :group,
     "RepeatingGroup" => :list,
+    "Table" => :list,
     "CustomElement" => :instance
   }
-
-  @repeating ~w(RepeatingGroup Table)
 
   @doc """
   Lowers the page data of decoded app JSON. `model` must be built from the
@@ -273,7 +274,7 @@ defmodule BubbleEx.PageData do
           []
 
         {kind, {prop, value}} ->
-          [source(kind, id, props, value, path ++ [props_key(raw), prop], at, ctx)]
+          [source(kind, id, value, path ++ [props_key(raw), prop], at, ctx)]
       end
 
     params =
@@ -281,7 +282,12 @@ defmodule BubbleEx.PageData do
         do: instance_params(id, props, path ++ [props_key(raw)], at, ctx),
         else: []
 
-    inner = if type in @repeating, do: %{at | cell: id}, else: at
+    inner =
+      case Tree.node(ctx.env.tree, id) do
+        %Tree.Node{} = node -> %{at | cell: Tree.cell_holder(node, id) || at.cell}
+        nil -> at
+      end
+
     own ++ params ++ elements(raw, path, inner, ctx)
   end
 
@@ -295,7 +301,7 @@ defmodule BubbleEx.PageData do
     end
   end
 
-  defp source(kind, id, props, value, vpath, at, ctx) do
+  defp source(kind, id, value, vpath, at, ctx) do
     symbol = Symbol.id(:element, id)
     node = Tree.node(ctx.env.tree, id)
     content = node && node.content
@@ -311,7 +317,7 @@ defmodule BubbleEx.PageData do
       type: value_type(kind, content, expr),
       value: expr,
       cell: at.cell,
-      page_size: if(kind == :list, do: page_size(props)),
+      page_size: if(kind == :list, do: node && node.page_size),
       residue:
         Lowering.expr_residue(symbol, [expr]) ++ search_fields(symbol, expr, ctx.env.model),
       path: Diagnostic.pointer(vpath)
@@ -494,9 +500,6 @@ defmodule BubbleEx.PageData do
   defp value_type(_kind, _content, _expr), do: nil
 
   defp listed(type), do: Type.listed(type)
-
-  # A repeating group's page (rows × columns), as the element tree reads it.
-  defp page_size(props), do: Tree.page_size(props)
 
   defp props_key(raw) do
     case Json.get(raw, ~w(properties %p)) do

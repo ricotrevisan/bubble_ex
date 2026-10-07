@@ -94,7 +94,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     ReusableParameters,
     ResponsiveImages,
     StaticAssets,
-    StaticSvg
+    StaticSvg,
+    Table
   }
 
   alias BubbleEx.Frontend.Normalized
@@ -761,6 +762,17 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
+  # A Table (BubbleEx.Frontend.Table): an HTML table. Its repeated row is
+  # rendered once per item when the page loads its list (outside other
+  # templates); otherwise it is left out, loudly.
+  defp emit(%Node{kind: :placeholder, runtime: %{"type" => "Table"}} = node, ctx, acc) do
+    rows? =
+      Table.dynamic?(node) and match?(%FlowSpec{}, ctx.flows) and not acc.template and
+        wired_list?(node, ctx)
+
+    table(node, rows?, ctx, acc)
+  end
+
   # A repeating group whose data source the page loads (WTF-420): its
   # template once per item of its list, with the cell's thing and index.
   defp emit(
@@ -1064,6 +1076,307 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     element("div", node, [], template, ctx, %{acc | template: false}, placeholder: true)
   end
 
+  # --- tables -----------------------------------------------------------------------
+
+  # Bubble's Table (`BubbleEx.Frontend.Table`): columns as `<col>`s, the
+  # header rows in `<thead>`, the repeated row once per item of the
+  # table's list in `<tbody>` (read as a repeating group's cells,
+  # `cells/3`: "Current row's thing" is the cell's thing, a reusable
+  # instance in it gets the row's thing's scope, WTF-494, the list read as
+  # the user), the footer rows in `<tfoot>`. A static table's rows are its
+  # body. Header, footer and static rows render once, like the page's own
+  # elements. Inside the Table's box, which scrolls.
+  @table_settings %{
+    "Table" => ~w(data_source group_type),
+    "TableMainAxis" => ~w(axis_index),
+    "TableCrossAxis" =>
+      ~w(axis_index cross_axis_repeat fixed_number_repeating_axis fixed_number_repeating_axis_count background_style),
+    "TableCell" => ~w(cell_main_axis_id use_gap)
+  }
+
+  defp table(node, rows?, ctx, acc) do
+    dynamic? = Table.dynamic?(node)
+    ctx = %{ctx | lowered: ctx.lowered |> Map.merge(table_lowered(node)) |> scroll(node)}
+    columns = Table.columns(node)
+    {head, repeated, foot} = Table.split(node)
+    parts = MapSet.new(Table.structure(node))
+
+    acc =
+      node.children
+      |> Enum.reject(&MapSet.member?(parts, &1))
+      |> Enum.reduce(mark_settings(acc, node), fn other, acc ->
+        mark(acc, other, "a table part outside its rows and columns is not lowered")
+      end)
+
+    acc =
+      (head ++ foot)
+      |> Enum.filter(&Table.repeats?/1)
+      |> Enum.reduce(acc, &mark(&2, &1, "a repeated row the table does not repeat is shown once"))
+
+    acc =
+      if repeated && not rows?,
+        do: mark(acc, node, "its repeated row is not rendered: the page does not load its list"),
+        else: acc
+
+    {cols, acc} = table_columns(columns, ctx, acc)
+    {head_html, acc} = rows_html(head, if(dynamic?, do: "th", else: "td"), columns, ctx, acc)
+
+    {body_html, acc} =
+      if repeated && rows?,
+        do: repeated_row(node, repeated, columns, ctx, acc),
+        else: {"", acc}
+
+    {foot_html, acc} = rows_html(foot, "td", columns, ctx, acc)
+
+    # A static table's rows are its body.
+    {head_html, body_html} = if dynamic?, do: {head_html, body_html}, else: {"", head_html}
+
+    inner = [
+      "<table class=\"w-full border-collapse\">\n",
+      indent(
+        [
+          section("colgroup", cols),
+          section("thead", head_html),
+          section("tbody", body_html),
+          section("tfoot", foot_html)
+        ],
+        1
+      ),
+      "</table>"
+    ]
+
+    element("div", node, [], inner, ctx, acc)
+  end
+
+  # The styles of a table's parts and of what its cells hold, laid out
+  # in their cell's row or column.
+  defp table_lowered(node) do
+    cells = Enum.flat_map(node.children, & &1.children)
+
+    contents =
+      Enum.flat_map(cells, fn cell ->
+        mode = (cell.layout || %{})[:mode]
+
+        Enum.flat_map(cell.children, fn child ->
+          Css.lower(child, selector: &selector/1, parent_mode: mode)
+        end)
+      end)
+
+    (node.children ++ cells)
+    |> Enum.flat_map(fn part -> Css.lower(part, selector: &selector/1) end)
+    |> Kernel.++(contents)
+    |> index_lowered()
+  end
+
+  # A table's box scrolls its rows, as Bubble's does.
+  defp scroll(lowered, node) do
+    entry = Map.get(lowered, node.exporter_id, %{declarations: [], rules: ""})
+    declarations = entry.declarations
+
+    entry =
+      if List.keymember?(declarations, "overflow", 0),
+        do: entry,
+        else: %{entry | declarations: Enum.sort([{"overflow", "auto"} | declarations])}
+
+    Map.put(lowered, node.exporter_id, entry)
+  end
+
+  defp section(_tag, ""), do: ""
+  defp section(_tag, []), do: ""
+  defp section(tag, inner), do: ["<", tag, ">\n", indent(inner, 1), "</", tag, ">\n"]
+
+  # The columns as `<col>`s: their width, and their visibility.
+  defp table_columns([], _ctx, acc), do: {"", acc}
+
+  defp table_columns(columns, ctx, acc) do
+    {cols, acc} =
+      Enum.map_reduce(columns, acc, fn column, acc ->
+        acc = mark_settings(acc, column)
+
+        acc =
+          if visibility_conditionals?(column),
+            do:
+              mark(
+                acc,
+                column,
+                "its visibility conditionals are not lowered for its cells: they stay as on page load"
+              ),
+            else: acc
+
+        void("col", column, [], ctx, acc)
+      end)
+
+    {Enum.intersperse(cols, "\n"), acc}
+  end
+
+  defp rows_html(rows, cell_tag, columns, ctx, acc) do
+    {html, acc} = Enum.map_reduce(rows, acc, &table_row(&1, cell_tag, columns, [], ctx, &2))
+    {Enum.intersperse(html, "\n"), acc}
+  end
+
+  # The repeated row, once per item of the table's list (as a repeating
+  # group's cells, `cells/3`): its elements read the row's thing and
+  # index, a reusable instance in it gets the row's scope (WTF-494).
+  defp repeated_row(node, row, columns, ctx, acc) do
+    table = bid(node)
+    {item, index} = cell_vars(table)
+
+    attrs = [
+      {":for",
+       {:raw,
+        "{{#{item}, #{index}} <- Bubble.cells(@bubble_data, #{scope_var(ctx)}, #{literal(table)})}"}},
+      {"id", {:raw, "{Bubble.cell_id(#{scope_var(ctx)}, #{literal(table)}, #{item}, #{index})}"}}
+    ]
+
+    listed =
+      row.children
+      |> Enum.flat_map(fn cell -> Enum.flat_map(cell.children, &cell_instance_nodes/1) end)
+      |> MapSet.new(&bid/1)
+
+    inner_ctx = Map.merge(ctx, %{cell: table, cell_instances: listed})
+    was = acc.template
+    {html, acc} = table_row(row, "td", columns, attrs, inner_ctx, %{acc | template: true})
+    {html, %{acc | template: was}}
+  end
+
+  @extra_cell "a second cell in the same row and column is not lowered"
+
+  # A row's cells in column order; an empty slot where a row has no cell
+  # for a column. A cell in a column the table does not have is kept,
+  # after the others, loudly.
+  defp table_row(row, cell_tag, columns, attrs, ctx, acc) do
+    acc = mark_settings(acc, row)
+    by_column = Enum.group_by(row.children, &Table.props(&1)["cell_main_axis_id"])
+    known = MapSet.new(columns, &bid/1)
+
+    {cells, acc} =
+      Enum.map_reduce(columns, acc, fn column, acc ->
+        case Map.get(by_column, bid(column), []) do
+          [] ->
+            {empty_cell(cell_tag, column, ctx), acc}
+
+          [cell | extra] ->
+            acc = Enum.reduce(extra, acc, &mark(&2, &1, @extra_cell))
+            table_cell(cell, cell_tag, column, ctx, acc)
+        end
+      end)
+
+    stray =
+      Enum.reject(row.children, &MapSet.member?(known, Table.props(&1)["cell_main_axis_id"]))
+
+    {strays, acc} =
+      Enum.map_reduce(stray, acc, fn cell, acc ->
+        table_cell(cell, cell_tag, nil, ctx, mark(acc, cell, "its column is not in the table"))
+      end)
+
+    element("tr", row, attrs, Enum.intersperse(cells ++ strays, "\n"), ctx, acc)
+  end
+
+  defp empty_cell(tag, column, ctx) do
+    ["<", tag, attrs_html(header_scope(tag) ++ column_hidden(column, ctx)), "></", tag, ">"]
+  end
+
+  # A cell: a table cell around a container laid out as the Bubble cell
+  # is (its row or column, gaps), at least its column's minimum width.
+  defp table_cell(cell, tag, column, ctx, acc) do
+    acc = mark_settings(acc, cell)
+    {children, acc} = emit_list(cell.children, ctx, acc)
+    width = column_width(column, ctx)
+    {layout, residue} = Tailwind.utilities(Css.container_layout(cell) ++ width, ctx.tokens)
+
+    acc =
+      if residue == [],
+        do: acc,
+        else: %{
+          acc
+          | residue: [
+              "#{selector(cell)} > div {\n" <>
+                Enum.map_join(residue, "", fn {k, v} -> "  #{k}: #{v};\n" end) <> "}\n"
+              | acc.residue
+            ]
+        }
+
+    inner =
+      cond do
+        not blank?(children) ->
+          [
+            "<div",
+            attrs_html([{"class", Enum.join(layout, " ")}]),
+            ">\n",
+            indent(children, 1),
+            "</div>"
+          ]
+
+        width != [] ->
+          ["<div", attrs_html([{"class", Enum.join(layout, " ")}]), "></div>"]
+
+        true ->
+          ""
+      end
+
+    # A cell's own visibility conditionals decide its `hidden`; a column
+    # hidden on page load does not override them (loudly).
+    hidden = column_hidden(column, ctx)
+    own? = hidden != [] and visibility_conditionals?(cell)
+
+    acc =
+      if own?,
+        do:
+          mark(
+            acc,
+            cell,
+            "its column is hidden on page load; its own visibility conditionals decide"
+          ),
+        else: acc
+
+    attrs = header_scope(tag) ++ if(own?, do: [], else: hidden)
+    element(tag, cell, attrs, inner, ctx, acc)
+  end
+
+  defp header_scope("th"), do: [{"scope", "col"}]
+  defp header_scope(_tag), do: []
+
+  defp column_hidden(nil, _ctx), do: []
+
+  defp column_hidden(column, ctx) do
+    if MapSet.member?(Map.get(ctx, :hidden, MapSet.new()), column.exporter_id),
+      do: [{"hidden", true}],
+      else: []
+  end
+
+  # A column's minimum width holds for its cells' content (a `<col>`'s
+  # does not).
+  defp column_width(nil, _ctx), do: []
+
+  defp column_width(column, ctx) do
+    with %{declarations: declarations} <- ctx.lowered[column.exporter_id],
+         {_, value} <- List.keyfind(declarations, "min-width", 0) do
+      [{"min-width", value}]
+    else
+      _ -> []
+    end
+  end
+
+  # A table part's settings the generator does not lower (resizable
+  # columns, a sticky header, …): marked, one by one.
+  defp mark_settings(acc, node) do
+    handled = Map.get(@table_settings, Table.part(node), [])
+
+    node.unmapped
+    |> Map.get("properties", %{})
+    |> Map.keys()
+    |> Enum.reject(&(&1 in handled))
+    |> Enum.sort()
+    |> Enum.reduce(acc, &mark(&2, node, "table setting #{&1} is not lowered"))
+  end
+
+  defp visibility_conditionals?(node) do
+    case node.bindings["condition"] do
+      %{kind: :condition, payload: payload} -> Conditions.visibility(payload) != []
+      _ -> false
+    end
+  end
+
   # The loop variables of a repeating group's cells.
   defp cell_vars(rg), do: {"cell_" <> ident(rg), "cell_" <> ident(rg) <> "_i"}
 
@@ -1246,6 +1559,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       %{acc | ids: Enum.reverse(ids) ++ acc.ids}
     end
   end
+
+  defp static_ids(%Node{kind: :placeholder, runtime: %{"type" => "Table"}} = n, ctx, stack),
+    do:
+      [bid(n) | Enum.map(Table.structure(n), &bid/1)] ++
+        Enum.flat_map(Table.once(n), &static_ids(&1, ctx, stack))
 
   defp static_ids(%Node{kind: :placeholder, runtime: %{"boundary" => "container"}} = n, _ctx, _s),
     do: [bid(n)]
@@ -3205,6 +3523,32 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end)
   end
 
+  # A table's repeated row reads per row when the page loads its list; its
+  # other rows (all of a static table's) read like the page's elements.
+  defp inner_loads(
+         %Node{kind: :placeholder, runtime: %{"type" => "Table"}} = node,
+         surface,
+         cell,
+         base
+       ) do
+    {head, repeated, foot} = Table.split(node)
+
+    cond do
+      not Table.dynamic?(node) ->
+        node_loads(head, surface, cell, base)
+
+      match?(
+        %{kind: :list, cell: nil, surface: ^surface},
+        base.flows.data_index.elements[bid(node)]
+      ) ->
+        node_loads(head ++ foot, surface, cell, base) ++
+          node_loads(List.wrap(repeated), surface, bid(node), base)
+
+      true ->
+        []
+    end
+  end
+
   defp inner_loads(
          %Node{kind: :placeholder, runtime: %{"boundary" => "container", "repeats" => true}} =
            node,
@@ -3242,6 +3586,16 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
+  # A table's header, footer and static rows render once: their
+  # instances are the page's, at the page's scope.
+  defp instance_scopes(
+         %Node{kind: :placeholder, runtime: %{"type" => "Table"}} = n,
+         scope,
+         by_ref,
+         stack
+       ),
+       do: Enum.flat_map(Table.once(n), &instance_scopes(&1, scope, by_ref, stack))
+
   defp instance_scopes(%Node{kind: :placeholder, runtime: %{"boundary" => "container"}}, _, _, _),
     do: []
 
@@ -3253,6 +3607,32 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # instances').
   defp cell_templates(%Node{children: children}, by_ref, flows),
     do: Enum.flat_map(children, &cell_templates_of(&1, by_ref, flows))
+
+  # A table: the instances in its repeated row's cells are per cell; its
+  # other rows render once, like the page's own elements.
+  defp cell_templates_of(
+         %Node{kind: :placeholder, runtime: %{"type" => "Table"}} = node,
+         by_ref,
+         flows
+       ) do
+    {head, repeated, foot} = Table.split(node)
+
+    entries =
+      for row <- List.wrap(repeated),
+          cell <- row.children,
+          instance <- Enum.flat_map(cell.children, &cell_instance_nodes/1),
+          FlowSpec.per_cell?(flows, bid(instance)),
+          entry <- instance_scopes(instance, "", by_ref, MapSet.new()),
+          do: entry
+
+    own = if entries == [], do: [], else: [{bid(node), entries}]
+
+    own ++
+      for row <- head ++ foot,
+          cell <- row.children,
+          entry <- cell_templates(cell, by_ref, flows),
+          do: entry
+  end
 
   defp cell_templates_of(
          %Node{kind: :placeholder, runtime: %{"boundary" => "container", "repeats" => true}} =
@@ -3300,6 +3680,15 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     Enum.flat_map(nodes, fn
       %Node{kind: :reusable_instance} ->
         []
+
+      %Node{kind: :placeholder, runtime: %{"type" => "Table"}} = table ->
+        {head, _repeated, foot} = Table.split(table)
+
+        for row <- head ++ foot,
+            cell <- row.children,
+            found <-
+              input_nodes(cell.children, [bid(cell), bid(row), bid(table) | containers], tracked),
+            do: found
 
       %Node{kind: :placeholder, runtime: %{"boundary" => "container"}} ->
         []

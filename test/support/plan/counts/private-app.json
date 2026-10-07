@@ -7,16 +7,16 @@
       },
       "residue": {
         "auth_action": 21,
-        "no_native_lowering": 559,
+        "no_native_lowering": 521,
         "not_generated": 5,
         "plugin_action": 633,
         "plugin_element": 710,
         "plugin_event": 250,
         "plugin_style": 8,
-        "runtime_container": 324,
+        "runtime_container": 245,
         "style_condition": 14,
         "trigger_in_runtime_template": 206,
-        "uncompiled_expression": 2380,
+        "uncompiled_expression": 2345,
         "unresolved_reference": 84,
         "unsupported_action": 5,
         "unsupported_event": 2
@@ -145,9 +145,9 @@
       },
       "units": {
         "actions": {
-          "generated": 4381,
+          "generated": 4384,
           "removed": 0,
-          "residue": 2088,
+          "residue": 2085,
           "total": 6469
         },
         "api_calls": {
@@ -162,12 +162,12 @@
           "workflow": 3
         },
         "elements": {
-          "generated": 5281,
-          "generated_in_runtime_template": 949,
-          "in_runtime_template": 1327,
+          "generated": 5390,
+          "generated_in_runtime_template": 987,
+          "in_runtime_template": 1222,
           "not_normalized": 1,
           "not_normalized_with_residue": 0,
-          "residue": 1752,
+          "residue": 1748,
           "total": 8361
         },
         "plugins": {
@@ -205,16 +205,16 @@
       },
       "residue": {
         "auth_action": 21,
-        "no_native_lowering": 559,
+        "no_native_lowering": 521,
         "not_generated": 5,
         "plugin_action": 633,
         "plugin_element": 710,
         "plugin_event": 250,
         "plugin_style": 8,
-        "runtime_container": 324,
+        "runtime_container": 245,
         "style_condition": 14,
         "trigger_in_runtime_template": 206,
-        "uncompiled_expression": 3143,
+        "uncompiled_expression": 3124,
         "unresolved_reference": 84,
         "unsupported_action": 5,
         "unsupported_event": 2
@@ -343,9 +343,9 @@
       },
       "units": {
         "actions": {
-          "generated": 4009,
+          "generated": 4011,
           "removed": 0,
-          "residue": 2460,
+          "residue": 2458,
           "total": 6469
         },
         "api_calls": {
@@ -360,12 +360,12 @@
           "workflow": 3
         },
         "elements": {
-          "generated": 5140,
-          "generated_in_runtime_template": 890,
-          "in_runtime_template": 1327,
+          "generated": 5249,
+          "generated_in_runtime_template": 913,
+          "in_runtime_template": 1222,
           "not_normalized": 1,
           "not_normalized_with_residue": 0,
-          "residue": 1893,
+          "residue": 1889,
           "total": 8361
         },
         "plugins": {
@@ -401,16 +401,16 @@
       },
       "residue": {
         "auth_action": 21,
-        "no_native_lowering": 559,
+        "no_native_lowering": 521,
         "not_generated": 5,
         "plugin_action": 633,
         "plugin_element": 710,
         "plugin_event": 250,
         "plugin_style": 8,
-        "runtime_container": 324,
+        "runtime_container": 245,
         "style_condition": 14,
         "trigger_in_runtime_template": 206,
-        "uncompiled_expression": 2380,
+        "uncompiled_expression": 2345,
         "unresolved_reference": 84,
         "unsupported_action": 5,
         "unsupported_event": 2
@@ -539,9 +539,9 @@
       },
       "units": {
         "actions": {
-          "generated": 4381,
+          "generated": 4384,
           "removed": 0,
-          "residue": 2088,
+          "residue": 2085,
           "total": 6469
         },
         "api_calls": {
@@ -556,12 +556,12 @@
           "workflow": 3
         },
         "elements": {
-          "generated": 5281,
-          "generated_in_runtime_template": 949,
-          "in_runtime_template": 1327,
+          "generated": 5390,
+          "generated_in_runtime_template": 987,
+          "in_runtime_template": 1222,
           "not_normalized": 1,
           "not_normalized_with_residue": 0,
-          "residue": 1752,
+          "residue": 1748,
           "total": 8361
         },
         "plugins": {

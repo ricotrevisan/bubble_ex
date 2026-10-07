@@ -65,8 +65,8 @@
         "plugin_event": 250,
         "target_not_rendered": 2,
         "trigger_in_runtime_template": 194,
-        "unavailable_input": 542,
-        "uncompiled_expression": 697,
+        "unavailable_input": 548,
+        "uncompiled_expression": 692,
         "unresolved_reference": 41,
         "unsupported_action": 67,
         "unsupported_event": 16,
@@ -115,7 +115,7 @@
     "ir": {
       "by_kind": {
         "click": {
-          "native": 883,
+          "native": 885,
           "total": 1358
         },
         "condition_true": {
@@ -165,7 +165,7 @@
           "total": 634
         },
         "reusable": {
-          "native": 881,
+          "native": 883,
           "total": 1636
         }
       },
@@ -174,14 +174,14 @@
         "auth_action": 14,
         "plugin_action": 619,
         "plugin_event": 250,
-        "uncompiled_expression": 583,
+        "uncompiled_expression": 577,
         "unresolved_reference": 41,
         "unsupported_action": 67,
         "unsupported_event": 2,
         "unsupported_option": 11
       },
       "step_ops": {
-        "call": 629,
+        "call": 630,
         "call_reusable": 133,
         "create": 40,
         "delete": 3,
@@ -191,33 +191,33 @@
         "focus": 32,
         "hide": 163,
         "log_out": 4,
-        "navigate": 281,
+        "navigate": 282,
         "open_url": 23,
         "pause": 46,
         "refresh": 7,
         "reset_group": 108,
         "reset_inputs": 64,
-        "schedule": 139,
+        "schedule": 141,
         "schedule_custom": 27,
         "schedule_list": 15,
         "scroll_to": 3,
-        "set_state": 372,
+        "set_state": 373,
         "show": 119,
         "terminate": 67,
         "toggle": 202,
         "update": 215,
-        "update_current_user": 20,
+        "update_current_user": 21,
         "update_list": 2
       },
       "steps": {
-        "native": 2814,
-        "residue": 1196,
+        "native": 2820,
+        "residue": 1190,
         "total": 4010
       },
       "workflows": {
         "disabled": 53,
-        "native": 1299,
-        "residue": 971,
+        "native": 1301,
+        "residue": 969,
         "total": 2270
       }
     },
@@ -225,15 +225,15 @@
       "by_kind": {
         "group": {
           "total": 1543,
-          "wired": 1119
+          "wired": 1122
         },
         "instance": {
           "total": 199,
           "wired": 127
         },
         "list": {
-          "total": 233,
-          "wired": 137
+          "total": 238,
+          "wired": 139
         },
         "page_thing": {
           "total": 2,
@@ -246,25 +246,25 @@
       },
       "reads": {
         "displayed": 23,
-        "query": 137,
+        "query": 139,
         "url_thing": 2,
-        "value": 2154
+        "value": 2157
       },
       "residue_reasons": {
-        "page_data_in_cell": 55,
-        "unavailable_input": 654,
-        "uncompiled_expression": 155
+        "page_data_in_cell": 70,
+        "unavailable_input": 658,
+        "uncompiled_expression": 137
       },
       "sources": {
         "residue": 863,
-        "total": 3179,
-        "wired": 2316
+        "total": 3184,
+        "wired": 2321
       }
     },
     "page_data_ir": {
       "by_kind": {
         "group": {
-          "native": 1479,
+          "native": 1498,
           "total": 1521
         },
         "instance": {
@@ -272,8 +272,8 @@
           "total": 199
         },
         "list": {
-          "native": 214,
-          "total": 232
+          "native": 219,
+          "total": 237
         },
         "page_thing": {
           "native": 2,
@@ -286,7 +286,7 @@
       },
       "in_cell": {
         "group": {
-          "native": 386,
+          "native": 405,
           "total": 405
         },
         "instance": {
@@ -303,12 +303,12 @@
         }
       },
       "residue_reasons": {
-        "uncompiled_expression": 130
+        "uncompiled_expression": 111
       },
       "sources": {
-        "native": 3026,
-        "residue": 130,
-        "total": 3156
+        "native": 3050,
+        "residue": 111,
+        "total": 3161
       }
     }
   }
