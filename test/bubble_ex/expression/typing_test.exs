@@ -81,6 +81,45 @@ defmodule BubbleEx.Expression.TypingTest do
       assert param.type == "text"
     end
 
+    # `Get data from page URL`, as replayed 2026-10-07 (WTF-387, WTF-508).
+    test "a URL parameter is read as its type; the path as texts" do
+      env = env([])
+
+      context = fn props ->
+        Typing.context(parse!(src("GetParamFromUrl", props), env), env)
+      end
+
+      name = %{"parameter_name" => text(["n"])}
+
+      assert {:value, {:url_parameter, %{"name" => "n"}}, "text"} =
+               context.(Map.put(name, "value", "text"))
+
+      for type <- ~w(number boolean date custom.task user) do
+        assert {:value, {:url_parameter, %{"name" => "n", "type" => ^type}}, ^type} =
+                 context.(Map.put(name, "value", type))
+      end
+
+      # The live payload's compact spellings.
+      assert {:value, {:url_parameter, %{"name" => "n", "type" => "number"}}, "number"} =
+               context.(Map.put(name, "%v", "number"))
+
+      assert {:value, {:url_parameter, %{"path" => "segments"}}, "list.text"} =
+               context.(%{"type" => "path_segment"})
+
+      assert {:value, {:url_parameter, %{"path" => "first"}}, "text"} =
+               context.(%{"type" => "path"})
+
+      assert {:value, {:url_parameter, %{"path" => "first", "type" => "custom.task"}},
+              "custom.task"} = context.(%{"type" => "path", "value" => "custom.task"})
+
+      # Not replayed, or not a type the app has: untyped.
+      assert :unknown = context.(Map.put(name, "is_list", true))
+      assert :unknown = context.(Map.put(name, "value", "custom.nope"))
+      assert :unknown = context.(Map.put(name, "value", "option.color"))
+      assert :unknown = context.(%{"type" => "path_segment", "value" => "custom.task"})
+      assert :unknown = context.(%{"parameter_name" => %{"type" => "CurrentUser"}})
+    end
+
     test "an untyped context source is diagnosed" do
       {ast, [diag]} = typed(chain(src("ElementParent"), [msg("title_text")]), host: "bP1")
       assert %Property{type: nil} = ast

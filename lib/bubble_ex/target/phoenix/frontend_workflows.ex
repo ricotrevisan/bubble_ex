@@ -206,7 +206,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
     """
     %{
-      clicks: #{map_source(clicks)},
+    #{page_name(s)}  clicks: #{map_source(clicks)},
       changes: #{map_source(changes)},
       inputs: #{inputs_source(s.inputs)},
       loaded: #{source(for w <- wired, w.kind == :page_load, do: w.workflow)},
@@ -216,6 +216,12 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     }
     """
   end
+
+  # A page's Bubble name: the first of its URL's path segments (WTF-508).
+  defp page_name(%{kind: :page, name: name}) when is_binary(name) and name != "",
+    do: "  name: #{literal(name)},\n"
+
+  defp page_name(_surface), do: ""
 
   defp group(workflows, key) do
     workflows
@@ -587,6 +593,13 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   defp binding({:url, name}, _loads), do: "BubbleWorkflows.url(ctx, #{literal(name)})"
 
+  defp binding({:url_value, u}, _loads),
+    do: "BubbleWorkflows.url_value(ctx, #{url_source(u)}, #{literal(u.type)})"
+
+  # A thing whose unique ID is in the URL, read through Ash as the actor.
+  defp binding({:url_thing, u}, loads),
+    do: "BubbleWorkflows.url_thing(ctx, #{url_source(u)}, #{u.resource}, #{loads_source(loads)})"
+
   defp binding({:state, k}, []),
     do:
       "BubbleWorkflows.state(ctx, #{source(k.path)}, #{literal(k.element)}, #{literal(k.state)})"
@@ -610,6 +623,11 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   defp binding({:cell_data, g}, loads),
     do: page_loaded("BubbleWorkflows.cell_data(ctx, #{literal(g)})", loads)
+
+  # Which part of the URL a typed read reads (`Spec.url/1`).
+  defp url_source(%{path: nil, name: name}), do: "{:query, #{literal(name)}}"
+  defp url_source(%{path: "segments"}), do: ":segments"
+  defp url_source(%{path: "first"}), do: ":first"
 
   defp page_loaded(value, []), do: value
 

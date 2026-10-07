@@ -158,7 +158,8 @@ defmodule <%= @web %>.BubbleWorkflows do
     @moduledoc """
     The state a workflow runs with: the surface module and instance
     `scope`, the actor, the start time, its arguments and step results, the
-    page's custom states, input values (and their `first` values) and URL,
+    page's custom states, input values (and their `first` values) and URL
+    (`url`, its query as Bubble reads it, and `segments`, its path's),
     what it asks of the page (element steps `js`, `navigate`, delayed
     `messages`), and the backend runtime's context of the event (`backend`,
     `<%= @module %>.Workflows.Runtime.root/2`: its job and call budgets).
@@ -196,6 +197,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       states: %{},
       inputs: %{},
       url: %{},
+      segments: [],
       data: %{},
       displayed: %{},
       first: %{},
@@ -247,6 +249,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_inputs, inputs)
     |> assign(:bubble_first_inputs, inputs)
     |> assign(:bubble_url, %{})
+    |> assign(:bubble_segments, [])
     |> assign(:bubble_path, "/")
     |> assign(:bubble_page_path, "/")
     |> assign(:bubble_takes_thing, false)
@@ -277,21 +280,20 @@ defmodule <%= @web %>.BubbleWorkflows do
   end
 
   @doc """
-  Keeps the URL's path and query parameters (text only), and the page's
-  own path: the path without its thing's segment when the route has one.
+  Keeps the URL's path and query, and the page's own path: the path
+  without its thing's segment when the route has one. The query and the
+  path's segments are kept as Bubble's `Get data from page URL` reads
+  them (`Bubble.url_query/1`, `Bubble.url_segments/2`): from the URL as
+  written, not from Phoenix's `params`, which keep only a repeated key's
+  last value and decode the path.
   """
   def handle_params(socket, params, uri) do
-    url =
-      for {k, v} <- params,
-          is_binary(k) and is_binary(v) and k != "bubble_thing",
-          into: %{},
-          do: {k, v}
-
-    %URI{path: path, host: host} = URI.parse(uri)
+    %URI{path: path, host: host, query: query} = URI.parse(uri)
     path = path || "/"
 
     socket
-    |> assign(:bubble_url, url)
+    |> assign(:bubble_url, Bubble.url_query(query))
+    |> assign(:bubble_segments, Bubble.url_segments(path, nil))
     |> assign(:bubble_path, path)
     |> assign(:bubble_page_path, page_path(socket, params, path, host))
   end
@@ -321,9 +323,20 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_mounted, false)
     |> assign(:bubble_load_fresh, mounted? and connected?(socket))
     |> handle_params(params, uri)
+    |> assign(:bubble_segments, Bubble.url_segments(URI.parse(uri).path, page_name(page)))
     |> assign(:bubble_thing, BubbleData.thing_id(params, URI.parse(uri).path))
     |> assign(:bubble_takes_thing, takes_thing?(page))
     |> BubbleData.load(page, actor_fresh?: true)
+  end
+
+  # The page's Bubble name, the first of its URL's path segments: its
+  # route may differ (a reserved or unsafe name). An older page module
+  # names none; its URL's own first segment is read then.
+  defp page_name(page) do
+    case page.__bubble__(:surface) do
+      %{name: name} when is_binary(name) -> name
+      _ -> nil
+    end
   end
 
   # The page's own path. When the router took `bubble_thing` from the
@@ -946,6 +959,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       inputs: socket.assigns.bubble_inputs,
       first: socket.assigns.bubble_first_inputs,
       url: socket.assigns.bubble_url,
+      segments: Map.get(socket.assigns, :bubble_segments, []),
       path: socket.assigns.bubble_path,
       page_path: Map.get(socket.assigns, :bubble_page_path, socket.assigns.bubble_path),
       takes_thing: Map.get(socket.assigns, :bubble_takes_thing, false),
@@ -1380,6 +1394,30 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   @doc "URL parameter `name`, as text."
   def url(ctx, name), do: Map.get(ctx.url, name)
+
+  @doc "What the URL holds, as `type` (`Bubble.url_value/4`)."
+  def url_value(ctx, part, type), do: Bubble.url_value(ctx.url, ctx.segments, part, type)
+
+  @doc """
+  A thing whose unique ID the URL holds (`part`, as `url_value/3`'s), of
+  `resource`, with the relationship `loads`: read through Ash as the
+  current user (`BubbleData.records/5`), so the privacy policies apply.
+  Nil when the text is not a Bubble ID, no such record exists or the user
+  may not view it (as Bubble reads an unknown ID: empty), and with data
+  access off. The URL only chooses which ID is read.
+  """
+  def url_thing(ctx, part, resource, loads) do
+    with true <- data_access?(),
+         id when is_binary(id) <- url_value(ctx, part, "text"),
+         # Read now, not deferred to a batch of cells (`records/5` leaves
+         # IDs for the loader there): the same thing for every cell, read
+         # once per pass.
+         %{} = record <- BubbleData.records(Map.put(ctx, :batch, false), resource, id, false, nil) do
+      load(record, loads, ctx)
+    else
+      _ -> nil
+    end
+  end
 
   @doc """
   What element `element` (in the instance `path` below) holds of the

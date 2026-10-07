@@ -21,7 +21,7 @@ defmodule BubbleEx.Expression.IR do
   | `:all_options` | `[option_set]` | every option of a set |
   | `:current_user` | `[]` | the session's user |
   | `:this` | `[binder]` | `This Thing`: `:rule_record`, `:filter_item` or `:context` (see `Ast.ThisThing`) |
-  | `:input` | `[kind, ref]` | a value supplied by context: `:element_state`, `:cell_thing`, `:cell_index`, `:page_thing`, `:parameter`, `:step_result`, `:trigger_thing`, `:page_data` or `:url_parameter`; `ref` holds Bubble IDs with string keys |
+  | `:input` | `[kind, ref]` | a value supplied by context: `:element_state`, `:cell_thing`, `:cell_index`, `:page_thing`, `:parameter`, `:step_result`, `:trigger_thing`, `:page_data` or `:url_parameter` (`ref` `%{"name" => name}` a query parameter as text, with `"type"` as another type; `%{"path" => "segments"}` the path's segments, `%{"path" => "first"}` the first after the page's name); `ref` holds Bubble IDs with string keys |
   | `:field` | `[record, data_type, field]` | a data-type field (built-in ones by their Bubble names, e.g. `"Created By"`); over a list of records it maps, and `type` is a list |
   | `:option_attribute` | `[option, option_set, attribute]` | an option-set attribute |
   | `:option_label` | `[option, option_set]` | an option's display text (Bubble's `display`) |
