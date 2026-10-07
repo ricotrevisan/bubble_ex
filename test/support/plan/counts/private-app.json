@@ -16,7 +16,7 @@
         "runtime_container": 324,
         "style_condition": 14,
         "trigger_in_runtime_template": 206,
-        "uncompiled_expression": 2405,
+        "uncompiled_expression": 2380,
         "unresolved_reference": 84,
         "unsupported_action": 5,
         "unsupported_event": 2
@@ -125,9 +125,9 @@
           "total": 1
         },
         "surface": {
-          "auto": 16,
+          "auto": 17,
           "closed": 0,
-          "open": 137,
+          "open": 136,
           "total": 153
         },
         "workflow": {
@@ -138,9 +138,9 @@
         }
       },
       "top_level": {
-        "auto": 53,
+        "auto": 54,
         "closed": 0,
-        "open": 417,
+        "open": 416,
         "total": 470
       },
       "units": {
@@ -162,12 +162,12 @@
           "workflow": 3
         },
         "elements": {
-          "generated": 5269,
-          "generated_in_runtime_template": 947,
+          "generated": 5281,
+          "generated_in_runtime_template": 949,
           "in_runtime_template": 1327,
           "not_normalized": 1,
           "not_normalized_with_residue": 0,
-          "residue": 1764,
+          "residue": 1752,
           "total": 8361
         },
         "plugins": {
@@ -214,7 +214,7 @@
         "runtime_container": 324,
         "style_condition": 14,
         "trigger_in_runtime_template": 206,
-        "uncompiled_expression": 3163,
+        "uncompiled_expression": 3143,
         "unresolved_reference": 84,
         "unsupported_action": 5,
         "unsupported_event": 2
@@ -323,9 +323,9 @@
           "total": 1
         },
         "surface": {
-          "auto": 13,
+          "auto": 14,
           "closed": 0,
-          "open": 140,
+          "open": 139,
           "total": 153
         },
         "workflow": {
@@ -336,9 +336,9 @@
         }
       },
       "top_level": {
-        "auto": 46,
+        "auto": 47,
         "closed": 0,
-        "open": 424,
+        "open": 423,
         "total": 470
       },
       "units": {
@@ -360,12 +360,12 @@
           "workflow": 3
         },
         "elements": {
-          "generated": 5128,
+          "generated": 5140,
           "generated_in_runtime_template": 890,
           "in_runtime_template": 1327,
           "not_normalized": 1,
           "not_normalized_with_residue": 0,
-          "residue": 1905,
+          "residue": 1893,
           "total": 8361
         },
         "plugins": {
@@ -410,7 +410,7 @@
         "runtime_container": 324,
         "style_condition": 14,
         "trigger_in_runtime_template": 206,
-        "uncompiled_expression": 2405,
+        "uncompiled_expression": 2380,
         "unresolved_reference": 84,
         "unsupported_action": 5,
         "unsupported_event": 2
@@ -519,9 +519,9 @@
           "total": 1
         },
         "surface": {
-          "auto": 16,
+          "auto": 17,
           "closed": 0,
-          "open": 137,
+          "open": 136,
           "total": 153
         },
         "workflow": {
@@ -532,9 +532,9 @@
         }
       },
       "top_level": {
-        "auto": 53,
+        "auto": 54,
         "closed": 0,
-        "open": 417,
+        "open": 416,
         "total": 470
       },
       "units": {
@@ -556,12 +556,12 @@
           "workflow": 3
         },
         "elements": {
-          "generated": 5269,
-          "generated_in_runtime_template": 947,
+          "generated": 5281,
+          "generated_in_runtime_template": 949,
           "in_runtime_template": 1327,
           "not_normalized": 1,
           "not_normalized_with_residue": 0,
-          "residue": 1764,
+          "residue": 1752,
           "total": 8361
         },
         "plugins": {
