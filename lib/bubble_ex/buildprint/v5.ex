@@ -19,7 +19,15 @@ defmodule BubbleEx.Buildprint.V5 do
     * **Versions.** The index's `formatVersion` and `schemaVersion` (and
       `.buildprint/state.json`'s `formatVersion`, when present) must be in an
       allowlist (`supported_versions/0`); anything else is an
-      `:unknown_format` error rather than a best-effort read.
+      `:unknown_format` error rather than a best-effort read. Format 32
+      reads as format 31: its tables, metadata and row kinds are unchanged.
+      Its preamble adds a `settings.secure` member (secret-presence flags
+      and parameter names, no values), dropped unread like any setting but
+      `client_safe`, and a `__bp_private_parameter_names__` member, dropped
+      with Buildprint's other members; its manifest entries no longer
+      carry `bareContentSha256`, which is not read; and its API Connector
+      `shared_headers` entries carry their header name (`key`), which
+      `BubbleEx.Model` reads as the parameter name.
     * **Integrity.** Every row's `content_sha256` must be the SHA-256 of its
       JSON, root keys must be unique, and the manifest must list exactly the
       rows it describes, each once. An index with a pending write-ahead log
@@ -76,7 +84,7 @@ defmodule BubbleEx.Buildprint.V5 do
   # Defined only when the optional `exqlite` dependency is loaded.
   @compile {:no_warn_undefined, Sqlite}
 
-  @format_versions ["bubblescript-31"]
+  @format_versions ["bubblescript-31", "bubblescript-32"]
   @schema_versions ["16"]
   @manifest_versions [5]
 
