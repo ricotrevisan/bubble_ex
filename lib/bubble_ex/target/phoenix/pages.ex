@@ -42,8 +42,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       because the breakpoint's media rule must still win. An element whose
       visibility conditionals compiled (`BubbleEx.Target.Elixir.Frontend`)
       renders the attribute from a `visible_<id>` helper, evaluated on
-      every render, until a workflow step acts on it; from then on the
-      step decides (see `<Web>.Bubble`). With workflows, the helpers read
+      every render, and that result as `data-bubble-visible`: a workflow
+      step's show or hide holds until a render changes it, then the
+      conditionals decide again (WTF-509, Bubble replay 2026-10-07; see
+      `<Web>.Bubble`). With workflows, the helpers read
       the current user from `@bubble_viewer`, which the runtime reads
       afresh with field policies, never the session's user, and a URL
       parameter or the URL's path from `@bubble_url` and
@@ -2441,7 +2443,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp unset_visibility(node, compiled, states, _static, {[], []}, ctx, acc) do
     {call, acc} = add_helper(node, "visible", compiled, false, Map.put(ctx, :viewer, true), acc)
 
-    {[{"hidden", {:raw, "{!" <> call <> "}"}}],
+    {visibility_attrs("{!" <> call <> "}", call),
      count(acc, "visibility_conditions_compiled", states)}
   end
 
@@ -2468,8 +2470,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     keys = Enum.map_join(some, ", ", &literal/1)
     hidden = if fallback == [], do: "false", else: "true"
 
-    attr =
-      "{if(Bubble.set?(@bubble_data, #{scope_var(ctx)}, [#{keys}]), do: !#{call}, else: #{hidden})}"
+    set = "Bubble.set?(@bubble_data, #{scope_var(ctx)}, [#{keys}])"
+    attr = "{if(#{set}, do: !#{call}, else: #{hidden})}"
 
     noun = if states == 1, do: "conditional", else: "conditionals"
 
@@ -2483,7 +2485,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> count("visibility_conditions_compiled", states)
       |> count("visibility_conditions_unset_property", states)
 
-    {[{"hidden", {:raw, attr}}], acc}
+    visible = if fallback == [], do: "true", else: "false"
+    {visibility_attrs(attr, "if(#{set}, do: #{call}, else: #{visible})"), acc}
+  end
+
+  # `hidden` and the condition-derived visibility, which the page hook
+  # compares across renders: a workflow step holds until it changes
+  # (WTF-509, replay 2026-10-07). An element whose conditions give a
+  # constant visibility (not compiled, or a fallback) has none: a step
+  # holds until reload.
+  defp visibility_attrs(hidden, visible) do
+    [
+      {"hidden", {:raw, hidden}},
+      {"data-bubble-visible", {:raw, "{to_string(" <> visible <> ")}"}}
+    ]
   end
 
   # The properties a condition reads with no value (`{unset, some}`): those
