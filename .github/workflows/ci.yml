@@ -107,7 +107,7 @@ jobs:
             fixtures: ""
           - elixir: "1.20.2"
             otp: "28.1.1"
-            fixtures: "field_types external_types hostile_long_unicode_names target_policies decided_locked expr_app fidelity_bpgwgmpz fidelity_bptvorpv workflows_backend workflows_hostile_ids phoenix_enforced phoenix_shapes phoenix_page_load phoenix_tables"
+            fixtures: "field_types external_types hostile_long_unicode_names target_policies decided_locked expr_app fidelity_bpgwgmpz fidelity_bptvorpv workflows_backend workflows_hostile_ids phoenix_enforced phoenix_shapes phoenix_page_load phoenix_tables phoenix_url"
     services:
       postgres:
         image: postgres:16

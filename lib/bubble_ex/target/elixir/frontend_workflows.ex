@@ -34,7 +34,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   | Result of step N | the step's result |
   | an element's custom state | the page's state map, per reusable-element instance |
   | an input's value | the page's input map, per instance: the page tracks every `Input` and `MultiLineInput` of text or number, `Checkbox` and text `Dropdown` it renders (not in a runtime container's template) |
-  | a URL parameter (`Get data from page URL`) | the page's URL query, as text |
+  | a URL parameter (`Get data from page URL`) | the page's URL query, read as its type (`Spec.url/1`); a thing by its unique ID, through Ash as the current user |
+  | the URL's path (`path`, `path segments`) | the page's URL path, its first segment the page's name |
 
   With `:page_data`, a page's thing, a group's, instance's or repeating
   group's data and a cell's thing are what the page loads; an element a
@@ -1310,8 +1311,15 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp bind({:step_result, %{"action" => action}}, _ctx), do: {:ok, {:step, action}}
 
-  defp bind({:url_parameter, %{"name" => name}}, _ctx) when is_binary(name),
-    do: {:ok, {:url, name}}
+  # A URL input (`Spec.url/1`): a thing is read by its unique ID through
+  # Ash, as the current user.
+  defp bind({:url_parameter, ref}, ctx) do
+    case Spec.url(ref) do
+      {:ok, {:url_value, %{type: type} = url}} -> url_bind(url, Type.reference(type), ctx)
+      {:ok, read} -> {:ok, read}
+      :error -> {:error, "url_parameter"}
+    end
+  end
 
   defp bind({:page_data, %{"name" => "Current Date/Time"}}, _ctx), do: {:ok, :now}
 
@@ -1340,6 +1348,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp bind({kind, _ref}, _ctx) when is_atom(kind), do: {:error, Atom.to_string(kind)}
   defp bind(_input, _ctx), do: {:error, "unknown"}
+
+  defp url_bind(url, {:data_type, id}, ctx) do
+    case resource_of(id, ctx) do
+      %{module: module} ->
+        {:ok, {:url_thing, Map.put(url, :resource, "#{ctx.namespace}.#{module}")}}
+
+      nil ->
+        {:error, "url_parameter"}
+    end
+  end
+
+  defp url_bind(url, _reference, _ctx), do: {:ok, {:url_value, url}}
 
   # Built-in element state names are Bubble's (no app IDs); a custom state
   # or a reusable element's parameter carries one, so it is named by kind.
