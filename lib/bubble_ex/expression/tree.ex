@@ -39,7 +39,12 @@ defmodule BubbleEx.Expression.Tree do
       * `params` - a reusable's parameters: parameter ID => type descriptor
       * `instance_of` - for a reusable instance, the reusable's Bubble ID
       * `page_size` - for a repeating group, the items a page of it shows
-        (rows × columns; nil when it shows them all), see `page_size/1`
+        (rows × columns; nil when it shows them all), see `page_size/1`;
+        for a table, its repeated row's fixed number of rows (nil: all)
+      * `repeats` - whether the element is repeated once per item of a
+        list: a repeating group's cell, or a table's repeated row (a
+        `TableCrossAxis` with `cross_axis_repeat`, whose content is its
+        table's type of content), see `cell_holder/2`
     """
     defstruct [
       :id,
@@ -51,6 +56,7 @@ defmodule BubbleEx.Expression.Tree do
       :owner,
       :instance_of,
       :page_size,
+      repeats: false,
       states: %{},
       defaults: %{},
       params: %{}
@@ -66,6 +72,7 @@ defmodule BubbleEx.Expression.Tree do
             owner: String.t() | nil,
             instance_of: String.t() | nil,
             page_size: pos_integer() | nil,
+            repeats: boolean(),
             states: %{String.t() => String.t()},
             defaults: %{String.t() => term()},
             params: %{String.t() => String.t()}
@@ -193,13 +200,80 @@ defmodule BubbleEx.Expression.Tree do
       states: states(raw),
       defaults: defaults(raw),
       instance_of: if(type == "CustomElement", do: text(props["custom_id"])),
-      page_size: if(type == "RepeatingGroup", do: page_size(props))
+      page_size: list_page_size(type, raw, props),
+      repeats: repeats?(type, props)
     }
 
-    [node | children(raw, id, owner)]
+    [node | raw |> children(id, owner) |> rows(node)]
   end
 
   defp element(_key, _raw, _parent, _owner), do: []
+
+  # A table's repeated row holds its table's thing, as a repeating
+  # group's cell does ("Current row's thing").
+  defp rows(children, %Node{type: "Table", id: table, content: content}) do
+    Enum.map(children, fn
+      %Node{type: "TableCrossAxis", repeats: true, parent: ^table} = row ->
+        %{row | content: content}
+
+      node ->
+        node
+    end)
+  end
+
+  defp rows(children, _node), do: children
+
+  defp list_page_size("RepeatingGroup", _raw, props), do: page_size(props)
+
+  # A table shows every item, one row each, unless its repeated row is
+  # set to a fixed number of rows.
+  defp list_page_size("Table", raw, _props) do
+    raw
+    |> Source.get(@children)
+    |> case do
+      {_key, elements} -> Source.entries(elements)
+      nil -> []
+    end
+    |> Enum.find_value(fn {_key, row} ->
+      props = if is_map(row), do: props(row), else: %{}
+
+      if is_map(row) and Source.value(row, ~w(type %x)) == "TableCrossAxis" and
+           props["cross_axis_repeat"] == true and props["fixed_number_repeating_axis"] == true,
+         do: positive(props["fixed_number_repeating_axis_count"])
+    end)
+  end
+
+  defp list_page_size(_type, _raw, _props), do: nil
+
+  defp repeats?("RepeatingGroup", _props), do: true
+  defp repeats?("TableCrossAxis", props), do: props["cross_axis_repeat"] == true
+  defp repeats?(_type, _props), do: false
+
+  @doc """
+  The repeating group or table whose cell holds what is inside `node` (an
+  element, or a map with its `type`, `repeats` and `parent`), given the
+  node's Bubble ID, or nil: a repeating group holds its own cells, a
+  table's repeated row its table's (one per item of the table's list). A
+  table's other rows (a header) are rendered once, outside its cells.
+  """
+  @spec cell_holder(map(), String.t()) :: String.t() | nil
+  def cell_holder(%{type: "RepeatingGroup"}, id), do: id
+  def cell_holder(%{type: "TableCrossAxis", repeats: true, parent: table}, _id), do: table
+  def cell_holder(_node, _id), do: nil
+
+  @doc """
+  The repeating group or table whose cell holds element `id` (or `id`
+  itself when `self?`), searching its enclosing elements in its page or
+  reusable element; nil outside one. See `cell_holder/2`.
+  """
+  @spec cell(t(), String.t() | nil, boolean()) :: String.t() | nil
+  def cell(tree, id, self? \\ false) do
+    self = if self?, do: List.wrap(node(tree, id)), else: []
+
+    (self ++ ancestors(tree, id))
+    |> Enum.take_while(&(&1.kind == :element))
+    |> Enum.find_value(&cell_holder(&1, &1.id))
+  end
 
   @doc """
   The items a page of a repeating group shows, from its properties: a

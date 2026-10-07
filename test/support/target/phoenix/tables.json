@@ -1,0 +1,1017 @@
+{
+  "_id": "tables-fixture",
+  "_comment": "Bubble's Table element: a dynamic table (header row, a repeated row, columns), a static one, one the page does not load. Synthetic.",
+  "user_types": {
+    "task": {
+      "display": "Task",
+      "fields": {
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        },
+        "rank_number": {
+          "display": "Rank",
+          "value": "number"
+        },
+        "secret_boolean": {
+          "display": "Secret",
+          "value": "boolean"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": []
+          }
+        },
+        "public_": {
+          "display": "Public",
+          "condition": {
+            "type": "InjectedValue",
+            "next": {
+              "type": "Message",
+              "name": "secret_boolean",
+              "next": {
+                "type": "Message",
+                "name": "is_false"
+              }
+            }
+          },
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        }
+      }
+    }
+  },
+  "element_definitions": {
+    "tag": {
+      "id": "bTagDef",
+      "name": "Tag",
+      "type": "CustomDefinition",
+      "custom_states": {
+        "picked_": {
+          "display": "Picked",
+          "value": "text"
+        }
+      },
+      "properties": {
+        "group_type": "custom.task",
+        "width": 200,
+        "height": 90,
+        "parameters": {
+          "0": {
+            "btype_id": "text",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pLabel",
+            "param_name": "Label"
+          }
+        }
+      },
+      "elements": {
+        "bTagLabel": {
+          "id": "bTagLabel",
+          "type": "Text",
+          "properties": {
+            "order": 1,
+            "width": 120,
+            "height": 30,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Label: ",
+                "1": {
+                  "type": "GetElement",
+                  "properties": {
+                    "element_id": "bTagDef"
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "param_pLabel"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bTagPicked": {
+          "id": "bTagPicked",
+          "type": "Text",
+          "properties": {
+            "order": 2,
+            "width": 120,
+            "height": 30,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Picked: ",
+                "1": {
+                  "type": "GetElement",
+                  "properties": {
+                    "element_id": "bTagDef"
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "custom.picked_"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bTagPick": {
+          "id": "bTagPick",
+          "type": "Button",
+          "properties": {
+            "order": 3,
+            "width": 80,
+            "height": 30,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Tag"
+              }
+            }
+          }
+        }
+      },
+      "workflows": {
+        "wTagPick": {
+          "id": "wTagPick",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bTagPick"
+          },
+          "actions": {
+            "0": {
+              "id": "aTagPick",
+              "type": "SetCustomState",
+              "properties": {
+                "element_id": "bTagDef",
+                "custom_state": "custom.picked_",
+                "value": {
+                  "type": "GetElement",
+                  "properties": {
+                    "element_id": "bTagDef"
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "param_pLabel"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "pages": {
+    "index": {
+      "id": "bHome",
+      "name": "index",
+      "type": "Page",
+      "properties": {
+        "title": "Tables"
+      },
+      "custom_states": {
+        "picked_": {
+          "default_val": "none",
+          "display": "Picked",
+          "value": "text"
+        }
+      },
+      "elements": {
+        "bTable": {
+          "id": "bTable",
+          "type": "Table",
+          "properties": {
+            "order": 1,
+            "width": 600,
+            "height": 300,
+            "fit_height": true,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "sort_field": "rank_number",
+                "descending": false
+              }
+            }
+          },
+          "elements": {
+            "bColTitle": {
+              "id": "bColTitle",
+              "type": "TableMainAxis",
+              "properties": {
+                "axis_index": 0,
+                "min_width_css": "160px"
+              }
+            },
+            "bColRank": {
+              "id": "bColRank",
+              "type": "TableMainAxis",
+              "properties": {
+                "axis_index": 1
+              }
+            },
+            "bColPick": {
+              "id": "bColPick",
+              "type": "TableMainAxis",
+              "properties": {
+                "axis_index": 2
+              }
+            },
+            "bColNote": {
+              "id": "bColNote",
+              "type": "TableMainAxis",
+              "properties": {
+                "axis_index": 3,
+                "is_visible": false
+              }
+            },
+            "bHead": {
+              "id": "bHead",
+              "type": "TableCrossAxis",
+              "properties": {
+                "axis_index": 0,
+                "bgcolor": "#eeeeee"
+              },
+              "elements": {
+                "bHeadTitle": {
+                  "id": "bHeadTitle",
+                  "type": "TableCell",
+                  "properties": {
+                    "cell_main_axis_id": "bColTitle",
+                    "container_layout": "row",
+                    "order": 1
+                  },
+                  "elements": {
+                    "bHeadTitleText": {
+                      "id": "bHeadTitleText",
+                      "type": "Text",
+                      "properties": {
+                        "order": 1,
+                        "width": 120,
+                        "height": 30,
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Title"
+                          }
+                        }
+                      }
+                    },
+                    "bHeadBtn": {
+                      "id": "bHeadBtn",
+                      "type": "Button",
+                      "properties": {
+                        "order": 2,
+                        "width": 80,
+                        "height": 30,
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Sort"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "bHeadRank": {
+                  "id": "bHeadRank",
+                  "type": "TableCell",
+                  "properties": {
+                    "cell_main_axis_id": "bColRank",
+                    "container_layout": "row",
+                    "order": 2
+                  },
+                  "elements": {
+                    "bHeadRankText": {
+                      "id": "bHeadRankText",
+                      "type": "Text",
+                      "properties": {
+                        "order": 1,
+                        "width": 120,
+                        "height": 30,
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Rank"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "bHeadPick": {
+                  "id": "bHeadPick",
+                  "type": "TableCell",
+                  "properties": {
+                    "cell_main_axis_id": "bColPick",
+                    "container_layout": "row",
+                    "order": 3
+                  },
+                  "elements": {
+                    "bHeadTag": {
+                      "id": "bHeadTag",
+                      "type": "CustomElement",
+                      "properties": {
+                        "order": 1,
+                        "width": 200,
+                        "height": 90,
+                        "custom_id": "bTagDef",
+                        "param_pLabel": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Head"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "bHeadNote": {
+                  "id": "bHeadNote",
+                  "type": "TableCell",
+                  "properties": {
+                    "cell_main_axis_id": "bColNote",
+                    "container_layout": "row",
+                    "order": 4
+                  },
+                  "elements": {
+                    "bHeadRowRef": {
+                      "id": "bHeadRowRef",
+                      "type": "Text",
+                      "properties": {
+                        "order": 1,
+                        "width": 120,
+                        "height": 30,
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "X: ",
+                            "1": {
+                              "type": "ElementAncestor",
+                              "properties": {
+                                "ancestor_type": "TableCrossAxis",
+                                "fetch_data": true
+                              },
+                              "next": {
+                                "type": "Message",
+                                "name": "title_text"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bRow": {
+              "id": "bRow",
+              "type": "TableCrossAxis",
+              "properties": {
+                "axis_index": 1,
+                "cross_axis_repeat": true
+              },
+              "elements": {
+                "bCellTitle": {
+                  "id": "bCellTitle",
+                  "type": "TableCell",
+                  "properties": {
+                    "cell_main_axis_id": "bColTitle",
+                    "container_layout": "row",
+                    "order": 1
+                  },
+                  "elements": {
+                    "bRowTitle": {
+                      "id": "bRowTitle",
+                      "type": "Text",
+                      "properties": {
+                        "order": 1,
+                        "width": 120,
+                        "height": 30,
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "R: ",
+                            "1": {
+                              "type": "ElementAncestor",
+                              "properties": {
+                                "ancestor_type": "TableCrossAxis",
+                                "fetch_data": true
+                              },
+                              "next": {
+                                "type": "Message",
+                                "name": "title_text"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "bCellRank": {
+                  "id": "bCellRank",
+                  "type": "TableCell",
+                  "properties": {
+                    "cell_main_axis_id": "bColRank",
+                    "container_layout": "row",
+                    "order": 2
+                  },
+                  "elements": {
+                    "bRankGroup": {
+                      "id": "bRankGroup",
+                      "type": "Group",
+                      "properties": {
+                        "order": 1,
+                        "width": 100,
+                        "height": 30,
+                        "group_type": "custom.task",
+                        "data_source": {
+                          "type": "ElementParent"
+                        }
+                      },
+                      "elements": {
+                        "bRankText": {
+                          "id": "bRankText",
+                          "type": "Text",
+                          "properties": {
+                            "order": 1,
+                            "width": 120,
+                            "height": 30,
+                            "text": {
+                              "type": "TextExpression",
+                              "entries": {
+                                "0": "N: ",
+                                "1": {
+                                  "type": "ElementParent",
+                                  "next": {
+                                    "type": "Message",
+                                    "name": "rank_number"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "bCellPick": {
+                  "id": "bCellPick",
+                  "type": "TableCell",
+                  "properties": {
+                    "cell_main_axis_id": "bColPick",
+                    "container_layout": "row",
+                    "order": 3
+                  },
+                  "elements": {
+                    "bPick": {
+                      "id": "bPick",
+                      "type": "Button",
+                      "properties": {
+                        "order": 1,
+                        "width": 80,
+                        "height": 30,
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Pick"
+                          }
+                        }
+                      }
+                    },
+                    "bRowTag": {
+                      "id": "bRowTag",
+                      "type": "CustomElement",
+                      "properties": {
+                        "order": 2,
+                        "width": 200,
+                        "height": 90,
+                        "custom_id": "bTagDef",
+                        "group_type": "custom.task",
+                        "data_source": {
+                          "type": "ElementAncestor",
+                          "properties": {
+                            "ancestor_type": "TableCrossAxis",
+                            "fetch_data": true
+                          }
+                        },
+                        "param_pLabel": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Row ",
+                            "1": {
+                              "type": "ElementAncestor",
+                              "properties": {
+                                "ancestor_type": "TableCrossAxis",
+                                "fetch_data": true
+                              },
+                              "next": {
+                                "type": "Message",
+                                "name": "title_text"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "bCellNote": {
+                  "id": "bCellNote",
+                  "type": "TableCell",
+                  "properties": {
+                    "cell_main_axis_id": "bColNote",
+                    "container_layout": "row",
+                    "order": 4,
+                    "is_visible": false
+                  },
+                  "elements": {
+                    "bRowNote": {
+                      "id": "bRowNote",
+                      "type": "Text",
+                      "properties": {
+                        "order": 1,
+                        "width": 120,
+                        "height": 30,
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Hidden column"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "states": {
+                    "0": {
+                      "type": "State",
+                      "properties": {
+                        "is_visible": true
+                      },
+                      "condition": {
+                        "type": "GetElement",
+                        "properties": {
+                          "element_id": "bHome"
+                        },
+                        "next": {
+                          "type": "Message",
+                          "name": "custom.picked_",
+                          "next": {
+                            "type": "Message",
+                            "name": "equals",
+                            "args": {
+                              "type": "TextExpression",
+                              "entries": {
+                                "0": "header"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bPicked": {
+          "id": "bPicked",
+          "type": "Text",
+          "properties": {
+            "order": 2,
+            "width": 120,
+            "height": 30,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Picked: ",
+                "1": {
+                  "type": "GetElement",
+                  "properties": {
+                    "element_id": "bHome"
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "custom.picked_"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bStatic": {
+          "id": "bStatic",
+          "type": "Table",
+          "properties": {
+            "order": 3,
+            "width": 300,
+            "height": 100
+          },
+          "elements": {
+            "bStaticA": {
+              "id": "bStaticA",
+              "type": "TableMainAxis",
+              "properties": {
+                "axis_index": 0
+              }
+            },
+            "bStaticB": {
+              "id": "bStaticB",
+              "type": "TableMainAxis",
+              "properties": {
+                "axis_index": 1
+              }
+            },
+            "bStaticHead": {
+              "id": "bStaticHead",
+              "type": "TableCrossAxis",
+              "properties": {
+                "axis_index": 0
+              },
+              "elements": {
+                "bStaticH1": {
+                  "id": "bStaticH1",
+                  "type": "TableCell",
+                  "properties": {
+                    "cell_main_axis_id": "bStaticA",
+                    "container_layout": "row",
+                    "order": 1
+                  },
+                  "elements": {
+                    "bStaticH1Text": {
+                      "id": "bStaticH1Text",
+                      "type": "Text",
+                      "properties": {
+                        "order": 1,
+                        "width": 120,
+                        "height": 30,
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Key"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "bStaticH2": {
+                  "id": "bStaticH2",
+                  "type": "TableCell",
+                  "properties": {
+                    "cell_main_axis_id": "bStaticB",
+                    "container_layout": "row",
+                    "order": 2
+                  },
+                  "elements": {
+                    "bStaticH2Text": {
+                      "id": "bStaticH2Text",
+                      "type": "Text",
+                      "properties": {
+                        "order": 1,
+                        "width": 120,
+                        "height": 30,
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Value"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bStaticRow": {
+              "id": "bStaticRow",
+              "type": "TableCrossAxis",
+              "properties": {
+                "axis_index": 1
+              },
+              "elements": {
+                "bStaticC1": {
+                  "id": "bStaticC1",
+                  "type": "TableCell",
+                  "properties": {
+                    "cell_main_axis_id": "bStaticA",
+                    "container_layout": "row",
+                    "order": 1
+                  },
+                  "elements": {
+                    "bStaticC1Text": {
+                      "id": "bStaticC1Text",
+                      "type": "Text",
+                      "properties": {
+                        "order": 1,
+                        "width": 120,
+                        "height": 30,
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "K: Colour"
+                          }
+                        }
+                      }
+                    },
+                    "bStaticTag": {
+                      "id": "bStaticTag",
+                      "type": "CustomElement",
+                      "properties": {
+                        "order": 2,
+                        "width": 200,
+                        "height": 90,
+                        "custom_id": "bTagDef",
+                        "param_pLabel": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Static"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "bStaticC2": {
+                  "id": "bStaticC2",
+                  "type": "TableCell",
+                  "properties": {
+                    "cell_main_axis_id": "bStaticB",
+                    "container_layout": "row",
+                    "order": 2
+                  },
+                  "elements": {
+                    "bStaticC2Text": {
+                      "id": "bStaticC2Text",
+                      "type": "Text",
+                      "properties": {
+                        "order": 1,
+                        "width": 120,
+                        "height": 30,
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "V: Blue"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bUnloaded": {
+          "id": "bUnloaded",
+          "type": "Table",
+          "properties": {
+            "order": 4,
+            "width": 300,
+            "height": 100,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "sort_field": "rank_number",
+                "descending": false
+              },
+              "next": {
+                "type": "Message",
+                "name": "no_such_operator"
+              }
+            }
+          },
+          "elements": {
+            "bUnloadedA": {
+              "id": "bUnloadedA",
+              "type": "TableMainAxis",
+              "properties": {
+                "axis_index": 0
+              }
+            },
+            "bUnloadedRow": {
+              "id": "bUnloadedRow",
+              "type": "TableCrossAxis",
+              "properties": {
+                "axis_index": 0,
+                "cross_axis_repeat": true
+              },
+              "elements": {
+                "bUnloadedC1": {
+                  "id": "bUnloadedC1",
+                  "type": "TableCell",
+                  "properties": {
+                    "cell_main_axis_id": "bUnloadedA",
+                    "container_layout": "row",
+                    "order": 1
+                  },
+                  "elements": {
+                    "bUnloadedText": {
+                      "id": "bUnloadedText",
+                      "type": "Text",
+                      "properties": {
+                        "order": 1,
+                        "width": 120,
+                        "height": 30,
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "U: ",
+                            "1": {
+                              "type": "ElementAncestor",
+                              "properties": {
+                                "ancestor_type": "TableCrossAxis",
+                                "fetch_data": true
+                              },
+                              "next": {
+                                "type": "Message",
+                                "name": "title_text"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bFixed": {
+          "id": "bFixed",
+          "type": "Table",
+          "properties": {
+            "order": 5,
+            "width": 300,
+            "height": 100,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "sort_field": "title_text",
+                "descending": false
+              }
+            }
+          },
+          "elements": {
+            "bFixedA": {
+              "id": "bFixedA",
+              "type": "TableMainAxis",
+              "properties": {
+                "axis_index": 0
+              }
+            },
+            "bFixedRow": {
+              "id": "bFixedRow",
+              "type": "TableCrossAxis",
+              "properties": {
+                "axis_index": 0,
+                "cross_axis_repeat": true,
+                "fixed_number_repeating_axis": true,
+                "fixed_number_repeating_axis_count": 2
+              },
+              "elements": {
+                "bFixedC1": {
+                  "id": "bFixedC1",
+                  "type": "TableCell",
+                  "properties": {
+                    "cell_main_axis_id": "bFixedA",
+                    "container_layout": "row",
+                    "order": 1
+                  },
+                  "elements": {
+                    "bFixedText": {
+                      "id": "bFixedText",
+                      "type": "Text",
+                      "properties": {
+                        "order": 1,
+                        "width": 120,
+                        "height": 30,
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "F: ",
+                            "1": {
+                              "type": "ElementAncestor",
+                              "properties": {
+                                "ancestor_type": "TableCrossAxis",
+                                "fetch_data": true
+                              },
+                              "next": {
+                                "type": "Message",
+                                "name": "title_text"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "workflows": {
+        "wHead": {
+          "id": "wHead",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bHeadBtn"
+          },
+          "actions": {
+            "0": {
+              "id": "aHead1",
+              "type": "SetCustomState",
+              "properties": {
+                "element_id": "bHome",
+                "custom_state": "custom.picked_",
+                "value": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "header"
+                  }
+                }
+              }
+            },
+            "1": {
+              "id": "aHead2",
+              "type": "HideElement",
+              "properties": {
+                "element_id": "bStaticC1Text"
+              }
+            }
+          }
+        },
+        "wPick": {
+          "id": "wPick",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bPick"
+          },
+          "actions": {
+            "0": {
+              "id": "aPick",
+              "type": "SetCustomState",
+              "properties": {
+                "element_id": "bHome",
+                "custom_state": "custom.picked_",
+                "value": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": {
+                      "type": "ElementAncestor",
+                      "properties": {
+                        "ancestor_type": "TableCrossAxis",
+                        "fetch_data": true
+                      },
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

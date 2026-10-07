@@ -103,7 +103,8 @@ defmodule BubbleEx.Workflows.Frontend do
           instance_of: String.t() | nil,
           value: String.t() | nil,
           content: String.t() | nil,
-          page_size: pos_integer() | nil
+          page_size: pos_integer() | nil,
+          repeats: boolean()
         }
   @type state :: %{
           element: String.t(),
@@ -783,12 +784,7 @@ defmodule BubbleEx.Workflows.Frontend do
 
   # The repeating group whose cell holds `element` (in the same surface),
   # or nil.
-  defp cell_of(element, ctx) do
-    ctx.tree
-    |> Tree.ancestors(element)
-    |> Enum.take_while(&(&1.kind == :element))
-    |> Enum.find_value(&(&1.type in ~w(RepeatingGroup Table) && &1.id))
-  end
+  defp cell_of(element, ctx), do: Tree.cell(ctx.tree, element)
 
   defp element_ref(id, element, ctx) do
     if element && in_surface?(element, ctx),
@@ -860,7 +856,8 @@ defmodule BubbleEx.Workflows.Frontend do
          instance_of: node.instance_of,
          value: node.value,
          content: node.content,
-         page_size: node.page_size
+         page_size: node.page_size,
+         repeats: node.repeats
        }}
     end
   end

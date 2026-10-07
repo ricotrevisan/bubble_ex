@@ -188,6 +188,16 @@ defmodule BubbleEx.Frontend.Export.Css do
   end
 
   @doc """
+  The declarations that lay out a container's children as a group's
+  (a row or column with its gaps and alignment, …), for a placeholder
+  whose content is laid out like a group's: a table cell, whose own box
+  stays a table cell.
+  """
+  @spec container_layout(Node.t()) :: [{String.t(), term()}]
+  def container_layout(%Node{} = node),
+    do: %{node | kind: :group} |> layout_css() |> declarations()
+
+  @doc """
   Paint (CSS or Bubble property names) as the sorted, safe `{property,
   value}` declarations a rule gets.
   """
