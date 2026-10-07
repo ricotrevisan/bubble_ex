@@ -10,6 +10,12 @@ defmodule BubbleEx.Target.ElixirTest do
   alias BubbleEx.Expression.{Compiler, IR}
   alias BubbleEx.Target.Elixir, as: Target
 
+  defmodule Hidden do
+    @moduledoc false
+    # Plays `%Ash.ForbiddenField{}`: a field the user may not view.
+    defstruct field: nil
+  end
+
   defmodule Runtime do
     @moduledoc false
     # A minimal stand-in for the generated app's runtime.
@@ -30,9 +36,10 @@ defmodule BubbleEx.Target.ElixirTest do
     def as_list(x) when is_list(x), do: x
     def as_list(x), do: if(empty?(x), do: [], else: [x])
     def unhidden(x), do: x
-    def id(nil), do: nil
+    def id(%BubbleEx.Target.ElixirTest.Hidden{}), do: nil
     def id(%{id: id}), do: id
     def id(id) when is_binary(id), do: id
+    def id(_x), do: nil
   end
 
   @runtime inspect(Runtime)
@@ -194,6 +201,26 @@ defmodule BubbleEx.Target.ElixirTest do
       Target.compile(IR.node(:member, [ids, held], "boolean"), project, runtime: @runtime)
 
     assert eval(member, element_state_bg1_param_p1: %{id: "u2"}, this: %{access: ["u1", "u2"]})
+
+    # Empty or hidden (a field the user may not view reads as empty): no ID,
+    # never a member, and equal to an empty reference only.
+    for empty <- [nil, %Hidden{}] do
+      refute eval(member, element_state_bg1_param_p1: empty, this: %{access: ["u1"]})
+
+      {:ok, eq} =
+        Target.compile(IR.node(:eq, [held, assignee], "boolean"), project, runtime: @runtime)
+
+      assert eval(eq, element_state_bg1_param_p1: empty, this: %{assignee_id: nil})
+      refute eval(eq, element_state_bg1_param_p1: empty, this: %{assignee_id: "u1"})
+    end
+  end
+
+  test "the stand-in runtime's id/1: a record's ID, an ID, else nil" do
+    assert Runtime.id(%{id: "u1"}) == "u1"
+    assert Runtime.id("u1") == "u1"
+    assert Runtime.id(nil) == nil
+    assert Runtime.id(%Hidden{}) == nil
+    assert Runtime.id(42) == nil
   end
 
   test "records compare by ID; the current user side must not be empty", %{project: project} do

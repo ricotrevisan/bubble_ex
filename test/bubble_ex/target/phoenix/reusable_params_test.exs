@@ -286,6 +286,12 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
                  ~s|        do: !visible_bdueknown(Bubble.data(@bubble_data, @scope, "param_pDue/bCard")),\n| <>
                  ~s|        else: false|
 
+      # A thing a property holds compares with the page's thing by ID.
+      assert page =~ "visible_bsametask("
+
+      assert files["lib/shop_web/live/task_live.ex"] =~
+               ~r/defp visible_bsametask\(.*?Runtime\.id\(/s
+
       # A default is read: the condition is decided.
       assert page =~ "visible_boutsideshown("
 

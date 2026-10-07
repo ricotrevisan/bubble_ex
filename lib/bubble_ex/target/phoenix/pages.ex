@@ -2190,9 +2190,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         _ -> nil
       end
 
-    hides? = Enum.any?(Conditions.visibility(payload), &match?({_, false}, &1))
-
-    if Map.get(ctx, :enforced?, false) and hides? and static == [],
+    # Fail closed: a conditional whose visibility is not a yes/no literal
+    # may hide the element too (`Conditions.may_hide?/1`).
+    if Map.get(ctx, :enforced?, false) and Conditions.may_hide?(payload) and static == [],
       do: {[{"hidden", true}], "hidden (privacy: enforced, a conditional may hide it)"},
       else: {static, "shown as on page load"}
   end

@@ -11,11 +11,15 @@ All notable changes to this project are documented here.
   things by ID, and a field path reads its reference's `_id` attribute.
   Any other thing (an element's thing, a reusable property, a custom
   state, a search's first item) was compared as the loaded record. A
-  record never equals an ID, so `<property> is not <group's workspace>`
-  was always true, and an "access required" panel always covered the
+  record never equals an ID, so `<property> is not <a thing's reference
+  field>` was always true, and a panel shown by it always covered the
   view even though the property's default was read correctly. Those
   operands now go through the runtime's new `id/1` (a record's `id`; an
-  ID stays itself). An existing app's owned `Bubble.Runtime` needs `id/1`
+  ID stays itself; empty or a field the user may not view, nil). The same
+  compiled comparisons guard workflows: an "Only when" on a workflow or a
+  step, including write guards under option A, was accidentally always
+  false (`is`, `contains`) or always true (`is not`) on such operands, and
+  now matches Bubble. An existing app's owned `Bubble.Runtime` needs `id/1`
   added from the template. On the private fixture app (counts only), 75
   compiled comparisons go through it, 13 of them in visibility helpers.
 

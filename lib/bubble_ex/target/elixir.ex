@@ -633,7 +633,6 @@ defmodule BubbleEx.Target.Elixir do
   defp text(:error, st), do: {:error, st}
   defp text(part, st), do: runtime(st, st.shown, [part])
 
-  # Records compare by Bubble ID: a record-valued expression as its ID.
   # A record compares by its ID: a field path reads its `_id` attribute;
   # any other record (an element's thing, a property, a custom state, a
   # search's first item) goes through the runtime's `id/1` (an ID stays

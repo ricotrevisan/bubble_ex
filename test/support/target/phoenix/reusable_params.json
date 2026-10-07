@@ -1893,6 +1893,48 @@
           },
           "type": "Input"
         },
+        "bSameTask": {
+          "id": "bSameTask",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 13,
+            "text": {
+              "entries": {
+                "0": "Card A shows this task"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "param_pTask",
+                  "next": {
+                    "args": {
+                      "type": "CurrentPageItem"
+                    },
+                    "name": "equals",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bCardA"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
         "bShowB": {
           "id": "bShowB",
           "properties": {

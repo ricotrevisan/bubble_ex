@@ -169,6 +169,10 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
       open =~ ~r/\shidden(\s|>|=)/
     end
 
+    # A thing a property holds (a record) compared with the page's thing
+    # (its ID): by ID, so equal.
+    refute page_hidden?.("bSameTask")
+
     assert page_hidden?.("bUnsetShown")
     assert page_hidden?.("bUnsetKept") == enforced?()
   end
