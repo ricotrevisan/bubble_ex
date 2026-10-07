@@ -99,6 +99,10 @@ defmodule BubbleEx.Expression.TypingTest do
                  context.(Map.put(name, "value", type))
       end
 
+      # The live payload's compact spellings.
+      assert {:value, {:url_parameter, %{"name" => "n", "type" => "number"}}, "number"} =
+               context.(Map.put(name, "%v", "number"))
+
       assert {:value, {:url_parameter, %{"path" => "segments"}}, "list.text"} =
                context.(%{"type" => "path_segment"})
 

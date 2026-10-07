@@ -228,8 +228,8 @@ defmodule BubbleEx.Expression.Typing do
   # a list of things from the path and any other type are not typed.
   defp url_input(ref, env) do
     with false <- url_list?(ref),
-         {:ok, type} <- url_type(ref["value"], env) do
-      case {ref["type"], static_text(ref["parameter_name"])} do
+         {:ok, type} <- url_type(Keys.value(ref, :value), env) do
+      case {Keys.value(ref, :type), static_text(ref["parameter_name"])} do
         {kind, name} when kind in [nil, "parameter"] and is_binary(name) ->
           {url_ref(%{"name" => name}, type), type}
 
