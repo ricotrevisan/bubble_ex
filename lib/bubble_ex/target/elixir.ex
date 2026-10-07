@@ -42,8 +42,9 @@ defmodule BubbleEx.Target.Elixir do
 
   | Function | Bubble |
   |----------|--------|
-  | `text(x)` | a value as machine text (numbers as JavaScript prints them, yes/no, dates in ISO 8601, UTC, milliseconds) |
+  | `text(x)` | a value as text (numbers as JavaScript prints them, yes/no, dates as Bubble's default display text in the user's zone, as Bubble writes them into URL parameters; replay 2026-10-07) |
   | `display(x)` | a value shown on a page (`:display`): `text/1` with dates in Bubble's default format |
+  | `utc_text(x)` | `text/1` as Bubble's server converts a value (`:utc`, backend workflows): dates in UTC (replay 2026-10-07) |
   | `empty?(x)` | `is empty`: nil, `""` or `[]` |
   | `compare(op, a, b)` | `>`, `<`, `>=`, `<=`; false when either side is empty |
   | `add/sub/mul/div/mod(a, b)` | arithmetic; dates plus intervals |
@@ -57,7 +58,8 @@ defmodule BubbleEx.Target.Elixir do
   #`, `:converted to list`, WTF-495) calls the runtime (`merge/2`, …),
   which compares things by Bubble ID, records and IDs alike; `:filtered`
   over options, texts, numbers or dates is `Enum.filter/2` with the
-  constraints per item (`item`). An option's label or attribute of a list
+  constraints per item (`item`); `:sorted` on texts, numbers or dates is
+  `sort_values(list, descending?)`. An option's label or attribute of a list
   of options maps over it (a list attribute of each is one list of their
   items).
 
@@ -71,7 +73,7 @@ defmodule BubbleEx.Target.Elixir do
   Not compiled yet (diagnosed with `:elixir_expr_unsupported`, stage
   `{:target, :elixir}`): searches, and `:filtered` or sorting of a list of
   things (these become Ash queries, `FrontendWorkflows.Lists`), other
-  sorting, API type fields, fields of the items of a list-of-things field
+  sorting by a field, API type fields, fields of the items of a list-of-things field
   (stored as a list of IDs).
 
   A format the runtime only approximates (an unknown number setting, a
@@ -112,6 +114,7 @@ defmodule BubbleEx.Target.Elixir do
           | {:path, String.t() | list()}
           | {:file_url, String.t() | nil}
           | {:display, boolean()}
+          | {:utc, boolean()}
 
   @runtime_unary ~w(lowercase uppercase trim capitalize_words text_length json_encode url_encode
                     is_email abs round to_text to_number)a
@@ -135,7 +138,11 @@ defmodule BubbleEx.Target.Elixir do
       (see the moduledoc); none by default
     * `:display` - parts of a dynamic text are shown on a page:
       `display(x)` (dates in Bubble's default format) instead of `text(x)`
-      (machine text: URLs, API responses); default false
+      (URL parameters, values a page workflow writes); default false
+    * `:utc` - the expression runs on the server (a backend workflow):
+      parts of a dynamic text and `:converted to text` are `utc_text(x)`,
+      dates in UTC as Bubble's server converts them (replay 2026-10-07);
+      default false
   """
   @spec compile(IR.t(), Project.t(), [option()]) :: {:ok, result()} | {:error, Error.t()}
   def compile(ir, project, opts \\ [])
@@ -154,7 +161,7 @@ defmodule BubbleEx.Target.Elixir do
       runtime: Keyword.get(opts, :runtime, "Bubble.Runtime"),
       namespace: Keyword.get(opts, :namespace, "MyApp"),
       file_url: Keyword.get(opts, :file_url),
-      shown: if(Keyword.get(opts, :display, false), do: :display, else: :text),
+      shown: shown(opts),
       bindings: %{},
       loads: %{},
       used: MapSet.new(),
@@ -178,6 +185,14 @@ defmodule BubbleEx.Target.Elixir do
         runtime: st.used |> MapSet.to_list() |> Enum.sort(),
         diagnostics: approximations(st, opts)
       }
+    end
+  end
+
+  defp shown(opts) do
+    cond do
+      Keyword.get(opts, :display, false) -> :display
+      Keyword.get(opts, :utc, false) -> :utc_text
+      true -> :text
     end
   end
 
@@ -329,6 +344,13 @@ defmodule BubbleEx.Target.Elixir do
     runtime(st, op, parts)
   end
 
+  # `:sorted` on texts, numbers or dates (no sort field): by value, empty
+  # values first ascending and last descending (replay 2026-10-07).
+  defp value(%IR{op: :sort, args: [list, nil, desc]}, st) when is_boolean(desc) do
+    {l, st} = value(list, st)
+    runtime(st, :sort_values, [l, inspect(desc)])
+  end
+
   # `:filtered` over options, texts, numbers, dates or yes/no values: the
   # constraints per item. A list of things is filtered by its target (a
   # database query: the items' fields are not read here).
@@ -359,6 +381,12 @@ defmodule BubbleEx.Target.Elixir do
   defp value(%IR{op: :fallback, args: [x, d]}, st) do
     {[a, b], st} = Enum.map_reduce([x, d], st, &value/2)
     runtime(st, :default, [a, b])
+  end
+
+  # `:converted to text` on the server is its text in UTC.
+  defp value(%IR{op: :to_text, args: [x]}, %{shown: :utc_text} = st) do
+    {a, st} = value(x, st)
+    runtime(st, :utc_text, [a])
   end
 
   defp value(%IR{op: op, args: [x]}, st) when op in @runtime_unary do

@@ -202,8 +202,8 @@ attribute leaves the search uncompiled (residue).
 
 A search may name **further sort keys** (`additional_sort_fields`):
 the list is sorted by the first key, then the next among equal ones, and
-so on, in the database (`Ash.Query.sort([{:rank, :asc}, {:title,
-:desc}])`). The editor's display names (`*_friendly`) and an unset
+so on, in the database (`Ash.Query.sort([{:rank, :asc_nils_last},
+{:title, :desc_nils_last}])`: empty values last, as Bubble sorts things). The editor's display names (`*_friendly`) and an unset
 dynamic sort field or geographic reference are ignored; a dynamic sort
 field (one an expression picks) or a geographic sort is residue
 (`:search_option`).
@@ -219,9 +219,10 @@ database sorts and filters lists of things wherever it can:
 | a search `:sorted by` (again) | one query sorted by both keys, the outer one first |
 | a search `:filtered` | the search with the filter's constraints added: what the filter keeps of the whole search, not of its first page |
 | any other list of things `:sorted by` | a query for the list's records (`id in ^ids`), sorted |
-| any other list of things `:filtered` | a query for the list's records that meet the constraints, shown in the list's order (`Runtime.intersect/2`) |
+| any other list of things `:filtered` | a query for the list's records that meet the constraints, shown in the list's order (`Runtime.intersect/2` with the list second: it follows the second list's order) |
 | `:merged with`, `:unique elements`, `:minus list`, `:intersect with`, `:plus item`, `:minus item`, `:items until #`, `:item #`, `:converted to list` | Elixir over the lists (the generated `Bubble.Runtime`); a search under them is a query read first (`query_<n>`) |
 | options, texts, numbers or dates `:filtered` | Elixir (`Enum.filter/2`, the constraints per item) |
+| texts, numbers or dates `:sorted` | Elixir (`Runtime.sort_values/2`): empty values first ascending, last descending; a stable sort |
 | `All <option set>` (an option value of `all values`) | every option of the set |
 
 Every query reads as the current user, bounded by `:max_items`, like any
@@ -245,31 +246,42 @@ changes like a search (`read: :query`), and to those of every resource
 its queries search (`query_topics`), whatever its own type (a count, a
 text).
 
-Assumptions, not replayed (WTF-387; chosen to show less, never more):
+As Bubble does (replay 2026-10-07, a list of texts `b,a,b,c` and `c,d,a`,
+and three things):
 
-* `:merged with` keeps the first list's items, then the second's not in
-  it, each once; `:unique elements`, `:minus list` and `:intersect with`
-  keep each item's first occurrence; things are the same item when
-  their unique IDs are.
-* `:plus item` does not add an item already listed, nor an empty one;
-  `:items until #` with an empty number shows nothing.
-* A list of things sorted or filtered shows each thing once (a query
-  finds each record once), and a sort is stable: equal keys keep the
-  order of what is sorted (a search's, the database's). Empty values sort as PostgreSQL does (last
-  ascending, first descending), as a search's sort already did.
-* A page's `:filtered` that does not state `ignore_empty_constraints`
-  matches nothing on an empty constraint value, as a page search does
-  (below).
+* `:unique elements` keeps each item's first occurrence, in order
+  (`b|a|c`); `:merged with` keeps the first list's items, then the
+  second's not in it, each once (`b|a|c|d`); `:minus list` removes
+  duplicates too (`b`); things are the same item when their unique IDs
+  are.
+* `:intersect with` follows the **second** list's order (`c|a`).
+* `:plus item` of an item already listed deduplicates the whole list
+  (`b|a|c`, not `b|a|b|c`); of an empty value it **appends** it (empty).
+* `:items until #` with an empty number or 0 shows nothing; `:item #`
+  with 0, a negative or an empty number is empty.
+* Texts, numbers and dates sort with empty values **first ascending**
+  and last descending. Things sort with empty values **last in both
+  directions** (`Ash.Query.sort` with `:asc_nils_last` /
+  `:desc_nils_last`, for searches too: one database sort).
+* `:filtered` with an empty constraint value matches nothing when
+  `ignore_empty_constraints` is unstated or false, and everything (the
+  constraint is dropped) when true.
 
-Not lowered yet: sorting a list of options, texts or numbers (residue
-`elixir:sort`), a field of each item of a list, a list operator inside a
-repeating group's cell (`:page_data_in_cell`, `kind: query`), dynamic sort
-fields.
+Still assumed (chosen to show less, never more): a list of things sorted
+or filtered shows each thing once (a query finds each record once), and
+a sort is stable: equal keys keep the order of what is sorted (a
+search's, the database's).
+
+Not lowered yet: sorting a list of options, or any list by a field of its
+items (residue `elixir:sort`), a field of each item of a list, a list
+operator inside a repeating group's cell (`:page_data_in_cell`, `kind:
+query`), dynamic sort fields.
 
 **Display data (WTF-492).** An element a "Display data in a group /
 popup" or "Display list in a repeating group" step sets shows what the
 step showed until a reset or the page's next load, in place of its own
-data source (`docs/frontend-workflows.md`). The page keeps a thing's
+data source, even when what that source reads changes, and an empty
+value shows empty (replay 2026-10-07; `docs/frontend-workflows.md`). The page keeps a thing's
 unique ID only (`@bubble_displayed`) and reads it again, as the current
 user through Ash, at every read of its data: a workflow never shows
 what the user may not read. Its entry in `__bubble__(:data)` says so
@@ -621,7 +633,7 @@ Bubble (WTF-385, 2026-10-01), and depends on where the search runs
 |-------|----------------------------------------------|--------|
 | a page (its data sources, elements and workflows) | matches nothing, even a record whose field is empty | the constraint is dropped |
 | a backend workflow | matches nothing | matches nothing (no effect) |
-| a page workflow's server-side action (create, change, delete, bulk change, schedule, …) | matches nothing | matches nothing (not replayed: the backend rule, so a delete or bulk change with a blank input never reaches every readable record) |
+| a page workflow's server-side action (create, change, delete, bulk change, schedule, …) | matches nothing | matches nothing: **stricter than Bubble** (see below) |
 
 (The Data API drops `equals ""`, `equals null`, `not equal ""` and `text
 contains ""`; nothing here generates Data API searches.) Both forms are a
@@ -633,25 +645,30 @@ emptiness of a page's value is computed per read (a pinned
 logged-out visitor is Bubble's temporary user), so `X = Current User`
 matches nothing for them rather than being dropped.
 
-Only searches were replayed. A `:filtered` list follows its own
-`ignore_empty_constraints` (`true` drops, `false` compares). On a page,
-one that does not state it takes the page search's rule (WTF-495: an
-empty value matches nothing; not replayed for `:filtered`, a question on
-WTF-387) unless `BubbleEx.PageData.build/3` is given a default
-(`ignore_empty_constraints:`); elsewhere it is residue, as is a search
-where it is not known where it runs (a privacy rule's condition).
+**Known difference: server actions are stricter than Bubble.** In a page
+workflow's server-side action, Bubble drops an empty constraint when the
+search states `ignore_empty_constraints: true`, as a page search does
+(replay 2026-10-07: "Delete a list" and "Make changes to a list" on
+`field = <empty input>` touched both marker records with `true`, none
+unstated or false). Here such a constraint matches nothing whatever the
+flag says, on purpose: a delete or bulk change with a blank input never
+reaches every record the user can read.
+
+A page's `:filtered` takes the page search's rule (replay 2026-10-07:
+unstated or false, an empty value matches nothing; `true` drops the
+constraint), whatever default `BubbleEx.PageData.build/3` is given.
+Elsewhere a `:filtered` follows its own `ignore_empty_constraints`
+(`true` drops, `false` compares), or the caller's default; without
+either it is residue, as is a search where it is not known where it runs
+(a privacy rule's condition).
 
 ## Unverified Bubble behavior and open questions
 
-* **`:filtered` with an empty constraint value.** Not replayed (above):
-  unstated on a page, it matches nothing (WTF-495).
-* **List operators** (WTF-495): duplicates, `:plus item` of a listed
-  item, `:items until #` of an empty number, the order of empty sort
-  values. See "List operators" above (WTF-387).
-* **Server actions in page workflows ignore the flag.** A page workflow's
-  server-side action (`BubbleEx.Index.WorkflowAnalysis`) takes the
-  backend rule; whether Bubble evaluates its searches like a page search
-  or a backend one is not replayed (WTF-358).
+Answered by the replay of 2026-10-07 and removed from this list:
+`:filtered` with an empty constraint value, the list operators,
+server actions with an empty input (kept stricter than Bubble, above)
+and "Display data" over a group's own source.
+
 * **Matches nothing for operators other than `equals`.** The replay
   tried `equals`; that `>`, `contains`, `in` and the others match
   nothing on an empty value (or are dropped with `true`) is assumed.
@@ -667,6 +684,3 @@ where it is not known where it runs (a privacy rule's condition).
 * A property an instance sets to a value that is empty at run time stays
   empty; whether Bubble shows the property's default then is not replayed
   (WTF-387).
-* "Display data" over a group's own data source: the step's value wins
-  until a reset or the page's next load, even when what the source reads
-  changes (WTF-492; to replay, WTF-358).

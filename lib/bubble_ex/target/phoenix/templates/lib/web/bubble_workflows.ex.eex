@@ -1575,7 +1575,10 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   @doc """
   Go to page `to` (a path, or `:current`) with `params` (`{key, value}`,
-  shown as text), keeping the current ones when `keep?`. `thing`, the
+  as text: a date is Bubble's display text, `Oct 7, 2026 12:00 am`, a
+  number `3`, a yes/no `yes`, and a thing is empty, as Bubble sends them,
+  replay 2026-10-07; an empty one is left out), keeping the current ones
+  when `keep?`. `thing`, the
   data to send, is the path segment after the page's own (`/index/<...>`
   for the index page, WTF-454):
 
@@ -1587,6 +1590,10 @@ defmodule <%= @web %>.BubbleWorkflows do
       number, a boolean or a date) as text, percent-encoded as one
       segment; an empty one, `.` or `..`, any other value (a list
       included) or one over 2000 encoded bytes (logged) sends nothing.
+
+  A list sends no segment to either kind of page. Bubble sends the
+  literal `[object%20Object]` for a list of things or texts (replay
+  2026-10-07), which no page reads: a known difference, not copied.
 
   Sent to the current page (WTF-454), it replaces the segment of the
   page's URL: a thing's unique ID when the page takes a thing, else as
@@ -1606,7 +1613,7 @@ defmodule <%= @web %>.BubbleWorkflows do
 
     query =
       Enum.reduce(params, base, fn {key, value}, acc ->
-        case <%= @module %>.Bubble.Runtime.text(value) do
+        case param_text(value) do
           "" -> Map.delete(acc, key)
           text -> Map.put(acc, key, text)
         end
@@ -1620,6 +1627,11 @@ defmodule <%= @web %>.BubbleWorkflows do
       true -> {:cont, navigation(ctx, {:navigate, url, replace?})}
     end
   end
+
+  # A URL parameter's text. Bubble sends a thing parameter empty (replay
+  # 2026-10-07); a record is never its ID here.
+  defp param_text(%{id: _}), do: ""
+  defp param_text(value), do: <%= @module %>.Bubble.Runtime.text(value)
 
   # The path segment of the data sent: none, a thing's unique ID, or (to a
   # page with no type of content) any value as one encoded segment.

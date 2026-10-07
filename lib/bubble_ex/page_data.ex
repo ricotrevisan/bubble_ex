@@ -46,10 +46,9 @@ defmodule BubbleEx.PageData do
   A search's constraint whose value is empty matches nothing unless the
   search states `ignore_empty_constraints: true`, which drops it (Bubble's
   page searches, replayed 2026-10-01; `BubbleEx.Expression.Compiler`). A
-  `:filtered` list that does not state it, with a constraint value that
-  may be empty, is residue (`:uncompiled_expression`, construct
-  `ignore_empty_constraints`) unless the caller supplies a default
-  (`:ignore_empty_constraints`).
+  `:filtered` list does the same (replay 2026-10-07: unstated or false,
+  an empty value matches nothing; `true` drops it), whatever default the
+  caller supplies (`:ignore_empty_constraints`).
 
   ## Residue
 

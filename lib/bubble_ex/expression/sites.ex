@@ -144,9 +144,10 @@ defmodule BubbleEx.Expression.Sites do
   workflow's server-side action (`BubbleEx.Index.WorkflowAnalysis`: a
   create, change, delete, bulk change, schedule, …) runs its searches with
   the backend rule (`searches: :backend`): an empty constraint value
-  matches nothing, whatever `ignore_empty_constraints` says. Not replayed
-  (WTF-478): it keeps a delete or bulk change with an empty input from
-  reaching every record the user can read.
+  matches nothing, whatever `ignore_empty_constraints` says. Stricter than
+  Bubble on purpose: Bubble drops the constraint there with the option
+  true (replay 2026-10-07), so a delete or bulk change with an empty input
+  would reach every record the user can read.
   """
   @spec action_env(term(), Env.t()) :: Env.t()
   def action_env(action, %Env{searches: :page} = env) when is_map(action) do

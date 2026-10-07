@@ -91,8 +91,8 @@ lists for that element.
 | Show / Hide / Toggle, Set focus, Scroll to | `<Web>.Bubble` JS commands (browser) or `bubble:exec` operations pushed to the page's hook (server) |
 | Set state(s) | the page's state map, per instance |
 | Reset relevant inputs, Reset a group | the page's input map back to first values, and the browser's inputs; a reset group or popup also forgets what "Display data" showed in it and in the elements inside it, a reset reusable-element instance everything shown in its scope (WTF-492) |
-| Display data in a group / popup, Display list in a repeating group | the element's data, kept by the page per instance (per cell in a repeating group's cell) until a reset or the page's next load, in place of its own data source; a thing is kept as its unique ID and read again as the current user (WTF-492, below) |
-| Go to page | `push_patch` (same page) or `push_navigate`, URL parameters as text; the target is a page of the app or Bubble's `Current page`, anything else (an unknown or deleted page's ID, an empty one, a path, other text) is `:unresolved_reference` residue and the workflow refuses to run, never a navigation elsewhere (WTF-429); its data to send, to a page with a type of content whose thing the page loads (`docs/page-data.md`), is the thing's unique ID as the path segment after the page's (`/<page>/<unique id>`, WTF-378; `/index/<unique id>` for the index page, WTF-454); to a page with no type of content (WTF-466, replay-verified) it is appended all the same, as Bubble does: a thing's unique ID or the value (text, a number, a boolean, a date) as text, percent-encoded as one segment (`/<page>/x`; none when empty, `.` or `..`, another kind of value, a list included, or over 2000 encoded bytes, logged), which the page ignores; to the current page it replaces that segment of the page's URL (a page's workflow: known at generation; a reusable element's: decided at run time, as text when the page takes no thing); every page's route takes the segment; the page's own path is its route's, without the segment the router took (never a query parameter), and the index page's is `/` |
+| Display data in a group / popup, Display list in a repeating group | the element's data, kept by the page per instance (per cell in a repeating group's cell) until a reset or the page's next load, in place of its own data source, whatever that source reads meanwhile; an empty value shows empty (replay 2026-10-07); a thing is kept as its unique ID and read again as the current user (WTF-492, below) |
+| Go to page | `push_patch` (same page) or `push_navigate`, URL parameters as text as Bubble writes them (replay 2026-10-07: a date as its display text, `Oct 7, 2026 12:00 am`, in the app's `:bubble_time_zone`; a number `3`; a yes/no `yes`; a thing parameter empty, so left out); the target is a page of the app or Bubble's `Current page`, anything else (an unknown or deleted page's ID, an empty one, a path, other text) is `:unresolved_reference` residue and the workflow refuses to run, never a navigation elsewhere (WTF-429); its data to send, to a page with a type of content whose thing the page loads (`docs/page-data.md`), is the thing's unique ID as the path segment after the page's (`/<page>/<unique id>`, WTF-378; `/index/<unique id>` for the index page, WTF-454); to a page with no type of content (WTF-466, replay-verified) it is appended all the same, as Bubble does: a thing's unique ID or the value (text, a number, a boolean, a date) as text, percent-encoded as one segment (`/<page>/x`; none when empty, `.` or `..`, another kind of value, a list included, or over 2000 encoded bytes, logged), which the page ignores (a list sends no segment to any page: see "Known differences");  to the current page it replaces that segment of the page's URL (a page's workflow: known at generation; a reusable element's: decided at run time, as text when the page takes no thing); every page's route takes the segment; the page's own path is its route's, without the segment the router took (never a query parameter), and the index page's is `/` |
 | Open an external website | `redirect(external:)` or a new tab, http(s) or a site path only |
 | Refresh the page, Log out | `redirect` |
 | Create / change / delete things, change the current user | the backend workflow runtime's data steps (`<Module>.Workflows.Runtime`, WTF-373), with the current user as actor (data-access opt-in, below) |
@@ -137,7 +137,7 @@ outcome of a page-leaving and a same-page navigation does not depend on
 it.
 
 `:formatted as JSON-safe` is text on pages, as typed: a yes/no is `"true"`
-or `"false"`, a number or a date its machine text, so comparing it with a
+or `"false"`, a number its text and a date ISO 8601, so comparing it with a
 text (`Admin? :formatted as JSON-safe is "true"`) holds as in Bubble.
 **API calls are not lowered yet** (plugin and API Connector actions are
 residue). When they are, a request body must insert a value's raw JSON
@@ -306,20 +306,29 @@ render keeps an overlay open:
   by then (inside a Group Focus the Popup closed), the focus goes to what
   opened that Group Focus, else it is released.
 
+## Known differences from Bubble
+
+* **"Go to page" with a list as the data to send.** Bubble sends the
+  literal segment `[object%20Object]` for a list of things or of texts
+  (replay 2026-10-07), which no page reads. Here a list sends no path
+  segment, to any page.
+* **Server-side actions with an empty constraint value** are stricter
+  than Bubble: see `docs/page-data.md`, "Empty constraint values".
+
 ## Unverified Bubble behavior
 
+Answered by the replay of 2026-10-07 and removed from this list: what
+"Go to page" sends for a list (above), and "Display data" over a group's
+own source (it wins until a reset, whatever its source reads), with an
+empty value (it shows empty) and under a reset parent (a nested group
+with no source is cleared, one with its own source shows it again).
+
 To confirm by replay (WTF-358): what "Go to page" appends when the data
-sent to a page with no type of content is a list (here none: no path
-segment; Bubble may join its things' unique IDs with commas), or a value
+sent to a page with no type of content is a value
 over 2000 encoded bytes (here none, logged); the URL Bubble gives
 the index page with data sent to it (`/index/<unique id>` here); that a
 workflow calling a custom event waits for the custom event's pauses;
-"Display data" on a group with a data source of its own wins over it
-until a reset or the page's next load, even when what the source reads
-changes; "Display data" with an empty value shows nothing (it does not
-fall back to the group's own source); "Reset group / popup" forgets what
-was shown in the group and in the groups inside it (they show their own
-source again), and a reset reusable-element instance forgets everything
+a reset reusable-element instance forgets everything
 shown in it, but not what was shown inside the reusable-element
 instances within a reset group (to replay, WTF-387); a repeating group a
 "Display list" sets shows one page of the list (its rows × columns);

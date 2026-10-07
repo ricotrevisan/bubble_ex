@@ -434,9 +434,15 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   # --- values ---------------------------------------------------------------------------
 
-  @doc "A value as response text: nil is empty; never raises."
+  @doc """
+  A value as response text: nil is empty, a date Bubble's display text in
+  UTC (`Oct 7, 2026 12:00 am`, replay 2026-10-07); never raises.
+  """
   def text(nil), do: ""
   def text(x) when is_binary(x), do: x
+
+  def text(%struct{} = x) when struct in [DateTime, NaiveDateTime, Date],
+    do: <%= @module %>.Bubble.Runtime.utc_text(x)
 
   def text(x) do
     if String.Chars.impl_for(x) != nil and not is_map(x), do: to_string(x), else: inspect(x)
@@ -459,7 +465,21 @@ defmodule <%= @module %>.Workflows.Runtime do
     "#{System.system_time(:millisecond)}x#{n |> rem(1_000_000_000_000_000_000) |> Integer.to_string() |> String.pad_leading(18, "0")}"
   end
 
-  @doc "A value as JSON: things as their IDs, dates as ISO 8601."
+  @doc """
+  An API workflow's "Return data" as JSON: `dump/1`, with dates as unix
+  milliseconds, as Bubble returns them (replay 2026-10-07).
+  """
+  def response(%DateTime{} = d), do: DateTime.to_unix(d, :millisecond)
+  def response(%NaiveDateTime{} = d), do: d |> DateTime.from_naive!("Etc/UTC") |> response()
+  def response(%Date{} = d), do: d |> DateTime.new!(~T[00:00:00]) |> response()
+  def response(list) when is_list(list), do: Enum.map(list, &response/1)
+
+  def response(map) when is_map(map) and not is_struct(map),
+    do: Map.new(map, fn {k, v} -> {to_string(k), response(v)} end)
+
+  def response(value), do: dump(value)
+
+  @doc "A value as JSON (job arguments): things as their IDs, dates as ISO 8601."
   def dump(nil), do: nil
   def dump(%DateTime{} = d), do: DateTime.to_iso8601(d)
   def dump(%Date{} = d), do: Date.to_iso8601(d)

@@ -31,8 +31,9 @@ defmodule BubbleEx.Expression.Env do
       `searches` is nil, that does not state Bubble's
       `ignore_empty_constraints` does with a constraint whose value is
       empty: `nil` (unknown, the default: such a constraint is not
-      compiled), `true` (ignored) or `false` (compared). Not verified for
-      `:filtered`.
+      compiled), `true` (ignored) or `false` (compared). A page's
+      `:filtered` (`searches: :page`) follows the page rule instead
+      (replay 2026-10-07).
 
   Build it with `new/2`.
   """

@@ -420,12 +420,11 @@ defmodule BubbleEx.Expression.CompilerTest do
                ir(raw, searches: :page)
     end
 
-    # Only searches were replayed. A page's `:filtered` that does not state
-    # the option takes the page search's rule (WTF-495, a replay question
-    # on WTF-387): an empty value matches nothing. A stated option, or the
-    # caller's default, decides otherwise; on the backend it is still
-    # residue.
-    test "a :filtered list follows its own option; unstated on a page, as a page search" do
+    # A page's `:filtered` takes the page search's rule (replay 2026-10-07):
+    # unstated or false, an empty value matches nothing; true drops it.
+    # Elsewhere a stated option, or the caller's default, decides; on the
+    # backend with neither it is still residue.
+    test "a :filtered list follows its own option; on a page, as a page search" do
       raw = fn options ->
         chain(el("bR1"), [
           msg("get_list_data"),
@@ -444,19 +443,23 @@ defmodule BubbleEx.Expression.CompilerTest do
       assert %{ir: nil, diagnostics: diags} = compile(raw.(%{}), searches: :backend)
       assert Enum.any?(diags, &(&1.details == %{construct: :ignore_empty_constraints}))
 
-      assert %IR{op: :filter, args: [_, %IR{op: :and, args: [%IR{op: :not}, %IR{op: :gt}]}]} =
-               ir(raw.(%{}), searches: :page)
+      # On a page (replay 2026-10-07): unstated or false matches nothing,
+      # whatever the caller's default; true drops the constraint.
+      for options <- [%{}, %{"ignore_empty_constraints" => false}],
+          default <- [nil, true, false] do
+        assert %IR{op: :filter, args: [_, %IR{op: :and, args: [%IR{op: :not}, %IR{op: :gt}]}]} =
+                 ir(raw.(options), searches: :page, ignore_empty_constraints: default)
+      end
 
       assert %IR{op: :filter, args: [_, %IR{op: :or}]} =
-               ir(raw.(%{}), searches: :page, ignore_empty_constraints: true)
+               ir(raw.(%{"ignore_empty_constraints" => true}), searches: :page)
 
-      for searches <- [:page, :backend] do
-        assert %IR{op: :filter, args: [_, %IR{op: :or}]} =
-                 ir(raw.(%{"ignore_empty_constraints" => true}), searches: searches)
+      # Elsewhere the option decides.
+      assert %IR{op: :filter, args: [_, %IR{op: :or}]} =
+               ir(raw.(%{"ignore_empty_constraints" => true}), searches: :backend)
 
-        assert %IR{op: :filter, args: [_, %IR{op: :gt}]} =
-                 ir(raw.(%{"ignore_empty_constraints" => false}), searches: searches)
-      end
+      assert %IR{op: :filter, args: [_, %IR{op: :gt}]} =
+               ir(raw.(%{"ignore_empty_constraints" => false}), searches: :backend)
     end
 
     test "unmodeled search options are diagnosed" do
@@ -510,6 +513,22 @@ defmodule BubbleEx.Expression.CompilerTest do
       # `:sorted` reads them too.
       sorted = chain(search("custom.task", []), [msg("sorted", nil, options)])
       assert %IR{op: :sort, args: [%IR{op: :sort}, "title_text", true]} = ir(sorted)
+
+      # A list of texts sorts by value: no sort field (replay 2026-10-07).
+      titles = fn props ->
+        chain(search("custom.task", []), [msg("title_text"), msg("sorted", nil, props)])
+      end
+
+      assert %IR{op: :sort, args: [%IR{type: "list.text"}, nil, false], type: "list.text"} =
+               ir(titles.(%{}))
+
+      assert %IR{op: :sort, args: [_, nil, true]} = ir(titles.(%{"descending" => true}))
+
+      assert %{ir: nil, diagnostics: [%{details: %{construct: :search_option}}]} =
+               compile(titles.(%{"descending" => text(["x"])}))
+
+      # A list of things with no sort field keeps its order.
+      assert %IR{op: :search} = ir(chain(search("custom.task", []), [msg("sorted", nil, %{})]))
 
       # A dynamic or geographic sort key is not compiled.
       for extra <- [

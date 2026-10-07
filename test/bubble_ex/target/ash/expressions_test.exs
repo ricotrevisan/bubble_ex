@@ -200,7 +200,7 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
              Expressions.search(IR.node(:literal, [true], "boolean"), project)
 
     assert expr.resource == "Task"
-    assert expr.sort == [{"title", :desc}]
+    assert expr.sort == [{"title", :desc_nils_last}]
 
     assert Source.expr(expr) ==
              ~s|expr(status == "done" and (is_nil(^arg(:element_state_bi1_get_data)) or estimate > ^arg(:element_state_bi1_get_data)))|
