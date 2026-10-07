@@ -339,6 +339,27 @@ defmodule BubbleEx.Target.Elixir do
 
   # List algebra (WTF-495): items are compared by Bubble ID when they are
   # records or IDs, by value otherwise (the runtime's `list_key/1`).
+  # The URL path's third segment or later (WTF-508): Bubble serves
+  # `/<page>/<a>/<b>/...`, but the generated routes stop at
+  # `/<page>/:bubble_thing` (a deeper URL is not found), so the read would
+  # always be empty. Not compiled: a marker, or residue.
+  defp value(
+         %IR{
+           op: :item_at,
+           args: [
+             %IR{op: :input, args: [:url_parameter, %{"path" => "segments"}]},
+             %IR{op: :literal, args: [n]}
+           ]
+         },
+         st
+       )
+       when is_number(n) and n >= 3,
+       do:
+         unsupported(
+           st,
+           {"a URL path segment after the second (pages route up to /<page>/<x>)", nil}
+         )
+
   defp value(%IR{op: op, args: args}, st) when op in @list_ops do
     {parts, st} = Enum.map_reduce(args, st, &value/2)
     runtime(st, op, parts)

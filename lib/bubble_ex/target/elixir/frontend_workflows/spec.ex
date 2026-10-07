@@ -35,7 +35,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
 
   A compiled value is `%{source, bindings}`, each binding `%{var, bind,
   loads}` with `bind` one of `:actor`, `:now`, `{:param, id}`, `{:step,
-  action}`, `{:url, name}`, `{:state, key}` (key `%{path, element,
+  action}`, `{:url, name}`, `{:url_value, url}` (see `url/1`), `{:url_thing,
+  url}` (`url/1`'s, with the thing's `resource`), `{:state, key}` (key `%{path, element,
   state}`) or `{:input, key}` (key `%{path, element}`). A key's `path` is
   the reusable-element instances between the workflow's surface and the
   element (Bubble IDs), `[]` for the surface's own elements. A target
@@ -159,9 +160,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   How a value read of a compiled page binding (`input`, as
   `BubbleEx.Target.Elixir` names it: `{:element_state, %{"element" => id,
   "state" => state}}`) is stored when read in `surface`: `{:state, key}`,
-  `{:input, key}`, page data (see `data_read/4`), `{:url, name}` (a URL
-  parameter read as text, kept by the runtime from the URL's query) or
-  nil when the page does not keep it.
+  `{:input, key}`, page data (see `data_read/4`), a URL input (see
+  `url/1`; a thing read from the URL is not kept by the page, only its
+  data sources and workflows read it) or nil when the page does not keep
+  it.
 
   A reusable instance's property read where the instance is (`Card A's
   Title` on the page) is also its reusable element's default when the
@@ -170,9 +172,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   @spec read(t(), String.t(), term(), String.t() | nil) :: {atom(), term()} | nil
   def read(spec, surface, input, cell \\ nil)
 
-  def read(%__MODULE__{}, _surface, {:url_parameter, %{"name" => name}}, _cell)
-      when is_binary(name),
-      do: {:url, name}
+  def read(%__MODULE__{}, _surface, {:url_parameter, ref}, _cell) do
+    case url(ref) do
+      {:ok, {_kind, %{type: "custom." <> _}}} -> nil
+      {:ok, {_kind, %{type: "user"}}} -> nil
+      {:ok, read} -> read
+      :error -> nil
+    end
+  end
 
   def read(%__MODULE__{} = spec, surface, {:element_state, %{"state" => s}} = input, cell)
       when s in ["get_group_data", "get_list_data"] do
@@ -318,6 +325,42 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     do: {:error, Atom.to_string(kind)}
 
   def data_read(_index, _surface, _cell, _input), do: {:error, "unknown"}
+
+  @doc """
+  How the runtime reads a URL input (`{:url_parameter, ref}`, as
+  `BubbleEx.Expression.Typing` types it; replayed 2026-10-07, WTF-387):
+
+    * `{:url, name}` - parameter `name` as text (Bubble's default type),
+      from the URL's query
+    * `{:url_value, %{name: name, path: nil, type: type}}` - parameter
+      `name` read as a `"number"`, `"boolean"` or `"date"`, or as a thing
+      (`"custom.<id>"`, `"user"`: its unique ID, read through Ash as the
+      current user, so only where the reader has the actor: data sources
+      and workflows)
+    * `{:url_value, %{name: nil, path: "segments", type: "list.text"}}` -
+      the path's segments, from 1: the page's name, then the rest, never
+      decoded
+    * `{:url_value, %{name: nil, path: "first", type: type}}` - the first
+      segment after the page's name, as text or a thing
+
+  `:error` for any other input.
+  """
+  @spec url(map()) :: {:ok, {:url, String.t()} | {:url_value, map()}} | :error
+  def url(%{"name" => name} = ref) when is_binary(name) and not is_map_key(ref, "path") do
+    case ref["type"] do
+      nil -> {:ok, {:url, name}}
+      type when is_binary(type) -> {:ok, {:url_value, %{name: name, path: nil, type: type}}}
+      _ -> :error
+    end
+  end
+
+  def url(%{"path" => "segments"}),
+    do: {:ok, {:url_value, %{name: nil, path: "segments", type: "list.text"}}}
+
+  def url(%{"path" => "first"} = ref),
+    do: {:ok, {:url_value, %{name: nil, path: "first", type: ref["type"] || "text"}}}
+
+  def url(_ref), do: :error
 
   @doc """
   Property `param` of reusable instance `instance`, read in `surface`
