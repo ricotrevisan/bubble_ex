@@ -480,6 +480,10 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
       assert rt.sort_values([~U[2026-10-07 00:00:00Z], ~U[2026-10-04 00:00:00Z]], false) ==
                [~U[2026-10-04 00:00:00Z], ~U[2026-10-07 00:00:00Z]]
 
+      # Ecto's naive datetimes hold UTC.
+      assert rt.sort_values([~U[2026-10-07 00:00:00Z], ~N[2026-10-04 00:00:00]], false) ==
+               [~N[2026-10-04 00:00:00], ~U[2026-10-07 00:00:00Z]]
+
       # Stable among equal values.
       assert rt.sort_values([1.0, 1], false) == [1.0, 1]
       assert rt.sort_values([1.0, 1], true) == [1.0, 1]

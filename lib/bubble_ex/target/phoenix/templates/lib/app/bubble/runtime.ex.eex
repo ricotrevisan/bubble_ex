@@ -120,6 +120,9 @@ defmodule <%= @module %>.Bubble.Runtime do
     end
   end
 
+  # Ecto's naive datetimes hold UTC.
+  defp order(%NaiveDateTime{} = a, b), do: order(DateTime.from_naive!(a, "Etc/UTC"), b)
+  defp order(a, %NaiveDateTime{} = b), do: order(a, DateTime.from_naive!(b, "Etc/UTC"))
   defp order(%DateTime{} = a, %DateTime{} = b), do: DateTime.compare(a, b)
   defp order(%Date{} = a, %Date{} = b), do: Date.compare(a, b)
   defp order(%Decimal{} = a, b), do: decimal_order(a, b)

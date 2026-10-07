@@ -323,6 +323,14 @@ own source (it wins until a reset, whatever its source reads), with an
 empty value (it shows empty) and under a reset parent (a nested group
 with no source is cleared, one with its own source shows it again).
 
+Extended beyond what the replay measured (unverified): `text/1` writes a
+date as its display text wherever it is used, not only in "Go to page"
+URL parameters and API workflow responses (measured): a date sent as
+the data to a page with no type of content (the path segment), a date
+inside a dynamic text a page workflow writes (a custom state, a field),
+and a value a workflow sends to an API call take the same display text;
+a backend workflow's in UTC.
+
 To confirm by replay (WTF-358): what "Go to page" appends when the data
 sent to a page with no type of content is a value
 over 2000 encoded bytes (here none, logged); the URL Bubble gives

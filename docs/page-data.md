@@ -272,6 +272,16 @@ or filtered shows each thing once (a query finds each record once), and
 a sort is stable: equal keys keep the order of what is sorted (a
 search's, the database's).
 
+Extended beyond what the replay measured (unverified):
+
+* A search's own sort ("Do a search for" with a sort field) also puts
+  empty values last in both directions: the replay measured `:sorted` on
+  a list of things, and both are one database sort here.
+* `:plus item` (deduplicating, appending an empty value) and `:sorted` by
+  value apply to every list: the replay measured lists of texts (and
+  `:plus item` of a listed thing); numbers, dates and things follow the
+  same rules.
+
 Not lowered yet: sorting a list of options, or any list by a field of its
 items (residue `elixir:sort`), a field of each item of a list, a list
 operator inside a repeating group's cell (`:page_data_in_cell`, `kind:

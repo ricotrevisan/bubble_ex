@@ -189,6 +189,11 @@ All notable changes to this project are documented here.
   - **Display data** (#195): checked, unchanged; new tests for an input
     change under a displayed group, an empty value and a parent reset
     restoring a nested group's own source.
+  - **Unmeasured extensions** (documented as unverified): a date's
+    display text also reaches the data sent to a page with no type of
+    content, dynamic texts page workflows write and values sent to API
+    calls; search sorts put empty values last too; `:plus item` and
+    `:sorted` by value treat numbers, dates and things as texts.
   - **Known differences, kept on purpose:** "Go to page" with a list
     sends no path segment (Bubble sends `[object%20Object]`); a page
     workflow's server-side action matches nothing on an empty
