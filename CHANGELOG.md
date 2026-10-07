@@ -6,6 +6,43 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **A thing held by an element compared with a reference field** (found
+  on the page WTF-505 started from). `is`, `is not` and `contains` compare
+  things by ID, and a field path reads its reference's `_id` attribute.
+  Any other thing (an element's thing, a reusable property, a custom
+  state, a search's first item) was compared as the loaded record. A
+  record never equals an ID, so `<property> is not <a thing's reference
+  field>` was always true, and a panel shown by it always covered the
+  view even though the property's default was read correctly. Those
+  operands now go through the runtime's new `id/1` (a record's `id`; an
+  ID stays itself; empty or a field the user may not view, nil). The same
+  compiled comparisons guard workflows: an "Only when" on a workflow or a
+  step, including write guards under option A, was accidentally always
+  false (`is`, `contains`) or always true (`is not`) on such operands, and
+  now matches Bubble. An existing app's owned `Bubble.Runtime` needs `id/1`
+  added from the template. On the private fixture app (counts only), 75
+  compiled comparisons go through it, 13 of them in visibility helpers.
+
+- **A visibility condition reading a reusable property with no value is
+  not decided as if it were empty** (WTF-505). A condition reading a
+  reusable element's property that has no default and that the instance
+  does not set read it as empty, so a panel shown whenever the property
+  differs from something was always shown. Bubble's value there is not
+  verified yet. A property with a default still reads the default
+  (WTF-503). Read from where the instance is, or in a reusable element
+  that no instance sets it in, the conditionals are now not lowered (a
+  marker; the element keeps its page-load visibility). When only some
+  instances set it, the helper decides for those and the others keep the
+  page-load visibility (`Bubble.set?/3` tells them apart by scope). With
+  privacy: :enforced, an element shown on page load that a conditional may
+  hide stays hidden instead. The frontend report counts these conditionals
+  as `visibility_conditions_unset_property`. On the private fixture app
+  (counts only), 40 conditionals read such a property: 5 are now marked
+  (conditionals not lowered went from 821 to 826), and 35 are decided
+  only where the property is set. None is hidden by the privacy rule. The
+  panel that started this reads a property with a default, so this
+  change doesn't affect it; the comparison fix above does.
+
 - **Signed-in panels hidden by what the page already had** (WTF-476
   follow-up). Measured on the private fixture app's five signed-in pages
   (their reusables included), counts only: of the elements that render
