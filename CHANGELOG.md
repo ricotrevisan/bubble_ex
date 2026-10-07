@@ -450,6 +450,43 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Bubble's Table element in generated pages** (WTF-507). A Table was a
+  runtime-container placeholder whose items were never set, so a dynamic
+  table rendered empty. `Target.Phoenix.Pages` now renders an HTML table
+  inside the Table's box, which scrolls. Columns (`TableMainAxis`, by
+  `axis_index`) are `<col>`s, and a column's minimum width and its
+  visibility on page load reach its cells. The rows before the repeated
+  row (`TableCrossAxis` with `cross_axis_repeat`) are the `<thead>`. The
+  repeated row is rendered once per item of the table's list in
+  `<tbody>`, and the rows after it are a `<tfoot>`. Cells (`TableCell`)
+  sit in the column `cell_main_axis_id` names, and their elements are laid
+  out in the cell's row or column. A table without a data source renders
+  its rows statically.
+  - **The list is a repeating group's.** A Table's data source is page
+    data (`:list`). With a fixed number of rows, that number is its page
+    size. Elements in the repeated row are per cell (`cell` is the
+    table). "Current row's thing" (`ElementAncestor` of type
+    `TableCrossAxis`) types and binds as the current cell's thing
+    (`Expression.Tree.cell/3`). The row reuses the repeating-group
+    machinery: batching, list operators, `:max_items`, and the row's scope
+    keyed by its thing's unique ID for reusable instances (WTF-494).
+    Every read is an Ash read as the user. Events in a row's instance are
+    accepted only in the scopes of the rows the page read.
+  - **Residue.** Each of the following is marked: a table setting the
+    generator does not lower (one marker per setting); a cell whose
+    column is not in the table; a second repeated row; a column's
+    visibility conditionals (they do not reach its cells). "Current row's
+    thing" read in a header stays uncompiled. Workflows triggered in a
+    row stay `trigger_in_runtime_template`. A table whose list does not
+    load stays a marked runtime container.
+  - **Private fixture app (counts only).** It has 5 tables. 2 now render
+    as tables with a row per item, and 3 wait on their data source (a
+    list operator, another element's data). No table lowers fully: in
+    the 2 that render, plugin elements and searches per row (page data
+    in a cell) stay marked. The 41 "Current row's thing" expressions
+    that did not type now do, 38 more expressions compile to IR, and the
+    snapshots are updated.
+
 - **"Display data" and "Display list" steps** (WTF-492, part of WTF-476).
   Groups, popups, floating groups, group focuses and reusable-element
   instances that read data a workflow sends them were empty: every

@@ -72,6 +72,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   """
 
   alias BubbleEx.{Diagnostic, Error}
+  alias BubbleEx.Expression.Tree
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Model.Type
   alias BubbleEx.Plan.Residue
@@ -1091,8 +1092,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp cell_of(%{parent: parent}, ctx, depth) do
     case ctx.raw_elements[parent] do
-      %{kind: :element, type: type} when type in ["RepeatingGroup", "Table"] -> parent
-      %{kind: :element} = p -> cell_of(p, ctx, depth + 1)
+      %{kind: :element} = p -> Tree.cell_holder(p, parent) || cell_of(p, ctx, depth + 1)
       _ -> nil
     end
   end
