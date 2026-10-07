@@ -37,7 +37,7 @@ defmodule BubbleEx.Expression.IR do
   | `:count`, `:first`, `:last`, `:unique`, `:as_list` | `[list]` | list operators |
   | `:item_at`, `:limit` | `[list, n]` | `item #`, `items until #` |
   | `:merge`, `:minus_list`, `:intersect`, `:plus_item`, `:minus_item` | `[list, other]` | list algebra |
-  | `:sort` | `[list, field, descending?]` | `:sorted` / a search's sort by one field; a sort by several keys nests, the primary one outermost |
+  | `:sort` | `[list, field, descending?]` | `:sorted` / a search's sort by one field; a sort by several keys nests, the primary one outermost; `field` is nil for `:sorted` on a list of texts, numbers or dates |
   | `:add`, `:sub`, `:mul`, `:div`, `:mod` | `[left, right]` | arithmetic |
   | `:concat` | `[part, …]` | dynamic text: parts in order, each shown as text |
   | `:fallback` | `[x, default]` | `x defaulting to default` |

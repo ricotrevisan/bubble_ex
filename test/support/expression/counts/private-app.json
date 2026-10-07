@@ -4,8 +4,7 @@
       "expressions": {
         "approximated": {
           "date_format_letters": 1,
-          "date_format_token:ZZ": 6,
-          "date_part_unit:day": 4
+          "date_format_token:ZZ": 6
         },
         "by_kind": {
           "element": 10761,
@@ -89,8 +88,7 @@
       "expressions": {
         "approximated": {
           "date_format_letters": 1,
-          "date_format_token:ZZ": 6,
-          "date_part_unit:day": 4
+          "date_format_token:ZZ": 6
         },
         "by_kind": {
           "element": 10761,
@@ -174,8 +172,7 @@
       "expressions": {
         "approximated": {
           "date_format_letters": 1,
-          "date_format_token:ZZ": 6,
-          "date_part_unit:day": 4
+          "date_format_token:ZZ": 6
         },
         "by_kind": {
           "element": 10761,

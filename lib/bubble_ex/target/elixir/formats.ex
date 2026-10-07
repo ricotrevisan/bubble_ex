@@ -10,10 +10,9 @@ defmodule BubbleEx.Target.Elixir.Formats do
   `s`/`ss` second, `l`/`L` milliseconds/centiseconds, `t`/`tt`/`T`/`TT`
   am/pm, `Z` zone abbreviation, `o`/`p` UTC offset, `S` ordinal suffix,
   `W`/`WW` ISO week, `N` ISO weekday, text in quotes verbatim; anything
-  else is shown as written. `extract day` is the day of the month,
-  reported as approximated (Bubble may mean the weekday, as JavaScript's
-  getDay; WTF-358). `iso_date` is ISO 8601 in UTC, nil Bubble's
-  default.
+  else is shown as written. `extract date` is the day of the month and
+  `extract day` the weekday, 0 = Sunday (replay 2026-10-07), both in the
+  time zone used. `iso_date` is ISO 8601 in UTC, nil Bubble's default.
 
   Approximated (reported, never an error): `ZZ` (shown as `Z`), letters a
   pattern shows as written (usually a misspelt token or an unknown named
@@ -86,11 +85,6 @@ defmodule BubbleEx.Target.Elixir.Formats do
 
   def approximations(:date_floor, unit) when unit in @floor_units, do: []
   def approximations(:date_floor, unit), do: ["date_floor_unit:#{unit}"]
-  # `day` is shown as the day of the month; Bubble may follow JavaScript
-  # (getDay: the weekday), unverified until the replay (WTF-358).
-  def approximations(:date_part, "day"),
-    do: ["date_part_unit:day"]
-
   def approximations(:date_part, unit) when unit in @part_units, do: []
   def approximations(:date_part, unit), do: ["date_part_unit:#{unit}"]
 

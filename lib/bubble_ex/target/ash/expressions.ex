@@ -214,9 +214,11 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
   # Nested sorts are one sort by several keys, the outermost first (a sort
   # keeps the order of what it sorts among equal keys). A random sort
-  # orders everything: the keys inside it are dropped.
+  # orders everything: the keys inside it are dropped. Bubble sorts things
+  # with empty values last in both directions (replay 2026-10-07: `:sorted`
+  # of things; PostgreSQL's own order puts them first descending).
   defp unsort(%IR{op: :sort, args: [inner, field, desc]}) do
-    key = {field, if(desc, do: :desc, else: :asc)}
+    key = {field, if(desc, do: :desc_nils_last, else: :asc_nils_last)}
 
     case {field, unsort(inner)} do
       {@random_sort, {search, _inner_keys}} -> {search, [key]}

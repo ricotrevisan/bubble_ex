@@ -41,7 +41,7 @@ defmodule <%= @web %>.WorkflowApiController do
         |> send_resp(200, Runtime.text(text))
 
       {:ok, result} ->
-        json(conn, %{"status" => "success", "response" => Runtime.dump(result.data || %{})})
+        json(conn, %{"status" => "success", "response" => Runtime.response(result.data || %{})})
 
       {:error, :not_served} ->
         error(

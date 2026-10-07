@@ -17,10 +17,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
       that list (`unique id is in`), sorted;
     * a count of searches of one type merged is one count of a search
       for either's records (a merge holds each record once);
-    * `:filtered` on any other list of things keeps the list's order: the
-      list intersected with a search for its records that meet the
-      constraints (`:intersect` keeps the first list's order and the
-      search's records).
+    * `:filtered` on any other list of things keeps the list's order: a
+      search for its records that meet the constraints intersected with
+      the list (`:intersect` follows the second list's order, as Bubble's
+      does, and keeps the search's records).
 
   The list a rewritten search reads is wrapped in `:pinned`: the binding
   computes it first, in Elixir, and passes its things' IDs into the
@@ -68,7 +68,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
         constrain(list, pred)
 
       thing(list.type) ->
-        IR.node(:intersect, [list, constrain(records(list), pred)], ir.type)
+        IR.node(:intersect, [constrain(records(list), pred), list], ir.type)
         |> Map.put(:path, ir.path)
 
       true ->

@@ -73,7 +73,7 @@ defmodule BubbleEx.PageDataTest do
              ]
 
       # The shown page's four (WTF-492) included.
-      assert PageData.coverage(pd)["sources"] == %{"total" => 13, "native" => 13, "residue" => 0}
+      assert PageData.coverage(pd)["sources"] == %{"total" => 15, "native" => 15, "residue" => 0}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -267,7 +267,7 @@ defmodule BubbleEx.PageDataTest do
       assert %{read: :url_thing, resource: "Task", residue: []} = data(spec, "bTaskPage")
 
       assert %{read: {:query, q}, page_size: 3, residue: []} = data(spec, "bList")
-      assert q.resource == "Task" and q.take == :all and q.sort == [{"title", :asc}]
+      assert q.resource == "Task" and q.take == :all and q.sort == [{"title", :asc_nils_last}]
       # The input's value and whether it is empty are computed before the query.
       assert [%{var: "pin_1"}, %{var: "pin_2"}] = q.pins
       refute inspect(q.filter.expr) =~ ":arg"
@@ -282,11 +282,11 @@ defmodule BubbleEx.PageDataTest do
       # The group after the page's thing it reads.
       assert Enum.map(Spec.data(spec, "bTaskPage"), & &1.element) == ["bTaskPage", "bProjGroup"]
 
-      # With the shown page's (WTF-492): its four sources and the six
-      # elements its "Display data" steps set.
+      # With the shown page's (WTF-492): its six sources and the six
+      # elements with no source its "Display data" steps set.
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 19,
-               "wired" => 19,
+               "total" => 21,
+               "wired" => 21,
                "residue" => 0
              }
 
@@ -386,7 +386,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 17
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 19
     end
 
     test "a repeating group in a repeating group's cell is residue" do
@@ -665,7 +665,7 @@ defmodule BubbleEx.PageDataTest do
       assert %{args: %{list?: true, page_size: 1}} = steps["aShowList1"]
       assert %{page_size: 1} = data(spec, "bShownList")
       # An outer group's reset clears the displayed group inside it.
-      assert %{args: %{clears: ["bInner"]}} = steps["aResetOuter1"]
+      assert %{args: %{clears: ["bInner", "bInnerSrc"]}} = steps["aResetOuter1"]
       # A later step reads what the first just set.
       assert %{args: %{value: %{bindings: [%{bind: {:data, %{element: "bShown"}}}]}}} =
                steps["aChain2"]

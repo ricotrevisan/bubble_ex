@@ -669,8 +669,9 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     # once (WTF-501).
     random? = &(&1 =~ "md5(")
     first_open? = &(&1 =~ ~r/WHERE \(t0\."done"/)
-    card2? = &(&1 =~ ~r/ORDER BY t0\."title" DESC LIMIT/)
-    plain? = &(&1 =~ ~r/FROM "task" AS t0 ORDER BY t0\."title" LIMIT/)
+    # Empty values sort last both ways, as Bubble's (replay 2026-10-07).
+    card2? = &(&1 =~ ~r/ORDER BY t0\."title" DESC NULLS LAST LIMIT/)
+    plain? = &(&1 =~ ~r/FROM "task" AS t0 ORDER BY t0\."title"( ASC)? NULLS LAST LIMIT/)
     list? = &(&1 =~ ~r/strpos|like/i)
 
     for {source?, n} <- [{random?, 1}, {first_open?, 1}, {card2?, 1}, {plain?, 2}, {list?, 0}],
@@ -1659,7 +1660,47 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     on()
     {:ok, view, _html} = live(conn, "/shown")
     assert shown(click(view, "bShowInner"), "Inner") == ["Answer"]
-    assert shown(click(view, "bResetOuter"), "Inner") == []
+    # A group inside with a source of its own shows it again (replay
+    # 2026-10-07).
+    assert shown(render(view), "InnerSrc") == ["Answer"]
+    assert shown(click(view, "bShowInnerSrc"), "InnerSrc") == ["Eat"]
+
+    html = click(view, "bResetOuter")
+    assert shown(html, "Inner") == []
+    assert shown(html, "InnerSrc") == ["Answer"]
+  end
+
+  test "Display data holds whatever the group's own source reads, until a reset", %{conn: conn} do
+    # Replay 2026-10-07: changing the input the source reads (to another
+    # value and back) does not bring the source back; a reset does.
+    on()
+    {:ok, view, _html} = live(conn, "/shown")
+
+    pick = fn value ->
+      render_change(view, "bubble:change", %{
+        "bubble" => %{"scope" => "", "element" => "bPick", "value" => value}
+      })
+
+      Process.sleep(400)
+      render(view)
+    end
+
+    assert shown(pick.("Answer"), "SrcIn") == ["Answer"]
+    assert shown(click(view, "bOverrideIn"), "SrcIn") == ["Eat"]
+    assert shown(pick.("Bake"), "SrcIn") == ["Eat"]
+    assert shown(pick.("Answer"), "SrcIn") == ["Eat"]
+    assert shown(click(view, "bResetIn"), "SrcIn") == ["Answer"]
+  end
+
+  test "Display data with an empty value shows empty, not the group's own source", %{
+    conn: conn
+  } do
+    # Replay 2026-10-07.
+    on()
+    {:ok, view, html} = live(conn, "/shown")
+    assert shown(html, "SrcA") == ["Answer"]
+    assert shown(click(view, "bShowEmpty"), "SrcA") == []
+    assert shown(click(view, "bResetSrc"), "SrcA") == ["Answer"]
   end
 
   test "Display data keeps only unique IDs: another type, a crafted ID or a number shows nothing" do

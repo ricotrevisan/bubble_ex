@@ -90,17 +90,30 @@ defmodule BubbleEx.Target.Elixir.FormatsTest do
       assert rt.format_date(~U[2028-03-02 00:00:00Z], "iso_date") == "2028-03-02T00:00:00.000Z"
     end
 
-    test "the default format on pages; machine text stays ISO 8601", %{rt: rt} do
+    test "the default format on pages and in text", %{rt: rt} do
       assert rt.format_date(@at, nil) == "Mar 2, 2028 3:04 pm"
       assert rt.display(@at) == "Mar 2, 2028 3:04 pm"
       assert rt.display([@at, 1.0]) == "Mar 2, 2028 3:04 pm, 1"
       refute rt.display(@at) =~ ~r/\d{4}-\d{2}-\d{2}T/
-      # URLs, API responses and request bodies (navigate query params, the
-      # workflow API) read text/1: lossless, as before.
-      assert rt.text(@at) == "2028-03-02T15:04:05.678Z"
-      assert rt.text(~D[2028-03-02]) == "2028-03-02"
-      assert rt.text(~N[2028-03-02 15:04:05]) == "2028-03-02T15:04:05.000Z"
+      # Navigate URL parameters read text/1: Bubble writes a date there as
+      # its display text (replay 2026-10-07: `Oct 7, 2026 12:00 am`).
+      assert rt.text(~U[2026-10-07 00:00:00Z]) == "Oct 7, 2026 12:00 am"
+      assert rt.text(@at) == "Mar 2, 2028 3:04 pm"
+      assert rt.text(~D[2028-03-02]) == "Mar 2, 2028"
+      assert rt.text(~N[2028-03-02 15:04:05]) == "Mar 2, 2028 3:04 pm"
+      assert rt.text(3) == "3"
+      assert rt.text(3.0) == "3"
+      assert rt.text(true) == "yes"
       assert rt.display("x") == "x"
+    end
+
+    test "utc_text/1 converts as Bubble's server: dates in UTC", %{rt: rt} do
+      assert rt.utc_text(~U[2026-10-07 00:00:00Z]) == "Oct 7, 2026 12:00 am"
+      assert rt.utc_text(~U[2026-10-07 23:30:00Z]) == "Oct 7, 2026 11:30 pm"
+      assert rt.utc_text(~N[2026-10-07 23:30:00]) == "Oct 7, 2026 11:30 pm"
+      assert rt.utc_text([~U[2026-10-07 00:00:00Z], 3]) == "Oct 7, 2026 12:00 am, 3"
+      assert rt.utc_text(nil) == ""
+      assert rt.utc_text(false) == "no"
     end
 
     test "a calendar day is shown as the day", %{rt: rt} do
@@ -251,8 +264,11 @@ defmodule BubbleEx.Target.Elixir.FormatsTest do
       assert rt.date_part(@at, "year") == 2028
       assert rt.date_part(@at, "month") == 3
       assert rt.date_part(@at, "date") == 2
-      # Kept as the day of the month, reported as approximated (WTF-358).
-      assert rt.date_part(@at, "day") == 2
+      # `day` is the weekday, 0 = Sunday (replay 2026-10-07): a Thursday.
+      assert rt.date_part(@at, "day") == 4
+      assert rt.date_part(~U[2026-10-04 12:00:00Z], "day", "UTC") == 0
+      assert rt.date_part(~U[2026-10-07 12:00:00Z], "day", "UTC") == 3
+      assert rt.date_part(~U[2026-10-10 12:00:00Z], "day", "UTC") == 6
       assert rt.date_part(@at, "hour", "UTC") == 15
       assert rt.date_part(@at, "millisecond") == 678
       assert rt.date_part(~U[1970-01-01 00:00:01Z], "UNIX") == 1000
@@ -298,10 +314,7 @@ defmodule BubbleEx.Target.Elixir.FormatsTest do
       assert Formats.approximations(:date_floor, "quarter") == ["date_floor_unit:quarter"]
       assert Formats.approximations(:date_part, "UNIX") == []
       assert Formats.approximations(:date_part, "date") == []
-
-      assert Formats.approximations(:date_part, "day") == [
-               "date_part_unit:day"
-             ]
+      assert Formats.approximations(:date_part, "day") == []
 
       assert Formats.approximations(:date_part, "quarter") == ["date_part_unit:quarter"]
 
@@ -353,6 +366,22 @@ defmodule BubbleEx.Target.Elixir.FormatsTest do
 
       {:ok, default} = Target.compile(IR.node(:format_date, [date(), nil, nil], "text"), project)
       assert default.source == ~s|Bubble.Runtime.format_date("x", nil)|
+    end
+
+    test "on the server (`:utc`), dates convert to text in UTC", %{project: project} do
+      day = IR.node(:date_floor, [date(), "day", nil], "date")
+      ir = IR.node(:concat, [IR.node(:literal, ["On "], "text"), day], "text")
+      floor = ~s|Bubble.Runtime.date_floor("x", "day")|
+
+      {:ok, page} = Target.compile(ir, project)
+      assert page.source =~ "Bubble.Runtime.text(#{floor})"
+
+      {:ok, server} = Target.compile(ir, project, utc: true)
+      assert server.source =~ "Bubble.Runtime.utc_text(#{floor})"
+      refute server.source =~ "Runtime.text("
+
+      {:ok, to_text} = Target.compile(IR.node(:to_text, [day], "text"), project, utc: true)
+      assert to_text.source == "Bubble.Runtime.utc_text(#{floor})"
     end
 
     test "an approximated format compiles with a warning", %{project: project} do

@@ -696,7 +696,8 @@ defmodule BubbleEx.Target.Ash.Workflows do
         runtime: ctx.runtime,
         namespace: ctx.namespace,
         subject: %{workflow: ctx.workflow.bubble_id},
-        path: path
+        path: path,
+        utc: true
       )
 
     case result do

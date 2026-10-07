@@ -61,16 +61,21 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
   end
 
   test "a sorted search sorted again, and further sort keys, are one sorted query", %{spec: spec} do
-    assert %{read: {:query, %{sort: [{"rank", :desc}, {"title", :asc}], take: :all}}} =
+    assert %{
+             read:
+               {:query,
+                %{sort: [{"rank", :desc_nils_last}, {"title", :asc_nils_last}], take: :all}}
+           } =
              data(spec, "bSorted")
 
-    assert %{read: {:query, %{sort: [{"rank", :asc}, {"title", :desc}]}}} = data(spec, "bMulti")
+    assert %{read: {:query, %{sort: [{"rank", :asc_nils_last}, {"title", :desc_nils_last}]}}} =
+             data(spec, "bMulti")
   end
 
   test "merged searches are queries read first, merged in Elixir", %{spec: spec} do
     assert %{read: {:value, %{queries: [q1, q2], source: source}}} = data(spec, "bMerged")
     assert {q1.n, q2.n} == {1, 2}
-    assert q1.take == :all and q1.sort == [{"title", :asc}]
+    assert q1.take == :all and q1.sort == [{"title", :asc_nils_last}]
     refute Map.has_key?(q1, :listed)
     assert source =~ "Runtime.merge(query_1, query_2)"
 
@@ -80,7 +85,7 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
   end
 
   test "a list field sorted is a query for its records; filtered keeps its order", %{spec: spec} do
-    assert %{read: {:query, %{listed: "pin_1", sort: [{"title", :asc}], pins: [pin]}}} =
+    assert %{read: {:query, %{listed: "pin_1", sort: [{"title", :asc_nils_last}], pins: [pin]}}} =
              data(spec, "bFieldSorted")
 
     assert %{var: "pin_1", ref: :listed} = pin
@@ -219,7 +224,7 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
     assert w =~
              "Ash.Query.filter(done == true or rank < 3)\n    |> BubbleData.read(ctx, :count, nil)"
 
-    assert w =~ "Ash.Query.sort([{:rank, :desc}, {:title, :asc}])"
+    assert w =~ "Ash.Query.sort([{:rank, :desc_nils_last}, {:title, :asc_nils_last}])"
     # A value over queries is re-read on its type's changes.
     assert w =~ ~r/element: "bMerged",\s+fun: :\w+,\s+read: :query/
 
@@ -322,14 +327,15 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
       refute Lists.listed?(search())
     end
 
-    test "a filter of a list of things intersects it with its records that match" do
+    test "a filter of a list of things intersects its records that match with it" do
       lowered = Lists.lower(IR.node(:filter, [field_list(), done()], "list.custom.task"))
 
+      # The list second: `:intersect` follows the second list's order.
       assert %IR{
                op: :intersect,
                args: [
-                 list,
-                 %IR{op: :search, args: ["task", %IR{op: :and, args: [_member, pred]}]} = s
+                 %IR{op: :search, args: ["task", %IR{op: :and, args: [_member, pred]}]} = s,
+                 list
                ]
              } =
                lowered
@@ -362,7 +368,7 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
         "list.custom.task"
       )
 
-    assert {:ok, %{expr: %{sort: [{"rank", :asc}, {"title", :desc}]}}} =
+    assert {:ok, %{expr: %{sort: [{"rank", :asc_nils_last}, {"title", :desc_nils_last}]}}} =
              Expressions.search(ir, project)
   end
 
@@ -395,7 +401,93 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
   test "every list function the backend calls is in the runtime contract" do
     functions = BubbleEx.Target.Elixir.Runtime.functions()
 
-    for f <- ~w(as_list unique merge minus_list intersect plus_item minus_item limit item_at)a,
+    for f <-
+          ~w(as_list unique merge minus_list intersect plus_item minus_item limit item_at sort_values)a,
         do: assert(f in functions)
+  end
+
+  test "a list of texts, numbers or dates sorts by value", %{project: project} do
+    texts = IR.node(:input, [:element_state, %{"element" => "x", "state" => "s"}], "list.text")
+
+    {:ok, %{source: source, runtime: runtime}} =
+      Target.compile(IR.node(:sort, [texts, nil, true], "list.text"), project, runtime: "R")
+
+    assert source =~ "R.sort_values("
+    assert source =~ ", true)"
+    assert :sort_values in runtime
+  end
+
+  describe "the runtime's list operators, as Bubble's (replay 2026-10-07)" do
+    @runtime Module.concat(["ListOpsCheck", Bubble, Runtime])
+
+    setup do
+      unless Code.ensure_loaded?(@runtime) do
+        "lib/app/bubble/runtime.ex"
+        |> Phoenix.Templates.render(%{
+          module: "ListOpsCheck",
+          app: :list_ops_check,
+          enforced?: false
+        })
+        |> Code.compile_string()
+      end
+
+      # A variable, not a literal module: it is compiled at run time.
+      %{rt: @runtime}
+    end
+
+    @a ~w(b a b c)
+    @b ~w(c d a)
+
+    test "duplicates, merges and intersections", %{rt: rt} do
+      assert rt.unique(@a) == ~w(b a c)
+      assert rt.merge(@a, @b) == ~w(b a c d)
+      assert rt.merge(@a, @a) == ~w(b a c)
+      # The second list's order.
+      assert rt.intersect(@a, @b) == ~w(c a)
+      assert rt.minus_list(@a, @b) == ~w(b)
+      # A thing is a record over its ID, whichever list holds it.
+      t = %{id: "1700000000000x1"}
+      assert rt.intersect(["1700000000000x1"], [t]) == [t]
+      assert rt.intersect([t], ["1700000000000x1"]) == [t]
+    end
+
+    test ":plus item deduplicates the whole list and appends an empty value", %{rt: rt} do
+      assert rt.plus_item(@a, "a") == ~w(b a c)
+      assert rt.plus_item(@a, "z") == ~w(b a c z)
+      assert rt.plus_item(@a, nil) == ~w(b a c) ++ [nil]
+      assert rt.plus_item(@a, "") == ~w(b a c) ++ [nil]
+    end
+
+    test ":items until # and :item #", %{rt: rt} do
+      assert rt.limit(@a, 2) == ~w(b a)
+      assert rt.limit(@a, nil) == []
+      assert rt.limit(@a, 0) == []
+
+      for n <- [0, -1, nil], do: assert(rt.item_at(@a, n) == nil)
+    end
+
+    test ":sorted puts empty values first ascending, last descending", %{rt: rt} do
+      assert rt.sort_values(["b", nil, "a", ""], false) == [nil, "", "a", "b"]
+      assert rt.sort_values(["b", nil, "a", ""], true) == ["b", "a", nil, ""]
+
+      assert rt.sort_values([3, nil, Decimal.new("2.5"), 10], false) == [
+               nil,
+               Decimal.new("2.5"),
+               3,
+               10
+             ]
+
+      assert rt.sort_values([~U[2026-10-07 00:00:00Z], ~U[2026-10-04 00:00:00Z]], false) ==
+               [~U[2026-10-04 00:00:00Z], ~U[2026-10-07 00:00:00Z]]
+
+      # Ecto's naive datetimes hold UTC.
+      assert rt.sort_values([~U[2026-10-07 00:00:00Z], ~N[2026-10-04 00:00:00]], false) ==
+               [~N[2026-10-04 00:00:00], ~U[2026-10-07 00:00:00Z]]
+
+      # Stable among equal values.
+      assert rt.sort_values([1.0, 1], false) == [1.0, 1]
+      assert rt.sort_values([1.0, 1], true) == [1.0, 1]
+      assert rt.sort_values(nil, false) == []
+    end
   end
 end

@@ -134,8 +134,13 @@ defmodule BubbleEx.Target.Elixir.FormatsTzTest do
       assert rt.format_date(~U[2023-03-02 23:30:00Z], "mmm d, H:MM") == "Mar 3, 0:30"
       assert rt.display(~U[2023-03-02 23:30:00Z]) == "Mar 3, 2023 12:30 am"
       assert rt.date_part(~U[2023-03-02 23:30:00Z], "date") == 3
-      # Machine text stays UTC ISO 8601.
-      assert rt.text(~U[2023-03-02 23:30:00Z]) == "2023-03-02T23:30:00.000Z"
+      # Friday in Paris, Thursday in UTC (replay 2026-10-07: the zone used).
+      assert rt.date_part(~U[2023-03-02 23:30:00Z], "day") == 5
+      assert rt.date_part(~U[2023-03-02 23:30:00Z], "day", "UTC") == 4
+      # Text (a navigate URL parameter) is in the user's zone, as Bubble's
+      # browser writes it; a backend workflow's is UTC (replay 2026-10-07).
+      assert rt.text(~U[2023-03-02 23:30:00Z]) == "Mar 3, 2023 12:30 am"
+      assert rt.utc_text(~U[2023-03-02 23:30:00Z]) == "Mar 2, 2023 11:30 pm"
       # iso_date is UTC whatever the zone.
       assert rt.format_date(~U[2023-03-02 23:30:00Z], "iso_date") == "2023-03-02T23:30:00.000Z"
     end

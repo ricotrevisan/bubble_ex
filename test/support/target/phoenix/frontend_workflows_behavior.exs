@@ -422,12 +422,14 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     assert to.("/other", %{id: "a/b"}, [], false) == "/other/a%2Fb"
 
     # Dates and booleans as text; anything else sends none, never debug
-    # output (a list of things included: unverified in Bubble).
-    assert to.("/other", ~D[2026-10-01], [], false) == "/other/2026-10-01"
+    # output. A list sends none: Bubble sends the literal
+    # `[object%20Object]` (replay 2026-10-07), not copied.
+    assert to.("/other", ~D[2026-10-01], [], false) == "/other/Oct%201%2C%202026"
     assert to.("/other", true, [], false) == "/other/yes"
     assert to.("/other", %{title: "no id"}, [], false) == "/other"
     assert to.("/other", {:a, 1}, [], false) == "/other"
     assert to.("/other", [%{id: id}, %{id: id}], [], false) == "/other"
+    assert to.("/other", ["a", "b"], [], false) == "/other"
     assert to.("/other", :atom, [], false) == "/other"
 
     # At most 2000 encoded bytes: a longer segment sends none, logged.
@@ -440,6 +442,50 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
       end)
 
     assert log =~ "over 2000"
+  end
+
+  test "API workflow responses write dates as Bubble does (replay 2026-10-07)" do
+    alias PhxCheck.Workflows.Runtime
+
+    # Return data: a date is unix milliseconds; as text, its display text
+    # in UTC.
+    assert Runtime.response(%{d: ~U[2026-10-07 00:00:00Z], l: [~U[2026-10-07 23:30:00Z]], n: 3}) ==
+             %{"d" => 1_791_331_200_000, "l" => [1_791_415_800_000], "n" => 3}
+
+    assert Runtime.text(~U[2026-10-07 23:30:00Z]) == "Oct 7, 2026 11:30 pm"
+    # Job arguments keep ISO 8601 (they are read back as dates).
+    assert Runtime.dump(~U[2026-10-07 00:00:00Z]) == "2026-10-07T00:00:00Z"
+  end
+
+  test "go to page writes URL parameters as Bubble does (replay 2026-10-07)" do
+    alias PhxCheckWeb.BubbleWorkflows
+
+    ctx = %BubbleWorkflows.Ctx{path: "/here", page_path: "/here", url: %{}}
+
+    {:cont, %{navigate: {_kind, url, _replace?}}} =
+      BubbleWorkflows.navigate(
+        ctx,
+        "/other",
+        [
+          {"dt", ~U[2026-10-07 00:00:00Z]},
+          {"nn", 3},
+          {"bb", true},
+          {"tt", %{id: "1700000000000x000000000000000001"}},
+          {"xx", "x"}
+        ],
+        false,
+        false,
+        false
+      )
+
+    # A date as its display text (in the app's zone, UTC here), a number
+    # and a yes/no as text; a thing parameter is empty, so left out.
+    assert URI.decode_query(URI.parse(url).query) == %{
+             "dt" => "Oct 7, 2026 12:00 am",
+             "nn" => "3",
+             "bb" => "yes",
+             "xx" => "x"
+           }
   end
 
   test "a page with no type of content loads with the segment (WTF-466)", %{conn: conn} do

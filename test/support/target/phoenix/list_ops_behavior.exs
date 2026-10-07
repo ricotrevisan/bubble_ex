@@ -199,7 +199,13 @@ defmodule PhxCheckWeb.ListOpsBehaviorTest do
     assert Runtime.minus_item([@t1, @t2, @t1], a) == [@t2]
     assert Runtime.plus_item([@t1], a) == [@t1]
     assert Runtime.plus_item([@t1], @t2) == [@t1, @t2]
-    assert Runtime.plus_item([@t1], nil) == [@t1]
+    # An empty value is appended; the list without duplicates (replay
+    # 2026-10-07).
+    assert Runtime.plus_item([@t1], nil) == [@t1, nil]
+    assert Runtime.plus_item([@t1, @t2, @t1], @t2) == [@t1, @t2]
+    # The second list's order.
+    assert Runtime.intersect([@t1, @t2], [@t2, a]) == [@t2, a]
+    assert Runtime.sort_values(["b", nil, "a"], false) == [nil, "a", "b"]
     assert Runtime.limit([1, 2, 3], 2.0) == [1, 2]
     assert Runtime.limit([1, 2, 3], nil) == []
     assert Runtime.item_at([1, 2, 3], 3) == 3

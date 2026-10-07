@@ -186,6 +186,46 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **Bubble behaviours measured by the replay of 2026-10-07** (WTF-509;
+  counts and synthetic values only, WTF-387). Each answered question
+  leaves the docs' "Unverified Bubble behavior" lists.
+  - **`extract day` is the weekday**, 0 = Sunday, and `extract date` the
+    day of the month, both in the time zone used. The
+    `date_part_unit:day` approximation warning is gone.
+  - **Values leaving the page** (replaces #177's ISO 8601 machine text).
+    `Runtime.text/1` writes a date as Bubble's display text
+    (`Oct 7, 2026 12:00 am`, in `:bubble_time_zone`), as Bubble's "Go to
+    page" URL parameters do; a number is `3`, a yes/no `yes`, and a
+    thing URL parameter is empty (left out). API workflow responses
+    ("Return data", `Workflows.Runtime.response/1`) write dates as unix
+    milliseconds; a date converted to text on the server (backend
+    workflow expressions, compiled with the new `:utc` option to
+    `utc_text/1`; returned plain text) is that display text in UTC. Job
+    arguments keep ISO 8601. `formatted as` `iso_date` is unchanged.
+  - **List operators** (#198's guesses, corrected): `:intersect with`
+    follows the second list's order; `:plus item` deduplicates the whole
+    list and appends an empty value; `:sorted` on texts, numbers or dates
+    now compiles (`Runtime.sort_values/2`, empty values first ascending,
+    last descending; it was silently left unsorted); things sort with
+    empty values last in both directions (`:asc_nils_last` /
+    `:desc_nils_last`, searches included); a page's `:filtered` with
+    `ignore_empty_constraints: false` matches nothing on an empty value,
+    like unstated (it compared).
+  - **Display data** (#195): checked, unchanged; new tests for an input
+    change under a displayed group, an empty value and a parent reset
+    restoring a nested group's own source.
+  - **Unmeasured extensions** (documented as unverified): a date's
+    display text also reaches the data sent to a page with no type of
+    content, dynamic texts page workflows write and values sent to API
+    calls; search sorts put empty values last too; `:plus item` and
+    `:sorted` by value treat numbers, dates and things as texts.
+  - **Known differences, kept on purpose:** "Go to page" with a list
+    sends no path segment (Bubble sends `[object%20Object]`); a page
+    workflow's server-side action matches nothing on an empty
+    constraint value even with `ignore_empty_constraints: true` (Bubble
+    drops the constraint, so a delete with an empty input touches every
+    record).
+
 - **A workflow's show or hide yields when a condition changes the
   element's visibility** (WTF-509, Bubble replay 2026-10-07). A step's
   show, hide or toggle of an element was kept until the page reloaded

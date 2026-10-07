@@ -29,22 +29,26 @@ defmodule BubbleEx.Expression.Compiler do
   | `:backend` (a backend workflow, or a page workflow's server-side action) | matches nothing | matches nothing (no effect) |
 
   "Matches nothing" is `not is_empty(value) and constraint`; "dropped" is
-  `is_empty(value) or constraint`. Only `equals` was replayed, and a page
-  workflow's server-side action was not (`Sites.action_env/2`: it takes
-  the backend rule). Either is a filter of the same search, read for the
-  actor like any other, so privacy rules still apply. The
-  Current User itself is never empty: Bubble's logged-out visitor is a
-  temporary user (`logged_out_user_is_empty` is refuted), so `X = Current
-  User` is not dropped for them. Where `Env.searches` is nil (a privacy
-  condition), and for `:filtered`, the search's own option or
+  `is_empty(value) or constraint`. Only `equals` was replayed. A page
+  workflow's server-side action takes the backend rule
+  (`Sites.action_env/2`), stricter than Bubble on purpose: Bubble drops
+  the constraint there with `true` (replay 2026-10-07), so a delete with
+  an empty input would reach every record. Either is a filter of the same
+  search, read for the actor like any other, so privacy rules still
+  apply. The Current User itself is never empty: Bubble's logged-out
+  visitor is a temporary user (`logged_out_user_is_empty` is refuted), so
+  `X = Current User` is not dropped for them. A page's `:filtered` follows
+  the page rule (replay 2026-10-07: unstated or false matches nothing,
+  `true` drops). Where `Env.searches` is nil (a privacy condition), and
+  for any other `:filtered`, the search's own option or
   `Env.ignore_empty_constraints` decides: `true` drops, `false` compares,
-  and nil leaves the constraint uncompiled, except a page's `:filtered`
-  (`:page`, no default), which matches nothing as a page search does
-  (WTF-495; not replayed for `:filtered`).
+  and nil leaves the constraint uncompiled.
 
   ## Sorts
 
   A search's, `:filtered`'s or `:sorted`'s sort is `:sort` over the list;
+  `:sorted` on a list of texts, numbers or dates (no sort field) is
+  `:sort` with a nil field;
   Bubble's further sort keys (`additional_sort_fields`) are nested sorts,
   the primary key outermost (a sort keeps the order of what it sorts
   among equal keys). The editor's display names (`*_friendly`) and unset
@@ -121,6 +125,8 @@ defmodule BubbleEx.Expression.Compiler do
     "url" => :to_text
   }
   @search_options ~w(sort_field descending ignore_empty_constraints additional_sort_fields)
+  # The lists `:sorted` sorts by their values (no sort field).
+  @value_lists ~w(list.text list.number list.date)
 
   @doc "Types and compiles `ast` in `env`. See the moduledoc."
   @spec compile(Ast.t(), Env.t()) :: {:ok, result()} | {:error, Error.t()}
@@ -322,8 +328,21 @@ defmodule BubbleEx.Expression.Compiler do
     path = spath ++ [link(n)]
 
     case search_options(n.options, path ++ [key(n, :properties)]) do
-      {:ok, sorts} -> {sorted(subject, sorts), path, diags}
-      {:error, diag} -> {:error, path, diags ++ [diag]}
+      {:ok, []} ->
+        case sorted_values(subject, settings(n.options)) do
+          :error when subject != :error ->
+            {:error, path,
+             diags ++ [unknown_options(path ++ [key(n, :properties)], ["descending"])]}
+
+          ir ->
+            {ir, path, diags}
+        end
+
+      {:ok, sorts} ->
+        {sorted(subject, sorts), path, diags}
+
+      {:error, diag} ->
+        {:error, path, diags ++ [diag]}
     end
   end
 
@@ -738,6 +757,18 @@ defmodule BubbleEx.Expression.Compiler do
 
   defp sort_index(k), do: {1, k}
 
+  # `:sorted` with no sort field: a list of texts, numbers or dates sorts
+  # by its values (`descending` a yes/no); any other list keeps its order.
+  defp sorted_values(%IR{type: type} = ir, options) when type in @value_lists do
+    case options["descending"] do
+      desc when desc in [nil, false] -> IR.node(:sort, [ir, nil, false], type)
+      true -> IR.node(:sort, [ir, nil, true], type)
+      _ -> :error
+    end
+  end
+
+  defp sorted_values(ir, _options), do: ir
+
   # A sort by several keys is nested sorts, the primary one outermost: a
   # sort keeps the order of what it sorts among equal keys.
   defp sorted(:error, _sorts), do: :error
@@ -851,12 +882,10 @@ defmodule BubbleEx.Expression.Compiler do
 
   defp empty_mode(%Search{}, %Env{searches: :backend}), do: :nothing
 
-  # A page's `:filtered` that does not state the option, with no default
-  # from the caller: as a page search (WTF-495; not replayed for
-  # `:filtered`, WTF-387). Matching nothing shows less, never more.
-  defp empty_mode(%Filter{options: options}, %Env{searches: :page, ignore_empty_constraints: nil})
-       when not is_map_key(options, "ignore_empty_constraints"),
-       do: :nothing
+  # A page's `:filtered`: as a page search (replay 2026-10-07: unstated or
+  # false matches nothing, true drops).
+  defp empty_mode(%Filter{options: options}, %Env{searches: :page}),
+    do: if(options["ignore_empty_constraints"] == true, do: :drop, else: :nothing)
 
   defp empty_mode(n, env) do
     case Map.get(n.options, "ignore_empty_constraints", env.ignore_empty_constraints) do

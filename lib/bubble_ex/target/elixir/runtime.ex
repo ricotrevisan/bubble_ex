@@ -15,8 +15,14 @@ defmodule BubbleEx.Target.Elixir.Runtime do
 
   @type value :: term()
 
-  @doc "A value as machine text (URLs, API responses): `nil` is `\"\"`, `1.0` is `\"1\"`, yes/no, ISO 8601 dates in UTC with milliseconds."
+  @doc """
+  A value as text (URL parameters, values a page workflow writes): `nil`
+  is `""`, `1.0` is `"1"`, yes/no, a date Bubble's default display text in
+  the user's time zone (`Oct 7, 2026 12:00 am`, replay 2026-10-07).
+  """
   @callback text(value()) :: String.t()
+  @doc "`text/1` as Bubble's server converts a value (backend workflows): dates in UTC (replay 2026-10-07)."
+  @callback utc_text(value()) :: String.t()
   @doc "A value as Bubble shows it on a page: `text/1` with dates in Bubble's default format."
   @callback display(value()) :: String.t()
   @doc "`is empty`: nil, `\"\"`, `[]`, or a field the user may not view (`%Ash.ForbiddenField{}`)."
@@ -54,8 +60,8 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @callback text_length(value()) :: value()
   @doc """
   `:formatted as JSON-safe`: always text when not empty. A text is
-  escaped; a yes/no is `"true"` or `"false"`; a number or a date is its
-  machine text (`text/1`). Compared with a text, it compares as text.
+  escaped; a yes/no is `"true"` or `"false"`; a number is its text
+  (`text/1`), a date ISO 8601 in UTC. Compared with a text, it compares as text.
   """
   @callback json_encode(value()) :: value()
   @callback url_encode(value()) :: value()
@@ -107,17 +113,25 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   values when equal.
   """
   @callback unique(value()) :: list()
-  @doc "`:merged with`: `a`'s items, then `b`'s not in `a`, without duplicates."
+  @doc "`:merged with`: `a`'s items, then `b`'s not in `a`, without duplicates (replay 2026-10-07)."
   @callback merge(value(), value()) :: list()
   @doc "`:minus list`: `a`'s items not in `b`, without duplicates."
   @callback minus_list(value(), value()) :: list()
   @doc """
-  `:intersect with`: `a`'s items also in `b`, in `a`'s order, without
-  duplicates; a thing is `b`'s copy of it (a record over its ID).
+  `:intersect with`: `b`'s items also in `a`, in `b`'s order (replay
+  2026-10-07), without duplicates; a thing is a record over its ID.
   """
   @callback intersect(value(), value()) :: list()
-  @doc "`:plus item`: `a` with `x` at the end, unless `x` is empty or already in it."
+  @doc """
+  `:plus item`: `a` with `x` at the end, the whole list without duplicates;
+  an empty `x` is appended (replay 2026-10-07).
+  """
   @callback plus_item(value(), value()) :: list()
+  @doc """
+  `:sorted` on texts, numbers or dates (`descending?`): empty values first
+  ascending, last descending (replay 2026-10-07); a stable sort.
+  """
+  @callback sort_values(value(), boolean()) :: list()
   @doc "`:minus item`: `a` without `x`."
   @callback minus_item(value(), value()) :: list()
   @doc "`:items until #n`: the first `n` items; none for an empty or non-positive `n`."

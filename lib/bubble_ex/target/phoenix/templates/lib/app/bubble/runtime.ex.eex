@@ -23,9 +23,11 @@ defmodule <%= @module %>.Bubble.Runtime do
   @default_day_format "mmm d, yyyy"
 
   @doc """
-  A value as text for machines: URLs, API responses, request bodies. Dates
-  stay ISO 8601 (what Bubble sends there is a replay question, WTF-358).
-  Pages show values with `display/1`.
+  A value as text: URL parameters, values a page workflow writes. A date
+  is Bubble's default display text in `time_zone/0`, as Bubble writes it
+  into a "Go to page" URL parameter (`Oct 7, 2026 12:00 am`, replay
+  2026-10-07); `formatted as` `iso_date` gives ISO 8601. Pages show values
+  with `display/1`; backend workflows convert with `utc_text/1`.
   """
   def text(nil), do: ""
   # A field the privacy rules hide from the user (`%Ash.ForbiddenField{}`)
@@ -36,15 +38,25 @@ defmodule <%= @module %>.Bubble.Runtime do
   def text(true), do: "yes"
   def text(false), do: "no"
   def text(x) when is_float(x), do: js_number(x)
-  def text(%DateTime{} = x), do: iso(x)
-  def text(%NaiveDateTime{} = x), do: x |> DateTime.from_naive!("Etc/UTC") |> iso()
-  def text(%Date{} = x), do: Date.to_iso8601(x)
+  def text(%DateTime{} = x), do: format_date(x, nil)
+  def text(%NaiveDateTime{} = x), do: format_date(x, nil)
+  def text(%Date{} = x), do: format_date(x, nil)
   def text(%Decimal{} = x), do: Decimal.to_string(x, :normal)
   def text(x) when is_list(x), do: Enum.map_join(x, ", ", &text/1)
   def text(%{id: id}), do: to_string(id)
   def text(x) when is_binary(x), do: x
   def text(x) when is_atom(x) or is_number(x), do: to_string(x)
   def text(x), do: inspect(x)
+
+  @doc """
+  A value as Bubble's server converts it to text (backend workflows: API
+  responses, the text they store): `text/1`, with dates in UTC (replay
+  2026-10-07: `Oct 7, 2026 12:00 am`).
+  """
+  def utc_text(%DateTime{} = x), do: format_date(x, nil, "Etc/UTC")
+  def utc_text(%NaiveDateTime{} = x), do: format_date(x, nil, "Etc/UTC")
+  def utc_text(x) when is_list(x), do: Enum.map_join(x, ", ", &utc_text/1)
+  def utc_text(x), do: text(x)
 
   @doc "A value as Bubble shows it on a page: `text/1`, with dates in Bubble's default format."
   def display(%DateTime{} = x), do: format_date(x, nil)
@@ -108,6 +120,9 @@ defmodule <%= @module %>.Bubble.Runtime do
     end
   end
 
+  # Ecto's naive datetimes hold UTC.
+  defp order(%NaiveDateTime{} = a, b), do: order(DateTime.from_naive!(a, "Etc/UTC"), b)
+  defp order(a, %NaiveDateTime{} = b), do: order(a, DateTime.from_naive!(b, "Etc/UTC"))
   defp order(%DateTime{} = a, %DateTime{} = b), do: DateTime.compare(a, b)
   defp order(%Date{} = a, %Date{} = b), do: Date.compare(a, b)
   defp order(%Decimal{} = a, b), do: decimal_order(a, b)
@@ -213,7 +228,8 @@ defmodule <%= @module %>.Bubble.Runtime do
   # TODO(bubble:runtime) Bubble's JSON-safe text (quotes escaped, no outer quotes).
   def json_encode(x) when is_binary(x), do: x |> Jason.encode!() |> String.slice(1..-2//1)
   # JSON-safe is text whatever it formats (WTF-500): a yes/no is `"true"` or
-  # `"false"` (never `"yes"`), a number or a date its machine text, so a
+  # `"false"` (never `"yes"`), a number its text and a date ISO 8601 (not
+  # replayed: kept when `text/1` changed, replay 2026-10-07), so a
   # comparison with a text such as `Admin? :formatted as JSON-safe is
   # "true"` holds as in Bubble. An empty value stays empty.
   # TODO(bubble:api-body) This is the text pages compare. An API call's
@@ -222,8 +238,10 @@ defmodule <%= @module %>.Bubble.Runtime do
   def json_encode(x) when is_boolean(x), do: Atom.to_string(x)
   def json_encode(x) when is_number(x), do: text(x)
 
-  def json_encode(%struct{} = x) when struct in [Decimal, Date, DateTime, NaiveDateTime],
-    do: text(x)
+  def json_encode(%Decimal{} = x), do: text(x)
+  def json_encode(%DateTime{} = x), do: iso(x)
+  def json_encode(%NaiveDateTime{} = x), do: x |> DateTime.from_naive!("Etc/UTC") |> iso()
+  def json_encode(%Date{} = x), do: Date.to_iso8601(x)
   def json_encode(%{__struct__: Ash.ForbiddenField}), do: nil
   def json_encode(x), do: x
 
@@ -450,10 +468,11 @@ defmodule <%= @module %>.Bubble.Runtime do
 
   # --- lists (WTF-495) -------------------------------------------------------------
 
-  # Not replayed against Bubble (WTF-387): which copy of a duplicate the
-  # list operators keep, whether `:plus item` skips one already listed and
-  # what `:items until #` does with an empty number. These keep the first
-  # occurrence, skip it and show nothing.
+  # As Bubble (replay 2026-10-07): duplicates keep their first
+  # occurrence; `:intersect with` follows the second list's order;
+  # `:plus item` deduplicates the whole list and appends an empty value;
+  # `:items until #` and `:item #` of an empty, zero or negative number
+  # are empty.
 
   @doc "`:converted to list`."
   def as_list(x) when is_list(x), do: x
@@ -471,20 +490,23 @@ defmodule <%= @module %>.Bubble.Runtime do
     a |> unique() |> Enum.reject(&MapSet.member?(drop, list_key(&1)))
   end
 
-  @doc "`:intersect with`: `a`'s order, `b`'s copy of each thing (a record over its ID)."
+  @doc """
+  `:intersect with`: `b`'s items also in `a`, in `b`'s order, each once; a
+  thing is a record over its ID (`a`'s copy when both are).
+  """
   def intersect(a, b) do
-    keep = b |> list() |> Enum.reverse() |> Map.new(&{list_key(&1), &1})
+    in_a = a |> list() |> Enum.reverse() |> Map.new(&{list_key(&1), &1})
 
-    for x <- unique(a), Map.has_key?(keep, list_key(x)), do: Map.fetch!(keep, list_key(x))
+    for y <- unique(b), Map.has_key?(in_a, list_key(y)), do: record(Map.fetch!(in_a, list_key(y)), y)
   end
 
-  @doc "`:plus item`: at the end, unless empty or already listed."
-  def plus_item(a, x) do
-    a = list(a)
+  defp record(%{id: _} = x, _y), do: x
+  defp record(_x, y), do: y
 
-    if empty?(x) or Enum.any?(a, &(list_key(&1) == list_key(x))),
-      do: a,
-      else: a ++ [x]
+  @doc "`:plus item`: `x` at the end, the whole list without duplicates; an empty `x` is appended (as nil)."
+  def plus_item(a, x) do
+    x = if empty?(x), do: nil, else: x
+    unique(list(a) ++ [x])
   end
 
   @doc "`:minus item`."
@@ -503,6 +525,29 @@ defmodule <%= @module %>.Bubble.Runtime do
     case count(n) do
       n when is_integer(n) and n > 0 -> Enum.at(list(a), n - 1)
       _ -> nil
+    end
+  end
+
+  @doc """
+  `:sorted` on texts, numbers or dates: by value, empty values first
+  ascending and last descending (replay 2026-10-07); equal values keep
+  their order.
+  """
+  def sort_values(a, descending?) do
+    sorter =
+      if descending?,
+        do: &(value_order(&1, &2) != :lt),
+        else: &(value_order(&1, &2) != :gt)
+
+    a |> list() |> Enum.sort(sorter)
+  end
+
+  defp value_order(a, b) do
+    case {empty?(a), empty?(b)} do
+      {true, true} -> :eq
+      {true, false} -> :lt
+      {false, true} -> :gt
+      {false, false} -> order(a, b)
     end
   end
 
@@ -576,7 +621,10 @@ defmodule <%= @module %>.Bubble.Runtime do
 
   def date_floor(x, _unit, _zone), do: x
 
-  @doc "`extract` a calendar part, in `zone` (else `time_zone/0`); `UNIX` is milliseconds."
+  @doc """
+  `extract` a calendar part, in `zone` (else `time_zone/0`): `date` is the
+  day of the month, `day` the weekday (0 = Sunday), `UNIX` milliseconds.
+  """
   def date_part(x, unit, zone \\ nil)
   def date_part(%DateTime{} = x, "UNIX", _zone), do: DateTime.to_unix(x, :millisecond)
 
@@ -587,10 +635,8 @@ defmodule <%= @module %>.Bubble.Runtime do
       "year" -> local.year
       "month" -> local.month
       "date" -> local.day
-      # TODO(bubble:runtime) Bubble may follow JavaScript here (`day` the
-      # weekday, as getDay); kept as the day of the month and reported as
-      # approximated until the replay (WTF-358) settles it.
-      "day" -> local.day
+      # The weekday, 0 = Sunday (as JavaScript's getDay; replay 2026-10-07).
+      "day" -> Date.day_of_week(local, :sunday) - 1
       "hour" -> local.hour
       "minute" -> local.minute
       "second" -> local.second
