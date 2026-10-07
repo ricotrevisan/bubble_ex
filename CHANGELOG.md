@@ -25,12 +25,11 @@ All notable changes to this project are documented here.
     stays a marker. "Is a list" was not replayed and stays residue.
 
   Measured on the private fixture app's five signed-in pages (four page
-  modules and their reusables, 10,163 elements; on the format-31 export,
-  since the current export's format 32 does not load yet), counts only:
-  elements that can show content went from 4,378 to 5,542 (hidden 5,391
-  to 4,100); data sources wired from 2,008 to 2,031 of 2,732; visibility
-  conditionals rendered from 713 to 750 of 1,379. No root cause reading
-  the URL remains among them.
+  modules and their reusables, 10,181 elements, current export), counts
+  only: elements that can show content went from 4,265 to 5,439 (hidden
+  5,541 to 4,237); data sources wired from 2,008 to 2,030 of 2,727;
+  visibility conditionals rendered from 683 to 720 of 1,390. No root
+  cause reading the URL remains among them.
 
 - **A thing held by an element compared with a reference field** (found
   on the page WTF-505 started from). `is`, `is not` and `contains` compare
