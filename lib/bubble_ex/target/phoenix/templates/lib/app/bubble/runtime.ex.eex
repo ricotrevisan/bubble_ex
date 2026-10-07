@@ -96,6 +96,15 @@ defmodule <%= @module %>.Bubble.Runtime do
   def unhidden(%{__struct__: Ash.ForbiddenField}), do: nil
   def unhidden(x), do: x
 
+  @doc """
+  A thing's Bubble ID: a record's `id`, an ID itself, nil otherwise (a
+  field the user may not view is empty, so it has none).
+  """
+  def id(%{__struct__: Ash.ForbiddenField}), do: nil
+  def id(%{id: id}), do: id
+  def id(id) when is_binary(id), do: id
+  def id(_x), do: nil
+
   @doc "`>`, `<`, `>=`, `<=`: false when either side is empty."
   def compare(op, a, b) do
     if empty?(a) or empty?(b) do

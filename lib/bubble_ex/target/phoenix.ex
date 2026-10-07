@@ -549,6 +549,9 @@ defmodule BubbleEx.Target.Phoenix do
   `"visibility_conditions_compiled"` / `"visibility_conditions_marked"`
   count the conditional states that set an element's visibility, rendered
   or kept as on page load with a marker (WTF-477);
+  `"visibility_conditions_unset_property"` those of them reading a reusable
+  element's property with no value (no default, not set: marked, or
+  decided only for the instances that set it, WTF-505);
   `"conditions_other_properties"` the states that set anything else
   (colors, text…), not lowered yet.
   `"assets_<status>"` count `.wtf/assets.json`'s assets by status;

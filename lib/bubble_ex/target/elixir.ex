@@ -661,12 +661,24 @@ defmodule BubbleEx.Target.Elixir do
   defp text(:error, st), do: {:error, st}
   defp text(part, st), do: runtime(st, st.shown, [part])
 
-  # Records compare by Bubble ID: a record-valued expression as its ID.
+  # A record compares by its ID: a field path reads its `_id` attribute;
+  # any other record (an element's thing, a property, a custom state, a
+  # search's first item) goes through the runtime's `id/1` (an ID stays
+  # itself), so a record is never compared with an ID (always different)
+  # or looked up in a list of IDs (never a member).
   defp id_value(%IR{type: type} = ir, st) do
     if record_type?(type) do
       case ir do
-        %IR{op: op} when op in [:field, :this, :current_user, :fallback] -> path(ir, [], :id, st)
-        _ -> value(ir, st)
+        %IR{op: op} when op in [:field, :this, :current_user, :fallback] ->
+          path(ir, [], :id, st)
+
+        # A thing literal is its Bubble ID.
+        %IR{op: :literal} ->
+          value(ir, st)
+
+        _ ->
+          {v, st} = value(ir, st)
+          runtime(st, :id, [v])
       end
     else
       value(ir, st)

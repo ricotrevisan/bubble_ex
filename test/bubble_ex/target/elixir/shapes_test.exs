@@ -27,6 +27,10 @@ defmodule BubbleEx.Target.Elixir.ShapesTest do
     def as_list(x), do: if(empty?(x), do: [], else: [x])
     def unhidden(%Hidden{}), do: nil
     def unhidden(x), do: x
+    def id(%Hidden{}), do: nil
+    def id(%{id: id}), do: id
+    def id(id) when is_binary(id), do: id
+    def id(_x), do: nil
 
     def compare(op, a, b) do
       cond do
@@ -147,5 +151,27 @@ defmodule BubbleEx.Target.Elixir.ShapesTest do
     plain = compile!(IR.node(:neq, [title, lit("Plan", "text")], "boolean"), project)
     refute plain.source =~ "unhidden"
     assert eval(plain, this: %{title: %Hidden{}})
+  end
+
+  test "a hidden thing compared with an empty one is empty against empty", %{project: project} do
+    # A thing an element holds (not a field path) compares through id/1; a
+    # hidden one has no ID, so it reads as empty, as in Bubble.
+    held = IR.node(:input, [:element_state, %{"element" => "bG1", "state" => "param_p1"}], "user")
+
+    other =
+      IR.node(:input, [:element_state, %{"element" => "bG2", "state" => "param_p2"}], "user")
+
+    is = compile!(IR.node(:eq, [held, other], "boolean"), project)
+    is_not = compile!(IR.node(:neq, [held, other], "boolean"), project)
+
+    for a <- [nil, %Hidden{}], b <- [nil, %Hidden{}] do
+      binding = [element_state_bg1_param_p1: a, element_state_bg2_param_p2: b]
+      assert eval(is, binding), "#{inspect(a)} is #{inspect(b)}"
+      refute eval(is_not, binding), "#{inspect(a)} is not #{inspect(b)}"
+    end
+
+    binding = [element_state_bg1_param_p1: %Hidden{}, element_state_bg2_param_p2: %{id: "u1"}]
+    refute eval(is, binding)
+    assert eval(is_not, binding)
   end
 end

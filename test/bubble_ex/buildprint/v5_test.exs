@@ -439,11 +439,91 @@ defmodule BubbleEx.Buildprint.V5Test do
 
   describe "versions" do
     test "an unknown formatVersion fails loudly", %{tmp_dir: dir} do
-      ws = write_workspace(dir, metadata: %{"formatVersion" => "bubblescript-32"})
+      ws = write_workspace(dir, metadata: %{"formatVersion" => "bubblescript-33"})
 
       assert {:error, %Error{kind: :unknown_format, context: context}} = V5.load(ws)
-      assert context.value == "bubblescript-32"
-      assert context.supported == ["bubblescript-31"]
+      assert context.value == "bubblescript-33"
+      assert context.supported == ["bubblescript-31", "bubblescript-32"]
+    end
+
+    test "a format-32 workspace loads like a format-31 one", %{tmp_dir: dir} do
+      # Format 32's preamble adds `settings.secure` (presence flags and
+      # parameter names, no values) and `__bp_private_parameter_names__`;
+      # its manifest entries drop `bareContentSha256`; its API Connector
+      # `shared_headers` entries carry their header name.
+      preamble =
+        preamble()
+        |> put_in(["settings", "secure"], %{
+          "apiconnector2" => %{
+            "g1" => %{
+              "password" => false,
+              "shared_headers" => %{"sh1" => %{"key" => "X-Api-Key", "value" => true}},
+              "calls" => %{"c1" => %{"headers" => [%{"key" => "Accept", "value" => false}]}}
+            }
+          }
+        })
+        |> Map.put("__bp_private_parameter_names__", true)
+
+      fragments =
+        List.keyreplace(fragments(), "api-connector/Service.ts", 0, {
+          "api-connector/Service.ts",
+          %{
+            "settings" => %{
+              "client_safe" => %{
+                "apiconnector2" => %{
+                  "g1" => %{
+                    "human" => "Service",
+                    "shared_headers" => %{"sh1" => %{"key" => "X-Api-Key", "private" => true}},
+                    "calls" => %{
+                      "c1" => %{
+                        "name" => "Get",
+                        "method" => "get",
+                        "url" => "https://example.com/x"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        })
+
+      ws =
+        write_workspace(dir,
+          preamble: preamble,
+          fragments: fragments,
+          metadata: %{"formatVersion" => "bubblescript-32"},
+          state: %{"formatVersion" => "bubblescript-32", "kind" => "app"}
+        )
+
+      assert {:ok, %V5{app: app} = result} = V5.load(ws)
+      assert result.format_version == "bubblescript-32"
+      assert result.counts == result.symbol_counts
+
+      # `settings.secure` and Buildprint's members are dropped unread.
+      assert Map.keys(app["settings"]) == ["client_safe"]
+      refute Enum.any?(Map.keys(app), &String.starts_with?(&1, "__bp"))
+
+      by_code = Map.new(result.diagnostics, &{&1.code, &1.details})
+      assert by_code[:buildprint_settings_dropped] == %{count: 1}
+
+      assert codes(result) -- [:buildprint_settings_dropped] == [
+               :buildprint_snapshot_unverified
+             ]
+
+      # The shared header's name reaches the Model; its flag stays private.
+      assert [%{parameters: [header]}] = result.model.connectors
+      assert {header.in, header.name, header.private} == {:header, "X-Api-Key", true}
+
+      # A format-31 state.json does not vouch for a format-32 index.
+      ws31 =
+        write_workspace(dir,
+          name: "mixed",
+          metadata: %{"formatVersion" => "bubblescript-32"},
+          state: %{"formatVersion" => "bubblescript-31"}
+        )
+
+      assert {:error, %Error{kind: :unknown_format}} = V5.load(ws31)
     end
 
     test "an unknown schemaVersion fails loudly", %{tmp_dir: dir} do
