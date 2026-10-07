@@ -36,8 +36,9 @@ defmodule BubbleEx.PageData do
 
   A property set to a static value is that value as the property's type
   (`"true"` as a yes/no, `"1.5"` as a number); one the instance does not
-  set, with no default, is empty. Bubble has no action that changes a
-  property: workflows only read it.
+  set, with no default, has no source (the target reads it as empty in a
+  value, and does not decide a visibility condition on it, WTF-505).
+  Bubble has no action that changes a property: workflows only read it.
 
   `cell` is the repeating group whose cell holds the element, or the table
   whose repeated row holds it (nil outside one): its value is computed

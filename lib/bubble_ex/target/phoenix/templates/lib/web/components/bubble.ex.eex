@@ -175,6 +175,18 @@ defmodule <%= @web %>.Bubble do
   def data(_data, _scope, _element, _index), do: nil
 
   @doc """
+  Whether instance `scope` has a value of each of reusable element
+  properties `keys` in the page's data: one it sets (empty or not) or its
+  default. A property with no default that the instance does not set has
+  none, and a visibility condition reading it is not decided (its
+  element keeps the visibility it falls back to).
+  """
+  def set?(data, scope, keys) when is_map(data),
+    do: Enum.all?(keys, &Map.has_key?(data, {scope, &1}))
+
+  def set?(_data, _scope, _keys), do: false
+
+  @doc """
   The DOM ID of a repeating group's cell: its item's ID when it is a
   thing, else its index. Morphdom matches cells by it, so what a workflow
   step did to an element in a cell (shown, hidden) follows the item when
