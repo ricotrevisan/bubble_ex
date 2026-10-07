@@ -42,8 +42,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       because the breakpoint's media rule must still win. An element whose
       visibility conditionals compiled (`BubbleEx.Target.Elixir.Frontend`)
       renders the attribute from a `visible_<id>` helper, evaluated on
-      every render, until a workflow step acts on it; from then on the
-      step decides (see `<Web>.Bubble`). With workflows, the helpers read
+      every render, and that result as `data-bubble-visible`: a workflow
+      step's show or hide holds until a render changes it, then the
+      conditionals decide again (WTF-509, Bubble replay 2026-10-07; see
+      `<Web>.Bubble`). With workflows, the helpers read
       the current user from `@bubble_viewer`, which the runtime reads
       afresh with field policies, never the session's user, and a URL
       parameter read as a single text from `@bubble_url` (the URL's query
@@ -2096,8 +2098,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         {call, acc} =
           add_helper(node, "visible", compiled, false, Map.put(ctx, :viewer, true), acc)
 
-        {[{"hidden", {:raw, "{!" <> call <> "}"}}],
-         count(acc, "visibility_conditions_compiled", states)}
+        # The condition-derived visibility, which the page hook compares
+        # across renders: a workflow step holds until it changes (WTF-509).
+        attrs = [
+          {"hidden", {:raw, "{!" <> call <> "}"}},
+          {"data-bubble-visible", {:raw, "{to_string(" <> call <> ")}"}}
+        ]
+
+        {attrs, count(acc, "visibility_conditions_compiled", states)}
 
       var ->
         {static, mark_visibility(acc, node, states, unkept(var))}

@@ -306,6 +306,34 @@ render keeps an overlay open:
   by then (inside a Group Focus the Popup closed), the focus goes to what
   opened that Group Focus, else it is released.
 
+Elements that are not overlays follow Bubble's rule for a step against
+their visibility conditions (WTF-509, replay 2026-10-07): a show, hide or
+toggle step holds until one of the element's conditions changes the
+visibility the conditions give it; then the condition wins and the step
+is dropped. The page renders that visibility as `data-bubble-visible`
+next to `hidden`; the hook compares it across renders (steps of the same
+event run after the render they follow, so a step after "Set state"
+wins). Replay, on a synthetic page with a custom state `s` (no on load)
+and three texts, T1 visible on load with "when s is yes: visible" (the
+same as on load), T2 hidden on load with "when s is yes: visible", T3
+visible on load with "when s is yes: hidden" (shown, hidden, shown on
+load):
+
+* hide T1: hidden hidden shown; s yes: hidden shown hidden; s no:
+  hidden hidden shown
+* s yes: shown shown hidden; hide T1: hidden shown hidden; s no: hidden
+  hidden shown; s yes: hidden shown hidden
+* s yes: shown shown hidden; hide T2: shown hidden hidden; s no: shown
+  hidden shown; s yes: shown shown hidden
+* s yes: shown shown hidden; show T3: shown shown shown; s no: shown
+  hidden shown; s yes: shown shown hidden
+
+A hide of T1 holds through every change (its condition never changes
+its visibility); a step on an element with no conditions holds until the
+page reloads. A LiveView reconnect mounts the page again (custom states
+and inputs start over); its render is compared with the last one like
+any other.
+
 ## Unverified Bubble behavior
 
 To confirm by replay (WTF-358): what "Go to page" appends when the data

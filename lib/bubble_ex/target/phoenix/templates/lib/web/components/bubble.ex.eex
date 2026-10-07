@@ -8,19 +8,32 @@ defmodule <%= @web %>.Bubble do
   attribute; the hook sets and removes it through LiveView's JS commands,
   so a later render keeps it.
 
-  Visibility (WTF-477). The server renders an element's `hidden`
-  attribute from its visibility conditionals, else as on page load. Once
-  a workflow step has shown, hidden or toggled the element, the step's
-  result is kept on that DOM element and later renders no longer change
-  it: in Bubble, actions take precedence over conditions, which take
-  precedence over the visibility on page load. A step is kept even when
-  the element already looked that way. What keeps it, and what does not:
+  Visibility (WTF-477, WTF-509). The server renders an element's
+  `hidden` attribute from its visibility conditionals, else as on page
+  load; an element whose conditionals can change it also gets
+  `data-bubble-visible` (`"true"` or `"false"`), the visibility its
+  conditionals give it. A workflow step that shows, hides or toggles an
+  element overrides that, on that DOM element, until the element's
+  condition-derived visibility changes from one render to the next: then
+  the condition wins, the override is dropped and the element follows its
+  conditionals again (Bubble replay 2026-10-07). A render that leaves it
+  unchanged (another input of the condition changed, or nothing did)
+  keeps the step, so a condition that only repeats the visibility on page
+  load never undoes a step, and neither does a render of an element with
+  no conditionals. A step is kept even when the element already looked
+  that way. What keeps it, and what does not:
 
     * a render or a `push_patch` (a "Go to page" to the current page)
-      keeps it
-    * a LiveView reconnect (a dropped connection) keeps it, but the page
-      mounts again: its custom states and input values start over, so
-      conditionals that read them may change
+      keeps it, unless it changes the element's condition-derived
+      visibility
+    * steps that run in the same event as the change that flips a
+      condition (a custom state set earlier in the workflow) apply after
+      it: the condition wins first, then the step
+    * a LiveView reconnect (a dropped connection) mounts the page again:
+      its custom states and input values start over, and the render that
+      follows is compared with the last one like any other, so a step is
+      kept unless the new mount changes the element's condition-derived
+      visibility
     * a full page load (a reload, a navigation to another page) forgets it
     * a repeating group's cell is the item's (`cell_id/4`), so a kept step
       follows its item when the list changes order; a cell removed from
@@ -328,9 +341,26 @@ defmodule <%= @web %>.Bubble do
             window.addEventListener(name, listener)
             this.listeners.push([name, listener])
           }
-          on("bubble:show", (el) => this.show(el))
-          on("bubble:hide", (el) => this.hide(el))
-          on("bubble:toggle", (el) => (el.hidden ? this.show(el) : this.hide(el)))
+          // Elements a step has shown or hidden (WTF-509): their `hidden`
+          // attribute is a sticky JS attribute from then on.
+          this.stepped = new WeakSet()
+          // A step holds until the element's condition-derived visibility
+          // (`data-bubble-visible`, rendered by the server) changes.
+          this.conditions = new MutationObserver((records) => this.conditionsChanged(records))
+          this.conditions.observe(document.documentElement, {
+            subtree: true,
+            attributes: true,
+            attributeFilter: ["data-bubble-visible"],
+            attributeOldValue: true
+          })
+          // A step sees the conditions of the render it runs after.
+          const step = (fn) => (el) => {
+            this.conditionsChanged(this.conditions.takeRecords())
+            fn(el)
+          }
+          on("bubble:show", step((el) => this.show(el)))
+          on("bubble:hide", step((el) => this.hide(el)))
+          on("bubble:toggle", step((el) => (el.hidden ? this.show(el) : this.hide(el))))
           on("bubble:focus", (el) => (el.matches(FOCUSABLE) ? el : focusable(el) || el).focus())
           on("bubble:scroll", (el) => el.scrollIntoView({ block: "nearest" }))
           on("bubble:reset", (el) => this.reset(el))
@@ -365,6 +395,7 @@ defmodule <%= @web %>.Bubble do
           } catch (_e) {}
         },
         destroyed() {
+          this.conditions.disconnect()
           this.listeners.forEach(([name, listener]) => window.removeEventListener(name, listener))
           clearTimeout(this.noticeTimer)
           clearTimeout(this.noticeTextTimer)
@@ -422,9 +453,10 @@ defmodule <%= @web %>.Bubble do
           const overlay = el.getAttribute("data-overlay")
           // Already open: nothing (its opener stays the first one). Any
           // other element still keeps the step: a workflow's show or hide
-          // wins over its conditionals until the page reloads (WTF-477).
+          // wins over its conditionals until their result changes
+          // (WTF-477, WTF-509).
           if (!el.hidden) {
-            if (!overlay) this.js().removeAttribute(el, "hidden")
+            if (!overlay) this.override(el, false)
             return
           }
           if (overlay === "popup" || overlay === "group_focus") {
@@ -433,8 +465,8 @@ defmodule <%= @web %>.Bubble do
             })
           }
           if (overlay) this.openers.set(el, document.activeElement)
+          if (!overlay) return this.override(el, false)
           this.js().removeAttribute(el, "hidden")
-          if (!overlay) return
           this.stack = this.stack.filter((open) => open !== el)
           this.stack.push(el)
           if (el.getAttribute("aria-modal") === "true") {
@@ -444,13 +476,10 @@ defmodule <%= @web %>.Bubble do
           el.dispatchEvent(new CustomEvent("bubble:overlay-opened", { bubbles: true }))
         },
         hide(el) {
-          if (el.hidden) {
-            if (!el.getAttribute("data-overlay")) this.js().setAttribute(el, "hidden", "")
-            return
-          }
+          if (!el.getAttribute("data-overlay")) return this.override(el, true)
+          if (el.hidden) return
           const hadFocus = el.contains(document.activeElement)
           this.js().setAttribute(el, "hidden", "")
-          if (!el.getAttribute("data-overlay")) return
           this.stack = this.stack.filter((open) => open !== el)
           el.dispatchEvent(new CustomEvent("bubble:overlay-closed", { bubbles: true }))
           if (el.getAttribute("aria-modal") !== "true" && !hadFocus) return
@@ -463,6 +492,29 @@ defmodule <%= @web %>.Bubble do
           }
           if (opener && isOpen(opener)) opener.focus()
           else if (hadFocus && document.activeElement) document.activeElement.blur()
+        },
+        // A step's show or hide of an element (not an overlay): a sticky
+        // `hidden` attribute, kept across renders.
+        override(el, hidden) {
+          this.stepped.add(el)
+          if (hidden) this.js().setAttribute(el, "hidden", "")
+          else this.js().removeAttribute(el, "hidden")
+        },
+        // A render changed the condition-derived visibility of stepped
+        // elements: the condition wins (WTF-509, Bubble replay 2026-10-07).
+        // LiveView keeps a sticky attribute until it is set again, so the
+        // element's `hidden` becomes the condition's, and it follows every
+        // later change of it. A value changed and changed back within one
+        // batch is no change.
+        conditionsChanged(records) {
+          const before = new Map()
+          records.forEach((r) => { if (!before.has(r.target)) before.set(r.target, r.oldValue) })
+          before.forEach((old, el) => {
+            const now = el.getAttribute("data-bubble-visible")
+            if (!this.stepped.has(el) || now === old) return
+            if (now === "true") this.js().removeAttribute(el, "hidden")
+            else if (now === "false") this.js().setAttribute(el, "hidden", "")
+          })
         },
         reset(el) {
           const fields = el.matches("input, textarea, select")

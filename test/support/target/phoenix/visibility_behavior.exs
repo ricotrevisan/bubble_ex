@@ -1,7 +1,7 @@
 defmodule PhxCheckWeb.VisibilityBehaviorTest do
   # credo:disable-for-this-file Credo.Check.Warning.WrongTestFilename
-  # Visibility conditionals (WTF-477): elements not visible on page load
-  # that a conditional shows, lowered from
+  # Visibility conditionals (WTF-477, WTF-509): elements not visible on
+  # page load that a conditional shows, lowered from
   # test/support/target/phoenix/visibility.json, run by
   # scripts/phoenix_compile_check.sh in the generated project (copied to
   # test/visibility_behavior_test.exs, with a database).
@@ -117,9 +117,44 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
   test "an element hidden on page load with no conditional is shown by a step", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/")
     assert hidden?(view, "bWf")
-    # The step's JS command removes the attribute in the browser (sticky
-    # across renders); the server keeps rendering it as on page load.
+    # The step's JS command removes the attribute in the browser (a sticky
+    # attribute: with no conditionals, kept until reload); the server
+    # keeps rendering it as on page load.
     assert view |> element(~s([data-bubble-id="bShowWf"])) |> render() =~ "bubble:show"
+  end
+
+  # The visibility its conditionals give an element, which the page hook
+  # compares across renders (WTF-509).
+  defp condition(view, id) do
+    html = view |> element(~s([data-bubble-id="#{id}"])) |> render()
+    [open] = Regex.run(~r/\A<[^>]*>/s, html)
+
+    case Regex.run(~r/\sdata-bubble-visible="([a-z]+)"/, open) do
+      [_, value] -> value
+      nil -> nil
+    end
+  end
+
+  test "the condition-derived visibility follows the state (replay 2026-10-07)", %{conn: conn} do
+    data_access_on()
+    {:ok, view, _html} = live(conn, "/")
+    # T1 (bKeep) repeats its visibility on page load: nothing to compare.
+    assert {condition(view, "bKeep"), condition(view, "bFlagged"), condition(view, "bFlagOff")} ==
+             {nil, "false", "true"}
+
+    refute hidden?(view, "bFlagOff")
+    click(view, "bSetFlag")
+    assert {condition(view, "bFlagged"), condition(view, "bFlagOff")} == {"true", "false"}
+    assert hidden?(view, "bFlagOff")
+    click(view, "bUnflag")
+    assert {condition(view, "bFlagged"), condition(view, "bFlagOff")} == {"false", "true"}
+
+    # Set the state, then hide: the step comes with the render that flips
+    # the condition, and the hook applies it after that render.
+    click(view, "bFlagHide")
+    assert condition(view, "bFlagged") == "true"
+    assert_push_event(view, "bubble:exec", %{ops: [%{op: "hide", to: to}]})
+    assert to =~ "bFlagged"
   end
 
   test "a conditional that did not compile keeps the visibility on page load", %{conn: conn} do

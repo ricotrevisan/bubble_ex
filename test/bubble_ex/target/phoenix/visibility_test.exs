@@ -67,6 +67,8 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     build(app())
   end
 
+  defp squash(text), do: String.replace(text, ~r/\s+/, "")
+
   # The opening tag of the element with Bubble ID `id`.
   defp tag(template, id) do
     [tag] = Regex.run(~r/<[.a-z_]+\s[^>]*data-bubble-id="#{id}"[^>]*>/s, template)
@@ -222,12 +224,41 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     assert css =~ "[data-bubble-id][hidden] { display: none; }"
 
     # A step on an element (not an overlay) is kept even when it changes
-    # nothing now: from then on it, not the conditionals, decides.
+    # nothing now, as a sticky attribute, until a render changes the
+    # element's condition-derived visibility (WTF-509).
     helpers = files["lib/shop_web/components/bubble.ex"]
-    assert helpers =~ ~s|if (!overlay) this.js().removeAttribute(el, "hidden")|
+    assert helpers =~ ~s|if (!overlay) this.override(el, false)|
+    assert helpers =~ ~s|if (!el.getAttribute("data-overlay")) return this.override(el, true)|
+    assert helpers =~ ~s|attributeFilter: ["data-bubble-visible"]|
+    assert helpers =~ "this.conditionsChanged(this.conditions.takeRecords())"
+  end
 
-    assert helpers =~
-             ~s|if (!el.getAttribute("data-overlay")) this.js().setAttribute(el, "hidden", "")|
+  test "a step holds until the condition-derived visibility changes (replay 2026-10-07)", %{
+    files: files
+  } do
+    template = files["lib/shop_web/live/index_live.html.heex"]
+    flag = ~s|Bubble.state(@bubble_states, "", "bVis", "custom.flag_")|
+
+    # T2 (hidden on load, shown when flagged) and T3 (shown on load,
+    # hidden when flagged): the page hook compares data-bubble-visible
+    # across renders and drops a step when it changes.
+    for {id, helper} <- [{"bFlagged", "visible_bflagged"}, {"bFlagOff", "visible_bflagoff"}] do
+      assert tag(template, id) =~ "hidden={!#{helper}(#{flag})}"
+      # The HEEx formatter may break the attribute over lines.
+      assert squash(tag(template, id)) =~
+               squash("data-bubble-visible={to_string(#{helper}(#{flag}))}")
+    end
+
+    refute tag(template, "bFlagOff") =~ ~r/\shidden[\s>]/
+
+    # T1's condition repeats its visibility on page load: nothing to
+    # compare, so a step's hide holds through every change; nor has an
+    # element with no conditionals.
+    for id <- ~w(bKeep bWf) do
+      refute tag(template, id) =~ "data-bubble-visible"
+    end
+
+    refute tag(template, "bKeep") =~ "hidden"
   end
 
   test "a conditional that does not compile is marked and residue, never dropped", %{
@@ -268,12 +299,13 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     {:ok, report} = Phoenix.frontend_report(project, Keyword.delete(opts, :frontend_workflows))
 
     # Without the workflows the page keeps no custom state, input value or
-    # URL and loads no data: bFlagged's, bOpen's, bCellNoProject's,
-    # bHasProject's, bTabOpen's, bCardTab's and bBadgeTab's conditionals
-    # are marked too.
+    # URL and loads no data: bFlagged's, bFlagOff's, bOpen's,
+    # bCellNoProject's, bHasProject's, bTabOpen's, bCardTab's and
+    # bBadgeTab's conditionals are marked too (bKeep's only repeats its
+    # visibility on page load: compiled, whatever it reads).
     assert %{
-             "visibility_conditions_compiled" => 8,
-             "visibility_conditions_marked" => 9,
+             "visibility_conditions_compiled" => 9,
+             "visibility_conditions_marked" => 10,
              "conditions_other_properties" => 2
            } = report
   end

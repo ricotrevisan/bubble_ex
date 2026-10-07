@@ -1,18 +1,32 @@
 #!/usr/bin/env bash
 # Real-browser check of visibility conditionals and workflow steps
-# (WTF-477): renders test/support/target/phoenix/visibility.json as a
-# Phoenix app (the compile check's render, privacy: :omit), serves it in
-# dev on a scratch database, and drives Chrome through browserq
-# (`browserq exec <job> -- agent-browser ...`, the lab's browser queue):
+# (WTF-477, WTF-509): renders test/support/target/phoenix/visibility.json
+# as a Phoenix app (the compile check's render, privacy: :omit), serves it
+# in dev on a scratch database, and drives Chrome through browserq
+# (`browserq exec <job> -- agent-browser ...`, the lab's browser queue).
 #
-#   1. a workflow step shows an element not visible on page load (bWf)
-#   2. a server re-render (a custom state set by a workflow, which a
-#      conditional reads: bFlagged shows) keeps the step's show
-#   3. a step hides bFlagged; re-renders that flip its conditional
-#      (unflag, flag) do not show it again: the step wins until reload
-#   4. a LiveView reconnect keeps both steps (sticky JS attributes on the
-#      same DOM elements) while the page's custom states reset to their
-#      defaults (a new mount)
+# A workflow step's show or hide holds until a render changes the
+# element's condition-derived visibility; then the condition wins (Bubble
+# replay 2026-10-07). The replay's synthetic kit is the custom state
+# `flag` (no on load) and three texts: T1 bKeep (visible on load, "when
+# flag: visible", the same as on load), T2 bFlagged (hidden on load, "when
+# flag: visible") and T3 bFlagOff (visible on load, "when flag: hidden");
+# buttons set the flag (bSetFlag, bUnflag), hide T1 (bHideKeep, a step run
+# in the browser), hide T2 (bHideFlagged), show T3 (bShowFlagOff):
+#
+#   1. a step shows an element with no conditionals (bWf); a re-render
+#      keeps it
+#   2. the replay's four sequences, each from a fresh page load: a step
+#      holds until a re-render flips the element's conditional, which then
+#      shows again what a step hid (T2) or hides what a step showed (T3);
+#      T1's hide holds through every change (its condition repeats its
+#      visibility on page load)
+#   3. a workflow that sets the flag and then hides T2 (bFlagHide): the
+#      step applies after the render that flips the condition, so it wins
+#   4. a LiveView reconnect: a new mount (the flag resets), compared with
+#      the last render like any other: steps on bWf and T1 hold, T2's step
+#      is dropped by the flipped condition, and the conditions still drive
+#      it afterwards
 #   5. a full reload starts over: the visibility on page load
 #   6. a conditional reading an input follows typing and its commit
 #
@@ -112,37 +126,95 @@ expect() { # $1 element, $2 expected hidden, $3 what
   fi
 }
 
-b open "http://127.0.0.1:$port/" >/dev/null
-connected
+# T1 T2 T3 hidden flags ("true"/"false"), after the step named $4.
+state() { # $1 $2 $3 expected bKeep bFlagged bFlagOff, $4 what
+  expect bKeep "$1" "$4: T1"
+  expect bFlagged "$2" "$4: T2"
+  expect bFlagOff "$3" "$4: T3"
+}
+
+fresh() {
+  b open "http://127.0.0.1:$port/" >/dev/null
+  connected
+}
+
+fresh
 expect bWf true "not visible on page load"
-expect bFlagged true "conditional false on page load"
+state false true false "page load"
 
 click bShowWf
-expect bWf false "a show step shows it"
-
+expect bWf false "a show step shows an element with no conditionals"
 click bSetFlag
-expect bFlagged false "a re-render shows what the conditional now shows"
-expect bWf false "the re-render keeps the show step"
+expect bWf false "a re-render keeps the show step"
+click bUnflag
 
+echo "replay 1: h1, sy, sn"
+fresh
+click bHideKeep
+state true true false "hide T1"
+click bSetFlag
+state true false true "flag"
+click bUnflag
+state true true false "unflag"
+
+echo "replay 2: sy, h1, sn, sy"
+fresh
+click bSetFlag
+state false false true "flag"
+click bHideKeep
+state true false true "hide T1"
+click bUnflag
+state true true false "unflag"
+click bSetFlag
+state true false true "flag again"
+
+echo "replay 3: sy, h2, sn, sy (the flip shows again what a step hid)"
+fresh
+click bSetFlag
 click bHideFlagged
-expect bFlagged true "a hide step hides a conditionally shown element"
+state false true true "hide T2"
+click bUnflag
+state false true false "unflag"
+click bSetFlag
+state false false true "flag again: T2 shown by its condition"
+
+echo "replay 4: sy, s3, sn, sy"
+fresh
+click bSetFlag
+click bShowFlagOff
+state false false false "show T3"
+click bUnflag
+state false true false "unflag"
+click bSetFlag
+state false false true "flag again: T3 hidden by its condition"
+
+echo "set the flag, then hide T2, in one workflow"
+fresh
+click bFlagHide
+expect bFlagged true "the step after the flip wins"
 click bUnflag
 click bSetFlag
-expect bFlagged true "re-renders flipping its conditional do not undo the hide step"
+expect bFlagged false "the next flip shows it again"
 
+echo "reconnect"
+fresh
+click bShowWf
+click bHideKeep
+click bSetFlag
+click bHideFlagged
+state true true true "before the reconnect"
 b eval "liveSocket.disconnect(); setTimeout(() => liveSocket.connect(), 300); 'ok'" >/dev/null
 sleep 1
 connected
-expect bWf false "a reconnect keeps the show step"
-expect bFlagged true "a reconnect keeps the hide step"
+expect bWf false "a reconnect keeps the show step (no conditionals)"
+# The new mount resets the flag: T2's condition flips (hidden), T3's too.
+state true true false "after the reconnect (flag reset)"
 click bSetFlag
-expect bFlagged true "after a reconnect the hide step still wins over its conditional"
+state true false true "after the reconnect a flip still drives T2 and T3"
 
-b open "http://127.0.0.1:$port/" >/dev/null
-connected
+fresh
 expect bWf true "a reload starts from the visibility on page load"
-click bSetFlag
-expect bFlagged false "a reload forgets the hide step"
+state false true false "a reload forgets the steps"
 
 # A conditional reading an input re-renders as the user types (the
 # input's change, WTF-474/475) and after it is committed (blur).

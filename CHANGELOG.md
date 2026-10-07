@@ -124,6 +124,28 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **A workflow's show or hide yields when a condition changes the
+  element's visibility** (WTF-509, Bubble replay 2026-10-07). A step's
+  show, hide or toggle of an element was kept until the page reloaded
+  (WTF-477). Replayed on a synthetic page (a custom state read by three
+  conditions), Bubble keeps it only until one of the element's
+  visibility conditions changes the visibility they give it: then the
+  condition wins, and the element follows its conditions again until the
+  next step. A condition that repeats the visibility on page load never
+  changes it, so a step's hide on such an element holds through every
+  change. Pages now render that visibility as `data-bubble-visible`
+  beside `hidden`, and the page hook (`<Web>.Bubble.runtime/1`) drops a
+  step when a render changes it; steps of the same event run after the
+  change that flips a condition (they win). A LiveView reconnect is a new
+  mount compared with the last render like any other: a step holds unless
+  the new mount's state changes the element's visibility. Elements with
+  no conditions (or conditions that do not compile) keep a step until the
+  page reloads; overlays are unchanged. The generated `<Web>.Bubble`
+  gets the new hook on regeneration; owned pages scaffolded before it do
+  not render `data-bubble-visible`, so their steps still hold until the
+  page reloads until the attribute is added (beside each conditional
+  `hidden`, the same helper call through `to_string/1`).
+
 - **List operators of page data load** (WTF-495, part of WTF-476).
   Repeating group lists (and groups, properties) using `:sorted by`,
   `:filtered`, `:merged with`, `:unique elements` and the other list
