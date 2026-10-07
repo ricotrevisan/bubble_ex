@@ -144,6 +144,35 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
     assert length(Regex.scan(~r/Cell outside: Re: Hello B/, html)) == cells
   end
 
+  test "a condition reading a property with no value (no default, not set) is not decided",
+       %{conn: conn, user: user} do
+    data_access_on()
+    {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+
+    # Due: bCardA sets it (the task's date), bCardB does not, and it has
+    # no default. Decided where it is set; kept as on page load (shown)
+    # where it is not, or hidden with privacy: :enforced.
+    refute hidden?(view, "bCardA", "bDueKnown")
+    assert hidden?(view, "bCardB", "bDueKnown") == enforced?()
+
+    # Extra: no instance sets it. Kept as on page load: hidden.
+    assert hidden?(view, "bCardA", "bExtraShown")
+    assert hidden?(view, "bCardB", "bExtraShown")
+
+    # From the page, bCardB's Task (not set, no default): hidden on page
+    # load stays hidden, never shown as if empty; shown on page load
+    # stays shown, or hidden with privacy: :enforced.
+    page_hidden? = fn id ->
+      [open] =
+        Regex.run(~r/\A<[^>]*>/s, view |> element(~s([data-bubble-id="#{id}"])) |> render())
+
+      open =~ ~r/\shidden(\s|>|=)/
+    end
+
+    assert page_hidden?.("bUnsetShown")
+    assert page_hidden?.("bUnsetKept") == enforced?()
+  end
+
   test "properties nest: a reusable two levels down takes its default; IDs are per reusable",
        %{conn: conn, user: user} do
     data_access_on()

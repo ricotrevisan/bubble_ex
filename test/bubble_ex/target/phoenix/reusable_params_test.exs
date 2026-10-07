@@ -17,10 +17,10 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
 
   defp app, do: @fixture |> File.read!() |> Jason.decode!()
 
-  defp build(app) do
+  defp build(app, privacy \\ :omit) do
     {:ok, model} = Model.build(app)
     {:ok, index} = Index.build(app, model: model)
-    {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
+    {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: privacy)
     {:ok, frontend} = BubbleEx.Frontend.normalize(app)
 
     {:ok, expressions} =
@@ -225,6 +225,128 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
     end
   end
 
+  describe "a property with no value (no default, not set)" do
+    defp unset(spec, surface, element, param),
+      do:
+        Spec.unset_property(
+          spec,
+          surface,
+          {:element_state, %{"element" => element, "state" => param}}
+        )
+
+    test "is told apart from a value or a default", %{spec: spec} do
+      # From where the instance is: bCardB sets no Task, and Task has no
+      # default.
+      assert unset(spec, "bTaskPage", "bCardB", "param_pTask") == :unset
+      # A value it sets, or a default it keeps.
+      assert unset(spec, "bTaskPage", "bCardA", "param_pTask") == nil
+      assert unset(spec, "bTaskPage", "bCardA", "param_pNote") == nil
+      assert unset(spec, "bTaskPage", "bCardB", "param_pHeading") == nil
+
+      # In the reusable element: no instance sets Extra; only some set Due
+      # and Flag; every instance gets Note (a default).
+      assert unset(spec, "bCard", "bCard", "param_pExtra") == :unset
+      assert unset(spec, "bCard", "bCard", "param_pDue") == {:some, "param_pDue/bCard"}
+      assert unset(spec, "bCard", "bCard", "param_pFlag") == {:some, "param_pFlag/bCard"}
+      assert unset(spec, "bCard", "bCard", "param_pNote") == nil
+      assert unset(spec, "bCard", "bCard", "param_pHeading") == nil
+
+      # Not a property.
+      assert unset(spec, "bCard", "bCard", "custom.n_") == nil
+    end
+
+    test "a condition reading one is not decided as if it were empty", %{files: files} do
+      page = files["lib/shop_web/live/task_live.html.heex"]
+      template = files["lib/shop_web/components/reusables/card.html.heex"]
+
+      for id <- ~w(bUnsetShown bUnsetKept) do
+        assert page =~
+                 "TODO(bubble:#{id}) visibility: 1 conditional not lowered (it reads a " <>
+                   "reusable element's property that is not set and has no default: " <>
+                   "element_state:param_pTask); shown as on page load"
+      end
+
+      refute page =~ "visible_bunsetshown"
+      refute page =~ "visible_bunsetkept"
+      # As on page load: hidden, and shown.
+      assert page =~ ~r/data-bubble-id="bUnsetShown"[^>]*\shidden[\s>]/s
+      refute page =~ ~r/data-bubble-id="bUnsetKept"[^>]*\shidden[\s>]/s
+
+      assert template =~
+               "TODO(bubble:bExtraShown) visibility: 1 conditional not lowered (it reads a " <>
+                 "reusable element's property that is not set and has no default: " <>
+                 "element_state:param_pExtra); shown as on page load"
+
+      assert template =~
+               "TODO(bubble:bDueKnown) visibility: 1 conditional not lowered for the instances " <>
+                 "that do not set param_pDue/bCard (no default); shown as on page load there"
+
+      assert template =~
+               ~s|if(Bubble.set?(@bubble_data, @scope, ["param_pDue/bCard"]),\n| <>
+                 ~s|        do: !visible_bdueknown(Bubble.data(@bubble_data, @scope, "param_pDue/bCard")),\n| <>
+                 ~s|        else: false|
+
+      # A default is read: the condition is decided.
+      assert page =~ "visible_boutsideshown("
+
+      runtime = files["lib/shop_web/components/bubble.ex"]
+      assert runtime =~ "def set?(data, scope, keys) when is_map(data)"
+    end
+
+    test "the report counts the conditionals reading one", %{spec: spec} do
+      app = app()
+      {:ok, model} = Model.build(app)
+      {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
+      {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+
+      {:ok, expressions} =
+        Frontend.compile(app, model, project, frontend,
+          runtime: "Shop.Bubble.Runtime",
+          namespace: "Shop"
+        )
+
+      {:ok, report} =
+        Phoenix.frontend_report(project,
+          module: "Shop",
+          frontend: frontend,
+          expressions: expressions,
+          frontend_workflows: spec
+        )
+
+      # bUnsetShown, bUnsetKept and bExtraShown (marked); bFlagT, bDueSet and
+      # bDueKnown (decided where set).
+      assert %{"visibility_conditions_unset_property" => 6} = report
+    end
+
+    test "with privacy: :enforced, what a condition may hide stays hidden" do
+      %{files: files} = build(app(), :enforced)
+      page = files["lib/shop_web/live/task_live.html.heex"]
+      template = files["lib/shop_web/components/reusables/card.html.heex"]
+
+      # Shown on page load, hidden by its condition: hidden.
+      assert page =~
+               "TODO(bubble:bUnsetKept) visibility: 1 conditional not lowered (it reads a " <>
+                 "reusable element's property that is not set and has no default: " <>
+                 "element_state:param_pTask); hidden (privacy: enforced, a conditional may hide it)"
+
+      assert page =~ ~r/data-bubble-id="bUnsetKept"[^>]*\shidden[\s>]/s
+
+      # Hidden on page load, shown by its condition: stays hidden.
+      assert page =~ ~r/data-bubble-id="bUnsetShown"[^>]*\shidden[\s>]/s
+      assert page =~ "TODO(bubble:bUnsetShown) visibility: 1 conditional not lowered"
+
+      # Where only some instances set it: hidden for the others.
+      assert template =~
+               ~s|do: !visible_bdueknown(Bubble.data(@bubble_data, @scope, "param_pDue/bCard")),\n| <>
+                 ~s|        else: true|
+
+      assert template =~
+               "TODO(bubble:bDueKnown) visibility: 1 conditional not lowered for the instances " <>
+                 "that do not set param_pDue/bCard (no default); " <>
+                 "hidden (privacy: enforced, a conditional may hide it) there"
+    end
+  end
+
   describe "with Display data (WTF-492)" do
     test "a step sets the instance's own thing; its properties stay sources of the page",
          %{spec: spec, files: files} do
@@ -322,8 +444,12 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
 
       assert template =~ ~s|Bubble.data(@bubble_data, @scope, "param_pTitle/bCard")|
 
+      # Flag: bCardC sets none (and it has no default), so the condition is
+      # decided only where the instance has a value.
       assert template =~
-               ~s|hidden={!visible_bflagt(Bubble.data(@bubble_data, @scope, "param_pFlag/bCard"))}|
+               ~s|if(Bubble.set?(@bubble_data, @scope, ["param_pFlag/bCard"]),\n| <>
+                 ~s|        do: !visible_bflagt(Bubble.data(@bubble_data, @scope, "param_pFlag/bCard")),\n| <>
+                 ~s|        else: true|
 
       assert template =~ ~s|bubble_data={@bubble_data}|
 

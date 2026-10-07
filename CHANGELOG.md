@@ -6,6 +6,24 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **A visibility condition reading a reusable property with no value is
+  not decided as if it were empty** (WTF-505). A condition reading a
+  reusable element's property that has no default and that the instance
+  does not set read it as empty, so a panel shown whenever the property
+  differs from something was always shown. Bubble's value there is not
+  verified yet. A property with a default still reads the default
+  (WTF-503). Read from where the instance is, or in a reusable element
+  that no instance sets it in, the conditionals are now not lowered (a
+  marker; the element keeps its page-load visibility). When only some
+  instances set it, the helper decides for those and the others keep the
+  page-load visibility (`Bubble.set?/3` tells them apart by scope). With
+  privacy: :enforced, an element shown on page load that a conditional may
+  hide stays hidden instead. The frontend report counts these conditionals
+  as `visibility_conditions_unset_property`. On the private fixture app
+  (counts only), 40 conditionals read such a property: 5 are now marked
+  (conditionals not lowered went from 821 to 826), and 35 are decided
+  only where the property is set. None is hidden by the privacy rule.
+
 - **Signed-in panels hidden by what the page already had** (WTF-476
   follow-up). Measured on the private fixture app's five signed-in pages
   (their reusables included), counts only: of the elements that render
