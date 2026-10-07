@@ -1,16 +1,16 @@
 {
   "counts": {
-    "calls": 204,
+    "calls": 172,
     "env": {
-      "auth": 18,
-      "host": 22,
-      "literal": 1081,
-      "private": 21,
-      "private_line": 49
+      "auth": 16,
+      "host": 17,
+      "literal": 754,
+      "private": 62,
+      "private_line": 1
     },
-    "generated": 199,
-    "generated_env_configured": 195,
-    "groups": 31,
+    "generated": 167,
+    "generated_env_configured": 163,
+    "groups": 29,
     "residue": 5,
     "residue_reasons": {
       "file_parameter": 1,

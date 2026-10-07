@@ -24,12 +24,12 @@
     "changed": [],
     "dependent_checks": {
       "actor_empty_denies": 82,
-      "builtin_fields_hidden_unless_listed": 85,
+      "builtin_fields_hidden_unless_listed": 91,
       "empty_equals_empty": 82,
-      "empty_yes_no_is_no": 13,
-      "everyone_exclusive": 9,
+      "empty_yes_no_is_no": 12,
+      "everyone_exclusive": 15,
       "logged_out_user_is_empty": 15,
-      "no_visible_field_unreadable": 747,
+      "no_visible_field_unreadable": 699,
       "non_filterable_constraint_excludes": 9,
       "search_independent_of_view": 49
     },
@@ -69,15 +69,20 @@
       "compared_condition_guards_record_values"
     ]
   },
-  "checks": 1704,
+  "checks": 1542,
   "defaults": {
     "explicit_empties": 9,
-    "fields": 194,
-    "seed_values_equal_to_default": 794,
+    "fields": 192,
+    "seed_values_equal_to_default": 802,
     "unmodeled": 0
   },
+  "deleted_type_rules": {
+    "solved": 0,
+    "total": 5,
+    "unsolved": 5
+  },
   "differences": {
-    "observations": 158,
+    "observations": 156,
     "policy": [
       "actor_empty_denies",
       "compared_condition_guards_record_values",
@@ -86,58 +91,58 @@
       "everyone_guards_record_values",
       "logged_out_user_is_empty"
     ],
-    "rules": 29,
+    "rules": 28,
     "scenarios": 49,
-    "types": 23,
+    "types": 22,
     "unintended": 0
   },
   "governed_fields": {
-    "held": 2525,
-    "slots": 3924,
-    "unchecked": 1399,
+    "held": 2507,
+    "slots": 3907,
+    "unchecked": 1400,
     "unchecked_by_reason": {
-      "condition_reads": 193,
+      "condition_reads": 204,
       "explicitly_empty": 11,
-      "no_synthetic_value": 1098,
-      "persona": 97
+      "no_synthetic_value": 1093,
+      "persona": 92
     }
   },
-  "observations": 2808,
+  "observations": 2562,
   "oracle_scope": "model: expectations from the interpreter over the shared expression compiler's IR; agreement with the Ash policies covers IR-to-Ash lowering and the policy generator, not the compiler (typing, lowering to IR); never Bubble-verified",
   "personas": 6,
-  "records": 184,
+  "records": 170,
   "rules": {
-    "conditional": 91,
-    "everyone": 53,
+    "conditional": 87,
+    "everyone": 47,
     "false_branch_only_via_actor_guard": 0,
-    "observable": 87,
-    "observable_percent": 60.4,
-    "solved": 133,
-    "solved_percent": 92.4,
-    "total": 144,
+    "observable": 85,
+    "observable_percent": 63.4,
+    "solved": 125,
+    "solved_percent": 93.3,
+    "total": 134,
     "true_branch_only_via_empty_actor": 0,
-    "unsolved": 11
+    "unsolved": 9
   },
-  "scenarios": 582,
+  "scenarios": 504,
   "seed_values_from_condition_literals": 0,
   "skipped": {
     "gets": 0,
     "searches": 0
   },
   "types": {
-    "deleted": 4,
-    "public": 45,
-    "total": 101,
+    "deleted": 9,
+    "public": 37,
+    "total": 93,
     "unavailable": 0,
-    "with_rules": 52
+    "with_rules": 47
   },
   "unobservable_by_reason": {
-    "grants_nothing": 39,
-    "masked": 7,
-    "unsolved": 11
+    "grants_nothing": 36,
+    "masked": 4,
+    "unsolved": 14
   },
   "unsolved_by_reason": {
-    "deleted_type": 2,
+    "deleted_type": 5,
     "no_false_witness": 3,
     "no_true_witness": 6
   }

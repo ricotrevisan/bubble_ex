@@ -295,10 +295,11 @@ defmodule BubbleEx.Buildprint.V5Test do
                "option_sets" => 1,
                "pages" => 1,
                "api_calls" => 1,
+               "api_calls_unnamed" => 0,
                "workflows" => 3
              }
 
-      assert result.counts == result.symbol_counts
+      assert Map.delete(result.counts, "api_calls_unnamed") == result.symbol_counts
       assert codes(result) == [:buildprint_snapshot_unverified]
       assert result.snapshot == %{expected: String.duplicate("0", 64), reproduced: false}
 
@@ -395,6 +396,53 @@ defmodule BubbleEx.Buildprint.V5Test do
 
       assert %{"pages" => 2, "workflows" => 4} = result.counts
       assert :buildprint_count_mismatch in codes(result)
+    end
+
+    test "a call entry without a name is counted apart, not as a mismatch", %{tmp_dir: dir} do
+      # Bubble's JSON can hold a call entry with no name (e.g. only
+      # `method`); Buildprint indexes calls by name, so it has no symbol.
+      fragments =
+        List.keyreplace(fragments(), "api-connector/Service.ts", 0, {
+          "api-connector/Service.ts",
+          %{
+            "settings" => %{
+              "client_safe" => %{
+                "apiconnector2" => %{
+                  "g1" => %{
+                    "human" => "Service",
+                    "calls" => %{
+                      "c1" => %{
+                        "name" => "Get",
+                        "method" => "get",
+                        "url" => "https://example.com/x"
+                      },
+                      "c2" => %{"method" => "get"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        })
+
+      {:ok, result} = dir |> write_workspace(fragments: fragments) |> V5.load()
+
+      assert Model.summary(result.model)["api_calls"] == 2
+      assert %{"api_calls" => 1, "api_calls_unnamed" => 1} = result.counts
+      refute :buildprint_count_mismatch in codes(result)
+
+      # A named call the index lacks is still a mismatch.
+      {:ok, short} =
+        dir
+        |> write_workspace(
+          name: "short",
+          fragments: fragments,
+          symbols: Map.put(@symbols, "apiCall", 0)
+        )
+        |> V5.load()
+
+      assert [%{details: %{kind: "api_calls", loaded: 1, symbols: 0}}] =
+               Enum.filter(short.diagnostics, &(&1.code == :buildprint_count_mismatch))
     end
 
     test "reports each count that differs from the symbols index", %{tmp_dir: dir} do
@@ -498,7 +546,7 @@ defmodule BubbleEx.Buildprint.V5Test do
 
       assert {:ok, %V5{app: app} = result} = V5.load(ws)
       assert result.format_version == "bubblescript-32"
-      assert result.counts == result.symbol_counts
+      assert Map.delete(result.counts, "api_calls_unnamed") == result.symbol_counts
 
       # `settings.secure` and Buildprint's members are dropped unread.
       assert Map.keys(app["settings"]) == ["client_safe"]
