@@ -49,10 +49,13 @@ defmodule BubbleEx.Buildprint.V5 do
       editor JSON (`BubbleEx.Frontend.EditorGeometry.mark/1`), so
       `BubbleEx.Frontend.normalize/2` reads its layout as Bubble does.
     * **Checks.** The app is built into a `BubbleEx.Model` (returned as
-      `model`), and the counts of its data types, fields, option sets and API
-      calls, plus the app's pages and workflows (`counts/2`, deleted ones
-      included), are compared with the index's `symbols` table; each
-      difference is a `:buildprint_count_mismatch` diagnostic.
+      `model`), and the counts of its data types, fields, option sets and
+      named API calls, plus the app's pages and workflows (`counts/2`,
+      deleted ones included), are compared with the index's `symbols` table;
+      each difference is a `:buildprint_count_mismatch` diagnostic. A call
+      entry without a name (e.g. one holding only `method`, left behind in
+      Bubble's JSON) is kept in the Model but not indexed by Buildprint, so
+      it is counted apart (`api_calls_unnamed`) rather than as a mismatch.
 
   Diagnostics carry counts and section names only, never a key, value,
   display name or file name read from the workspace. Buildprint shows
@@ -279,10 +282,14 @@ defmodule BubbleEx.Buildprint.V5 do
 
   @doc """
   Counts compared with the Buildprint `symbols` index, deleted definitions
-  included: the `model`'s data types, fields, option sets and API Connector
-  calls (as `BubbleEx.Model.summary/1` counts them), and the app's pages
-  and workflows (backend workflows plus the workflows of pages, reusable
-  elements and mobile views; JSON-object entries only).
+  included: the `model`'s data types, fields, option sets and named API
+  Connector calls (as `BubbleEx.Model.summary/1` counts them), and the
+  app's pages and workflows (backend workflows plus the workflows of pages,
+  reusable elements and mobile views; JSON-object entries only).
+
+  Buildprint indexes an API call by its name, so a call entry without one
+  is not a symbol: `api_calls` counts named calls only, and
+  `api_calls_unnamed` (not compared) the rest of the Model's calls.
   """
   @spec counts(map(), Model.t()) :: %{String.t() => non_neg_integer()}
   def counts(app, %Model{} = model) when is_map(app) do
@@ -292,10 +299,13 @@ defmodule BubbleEx.Buildprint.V5 do
           reduce: 0,
           do: (n -> n + map_size(objects(owner["workflows"])))
 
-    model
-    |> Model.summary()
-    |> Map.take(~w(data_types fields option_sets api_calls))
+    summary = Model.summary(model)
+
+    summary
+    |> Map.take(~w(data_types fields option_sets))
     |> Map.merge(%{
+      "api_calls" => summary["api_calls_named"],
+      "api_calls_unnamed" => summary["api_calls"] - summary["api_calls_named"],
       "pages" => map_size(objects(app["pages"])),
       "workflows" => map_size(objects(app["api"])) + owner_workflows
     })

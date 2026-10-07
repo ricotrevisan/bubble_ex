@@ -2,20 +2,20 @@
   "decided": {
     "counts": {
       "bypasses": {
-        "expected": 165,
-        "lowered": 165,
+        "expected": 186,
+        "lowered": 186,
         "sites": {
           "authorize_false:scaffold": 2,
           "authorize_unverifiable:scaffold": 7,
-          "runtime_start:listed": 165
+          "runtime_start:listed": 186
         }
       },
       "privacy_rules": {
         "privacy": "omit",
-        "rules": 142,
+        "rules": 134,
         "types": {
-          "none": 45,
-          "present": 52
+          "none": 37,
+          "present": 47
         }
       },
       "symbols": {
@@ -23,47 +23,47 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 199,
+          "generated": 167,
           "reasons": {
             "residue:not_generated": 5
           },
           "residue": 5,
-          "total": 204,
+          "total": 172,
           "uncovered": 0
         },
         "data_types": {
           "decision": 0,
           "diagnosed": 0,
-          "excluded": 4,
-          "generated": 97,
+          "excluded": 9,
+          "generated": 84,
           "reasons": {
-            "excluded:deleted": 4
+            "excluded:deleted": 9
           },
           "residue": 0,
-          "total": 101,
+          "total": 93,
           "uncovered": 0
         },
         "fields": {
           "decision": 0,
           "diagnosed": 0,
-          "excluded": 51,
-          "generated": 1787,
+          "excluded": 137,
+          "generated": 1628,
           "reasons": {
-            "excluded:deleted": 15,
-            "excluded:type_deleted": 36
+            "excluded:deleted": 28,
+            "excluded:type_deleted": 109
           },
           "residue": 0,
-          "total": 1838,
+          "total": 1765,
           "uncovered": 0,
           "unreadable_parents": 0
         },
         "option_sets": {
           "decision": 0,
           "diagnosed": 0,
-          "excluded": 4,
-          "generated": 144,
+          "excluded": 9,
+          "generated": 139,
           "reasons": {
-            "excluded:deleted": 4
+            "excluded:deleted": 9
           },
           "residue": 0,
           "total": 148,
@@ -72,14 +72,14 @@
         "option_values": {
           "decision": 0,
           "diagnosed": 0,
-          "excluded": 16,
-          "generated": 1142,
+          "excluded": 43,
+          "generated": 1119,
           "reasons": {
-            "excluded:deleted": 2,
-            "excluded:option_set_deleted": 14
+            "excluded:deleted": 10,
+            "excluded:option_set_deleted": 33
           },
           "residue": 0,
-          "total": 1158,
+          "total": 1162,
           "uncovered": 0,
           "unreadable_parents": 0
         },
@@ -87,45 +87,45 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 1,
-          "generated": 31,
+          "generated": 30,
           "reasons": {
             "excluded:mobile_view": 1
           },
           "residue": 0,
-          "total": 32,
+          "total": 31,
           "uncovered": 0
         },
         "reusables": {
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 128,
+          "generated": 123,
           "reasons": {},
           "residue": 0,
-          "total": 128,
+          "total": 123,
           "uncovered": 0
         },
         "workflows": {
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 814,
+          "generated": 796,
           "reasons": {
-            "residue:api_connector_action": 53,
+            "residue:api_connector_action": 39,
             "residue:auth_action": 8,
-            "residue:blocked_by_callee": 157,
-            "residue:plugin_action": 338,
-            "residue:plugin_event": 259,
-            "residue:trigger_in_runtime_template": 195,
-            "residue:unavailable_input": 354,
-            "residue:uncompiled_expression": 660,
-            "residue:unresolved_reference": 21,
+            "residue:blocked_by_callee": 156,
+            "residue:plugin_action": 339,
+            "residue:plugin_event": 250,
+            "residue:trigger_in_runtime_template": 194,
+            "residue:unavailable_input": 350,
+            "residue:uncompiled_expression": 686,
+            "residue:unresolved_reference": 20,
             "residue:unsupported_action": 52,
-            "residue:unsupported_event": 17,
-            "residue:unsupported_option": 36
+            "residue:unsupported_event": 16,
+            "residue:unsupported_option": 34
           },
-          "residue": 2150,
-          "total": 2964,
+          "residue": 2144,
+          "total": 2940,
           "uncovered": 0
         }
       }
@@ -134,18 +134,18 @@
     "passing": false,
     "policy_coverage_unverified": {
       "counts": {
-        "compiled": 90,
+        "compiled": 87,
         "denied": 0,
-        "everyone": 52,
+        "everyone": 47,
         "privacy": "unverified",
-        "rules": 142,
+        "rules": 134,
         "stricter_than_bubble": {
-          "rules": 90,
-          "types": 49
+          "rules": 89,
+          "types": 44
         },
         "types": {
-          "none": 45,
-          "present": 52
+          "none": 37,
+          "present": 47
         },
         "uncovered": 0
       },
@@ -169,20 +169,20 @@
   "faithful": {
     "counts": {
       "bypasses": {
-        "expected": 165,
-        "lowered": 165,
+        "expected": 186,
+        "lowered": 186,
         "sites": {
           "authorize_false:scaffold": 2,
           "authorize_unverifiable:scaffold": 7,
-          "runtime_start:listed": 165
+          "runtime_start:listed": 186
         }
       },
       "privacy_rules": {
         "privacy": "omit",
-        "rules": 142,
+        "rules": 134,
         "types": {
-          "none": 45,
-          "present": 52
+          "none": 37,
+          "present": 47
         }
       },
       "symbols": {
@@ -190,47 +190,47 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 199,
+          "generated": 167,
           "reasons": {
             "residue:not_generated": 5
           },
           "residue": 5,
-          "total": 204,
+          "total": 172,
           "uncovered": 0
         },
         "data_types": {
           "decision": 0,
           "diagnosed": 0,
-          "excluded": 4,
-          "generated": 97,
+          "excluded": 9,
+          "generated": 84,
           "reasons": {
-            "excluded:deleted": 4
+            "excluded:deleted": 9
           },
           "residue": 0,
-          "total": 101,
+          "total": 93,
           "uncovered": 0
         },
         "fields": {
           "decision": 0,
           "diagnosed": 0,
-          "excluded": 51,
-          "generated": 1787,
+          "excluded": 137,
+          "generated": 1628,
           "reasons": {
-            "excluded:deleted": 15,
-            "excluded:type_deleted": 36
+            "excluded:deleted": 28,
+            "excluded:type_deleted": 109
           },
           "residue": 0,
-          "total": 1838,
+          "total": 1765,
           "uncovered": 0,
           "unreadable_parents": 0
         },
         "option_sets": {
           "decision": 0,
           "diagnosed": 0,
-          "excluded": 4,
-          "generated": 144,
+          "excluded": 9,
+          "generated": 139,
           "reasons": {
-            "excluded:deleted": 4
+            "excluded:deleted": 9
           },
           "residue": 0,
           "total": 148,
@@ -239,14 +239,14 @@
         "option_values": {
           "decision": 0,
           "diagnosed": 0,
-          "excluded": 16,
-          "generated": 1142,
+          "excluded": 43,
+          "generated": 1119,
           "reasons": {
-            "excluded:deleted": 2,
-            "excluded:option_set_deleted": 14
+            "excluded:deleted": 10,
+            "excluded:option_set_deleted": 33
           },
           "residue": 0,
-          "total": 1158,
+          "total": 1162,
           "uncovered": 0,
           "unreadable_parents": 0
         },
@@ -254,45 +254,45 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 1,
-          "generated": 31,
+          "generated": 30,
           "reasons": {
             "excluded:mobile_view": 1
           },
           "residue": 0,
-          "total": 32,
+          "total": 31,
           "uncovered": 0
         },
         "reusables": {
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 128,
+          "generated": 123,
           "reasons": {},
           "residue": 0,
-          "total": 128,
+          "total": 123,
           "uncovered": 0
         },
         "workflows": {
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 814,
+          "generated": 796,
           "reasons": {
-            "residue:api_connector_action": 53,
+            "residue:api_connector_action": 39,
             "residue:auth_action": 8,
-            "residue:blocked_by_callee": 157,
-            "residue:plugin_action": 338,
-            "residue:plugin_event": 259,
-            "residue:trigger_in_runtime_template": 195,
-            "residue:unavailable_input": 354,
-            "residue:uncompiled_expression": 660,
-            "residue:unresolved_reference": 21,
+            "residue:blocked_by_callee": 156,
+            "residue:plugin_action": 339,
+            "residue:plugin_event": 250,
+            "residue:trigger_in_runtime_template": 194,
+            "residue:unavailable_input": 350,
+            "residue:uncompiled_expression": 686,
+            "residue:unresolved_reference": 20,
             "residue:unsupported_action": 52,
-            "residue:unsupported_event": 17,
-            "residue:unsupported_option": 36
+            "residue:unsupported_event": 16,
+            "residue:unsupported_option": 34
           },
-          "residue": 2150,
-          "total": 2964,
+          "residue": 2144,
+          "total": 2940,
           "uncovered": 0
         }
       }
@@ -301,18 +301,18 @@
     "passing": false,
     "policy_coverage_unverified": {
       "counts": {
-        "compiled": 90,
+        "compiled": 87,
         "denied": 0,
-        "everyone": 52,
+        "everyone": 47,
         "privacy": "unverified",
-        "rules": 142,
+        "rules": 134,
         "stricter_than_bubble": {
-          "rules": 90,
-          "types": 49
+          "rules": 89,
+          "types": 44
         },
         "types": {
-          "none": 45,
-          "present": 52
+          "none": 37,
+          "present": 47
         },
         "uncovered": 0
       },

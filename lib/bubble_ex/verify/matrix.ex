@@ -1121,6 +1121,9 @@ defmodule BubbleEx.Verify.Matrix do
     |> Map.new(fn {k, v} -> {Atom.to_string(k), v} end)
   end
 
+  defp deleted_type?(%Interpreter{types: types}, type_id),
+    do: match?(%{type: %{deleted: true}}, Map.get(types, type_id))
+
   defp version, do: :bubble_ex |> Application.spec(:vsn) |> to_string()
 
   # --- report --------------------------------------------------------------------------
@@ -1128,13 +1131,17 @@ defmodule BubbleEx.Verify.Matrix do
   @doc """
   The coverage report of a matrix (also in `matrix.report`):
 
-    * `rules` - `total`, `conditional`, `everyone`, `solved`, `unsolved`,
-      `solved_percent` (of all rules, one decimal), `observable`,
+    * `rules` - the rules of live data types (not flagged `deleted` /
+      `%del` in the app): `total`, `conditional`, `everyone`, `solved`,
+      `unsolved`, `solved_percent` (one decimal), `observable`,
       `observable_percent` (mutation coverage),
       `false_branch_only_via_actor_guard` and
       `true_branch_only_via_empty_actor` (solved rules whose only false,
       or true, cells rest on how empty user-side values compare:
       `actor_empty_denies`)
+    * `deleted_type_rules` - the rules of data types the app flags deleted,
+      kept apart because they protect nothing: `total`, `solved`,
+      `unsolved` (they are unsolved as `deleted_type`)
     * `unobservable` / `unobservable_by_reason` - rules no mutant changes a
       recorded verdict of: `unsolved`, `grants_nothing`, `masked`,
       `undecided_type`
@@ -1176,24 +1183,38 @@ defmodule BubbleEx.Verify.Matrix do
       for %{status: {:unobservable, reason, detail}} = r <- matrix.observability,
           do: %{type: r.type, rule: r.rule, reason: reason, detail: detail}
 
-    total = length(matrix.rules)
-    solved = total - length(unsolved)
-    observable = total - length(unobservable)
+    # Coverage counts only the rules of live types: a deleted type's rules
+    # protect nothing. "Deleted" is the app's own flag on the type.
+    {deleted_rules, live_rules} =
+      Enum.split_with(matrix.rules, &deleted_type?(interpreter, &1.type))
+
+    live_key = MapSet.new(live_rules, &{&1.type, &1.rule})
+    live? = &MapSet.member?(live_key, {&1.type, &1.rule})
+
+    total = length(live_rules)
+    live_unsolved = Enum.count(unsolved, live?)
+    solved = total - live_unsolved
+    observable = total - Enum.count(unobservable, live?)
+    deleted_unsolved = length(unsolved) - live_unsolved
     infos = Map.values(interpreter.types)
 
     %{
       rules: %{
         total: total,
-        conditional: Enum.count(matrix.rules, &(not &1.default)),
-        everyone: Enum.count(matrix.rules, & &1.default),
+        conditional: Enum.count(live_rules, &(not &1.default)),
+        everyone: Enum.count(live_rules, & &1.default),
         solved: solved,
-        unsolved: length(unsolved),
+        unsolved: live_unsolved,
         solved_percent: percent(solved, total),
         observable: observable,
         observable_percent: percent(observable, total),
-        false_branch_only_via_actor_guard:
-          Enum.count(matrix.rules, &(&1[:robust_false] == false)),
-        true_branch_only_via_empty_actor: Enum.count(matrix.rules, &(&1[:robust_true] == false))
+        false_branch_only_via_actor_guard: Enum.count(live_rules, &(&1[:robust_false] == false)),
+        true_branch_only_via_empty_actor: Enum.count(live_rules, &(&1[:robust_true] == false))
+      },
+      deleted_type_rules: %{
+        total: length(deleted_rules),
+        solved: length(deleted_rules) - deleted_unsolved,
+        unsolved: deleted_unsolved
       },
       unsolved: unsolved,
       unsolved_by_reason: Enum.frequencies_by(unsolved, &Atom.to_string(&1.reason)),
