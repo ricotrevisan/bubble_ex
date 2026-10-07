@@ -113,6 +113,30 @@ defmodule PhxCheckWeb.TablesBehaviorTest do
     assert shown(html, "F") == ["Answer"]
   end
 
+  test "a header's and a static table's elements render once, at the page's scope",
+       %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/")
+
+    # A click in the header: its workflow runs (a custom state, an element
+    # of the static table hidden); a cell whose own conditional reads that
+    # state shows, in its hidden column.
+    render_click(view, "bubble:click", %{"scope" => "", "element" => "bHeadBtn"})
+    html = render(view)
+    assert html =~ "Picked: header"
+    cells = tags(html, "bCellNote")
+    assert cells != []
+    refute Enum.any?(cells, fn [tag] -> tag =~ ~r/\shidden[\s>="\/]/ end)
+
+    # Reusable instances in a header row and a static table: the page's.
+    assert text(view, "bHeadTag", "bTagLabel") == "Label: Head"
+    assert text(view, "bStaticTag", "bTagLabel") == "Label: Static"
+    render_click(view, "bubble:click", %{"scope" => "bHeadTag", "element" => "bTagPick"})
+    render_click(view, "bubble:click", %{"scope" => "bStaticTag", "element" => "bTagPick"})
+    assert text(view, "bHeadTag", "bTagPicked") == "Picked: Head"
+    assert text(view, "bStaticTag", "bTagPicked") == "Picked: Static"
+    assert text(view, row(@t1), "bTagPicked") == "Picked:"
+  end
+
   # The database queries `fun` makes (the page's own, in the LiveView).
   defp queries(fun) do
     counter = :counters.new(1, [])

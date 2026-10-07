@@ -281,6 +281,21 @@
                           }
                         }
                       }
+                    },
+                    "bHeadBtn": {
+                      "id": "bHeadBtn",
+                      "type": "Button",
+                      "properties": {
+                        "order": 2,
+                        "width": 80,
+                        "height": 30,
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Sort"
+                          }
+                        }
+                      }
                     }
                   }
                 },
@@ -318,7 +333,24 @@
                     "container_layout": "row",
                     "order": 3
                   },
-                  "elements": {}
+                  "elements": {
+                    "bHeadTag": {
+                      "id": "bHeadTag",
+                      "type": "CustomElement",
+                      "properties": {
+                        "order": 1,
+                        "width": 200,
+                        "height": 90,
+                        "custom_id": "bTagDef",
+                        "param_pLabel": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Head"
+                          }
+                        }
+                      }
+                    }
+                  }
                 },
                 "bHeadNote": {
                   "id": "bHeadNote",
@@ -519,7 +551,8 @@
                   "properties": {
                     "cell_main_axis_id": "bColNote",
                     "container_layout": "row",
-                    "order": 4
+                    "order": 4,
+                    "is_visible": false
                   },
                   "elements": {
                     "bRowNote": {
@@ -533,6 +566,34 @@
                           "type": "TextExpression",
                           "entries": {
                             "0": "Hidden column"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "states": {
+                    "0": {
+                      "type": "State",
+                      "properties": {
+                        "is_visible": true
+                      },
+                      "condition": {
+                        "type": "GetElement",
+                        "properties": {
+                          "element_id": "bHome"
+                        },
+                        "next": {
+                          "type": "Message",
+                          "name": "custom.picked_",
+                          "next": {
+                            "type": "Message",
+                            "name": "equals",
+                            "args": {
+                              "type": "TextExpression",
+                              "entries": {
+                                "0": "header"
+                              }
+                            }
                           }
                         }
                       }
@@ -679,6 +740,22 @@
                           "type": "TextExpression",
                           "entries": {
                             "0": "K: Colour"
+                          }
+                        }
+                      }
+                    },
+                    "bStaticTag": {
+                      "id": "bStaticTag",
+                      "type": "CustomElement",
+                      "properties": {
+                        "order": 2,
+                        "width": 200,
+                        "height": 90,
+                        "custom_id": "bTagDef",
+                        "param_pLabel": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Static"
                           }
                         }
                       }
@@ -871,6 +948,36 @@
         }
       },
       "workflows": {
+        "wHead": {
+          "id": "wHead",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bHeadBtn"
+          },
+          "actions": {
+            "0": {
+              "id": "aHead1",
+              "type": "SetCustomState",
+              "properties": {
+                "element_id": "bHome",
+                "custom_state": "custom.picked_",
+                "value": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "header"
+                  }
+                }
+              }
+            },
+            "1": {
+              "id": "aHead2",
+              "type": "HideElement",
+              "properties": {
+                "element_id": "bStaticC1Text"
+              }
+            }
+          }
+        },
         "wPick": {
           "id": "wPick",
           "type": "ButtonClicked",

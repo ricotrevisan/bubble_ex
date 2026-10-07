@@ -453,18 +453,28 @@ All notable changes to this project are documented here.
 - **Bubble's Table element in generated pages** (WTF-507). A Table was a
   runtime-container placeholder whose items were never set, so a dynamic
   table rendered empty. `Target.Phoenix.Pages` now renders an HTML table
-  inside the Table's box, which scrolls. Columns (`TableMainAxis`, by
-  `axis_index`) are `<col>`s, and a column's minimum width and its
-  visibility on page load reach its cells. The rows before the repeated
-  row (`TableCrossAxis` with `cross_axis_repeat`) are the `<thead>`. The
-  repeated row is rendered once per item of the table's list in
-  `<tbody>`, and the rows after it are a `<tfoot>`. Cells (`TableCell`)
-  sit in the column `cell_main_axis_id` names, and their elements are laid
-  out in the cell's row or column. A table without a data source renders
-  its rows statically.
+  inside the Table's box, which scrolls. `Frontend.Table` reads its parts:
+  - **Columns** (`TableMainAxis`, by `axis_index`) are `<col>`s. A
+    column's minimum width holds for its cells' content, and its
+    visibility on page load reaches its cells, unless a cell's own
+    visibility conditionals decide (marked).
+  - **Rows** (`TableCrossAxis`): those before the repeated row
+    (`cross_axis_repeat`) are the `<thead>`, the repeated row is rendered
+    once per item of the table's list in `<tbody>`, those after it are a
+    `<tfoot>`. A static table (no data source) renders its rows as its
+    body.
+  - **Cells** (`TableCell`) sit in the column `cell_main_axis_id` names;
+    their elements are laid out in the cell's row or column.
+  - **Rendered once, not a template.** Only the repeated row is a runtime
+    template (`Plan.Residue.runtime_template_ids/1`). Elements of header,
+    footer and static rows are the page's own: their clicks and show/hide
+    targets are wired, their reusable instances are registered at the
+    page's scope, their inputs are tracked. A table and its parts are no
+    longer `runtime_container` residue.
   - **The list is a repeating group's.** A Table's data source is page
     data (`:list`). With a fixed number of rows, that number is its page
-    size. Elements in the repeated row are per cell (`cell` is the
+    size (whether Bubble truncates or scrolls is a replay question on
+    WTF-387). Elements in the repeated row are per cell (`cell` is the
     table). "Current row's thing" (`ElementAncestor` of type
     `TableCrossAxis`) types and binds as the current cell's thing
     (`Expression.Tree.cell/3`). The row reuses the repeating-group
@@ -475,17 +485,20 @@ All notable changes to this project are documented here.
   - **Residue.** Each of the following is marked: a table setting the
     generator does not lower (one marker per setting); a cell whose
     column is not in the table; a second repeated row; a column's
-    visibility conditionals (they do not reach its cells). "Current row's
-    thing" read in a header stays uncompiled. Workflows triggered in a
-    row stay `trigger_in_runtime_template`. A table whose list does not
-    load stays a marked runtime container.
+    visibility conditionals (they do not reach its cells); a repeated row
+    whose list the page does not load (the table renders without it).
+    "Current row's thing" read in a header stays uncompiled. Workflows
+    triggered in the repeated row stay `trigger_in_runtime_template`.
   - **Private fixture app (counts only).** It has 5 tables. 2 now render
-    as tables with a row per item, and 3 wait on their data source (a
-    list operator, another element's data). No table lowers fully: in
-    the 2 that render, plugin elements and searches per row (page data
-    in a cell) stay marked. The 41 "Current row's thing" expressions
-    that did not type now do, 38 more expressions compile to IR, and the
-    snapshots are updated.
+    a row per item; the other 3 render their header but wait on their
+    data source (a list operator, another element's data). No table
+    lowers fully: in the 2 with rows, plugin elements and searches per row
+    (page data in a cell) stay marked. The 41 "Current row's thing"
+    expressions that did not type now do, 38 more expressions compile to
+    IR, and `runtime_container` residue went from 329 to 250. The
+    snapshots are updated; `private-app.decided.json`'s `project_sha256`
+    is re-recorded for WTF-500 (option-set lists stored by position),
+    which changed the generated project without updating it.
 
 - **"Display data" and "Display list" steps** (WTF-492, part of WTF-476).
   Groups, popups, floating groups, group focuses and reusable-element

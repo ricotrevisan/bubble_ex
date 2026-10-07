@@ -114,9 +114,32 @@ defmodule BubbleEx.Target.Phoenix.TablesTest do
       assert %{"bRowTag" => %{cell: "bTable", holder: "bTagDef", residue: []}} = spec.cells
     end
 
-    test "a workflow in a table's row is residue, not wired", %{spec: spec} do
-      assert %{residue: [%{reason: :trigger_in_runtime_template} | _]} =
-               spec.surfaces["bHome"].workflows |> Enum.find(&(&1.workflow == "wPick"))
+    test "a workflow in a table's row is residue; one in its header runs", %{spec: spec} do
+      workflow = fn id -> Enum.find(spec.surfaces["bHome"].workflows, &(&1.workflow == id)) end
+      assert %{residue: [%{reason: :trigger_in_runtime_template} | _]} = workflow.("wPick")
+      # A click in the header, hiding an element of a static table.
+      assert %{residue: [], blocked_by: []} = workflow.("wHead")
+    end
+
+    test "only a table's repeated row is a runtime template; its parts are not residue" do
+      app = app()
+      {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+      templates = BubbleEx.Plan.Residue.runtime_template_ids(frontend)
+
+      for id <- ~w(bRow bCellTitle bRowTitle bRowTag bPick), do: assert(templates[id] == "bTable")
+
+      for id <- ~w(bTable bHead bHeadBtn bHeadTag bColNote bStaticC1Text bStaticTag bFixedA),
+          do: refute(Map.has_key?(templates, id))
+
+      {:ok, model} = Model.build(app)
+      {:ok, index} = Index.build(app, model: model)
+
+      parts =
+        for %{reason: :runtime_container, subject: "element:" <> id} <-
+              BubbleEx.Plan.Residue.frontend(frontend, index),
+            do: id
+
+      assert parts == []
     end
   end
 
@@ -130,17 +153,33 @@ defmodule BubbleEx.Target.Phoenix.TablesTest do
       assert page =~ ~r/<thead>\s*<tr data-bubble-id="bHead"/
 
       assert page =~
-               ~r/<th data-bubble-id="bHeadTitle" class="[^"]*min-w-\[160px\][^"]*" scope="col">/
-
-      assert page =~
                ~s|:for={{cell_btable, cell_btable_i} <- Bubble.cells(@bubble_data, "", "bTable")}|
 
       assert page =~ ~s|id={Bubble.cell_id("", "bTable", cell_btable, cell_btable_i)}|
       assert page =~ "{text_browtitle(cell_btable)}"
       assert page =~ ~s|Bubble.data(@bubble_data, "", "bRankGroup", cell_btable_i)|
-      # The hidden column's cells, in every row.
-      assert page =~ ~r/<td data-bubble-id="bCellNote" [^>]*hidden/
+      # The hidden column's cells, in every row; a cell's own visibility
+      # conditionals win over it, loudly.
       assert page =~ ~r/<th data-bubble-id="bHeadNote" [^>]*hidden/
+
+      assert page =~
+               ~r/data-bubble-id="bCellNote"\s+class="relative"\s+hidden=\{\s*!visible_bcellnote/
+
+      assert page =~
+               "TODO(bubble:bCellNote) its column is hidden on page load; its own visibility conditionals decide"
+
+      # A column's minimum width is its cells' content's.
+      assert page =~
+               ~r/<th data-bubble-id="bHeadTitle" class="relative" scope="col">\s*<div class="[^"]*min-w-\[160px\]/
+
+      # Header and static rows render once: their instances are the page's.
+      assert page =~ ~s(scope="bHeadTag")
+      assert page =~ ~s(scope="bStaticTag")
+      assert page =~ ~s|phx-click={Bubble.push("click", "", "bHeadBtn")}|
+
+      assert files["lib/shop_web/live/index_live/workflows.ex"] =~
+               ~r/@instances \[\s*\{"bHeadTag", ShopWeb.Reusables.Tag.Workflows\},\s*\{"bStaticTag", ShopWeb.Reusables.Tag.Workflows\}\s*\]/
+
       # A reusable instance in a row: the row's scope.
       assert page =~ ~s|Bubble.cell_scope("", "bTable", cell_btable, cell_btable_i)|
       # The page accepts events in a row's instance only in the scopes of
@@ -161,8 +200,15 @@ defmodule BubbleEx.Target.Phoenix.TablesTest do
       assert static =~ ~r/<tbody>\s*<tr data-bubble-id="bStaticHead"/
       assert static =~ "K: Colour"
 
-      assert page =~ "TODO(bubble:bUnloaded) its data source is not loaded"
-      refute page =~ ~r/<table[^>]*>\s*<colgroup>\s*<col data-bubble-id="bUnloadedA"/
+      # Its columns render, its repeated row does not, loudly.
+      [unloaded] = Regex.run(~r/<div data-bubble-id="bUnloaded".*?<\/table>/s, page)
+      assert unloaded =~ "TODO(bubble:bUnloaded) its data source is not loaded"
+
+      assert unloaded =~
+               "TODO(bubble:bUnloaded) its repeated row is not rendered: the page does not load its list"
+
+      assert unloaded =~ ~s(<col data-bubble-id="bUnloadedA")
+      refute unloaded =~ "bUnloadedRow"
     end
 
     test "settings, parts and cells it does not lower are marked" do
