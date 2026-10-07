@@ -336,6 +336,14 @@ any other.
 
 ## Unverified Bubble behavior
 
+**A show or hide step, then "Set state" in the same workflow.** The
+replay measured a state change and a step in separate workflows. Here a
+step runs after the render of the event it belongs to, so it wins over a
+condition change made in the same workflow whatever their order: "hide,
+then set state" keeps the element hidden even when the new state changes
+the visibility its conditions give it. Bubble may apply the steps in
+order (the condition winning there); not replayed.
+
 To confirm by replay (WTF-358): what "Go to page" appends when the data
 sent to a page with no type of content is a list (here none: no path
 segment; Bubble may join its things' unique IDs with commas), or a value

@@ -27,6 +27,12 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   `is not` between values that may both be empty compare through it.
   """
   @callback unhidden(value()) :: value()
+  @doc """
+  A thing's Bubble ID: a record's `id`, an ID itself, nil otherwise. `is`,
+  `is not` and `contains` compare things by ID through it when a side is
+  not a field path (an element's thing, a property, a custom state).
+  """
+  @callback id(value()) :: value()
   @doc "`>`, `<`, `>=`, `<=`: false when either side is empty; dates compare as instants."
   @callback compare(:gt | :lt | :gte | :lte, value(), value()) :: boolean()
   @doc "`+` (numbers; a date plus an interval). Empty if either side is empty, as in Ash filters (Bubble's behavior with empty operands is not verified)."

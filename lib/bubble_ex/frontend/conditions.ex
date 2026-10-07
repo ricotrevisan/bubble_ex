@@ -50,6 +50,13 @@ defmodule BubbleEx.Frontend.Conditions do
     end
   end
 
+  @doc """
+  Whether a state may hide the element: one sets `is_visible` to no, or
+  to anything but a yes/no literal (fail closed: it might be no).
+  """
+  @spec may_hide?(term()) :: boolean()
+  def may_hide?(payload), do: Enum.any?(visibility(payload), fn {_, v} -> v != true end)
+
   @doc "How many states set a property other than visibility."
   @spec other_properties(term()) :: non_neg_integer()
   def other_properties(payload) do
