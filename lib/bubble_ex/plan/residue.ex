@@ -18,9 +18,9 @@ defmodule BubbleEx.Plan.Residue do
   | `:unresolved_reference` | action, element, workflow | `index/2`: an `:index_unresolved_reference` diagnostic (e.g. a data action whose target type is unknown) |
   | `:not_generated` | API call | `index/2`: `BubbleEx.Model.ConnectorSupport.unsupported/2`, the decision the API client generator (`BubbleEx.Target.ApiClients`) makes too, lists why it cannot be generated (`detail.reasons`: `:malformed_call`, `:unsupported_auth`, `:method`, `:unnamed_parameter`, or the request template's `unsupported` reasons) |
   | `:dynamic_url`, `:oauth`, `:malformed_call` | API call | no longer produced (before WTF-412, `index/2`'s own API call checks, which could disagree with the generator); still decoded |
-  | `:runtime_container`, `:no_native_lowering` | element | `frontend/2`: a node `BubbleEx.Frontend.normalize/2` emits as a placeholder (`detail.variant`); `:runtime_container` when it is a container whose normalized content is rendered at runtime (a dynamic Repeating Group, a Table) |
+  | `:runtime_container`, `:no_native_lowering` | element | `frontend/2`: a node `BubbleEx.Frontend.normalize/2` emits as a placeholder (`detail.variant`); `:runtime_container` when it is a container whose normalized content is rendered at runtime (a dynamic Repeating Group, a plugin container; a Table and its parts are lowered, `BubbleEx.Frontend.Table`) |
   | `:trigger_not_normalized` | workflow | `frontend/2`: it listens to an element the normalized frontend does not contain, so its event wiring cannot be generated yet (`detail.element`) |
-  | `:trigger_in_runtime_template` | workflow | `frontend/2`: it listens to an element of a runtime container's template (a dynamic Repeating Group cell, a Table, a plugin container), which waits for its container's lowering (`detail.element`, `detail.container`) |
+  | `:trigger_in_runtime_template` | workflow | `frontend/2`: it listens to an element of a runtime container's template (a dynamic Repeating Group cell, a Table's repeated row, a plugin container), which waits for its container's lowering (`detail.element`, `detail.container`) |
   | `:trigger_dropped` | workflow | `BubbleEx.Plan.build/5`: a dropped plugin's event triggered it and it runs other actions, so it needs a new trigger (`detail.plugin`) |
   | `:reads_dropped_plugin` | any symbol | `BubbleEx.Plan.build/5`: it reads a dropped plugin element's states or a dropped plugin action's result, or names a dropped plugin's data type (`detail.reads`) |
   | `:uses_dropped` | any symbol | `BubbleEx.Plan.build/5` and the workflow bindings (`BubbleEx.Target.Ash.Workflows`, `BubbleEx.Target.Elixir.FrontendWorkflows`): it reads, writes, calls, schedules, navigates to or is triggered by a symbol an owner dropped (WTF-422, `BubbleEx.Decision.Drop`; `detail.symbol`) |
@@ -46,7 +46,7 @@ defmodule BubbleEx.Plan.Residue do
   alias BubbleEx.Expression.{Compiler, Sites}
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.Node
-  alias BubbleEx.Frontend.Payload
+  alias BubbleEx.Frontend.{Payload, Table}
   alias BubbleEx.Index.WorkflowAnalysis
   alias BubbleEx.Model.ConnectorSupport
 
@@ -314,8 +314,9 @@ defmodule BubbleEx.Plan.Residue do
   Residue of a normalized frontend: every element node
   `BubbleEx.Frontend.normalize/2` emits as a placeholder, as
   `:runtime_container` (a container rendered at runtime, such as a dynamic
-  Repeating Group or a Table, whose content is normalized as its template) or
-  `:no_native_lowering`, both with the placeholder's `variant`. Plugin
+  Repeating Group, whose content is normalized as its template) or
+  `:no_native_lowering`, both with the placeholder's `variant`. A Table and
+  its parts are lowered (`BubbleEx.Frontend.Table`). Plugin
   elements are left to `index/2`. Popups, Group Focuses and Floating Groups
   are native nodes with their content; their show/hide behavior is in the
   node's `runtime` description.
@@ -336,6 +337,9 @@ defmodule BubbleEx.Plan.Residue do
       id = node.source.bubble_id && "element:" <> node.source.bubble_id
 
       with true <- node.placeholder? and node.kind == :placeholder,
+           # A table and its parts are lowered (`BubbleEx.Frontend.Table`):
+           # what they hold has residue of its own.
+           nil <- Table.part(node),
            %{attrs: attrs} <- id && Index.symbol(index, id),
            nil <- plugin(attrs[:type]) do
         [placeholder(id, node)]
@@ -376,8 +380,10 @@ defmodule BubbleEx.Plan.Residue do
   @doc """
   The Bubble IDs of every node inside a runtime container's template (the
   normalized content of a placeholder container such as a dynamic Repeating
-  Group, a Table or a plugin container, nested ones included), each mapped
-  to the Bubble ID of its outermost container. They are normalized but not
+  Group, a Table's repeated row or a plugin container, nested ones
+  included), each mapped to the Bubble ID of its outermost container (for
+  a repeated row, its table). A table's header, footer and static rows are
+  rendered once, not in a template. They are normalized but not
   generated until their container is.
   """
   @spec runtime_template_ids(Normalized.t()) :: %{String.t() => String.t()}
@@ -387,7 +393,26 @@ defmodule BubbleEx.Plan.Residue do
     |> Map.new()
   end
 
-  defp template_members(%Node{} = node, container) do
+  # A table outside any template renders its parts and the elements of
+  # its header, footer and static rows once (`BubbleEx.Frontend.Table`):
+  # only its repeated row is a template.
+  defp template_members(%Node{} = node, nil) do
+    if Table.table?(node), do: table_members(node), else: container_members(node, nil)
+  end
+
+  defp template_members(%Node{} = node, container), do: container_members(node, container)
+
+  defp table_members(table) do
+    {_head, repeated, _foot} = Table.split(table)
+    id = table.source.bubble_id
+    rendered = MapSet.new(Table.structure(table))
+    others = Enum.reject(table.children, &MapSet.member?(rendered, &1))
+
+    Enum.flat_map(List.wrap(repeated) ++ others, &template_members(&1, id)) ++
+      Enum.flat_map(Table.once(table), &template_members(&1, nil))
+  end
+
+  defp container_members(%Node{} = node, container) do
     own =
       if container && node.source.bubble_id, do: [{node.source.bubble_id, container}], else: []
 

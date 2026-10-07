@@ -14,8 +14,8 @@ defmodule BubbleEx.Expression.Typing do
   |------|------|
   | literal, current user, option value, all options, text, search | as parsed |
   | `This Thing` | the innermost binder's: the rule's data type, a search's or `:filtered` list's item type, or `env.this_type` |
-  | parent group's / ancestor group's thing | the content type of the nearest enclosing group that has one (of `ancestor_type` for an ancestor) |
-  | current cell's thing / index | the enclosing repeating group's content type / number; in a database-trigger workflow, the triggering record |
+  | parent group's / ancestor group's thing | the content type of the nearest enclosing group that has one (of `ancestor_type` for an ancestor; a table's repeated row, `TableCrossAxis`, is "Current row's thing"); unknown when that is a table or a part of it other than its repeated row (a header) |
+  | current cell's thing / index | the enclosing repeating group's (or table row's) content type / number; in a database-trigger workflow, the triggering record |
   | thing before change | the triggering record's type |
   | current page's thing | the page's type (unknown inside a reusable) |
   | result of step N | the step's result type (`env.steps`) |
@@ -101,7 +101,9 @@ defmodule BubbleEx.Expression.Typing do
     "Current Page Height" => "number"
   }
 
-  @repeating ~w(RepeatingGroup TableMainAxis TableCrossAxis Table)
+  # A table and its parts other than its repeated row hold no thing of
+  # their own: what is in its header reads no row.
+  @table_parts ~w(Table TableMainAxis TableCrossAxis TableCell)
 
   @type input :: {atom(), %{String.t() => term()}}
   @type context ::
@@ -144,20 +146,19 @@ defmodule BubbleEx.Expression.Typing do
   def context(%Scope{kind: :this_element}, env), do: {:element, Tree.node(env.tree, env.host)}
 
   def context(%Scope{kind: :parent_group}, env) do
-    case Enum.find(Tree.ancestors(env.tree, env.host), & &1.content) do
-      nil -> :unknown
-      node -> {:value, group_data(node), node.content}
-    end
+    env.tree
+    |> Tree.ancestors(env.host)
+    |> Enum.find(& &1.content)
+    |> group_value()
   end
 
   def context(%Scope{kind: :ancestor_group, ref: ref}, env) do
     kind = ref["ancestor_type"]
-    ancestors = Tree.ancestors(env.tree, env.host)
 
-    case Enum.find(ancestors, &(&1.content && (is_nil(kind) or &1.type == kind))) do
-      nil -> :unknown
-      node -> {:value, group_data(node), node.content}
-    end
+    env.tree
+    |> Tree.ancestors(env.host)
+    |> Enum.find(&(&1.content && (is_nil(kind) or &1.type == kind)))
+    |> group_value()
   end
 
   def context(%Scope{kind: :current_cell_thing}, %Env{trigger_type: type}) when is_binary(type),
@@ -324,8 +325,24 @@ defmodule BubbleEx.Expression.Typing do
 
   # The thing a group holds, as the input that supplies it: a repeating
   # group's (or table's) current cell, a page's thing, or a group's data.
-  defp group_data(%Tree.Node{type: type} = node) when type in @repeating,
+  defp group_value(nil), do: :unknown
+
+  defp group_value(node) do
+    case group_data(node) do
+      nil -> :unknown
+      input -> {:value, input, node.content}
+    end
+  end
+
+  defp group_data(%Tree.Node{type: "RepeatingGroup"} = node),
     do: {:cell_thing, %{"element" => node.id}}
+
+  # A table's repeated row: its table's current cell ("Current row's
+  # thing").
+  defp group_data(%Tree.Node{type: "TableCrossAxis", repeats: true} = node),
+    do: {:cell_thing, %{"element" => node.parent}}
+
+  defp group_data(%Tree.Node{type: type}) when type in @table_parts, do: nil
 
   defp group_data(%Tree.Node{kind: :page} = node), do: {:page_thing, %{"page" => node.id}}
 
@@ -333,8 +350,7 @@ defmodule BubbleEx.Expression.Typing do
     do: {:element_state, %{"element" => node.id, "state" => "get_group_data"}}
 
   defp cell(env) do
-    self = Tree.node(env.tree, env.host)
-    Enum.find(List.wrap(self) ++ Tree.ancestors(env.tree, env.host), &(&1.type in @repeating))
+    Tree.node(env.tree, Tree.cell(env.tree, env.host, true))
   end
 
   defp page(env) do

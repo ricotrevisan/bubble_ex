@@ -11,17 +11,17 @@
           "element": 10761,
           "workflow": 8955
         },
-        "elixir_compiled": 15500,
-        "ir_compiled": 16623,
+        "elixir_compiled": 15522,
+        "ir_compiled": 16661,
         "roots": 19716,
-        "searches": 718,
+        "searches": 733,
         "searches_ash_compiled": 410,
         "unsupported": {
           "ash_search": {
             "ash_expr_unmapped_reference:the option": 1,
             "ash_expr_unsupported:a field of filter": 4,
             "ash_expr_unsupported:a field of first": 1,
-            "ash_expr_unsupported:a field of input": 263,
+            "ash_expr_unsupported:a field of input": 278,
             "ash_expr_unsupported:the condition :text_contains_words": 2,
             "ash_expr_unsupported:the value :concat": 42,
             "ash_expr_unsupported:the value :date_add": 60,
@@ -48,8 +48,8 @@
             "elixir_expr_unsupported:contains on a list of records": 119,
             "elixir_expr_unsupported:contains_all": 4,
             "elixir_expr_unsupported:filter on a list of things": 172,
-            "elixir_expr_unsupported:search": 300,
-            "elixir_expr_unsupported:sort": 265,
+            "elixir_expr_unsupported:search": 315,
+            "elixir_expr_unsupported:sort": 266,
             "elixir_expr_unsupported:this": 1
           },
           "ir": {
@@ -58,7 +58,6 @@
             "expr_uncompiled:raw": 527,
             "expr_uncompiled:search_option": 32,
             "expr_unresolved_accessor": 1341,
-            "expr_untyped_scope:ancestor_group": 41,
             "expr_untyped_scope:breakpoint": 118,
             "expr_untyped_scope:element": 17,
             "expr_untyped_scope:page_data": 11,
@@ -97,17 +96,17 @@
           "element": 10761,
           "workflow": 8955
         },
-        "elixir_compiled": 15500,
-        "ir_compiled": 16623,
+        "elixir_compiled": 15522,
+        "ir_compiled": 16661,
         "roots": 19716,
-        "searches": 718,
+        "searches": 733,
         "searches_ash_compiled": 410,
         "unsupported": {
           "ash_search": {
             "ash_expr_unmapped_reference:the option": 1,
             "ash_expr_unsupported:a field of filter": 4,
             "ash_expr_unsupported:a field of first": 1,
-            "ash_expr_unsupported:a field of input": 263,
+            "ash_expr_unsupported:a field of input": 278,
             "ash_expr_unsupported:the condition :text_contains_words": 2,
             "ash_expr_unsupported:the value :concat": 42,
             "ash_expr_unsupported:the value :date_add": 60,
@@ -134,8 +133,8 @@
             "elixir_expr_unsupported:contains on a list of records": 119,
             "elixir_expr_unsupported:contains_all": 4,
             "elixir_expr_unsupported:filter on a list of things": 172,
-            "elixir_expr_unsupported:search": 300,
-            "elixir_expr_unsupported:sort": 265,
+            "elixir_expr_unsupported:search": 315,
+            "elixir_expr_unsupported:sort": 266,
             "elixir_expr_unsupported:this": 1
           },
           "ir": {
@@ -144,7 +143,6 @@
             "expr_uncompiled:raw": 527,
             "expr_uncompiled:search_option": 32,
             "expr_unresolved_accessor": 1341,
-            "expr_untyped_scope:ancestor_group": 41,
             "expr_untyped_scope:breakpoint": 118,
             "expr_untyped_scope:element": 17,
             "expr_untyped_scope:page_data": 11,
@@ -183,17 +181,17 @@
           "element": 10761,
           "workflow": 8955
         },
-        "elixir_compiled": 15500,
-        "ir_compiled": 16582,
+        "elixir_compiled": 15522,
+        "ir_compiled": 16620,
         "roots": 19716,
-        "searches": 710,
+        "searches": 725,
         "searches_ash_compiled": 408,
         "unsupported": {
           "ash_search": {
             "ash_expr_unmapped_reference:the option": 1,
             "ash_expr_unsupported:a field of filter": 4,
             "ash_expr_unsupported:a field of first": 1,
-            "ash_expr_unsupported:a field of input": 259,
+            "ash_expr_unsupported:a field of input": 274,
             "ash_expr_unsupported:the condition :text_contains_words": 2,
             "ash_expr_unsupported:the value :concat": 41,
             "ash_expr_unsupported:the value :date_add": 58,
@@ -219,8 +217,8 @@
             "elixir_expr_unsupported:contains on a list of records": 119,
             "elixir_expr_unsupported:contains_all": 4,
             "elixir_expr_unsupported:filter on a list of things": 142,
-            "elixir_expr_unsupported:search": 300,
-            "elixir_expr_unsupported:sort": 259,
+            "elixir_expr_unsupported:search": 315,
+            "elixir_expr_unsupported:sort": 260,
             "elixir_expr_unsupported:this": 1
           },
           "ir": {
@@ -230,7 +228,6 @@
             "expr_uncompiled:raw": 527,
             "expr_uncompiled:search_option": 32,
             "expr_unresolved_accessor": 1341,
-            "expr_untyped_scope:ancestor_group": 41,
             "expr_untyped_scope:breakpoint": 118,
             "expr_untyped_scope:element": 17,
             "expr_untyped_scope:page_data": 11,
