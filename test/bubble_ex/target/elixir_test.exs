@@ -30,6 +30,9 @@ defmodule BubbleEx.Target.ElixirTest do
     def as_list(x) when is_list(x), do: x
     def as_list(x), do: if(empty?(x), do: [], else: [x])
     def unhidden(x), do: x
+    def id(nil), do: nil
+    def id(%{id: id}), do: id
+    def id(id) when is_binary(id), do: id
   end
 
   @runtime inspect(Runtime)
@@ -165,6 +168,32 @@ defmodule BubbleEx.Target.ElixirTest do
       assert eval(result, this: %{estimate: 5.0})
       refute eval(result, this: %{estimate: 1.0})
     end
+  end
+
+  test "a record held by an element compares by ID with a reference field", %{project: project} do
+    this = IR.node(:this, [:rule_record], "custom.task")
+    assignee = IR.node(:field, [this, "task", "assignee_user"], "user")
+    held = IR.node(:input, [:element_state, %{"element" => "bG1", "state" => "param_p1"}], "user")
+
+    for op <- [:eq, :neq] do
+      {:ok, result} =
+        Target.compile(IR.node(op, [held, assignee], "boolean"), project, runtime: @runtime)
+
+      var = "element_state_bg1_param_p1"
+      same = [{String.to_atom(var), %{id: "u1", name: "One"}}, {:this, %{assignee_id: "u1"}}]
+      other = [{String.to_atom(var), %{id: "u2"}}, {:this, %{assignee_id: "u1"}}]
+
+      assert eval(result, same) == (op == :eq)
+      assert eval(result, other) == (op == :neq)
+    end
+
+    # In a list of IDs too.
+    ids = IR.node(:field, [this, "task", "access_list_user"], "list.user")
+
+    {:ok, member} =
+      Target.compile(IR.node(:member, [ids, held], "boolean"), project, runtime: @runtime)
+
+    assert eval(member, element_state_bg1_param_p1: %{id: "u2"}, this: %{access: ["u1", "u2"]})
   end
 
   test "records compare by ID; the current user side must not be empty", %{project: project} do
