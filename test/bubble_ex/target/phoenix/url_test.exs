@@ -70,6 +70,9 @@ defmodule BubbleEx.Target.Phoenix.UrlTest do
     assert tag(template, "bOn") =~ read <> ~s|{:query, "on"}, "boolean")|
     assert tag(template, "bSegX") =~ read <> ~s|:segments, "list.text")|
     assert template =~ read <> ~s|:first, "text")|
+    # Pages route up to /<page>/<x>: a third segment is not read.
+    assert template =~ "TODO(bubble:bSeg3) text: dynamic value not compiled"
+
     # "Is a list" was not replayed.
     assert template =~ "TODO(bubble:bMany) text: dynamic value not compiled"
 

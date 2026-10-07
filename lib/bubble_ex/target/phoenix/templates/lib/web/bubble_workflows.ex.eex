@@ -1409,7 +1409,10 @@ defmodule <%= @web %>.BubbleWorkflows do
   def url_thing(ctx, part, resource, loads) do
     with true <- data_access?(),
          id when is_binary(id) <- url_value(ctx, part, "text"),
-         %{} = record <- BubbleData.records(ctx, resource, id, false, nil) do
+         # Read now, not deferred to a batch of cells (`records/5` leaves
+         # IDs for the loader there): the same thing for every cell, read
+         # once per pass.
+         %{} = record <- BubbleData.records(Map.put(ctx, :batch, false), resource, id, false, nil) do
       load(record, loads, ctx)
     else
       _ -> nil

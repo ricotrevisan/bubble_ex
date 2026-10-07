@@ -360,6 +360,25 @@ reusable element's component gets both from its caller (`bubble_url`,
 * **"Is a list"** was not replayed (Buildprint cannot express it): such a
   parameter is not read, and the condition or value stays a marker; so
   does a list of things from the path.
+* **Segments after the second.** Bubble serves deeper URLs
+  (`/<page>/<a>/<b>`); the generated routes stop at `/<page>/:bubble_thing`
+  and answer a deeper URL with not found. A read of path segment 3 or
+  later would always be empty, so it does not compile (a marker on a
+  page, residue in a data source or workflow).
+
+**Not replayed (assumptions, WTF-387).** These choices are this
+generator's, not measured against Bubble:
+
+* a number in another notation (`1e3`) is empty; so is one longer than
+  32 characters or past JavaScript's exact integers (2^53), never a value
+  a database column would refuse;
+* a repeated key with an empty value keeps its place: `t=a&t=` reads
+  `a,`;
+* the index page at `/` has no path segments (Bubble's index page at the
+  bare domain may read its name);
+* a bare four-digit date (`2026`) is that year's first day (as
+  JavaScript reads it, local midnight here), not milliseconds; five or
+  more digits are milliseconds since 1970.
 
 A thing or list of things a property holds is what the parent's
 expression read: through Ash, with the current user as the actor, like

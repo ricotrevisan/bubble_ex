@@ -133,6 +133,17 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
         assert text(view, "bN") == shown, raw
       end
 
+      # Too long, or past JavaScript's exact integers: empty, never a
+      # crash or a number the database refuses (not replayed).
+      long = String.duplicate("9", 400) <> ".5"
+      {:ok, view, _html} = live(conn, "/?n=" <> long)
+      assert text(view, "bN") == "N:"
+      assert read("n=" <> long, "n", "number") == nil
+      assert read("n=99999999999999999999", "n", "number") == nil
+      assert read("n=9007199254740991", "n", "number") == 9_007_199_254_740_991
+      assert read("n=9007199254740992", "n", "number") == nil
+      assert read("n=-12345.25", "n", "number") == -12_345.25
+
       assert read("n=", "n", "number") == nil
       assert read("n=1e3", "n", "number") == nil
       assert read("n=.5", "n", "number") == 0.5
@@ -177,7 +188,10 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
       end
 
       {:ok, view, _html} = live(conn, "/?d=2026-10-07")
-      assert text(view, "bWhen") =~ "Oct 7, 2026"
+      assert text(view, "bWhen") == "When: Oct 7, 2026 12:00 am"
+
+      # A bare year, as JavaScript reads one (not replayed).
+      assert at?(read("d=2026", "d", "date"), ~U[2026-01-01 00:00:00Z])
 
       # In the app's time zone: midnight there.
       Calendar.put_time_zone_database(PlusTwo)
@@ -206,6 +220,10 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
       # In a reusable element too.
       assert text(view, "bNavSeg", "bNav") == "Nav: index"
       refute hidden?(view, "bNavX", "bNav")
+
+      # Pages route up to /<page>/<x>: a third segment is never read (a
+      # marker, shown empty).
+      assert text(view, "bSeg3") == ""
 
       {:ok, view, _html} = live(conn, "/index/a%20b")
       assert text(view, "bSeg2") == "Seg2: a%20b"
@@ -262,6 +280,23 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
         assert text(view, "bNoteTitle") == "Note: Second"
         assert text(logged_out, "bNoteTitle") == "Note: First"
       end
+    end
+
+    test "in every cell of a repeating group, and in a reusable rendered per cell", %{
+      conn: conn,
+      u1: u1
+    } do
+      data_access_on()
+      # The path's segments are the list: two cells.
+      {:ok, view, _html} = live(sign_in(conn, u1), "/index/x?note=#{@n1}")
+      html = render(view)
+      assert length(Regex.scan(~r/Cell note: First/, html)) == 2
+      assert length(Regex.scan(~r/Card note: First/, html)) == 2
+
+      {:ok, view, _html} = live(sign_in(conn, u1), "/index/x?note=1234x5678")
+      html = render(view)
+      refute html =~ "Cell note: First"
+      refute html =~ "Card note: First"
     end
 
     test "nothing is read with data access off", %{conn: conn, u1: u1} do

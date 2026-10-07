@@ -3871,7 +3871,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     Templates.render("lib/web/components/bubble.ex", %{
       web: ctx.web,
-      app: ctx.app,
+      module: ctx.module,
       modals: modals,
       viewer_loads: source(viewer_loads)
     })

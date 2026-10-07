@@ -235,7 +235,7 @@ defmodule <%= @web %>.Bubble do
       one into a URL), milliseconds since 1970, or ISO 8601 with a time
       (`2026-10-07T23:30:00Z`). A date with no time is midnight, and a
       time with no zone is local, in the app's time zone
-      (`config :<%= @app %>, :bubble_time_zone`)
+      (`<%= @module %>.Bubble.Runtime.time_zone/0`)
 
   A thing is read by `<%= @web %>.BubbleWorkflows.url_thing/4`, never here.
   """
@@ -258,18 +258,40 @@ defmodule <%= @web %>.Bubble do
   defp from_url(value, "date") when is_binary(value), do: url_date(String.trim(value))
   defp from_url(_value, _type), do: nil
 
+  # Bubble's numbers are JavaScript's: past 2^53 an integer is no longer
+  # exact, and a database column may refuse it. Longer texts, and numbers
+  # past it, read as empty (not replayed).
+  @max_safe 9_007_199_254_740_991
+
+  defp url_number(text) when byte_size(text) > 32, do: nil
+
   defp url_number(text) do
-    cond do
-      Regex.match?(~r/\A[+-]?\d+\z/, text) -> String.to_integer(text)
-      Regex.match?(~r/\A[+-]?(\d+\.\d*|\.\d+)\z/, text) -> text |> url_float() |> elem(0)
-      true -> nil
-    end
+    number =
+      cond do
+        Regex.match?(~r/\A[+-]?\d+\z/, text) -> String.to_integer(text)
+        Regex.match?(~r/\A[+-]?(\d+\.\d*|\.\d+)\z/, text) -> url_float(text)
+        true -> nil
+      end
+
+    if is_number(number) and abs(number) <= @max_safe, do: number
   end
 
-  defp url_float("." <> _ = text), do: Float.parse("0" <> text)
-  defp url_float("-." <> rest), do: Float.parse("-0." <> rest)
-  defp url_float("+" <> text), do: url_float(text)
-  defp url_float(text), do: Float.parse(text)
+  defp url_float(text) do
+    text =
+      case text do
+        "+" <> rest -> rest
+        _ -> text
+      end
+
+    text = String.replace(text, ~r/\A(-?)\./, "\\g{1}0.")
+
+    case Float.parse(text) do
+      {float, _rest} -> float
+      :error -> nil
+    end
+  rescue
+    ArgumentError -> nil
+  end
 
   defp url_boolean(text) when text in ["yes", "true", "1"], do: true
   defp url_boolean(text) when text in ["no", "false"], do: false
@@ -284,6 +306,10 @@ defmodule <%= @web %>.Bubble do
         [_, y, m, d] = match
         local(y, m, d, 0, 0)
 
+      # A bare year, as JavaScript reads one (not replayed): its first day.
+      Regex.match?(~r/\A\d{4}\z/, text) ->
+        local(text, 1, 1, 0, 0)
+
       match = Regex.run(~r/\A(\d{1,2})\/(\d{1,2})\/(\d{4})\z/, text) ->
         [_, m, d, y] = match
         local(y, m, d, 0, 0)
@@ -291,7 +317,7 @@ defmodule <%= @web %>.Bubble do
       match = Regex.run(~r/\A([A-Za-z]{3,9})\.? (\d{1,2}),? (\d{4})(?: (\d{1,2}):(\d{2}) ?([AaPp][Mm]))?\z/, text) ->
         url_named_date(match)
 
-      Regex.match?(~r/\A-?\d{1,15}\z/, text) ->
+      Regex.match?(~r/\A-?\d{5,15}\z/, text) ->
         case DateTime.from_unix(String.to_integer(text), :millisecond) do
           {:ok, date} -> date
           _ -> nil
@@ -347,7 +373,7 @@ defmodule <%= @web %>.Bubble do
   defp local(y, m, d, hour, minute, second \\ 0) do
     with {:ok, date} <- Date.new(url_int(y), url_int(m), url_int(d)),
          {:ok, time} <- Time.new(hour, minute, second) do
-      zone = Application.get_env(:<%= @app %>, :bubble_time_zone, "Etc/UTC")
+      zone = <%= @module %>.Bubble.Runtime.time_zone()
 
       case DateTime.new(date, time, zone) do
         {:ok, local} -> utc(local)

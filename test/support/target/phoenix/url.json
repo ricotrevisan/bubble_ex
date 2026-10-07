@@ -9,7 +9,7 @@
           "properties": {
             "height": 40,
             "min_height_css": "40px",
-            "order": 19,
+            "order": 24,
             "text": {
               "entries": {
                 "0": "Nav: ",
@@ -37,7 +37,7 @@
             "height": 40,
             "is_visible": false,
             "min_height_css": "40px",
-            "order": 20,
+            "order": 25,
             "text": {
               "entries": {
                 "0": "Nav x"
@@ -80,6 +80,65 @@
         "width": 300
       },
       "type": "CustomDefinition"
+    },
+    "notecard": {
+      "elements": {
+        "bCardNote": {
+          "elements": {
+            "bCardNoteTitle": {
+              "id": "bCardNoteTitle",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 26,
+                "text": {
+                  "entries": {
+                    "0": "Card note: ",
+                    "1": {
+                      "next": {
+                        "name": "title_text",
+                        "type": "Message"
+                      },
+                      "type": "ElementParent"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bCardNote",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "parameter_name": {
+                  "entries": {
+                    "0": "note"
+                  },
+                  "type": "TextExpression"
+                },
+                "value": "custom.note"
+              },
+              "type": "GetParamFromUrl"
+            },
+            "group_type": "custom.note",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 27,
+            "width": 300
+          },
+          "type": "Group"
+        }
+      },
+      "id": "bNoteCardDef",
+      "name": "Note card",
+      "properties": {
+        "height": 100,
+        "width": 300
+      },
+      "type": "CustomDefinition"
     }
   },
   "pages": {
@@ -90,7 +149,7 @@
           "properties": {
             "height": 40,
             "min_height_css": "40px",
-            "order": 21,
+            "order": 28,
             "text": {
               "entries": {
                 "0": "Seg1: ",
@@ -134,12 +193,92 @@
         }
       },
       "elements": {
+        "bCells": {
+          "elements": {
+            "bCellCard": {
+              "id": "bCellCard",
+              "properties": {
+                "custom_id": "bNoteCardDef",
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 19,
+                "width": 300
+              },
+              "type": "CustomElement"
+            },
+            "bCellNote": {
+              "elements": {
+                "bCellNoteTitle": {
+                  "id": "bCellNoteTitle",
+                  "properties": {
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "order": 17,
+                    "text": {
+                      "entries": {
+                        "0": "Cell note: ",
+                        "1": {
+                          "next": {
+                            "name": "title_text",
+                            "type": "Message"
+                          },
+                          "type": "ElementParent"
+                        }
+                      },
+                      "type": "TextExpression"
+                    },
+                    "width": 300
+                  },
+                  "type": "Text"
+                }
+              },
+              "id": "bCellNote",
+              "properties": {
+                "data_source": {
+                  "properties": {
+                    "parameter_name": {
+                      "entries": {
+                        "0": "note"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "value": "custom.note"
+                  },
+                  "type": "GetParamFromUrl"
+                },
+                "group_type": "custom.note",
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 18,
+                "width": 300
+              },
+              "type": "Group"
+            }
+          },
+          "id": "bCells",
+          "properties": {
+            "columns": 1,
+            "data_source": {
+              "properties": {
+                "type": "path_segment"
+              },
+              "type": "GetParamFromUrl"
+            },
+            "group_type": "text",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 20,
+            "rows": 3,
+            "width": 300
+          },
+          "type": "RepeatingGroup"
+        },
         "bCopy": {
           "id": "bCopy",
           "properties": {
             "height": 40,
             "min_height_css": "40px",
-            "order": 16,
+            "order": 21,
             "text": {
               "entries": {
                 "0": "Copy"
@@ -155,7 +294,7 @@
           "properties": {
             "height": 40,
             "min_height_css": "40px",
-            "order": 17,
+            "order": 22,
             "text": {
               "entries": {
                 "0": "Count: ",
@@ -296,7 +435,7 @@
           "properties": {
             "height": 40,
             "min_height_css": "40px",
-            "order": 18,
+            "order": 23,
             "text": {
               "entries": {
                 "0": "Noted: ",
@@ -528,6 +667,33 @@
                 "1": {
                   "next": {
                     "args": 2,
+                    "name": "specific_item",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "type": "path_segment"
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bSeg3": {
+          "id": "bSeg3",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 16,
+            "text": {
+              "entries": {
+                "0": "Seg3: ",
+                "1": {
+                  "next": {
+                    "args": 3,
                     "name": "specific_item",
                     "type": "Message"
                   },
