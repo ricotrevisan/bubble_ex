@@ -46,10 +46,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       step decides (see `<Web>.Bubble`). With workflows, the helpers read
       the current user from `@bubble_viewer`, which the runtime reads
       afresh with field policies, never the session's user, and a URL
-      parameter read as a single text from `@bubble_url` (the URL's query
-      the runtime keeps; a reusable's component gets it from its caller),
-      as shown values do; one of another type, a list or a path does not
-      compile (`BubbleEx.Target.Elixir.Frontend`). A
+      parameter or the URL's path from `@bubble_url` and
+      `@bubble_segments` (what the runtime keeps of the URL, read as
+      Bubble reads it, `<Web>.Bubble.url_value/4`; a reusable's component
+      gets them from its caller), as shown values do; a thing read from
+      the URL is read by the page's data sources and workflows only, and
+      a list parameter does not compile
+      (`BubbleEx.Target.Elixir.Frontend`). A
       reusable instance's property read where the instance is reads the
       instance's value, or its reusable element's default when it sets
       none (`FrontendWorkflows.Spec.read/4`). A helper
@@ -1801,8 +1804,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp data_input?({kind, _}), do: kind in [:page_thing, :cell_thing, :cell_index]
   defp data_input?(_), do: false
 
-  # A URL parameter (read as text): the page keeps the URL's query, and a
-  # component reads it from the `bubble_url` its caller passes down.
+  # A URL parameter or the URL's path: the page keeps the URL's query and
+  # path, and a component reads them from the `bubble_url` and
+  # `bubble_segments` its caller passes down.
   defp url_input?({:url_parameter, _}), do: true
   defp url_input?(_), do: false
 
@@ -2815,7 +2819,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         {"bubble_states", {:expr, "@bubble_states"}},
         {"bubble_inputs", {:expr, "@bubble_inputs"}},
         {"bubble_data", {:expr, "@bubble_data"}},
-        {"bubble_url", {:expr, "@bubble_url"}}
+        {"bubble_url", {:expr, "@bubble_url"}},
+        {"bubble_segments", {:expr, "@bubble_segments"}}
       ],
       else: []
   end
@@ -2858,13 +2863,24 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       {:input, k} ->
         "Bubble.input(@bubble_inputs, #{key_scope(k.path, ctx)}, #{literal(k.element)})"
 
-      {:url, name} ->
-        "Map.get(@bubble_url, #{literal(name)})"
+      {kind, _} = read when kind in [:url, :url_value] ->
+        url_source(read)
 
       _ ->
         "@" <> var
     end
   end
+
+  # What the page keeps of its URL (`FlowSpec.url/1`).
+  defp url_source({:url, name}), do: "Map.get(@bubble_url, #{literal(name)})"
+
+  defp url_source({:url_value, u}),
+    do: "Bubble.url_value(@bubble_url, @bubble_segments, #{url_part(u)}, #{literal(u.type)})"
+
+  # Which part of the URL a typed read reads.
+  defp url_part(%{path: nil, name: name}), do: "{:query, #{literal(name)}}"
+  defp url_part(%{path: "segments"}), do: ":segments"
+  defp url_part(%{path: "first"}), do: ":first"
 
   defp key_scope([], ctx), do: scope_var(ctx)
   defp key_scope([id], %{surface: :page}), do: literal(nest("", id))
@@ -3020,6 +3036,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         {entry.id,
          %{
            kind: :page,
+           name: entry.node.name,
            module: "#{ctx.web}.#{entry.module}.Workflows",
            file: "lib/#{ctx.app}_web/live/#{entry.file}/workflows.ex",
            label: entry.label,
@@ -3533,7 +3550,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
             {"bubble_states", "%{}"},
             {"bubble_inputs", "%{}"},
             {"bubble_data", "%{}"},
-            {"bubble_url", "%{}"}
+            {"bubble_url", "%{}"},
+            {"bubble_segments", "[]"}
           ],
           else: []
       )
@@ -3760,6 +3778,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     Templates.render("lib/web/components/bubble.ex", %{
       web: ctx.web,
+      app: ctx.app,
       modals: modals,
       viewer_loads: source(viewer_loads)
     })

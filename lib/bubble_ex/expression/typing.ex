@@ -20,7 +20,7 @@ defmodule BubbleEx.Expression.Typing do
   | current page's thing | the page's type (unknown inside a reusable) |
   | result of step N | the step's result type (`env.steps`) |
   | workflow / API parameter | its declared `btype_id` |
-  | page data, URL parameter | by name (`Current Date/Time` is a date, a URL parameter is text) |
+  | page data, URL parameter | by name (`Current Date/Time` is a date); a URL parameter as its type (text by default; a number, yes/no, date or thing), the path's segments as a list of texts |
   | `field` on a record, option or API type | the field's, option attribute's or external field's type; on a list, a list of it |
   | element state (`is visible`, `value`, `group's thing`, a reusable's parameter, a custom state) | from the element tree |
   | comparisons, `and`/`or`, checks, list predicates | yes/no |
@@ -210,14 +210,64 @@ defmodule BubbleEx.Expression.Typing do
     end
   end
 
-  def context(%Scope{kind: :url_parameter, ref: ref}, _env) do
-    case static_text(ref["parameter_name"]) do
+  def context(%Scope{kind: :url_parameter, ref: ref}, env) do
+    case url_input(ref, env) do
+      {ref, type} -> {:value, {:url_parameter, ref}, type}
       nil -> :unknown
-      name -> {:value, {:url_parameter, %{"name" => name}}, "text"}
     end
   end
 
   def context(%Scope{}, _env), do: :unknown
+
+  # `Get data from page URL` (replayed 2026-10-07, WTF-387): a parameter
+  # read as its type (`%{"name" => name}` for Bubble's default, text;
+  # with `"type"` for a number, yes/no, date or thing), the path's
+  # segments as a list of texts (`%{"path" => "segments"}`) or the first
+  # segment after the page's name (`%{"path" => "first"}`, as text or a
+  # thing). A list parameter ("is a list", not replayed), a dynamic name,
+  # a list of things from the path and any other type are not typed.
+  defp url_input(ref, env) do
+    with false <- url_list?(ref),
+         {:ok, type} <- url_type(ref["value"], env) do
+      case {ref["type"], static_text(ref["parameter_name"])} do
+        {kind, name} when kind in [nil, "parameter"] and is_binary(name) ->
+          {url_ref(%{"name" => name}, type), type}
+
+        {"path", _} ->
+          {url_ref(%{"path" => "first"}, type), type}
+
+        {"path_segment", _} when type == "text" ->
+          {%{"path" => "segments"}, "list.text"}
+
+        _ ->
+          nil
+      end
+    else
+      _ -> nil
+    end
+  end
+
+  defp url_ref(ref, "text"), do: ref
+  defp url_ref(ref, type), do: Map.put(ref, "type", type)
+
+  # Any list-like property (`is_list`, `list`, ...) set to anything but
+  # false makes the parameter a list.
+  defp url_list?(ref) do
+    Enum.any?(ref, fn {key, value} ->
+      is_binary(key) and String.contains?(key, "list") and value not in [nil, false, "false"]
+    end)
+  end
+
+  defp url_type(nil, _env), do: {:ok, "text"}
+  defp url_type(type, _env) when type in ~w(text number boolean date), do: {:ok, type}
+
+  # A thing: read by its unique ID (a data type the app has).
+  defp url_type(type, env) do
+    case Model.Type.reference(type) do
+      {:data_type, id} -> if Map.has_key?(env.schema, id), do: {:ok, type}, else: :error
+      _ -> :error
+    end
+  end
 
   # A text expression made of static strings only (e.g. a URL parameter's
   # name), else nil.

@@ -44,6 +44,9 @@ defmodule <%= @web %>.Bubble do
       instance scope, which the server checks against the page's own list
     * `state/4` and `input/3` read the page's custom states and input
       values (kept by `<%= @web %>.BubbleWorkflows`) in templates
+    * `url_query/1`, `url_segments/2` and `url_value/4` read the page's
+      URL as Bubble's `Get data from page URL` does (`@bubble_url`,
+      `@bubble_segments`)
     * `runtime/1` (`overlay_keys/1` is the same), rendered once by a page:
       the hook. Escape closes the topmost open Popup or Group Focus, if it
       can be dismissed that way (its `data-bubble-escape` command); closed
@@ -159,6 +162,210 @@ defmodule <%= @web %>.Bubble do
       value -> value
     end
   end
+
+  # --- the page's URL (replayed against Bubble 2026-10-07, WTF-387) -------------------
+
+  @doc """
+  The URL's query string as Bubble's `Get data from page URL` reads it,
+  text by name: `+` and `%20` are spaces, a key given more than once
+  reads all its values joined with `,` (`t=a&t=b` is `"a,b"`), and a key
+  is taken as written (`tags[]=a&tags[]=b` is `"tags[]" => "a,b"`, apart
+  from `tags`). An empty value reads as empty (no key). A malformed
+  escape is kept as written; nothing is decoded but `+` and `%XX`.
+  Phoenix's own params keep only a repeated key's last value, so the
+  pages read this instead.
+  """
+  def url_query(query) when is_binary(query) do
+    pairs =
+      for pair <- String.split(query, "&"),
+          pair != "",
+          [key | value] = String.split(pair, "=", parts: 2),
+          do: {url_decode(key), url_decode(Enum.join(value))}
+
+    pairs
+    |> Enum.reduce(%{}, fn {key, value}, acc ->
+      Map.update(acc, key, [value], &[value | &1])
+    end)
+    |> Enum.flat_map(fn {key, values} ->
+      case values |> Enum.reverse() |> Enum.join(",") do
+        "" -> []
+        text -> [{key, text}]
+      end
+    end)
+    |> Map.new()
+  end
+
+  def url_query(_query), do: %{}
+
+  defp url_decode(text) do
+    text
+    |> String.replace("+", " ")
+    |> then(&Regex.replace(~r/%([0-9A-Fa-f]{2})/, &1, fn _, hex -> <<String.to_integer(hex, 16)>> end))
+    |> String.replace_invalid()
+  end
+
+  @doc """
+  The URL path's segments as Bubble reads them, from 1: the page's name
+  (`page`, the Bubble page the route serves, whatever its path here),
+  then the rest. Empty segments and a trailing slash are dropped, and
+  nothing is decoded (`a%20b` and `e+f` read as written). The index
+  page at `/` has none; at `/index/<x>` its name and `<x>`.
+  """
+  def url_segments(path, page) when is_binary(path) do
+    case String.split(path, "/", trim: true) |> Enum.reject(&(&1 == "")) do
+      [_ | rest] when is_binary(page) and page != "" -> [page | rest]
+      segments -> segments
+    end
+  end
+
+  def url_segments(_path, _page), do: []
+
+  @doc """
+  What `Get data from page URL` reads, as `type`: a query parameter
+  (`{:query, name}`, `url_query/1`'s text), the path's segments
+  (`:segments`, a list of texts) or the first segment after the page's
+  name (`:first`). Typed values parse as Bubble's do and are empty when
+  they do not parse:
+
+    * a number: `3`, `-2`, `3.5` (not `abc`)
+    * a yes/no: `yes`, `true` or `1` are yes, `no` or `false` no, in any
+      case; anything else (`0`, `y`) is empty
+    * a date: `2026-10-07`, `10/07/2026` (month first), `Oct 7, 2026`
+      (with an optional time, `Oct 7, 2026 12:00 am`, as Bubble writes
+      one into a URL), milliseconds since 1970, or ISO 8601 with a time
+      (`2026-10-07T23:30:00Z`). A date with no time is midnight, and a
+      time with no zone is local, in the app's time zone
+      (`config :<%= @app %>, :bubble_time_zone`)
+
+  A thing is read by `<%= @web %>.BubbleWorkflows.url_thing/4`, never here.
+  """
+  def url_value(url, segments, part, type) do
+    value =
+      case part do
+        {:query, name} when is_map(url) -> Map.get(url, name)
+        :segments -> if is_list(segments), do: segments, else: []
+        :first when is_list(segments) -> Enum.at(segments, 1)
+        _ -> nil
+      end
+
+    from_url(value, type)
+  end
+
+  defp from_url(value, "list.text"), do: value
+  defp from_url(value, "text") when is_binary(value) and value != "", do: value
+  defp from_url(value, "number") when is_binary(value), do: url_number(value)
+  defp from_url(value, "boolean") when is_binary(value), do: url_boolean(String.downcase(value))
+  defp from_url(value, "date") when is_binary(value), do: url_date(String.trim(value))
+  defp from_url(_value, _type), do: nil
+
+  defp url_number(text) do
+    cond do
+      Regex.match?(~r/\A[+-]?\d+\z/, text) -> String.to_integer(text)
+      Regex.match?(~r/\A[+-]?(\d+\.\d*|\.\d+)\z/, text) -> text |> url_float() |> elem(0)
+      true -> nil
+    end
+  end
+
+  defp url_float("." <> _ = text), do: Float.parse("0" <> text)
+  defp url_float("-." <> rest), do: Float.parse("-0." <> rest)
+  defp url_float("+" <> text), do: url_float(text)
+  defp url_float(text), do: Float.parse(text)
+
+  defp url_boolean(text) when text in ["yes", "true", "1"], do: true
+  defp url_boolean(text) when text in ["no", "false"], do: false
+  defp url_boolean(_text), do: nil
+
+  @months ~w(january february march april may june july august september october november
+              december)
+
+  defp url_date(text) do
+    cond do
+      match = Regex.run(~r/\A(\d{4})-(\d{2})-(\d{2})\z/, text) ->
+        [_, y, m, d] = match
+        local(y, m, d, 0, 0)
+
+      match = Regex.run(~r/\A(\d{1,2})\/(\d{1,2})\/(\d{4})\z/, text) ->
+        [_, m, d, y] = match
+        local(y, m, d, 0, 0)
+
+      match = Regex.run(~r/\A([A-Za-z]{3,9})\.? (\d{1,2}),? (\d{4})(?: (\d{1,2}):(\d{2}) ?([AaPp][Mm]))?\z/, text) ->
+        url_named_date(match)
+
+      Regex.match?(~r/\A-?\d{1,15}\z/, text) ->
+        case DateTime.from_unix(String.to_integer(text), :millisecond) do
+          {:ok, date} -> date
+          _ -> nil
+        end
+
+      true ->
+        url_iso(text)
+    end
+  end
+
+  defp url_named_date([_, month, d, y | time]) do
+    month = String.downcase(month)
+
+    with m when is_integer(m) <-
+           Enum.find_index(@months, &(&1 == month or String.slice(&1, 0, 3) == month)),
+         {:ok, hour, minute} <- url_time(time) do
+      local(y, m + 1, d, hour, minute)
+    else
+      _ -> nil
+    end
+  end
+
+  defp url_time([]), do: {:ok, 0, 0}
+
+  defp url_time([h, mm, meridiem]) do
+    h = String.to_integer(h)
+    pm? = String.downcase(meridiem) == "pm"
+
+    if h in 1..12,
+      do: {:ok, rem(h, 12) + if(pm?, do: 12, else: 0), String.to_integer(mm)},
+      else: :error
+  end
+
+  defp url_iso(text) do
+    case DateTime.from_iso8601(text) do
+      {:ok, date, _offset} ->
+        date
+
+      _ ->
+        case NaiveDateTime.from_iso8601(text) do
+          {:ok, naive} ->
+            local(naive.year, naive.month, naive.day, naive.hour, naive.minute, naive.second)
+
+          _ ->
+            nil
+        end
+    end
+  end
+
+  # A wall-clock time in the app's time zone, as a UTC date; nil when it
+  # is not a calendar date. Without a time zone database (or with an
+  # unknown zone) it is read in UTC.
+  defp local(y, m, d, hour, minute, second \\ 0) do
+    with {:ok, date} <- Date.new(url_int(y), url_int(m), url_int(d)),
+         {:ok, time} <- Time.new(hour, minute, second) do
+      zone = Application.get_env(:<%= @app %>, :bubble_time_zone, "Etc/UTC")
+
+      case DateTime.new(date, time, zone) do
+        {:ok, local} -> utc(local)
+        {:ambiguous, first, _second} -> utc(first)
+        {:gap, _before, later} -> utc(later)
+        {:error, _} -> DateTime.new!(date, time, "Etc/UTC")
+      end
+    else
+      _ -> nil
+    end
+  end
+
+  # The same instant in UTC, from the offsets it carries (no time zone
+  # database needed).
+  defp utc(date), do: date |> DateTime.to_unix() |> DateTime.from_unix!()
+
+  defp url_int(n) when is_integer(n), do: n
+  defp url_int(text), do: String.to_integer(text)
 
   @doc """
   The page's data (WTF-420, `<%= @web %>.BubbleData`): what element

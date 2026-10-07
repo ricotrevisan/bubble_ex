@@ -6,6 +6,32 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **`Get data from page URL`: path segments and typed URL parameters**
+  (WTF-508), as replayed against Bubble on 2026-10-07 (WTF-387). Texts,
+  visibility conditions, data sources and workflows now read:
+  - **the path's segments** (a list of texts from 1: the Bubble page's
+    name, then the route's `/:bubble_thing` segment, the index page's
+    `/index/<x>`; empty segments and a trailing slash dropped, nothing
+    decoded) and **the path** (the first segment after the page's name);
+  - **query parameters as their type**, from the URL as written rather
+    than Phoenix's params: `+` and `%20` are spaces, a repeated key joins
+    its values with `,` (`tags[]` is its own key); numbers (`3`, `-2`,
+    `3.5`), yes/no (`yes`, `true`, `1` / `no`, `false`, any case; else
+    empty) and dates (ISO, `m/d/y`, `Oct 7, 2026`, unix ms, ISO with a
+    zone; a bare date is midnight in the app's time zone);
+  - **things** by unique ID, read through Ash as the current user (an
+    unknown ID or a record the user may not view is empty), in data
+    sources and workflows; a text or condition reading one directly
+    stays a marker. "Is a list" was not replayed and stays residue.
+
+  Measured on the private fixture app's five signed-in pages (four page
+  modules and their reusables, 10,163 elements; on the format-31 export,
+  since the current export's format 32 does not load yet), counts only:
+  elements that can show content went from 4,378 to 5,542 (hidden 5,391
+  to 4,100); data sources wired from 2,008 to 2,031 of 2,732; visibility
+  conditionals rendered from 713 to 750 of 1,379. No root cause reading
+  the URL remains among them.
+
 - **Signed-in panels hidden by what the page already had** (WTF-476
   follow-up). Measured on the private fixture app's five signed-in pages
   (their reusables included), counts only: of the elements that render

@@ -356,7 +356,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp read_bindings(%{read: {:query, %{pins: pins}}}),
     do: for(%{value: %{bindings: bindings}} <- pins, b <- bindings, do: b)
 
-  defp unscoped?(%{bind: bind}), do: bind in [:actor, :now] or match?({:url, _}, bind)
+  defp unscoped?(%{bind: {kind, _}}), do: kind in [:url, :url_value, :url_thing]
+  defp unscoped?(%{bind: bind}), do: bind in [:actor, :now]
 
   @doc """
   The instances in repeating group cells (`structure`: instance =>

@@ -1,0 +1,770 @@
+{
+  "_comment": "Synthetic fixture: Get data from page URL (WTF-508), as replayed 2026-10-07. All data invented.",
+  "_id": "url-fixture",
+  "element_definitions": {
+    "nav": {
+      "elements": {
+        "bNavSeg": {
+          "id": "bNavSeg",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 19,
+            "text": {
+              "entries": {
+                "0": "Nav: ",
+                "1": {
+                  "next": {
+                    "args": 1,
+                    "name": "specific_item",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "type": "path_segment"
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bNavX": {
+          "id": "bNavX",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 20,
+            "text": {
+              "entries": {
+                "0": "Nav x"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "args": {
+                    "entries": {
+                      "0": "x"
+                    },
+                    "type": "TextExpression"
+                  },
+                  "name": "equals",
+                  "type": "Message"
+                },
+                "properties": {
+                  "type": "path"
+                },
+                "type": "GetParamFromUrl"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bNavDef",
+      "name": "Nav",
+      "properties": {
+        "height": 100,
+        "width": 300
+      },
+      "type": "CustomDefinition"
+    }
+  },
+  "pages": {
+    "api": {
+      "elements": {
+        "bApiSeg": {
+          "id": "bApiSeg",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 21,
+            "text": {
+              "entries": {
+                "0": "Seg1: ",
+                "1": {
+                  "next": {
+                    "args": 1,
+                    "name": "specific_item",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "type": "path_segment"
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bApi",
+      "name": "api",
+      "properties": {
+        "title": "API"
+      },
+      "type": "Page"
+    },
+    "index": {
+      "custom_states": {
+        "count_": {
+          "default_val": null,
+          "display": "Count",
+          "value": "number"
+        },
+        "noted_": {
+          "default_val": null,
+          "display": "Noted",
+          "value": "text"
+        }
+      },
+      "elements": {
+        "bCopy": {
+          "id": "bCopy",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 16,
+            "text": {
+              "entries": {
+                "0": "Copy"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bCount": {
+          "id": "bCount",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 17,
+            "text": {
+              "entries": {
+                "0": "Count: ",
+                "1": {
+                  "next": {
+                    "name": "custom.count_",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bUrl"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bMany": {
+          "id": "bMany",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 12,
+            "text": {
+              "entries": {
+                "0": "Many: ",
+                "1": {
+                  "properties": {
+                    "is_list": true,
+                    "parameter_name": {
+                      "entries": {
+                        "0": "tags"
+                      },
+                      "type": "TextExpression"
+                    }
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bN": {
+          "id": "bN",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 3,
+            "text": {
+              "entries": {
+                "0": "N: ",
+                "1": {
+                  "properties": {
+                    "parameter_name": {
+                      "entries": {
+                        "0": "n"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "value": "number"
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bNav": {
+          "id": "bNav",
+          "properties": {
+            "custom_id": "bNavDef",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 15,
+            "width": 300
+          },
+          "type": "CustomElement"
+        },
+        "bNote": {
+          "elements": {
+            "bNoteTitle": {
+              "id": "bNoteTitle",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 13,
+                "text": {
+                  "entries": {
+                    "0": "Note: ",
+                    "1": {
+                      "next": {
+                        "name": "title_text",
+                        "type": "Message"
+                      },
+                      "type": "ElementParent"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bNote",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "parameter_name": {
+                  "entries": {
+                    "0": "note"
+                  },
+                  "type": "TextExpression"
+                },
+                "value": "custom.note"
+              },
+              "type": "GetParamFromUrl"
+            },
+            "group_type": "custom.note",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 14,
+            "width": 300
+          },
+          "type": "Group"
+        },
+        "bNoted": {
+          "id": "bNoted",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 18,
+            "text": {
+              "entries": {
+                "0": "Noted: ",
+                "1": {
+                  "next": {
+                    "name": "custom.noted_",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bUrl"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bOff": {
+          "id": "bOff",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 5,
+            "text": {
+              "entries": {
+                "0": "Off"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "is_false",
+                  "type": "Message"
+                },
+                "properties": {
+                  "parameter_name": {
+                    "entries": {
+                      "0": "on"
+                    },
+                    "type": "TextExpression"
+                  },
+                  "value": "boolean"
+                },
+                "type": "GetParamFromUrl"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bOn": {
+          "id": "bOn",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 4,
+            "text": {
+              "entries": {
+                "0": "On"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "is_true",
+                  "type": "Message"
+                },
+                "properties": {
+                  "parameter_name": {
+                    "entries": {
+                      "0": "on"
+                    },
+                    "type": "TextExpression"
+                  },
+                  "value": "boolean"
+                },
+                "type": "GetParamFromUrl"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bOnEmpty": {
+          "id": "bOnEmpty",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 6,
+            "text": {
+              "entries": {
+                "0": "On empty"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "is_empty",
+                  "type": "Message"
+                },
+                "properties": {
+                  "parameter_name": {
+                    "entries": {
+                      "0": "on"
+                    },
+                    "type": "TextExpression"
+                  },
+                  "value": "boolean"
+                },
+                "type": "GetParamFromUrl"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bPath": {
+          "id": "bPath",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 10,
+            "text": {
+              "entries": {
+                "0": "Path: ",
+                "1": {
+                  "properties": {
+                    "type": "path"
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bQ": {
+          "id": "bQ",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Q: ",
+                "1": {
+                  "properties": {
+                    "parameter_name": {
+                      "entries": {
+                        "0": "q"
+                      },
+                      "type": "TextExpression"
+                    }
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bSeg1": {
+          "id": "bSeg1",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 8,
+            "text": {
+              "entries": {
+                "0": "Seg1: ",
+                "1": {
+                  "next": {
+                    "args": 1,
+                    "name": "specific_item",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "type": "path_segment"
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bSeg2": {
+          "id": "bSeg2",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 9,
+            "text": {
+              "entries": {
+                "0": "Seg2: ",
+                "1": {
+                  "next": {
+                    "args": 2,
+                    "name": "specific_item",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "type": "path_segment"
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bSegX": {
+          "id": "bSegX",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 11,
+            "text": {
+              "entries": {
+                "0": "Segment x"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "args": 2,
+                  "name": "specific_item",
+                  "next": {
+                    "args": {
+                      "entries": {
+                        "0": "x"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "name": "equals",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "type": "path_segment"
+                },
+                "type": "GetParamFromUrl"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bTags": {
+          "id": "bTags",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "text": {
+              "entries": {
+                "0": "Tags: ",
+                "1": {
+                  "properties": {
+                    "parameter_name": {
+                      "entries": {
+                        "0": "tags[]"
+                      },
+                      "type": "TextExpression"
+                    }
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bWhen": {
+          "id": "bWhen",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 7,
+            "text": {
+              "entries": {
+                "0": "When: ",
+                "1": {
+                  "properties": {
+                    "parameter_name": {
+                      "entries": {
+                        "0": "d"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "value": "date"
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bUrl",
+      "name": "index",
+      "properties": {
+        "title": "URL"
+      },
+      "type": "Page",
+      "workflows": {
+        "wCopy": {
+          "actions": {
+            "0": {
+              "id": "aCopy1",
+              "properties": {
+                "custom_state": "custom.count_",
+                "element_id": "bUrl",
+                "value": {
+                  "properties": {
+                    "parameter_name": {
+                      "entries": {
+                        "0": "n"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "value": "number"
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "SetCustomState"
+            },
+            "1": {
+              "id": "aCopy2",
+              "properties": {
+                "custom_state": "custom.noted_",
+                "element_id": "bUrl",
+                "value": {
+                  "next": {
+                    "name": "title_text",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "parameter_name": {
+                      "entries": {
+                        "0": "note"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "value": "custom.note"
+                  },
+                  "type": "GetParamFromUrl"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wCopy",
+          "properties": {
+            "element_id": "bCopy"
+          },
+          "type": "ButtonClicked"
+        }
+      }
+    }
+  },
+  "user_types": {
+    "note": {
+      "display": "Note",
+      "fields": {
+        "owner_user": {
+          "display": "Owner",
+          "value": "user"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": []
+          }
+        },
+        "owner_": {
+          "condition": {
+            "next": {
+              "name": "owner_user",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Owner",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        }
+      }
+    }
+  }
+}

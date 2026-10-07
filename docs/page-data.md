@@ -305,18 +305,45 @@ page's data loaded, and only when every value of the property loads
 own data sources and workflows read only a value the instance sets
 (they run before the instance's sources compute its default).
 
-Visibility conditions and shown values (a text's dynamic content, an
-input's placeholder...) may also read a URL parameter read as a single
-text (`Get <name> from page URL`, Bubble's default type): the runtime
-keeps the URL's query (`@bubble_url`, decoded by Phoenix: text values
-only, a repeated key reads its last value, `+` reads as a space, and a
-key written `x[]` is not a text value, so it reads as empty; Bubble's
-reading of these is a replay question, WTF-387), and a reusable element's
-component gets it from its caller (`bubble_url`), at any depth. A URL
-parameter of another type (a yes/no, a number, a thing), a list or a
-path is not read by either: the condition or the value stays a marker
-(the typing reads every URL parameter as text, which would compare or
-show it wrongly).
+Visibility conditions, shown values (a text's dynamic content, an
+input's placeholder...), data sources and workflows also read the page's
+URL (`Get data from page URL`), as Bubble reads it (replayed 2026-10-07,
+WTF-387; WTF-508). The runtime keeps the URL as written, not Phoenix's
+`params` (which keep a repeated key's last value and decode the path):
+its query (`@bubble_url`, `<Web>.Bubble.url_query/1`) and its path's
+segments (`@bubble_segments`, `<Web>.Bubble.url_segments/2`), and a
+reusable element's component gets both from its caller (`bubble_url`,
+`bubble_segments`), at any depth.
+
+* **A query parameter** (Bubble's default type, text): `+` and `%20` are
+  spaces; a key given more than once reads all its values joined with
+  `,` (`?t=a&t=b` reads `a,b`); a key reads as written (`tags[]` is its
+  own key, `?tags[]=a&tags[]=b` reads `a,b` for `tags[]`); an empty
+  value is empty.
+* **Typed** (`<Web>.Bubble.url_value/4`): a number parses `3`, `-2` or
+  `3.5` (`abc` is empty); a yes/no is yes for `yes`, `true` or `1` and no
+  for `no` or `false`, in any case, and empty for anything else (`0`,
+  `y`, empty); a date parses `2026-10-07`, `10/07/2026` (month first),
+  `Oct 7, 2026` (with an optional time, as Bubble writes dates into
+  URLs), milliseconds since 1970 or ISO 8601 with a time, and one with no
+  time is midnight in the app's time zone (`:bubble_time_zone`; Bubble
+  uses the browser's).
+* **A thing** is read by its unique ID through Ash, with the current user
+  as the actor, so the privacy policies apply: an unknown ID, text that
+  is not a Bubble ID or a record the user may not view is empty. Only
+  data sources and workflows read it (a group whose data source it is,
+  then the group's thing); a text or condition reading it directly stays
+  a marker.
+* **The path's segments** are a list of texts from 1: the Bubble page's
+  name (whatever its route here, e.g. a reserved name's `/<name>-page`),
+  then the segment after it, the route's `/:bubble_thing` (the index
+  page's `/index/<x>`; at `/` there is none). Empty segments and a
+  trailing slash are dropped, and nothing is decoded (`a%20b` and `e+f`
+  read as written). Item 0 is empty. **The path** alone is the first
+  segment after the page's name, as text or a thing.
+* **"Is a list"** was not replayed (Buildprint cannot express it): such a
+  parameter is not read, and the condition or value stays a marker; so
+  does a list of things from the path.
 
 A thing or list of things a property holds is what the parent's
 expression read: through Ash, with the current user as the actor, like
@@ -455,12 +482,13 @@ while rendering.
 * **The browser chooses nothing.** A page reads only the sources its
   module lists, with filters fixed in its code, in the scopes it renders
   (a reusable instance in a cell: the cells it read, WTF-494). From the browser come
-  input values, custom states and URL parameters, pinned into filters as
-  values, and the page thing's unique ID from the URL path, which must
-  look like a Bubble ID and is read through Ash like any other record. No
-  event names a resource, a record, a query or a data function; nothing
-  from the browser becomes an atom (the behavior test checks the atom
-  table).
+  input values, custom states and the URL's parameters and path
+  segments, pinned into filters as values, and things' unique IDs from
+  the URL (the page's thing, a thing parameter), which must look like a
+  Bubble ID and are read through Ash like any other record, as the
+  current user. No event or URL names a resource, a field, a record, a
+  query or a data function; nothing from the browser becomes an atom
+  (the behavior test checks the atom table).
 * **Every read goes through Ash** with the current user as the actor and
   `authorize?: true` (which authorizes nothing until policies exist).
 * **The opt-in is checked on every load path**: `<Web>.BubbleData.load/2`
