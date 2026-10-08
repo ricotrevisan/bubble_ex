@@ -579,4 +579,150 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
 
     assert log =~ "a relationship load failed; its relationships read as empty"
   end
+
+  # WTF-520: the page `board` renders the reusable element Picker (bPick),
+  # which sets its Seed ("ha") but not its Term, whose default ("Alp" and
+  # the Seed) is computed inside it. The page's list bBoardList searches
+  # for the tasks titled bPick's Term, and the sibling instance bEcho (a
+  # Tag) takes it as its Tag: both read the default from outside bPick,
+  # so the page reads them after it.
+  test "a page's list and a sibling instance read an instance's default",
+       %{conn: conn, user: user} do
+    data_access_on()
+    {:ok, view, html} = live(sign_in(conn, user), "/board")
+
+    refute html =~ "TODO(bubble:bBoardList)"
+    assert text(view, "bPick", "bPickerT") == "Term: Alpha"
+
+    assert view |> element(~s([data-bubble-id="bBoardTerm"])) |> render() =~
+             "Board term: Alpha"
+
+    # The list: Alpha only (Bravo's title is not the Term).
+    rows =
+      ~r/Board: [A-Za-z]+/
+      |> Regex.scan(render(view))
+      |> List.flatten()
+
+    assert rows == ["Board: Alpha"]
+
+    # The sibling instance's property, set from bPick's default.
+    assert text(view, "bEcho", "bTagT") == "Tag: Alpha"
+
+    # Read again (a change notification): the same order, the same rows.
+    Ash.Seed.seed!(PhxCheck.Task, %{id: @t3, title: "Alpha", owner_id: @u1})
+    send(view.pid, {:bubble, :data_changed, PhxCheck.Bubble.Changes.topic("Task")})
+    Process.sleep(100)
+
+    assert view |> render() |> then(&Regex.scan(~r/Board: Alpha/, &1)) |> length() == 2
+    assert text(view, "bEcho", "bTagT") == "Tag: Alpha"
+  end
+
+  test "with data access off the board reads nothing", %{conn: conn, user: user} do
+    {:ok, view, _html} = live(sign_in(conn, user), "/board")
+
+    assert Regex.scan(~r/Board: [A-Za-z]+/, render(view)) == []
+    assert text(view, "bEcho", "bTagT") == "Tag:"
+  end
+
+  # bP2's Seed is the input bBoardIn, bP3's Seed is bP2's Term (its
+  # default), and bBoardList2 searches for bP2's Term: typing re-reads
+  # only what reads the input, across the instances' boundaries, in order.
+  test "typing re-reads what reads an instance's default, across instances",
+       %{conn: conn, user: user} do
+    data_access_on()
+    {:ok, view, _html} = live(sign_in(conn, user), "/board")
+
+    assert text(view, "bP2", "bPickerT") == "Term: Alp"
+    assert text(view, "bP3", "bPickerT") == "Term: AlpAlp"
+    assert Regex.scan(~r/Board2: [A-Za-z]+/, render(view)) == []
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bBoardIn", "value" => "ha", "on" => "blur"}
+    })
+
+    Process.sleep(250)
+    assert text(view, "bP2", "bPickerT") == "Term: Alpha"
+    assert text(view, "bP3", "bPickerT") == "Term: AlpAlpha"
+
+    assert ~r/Board2: [A-Za-z]+/ |> Regex.scan(render(view)) |> List.flatten() == [
+             "Board2: Alpha"
+           ]
+
+    # What does not read the input is kept.
+    assert text(view, "bPick", "bPickerT") == "Term: Alpha"
+    assert ~r/Board: [A-Za-z]+/ |> Regex.scan(render(view)) |> List.flatten() == ["Board: Alpha"]
+  end
+
+  # Row, rendered per cell of bList, nests a Picker (Seed "ha") and a Tag
+  # whose Tag is the Picker's Term: read after the default, in each cell.
+  test "a reusable in a cell reads its nested instance's default", %{conn: conn, user: user} do
+    data_access_on()
+    {:ok, view, _html} = live(sign_in(conn, user), "/task/#{@t1}")
+
+    assert text(view, row(@t1) <> "-bRowPicker", "bPickerT") == "Term: Alpha"
+    assert text(view, row(@t1) <> "-bRowTagged", "bTagT") == "Tag: Alpha"
+  end
+
+  # The loader's plan (WTF-520) on hand-written surfaces.
+  defmodule PlanPage do
+    @moduledoc false
+    def __bubble__(:data),
+      do: [
+        # Reads an instance's property no surface keeps: not run.
+        %{element: "a", instance: nil, cell: nil, deps: [{:data, ["bGone"], "param_p/bR"}]},
+        # Reads what `a` keeps: not run either.
+        %{element: "b", instance: nil, cell: nil, deps: [{:data, [], "a"}]},
+        # Reads the instance's default, kept by the reusable's source.
+        %{element: "c", instance: nil, cell: nil, deps: [{:data, ["bI"], "param_p/bR"}]}
+      ]
+  end
+
+  defmodule PlanReusable do
+    @moduledoc false
+    def __bubble__(:data),
+      do: [%{element: "param_p/bR", instance: nil, cell: nil, deps: [], default: true}]
+  end
+
+  defmodule PlanLegacy do
+    @moduledoc false
+    def __bubble__(:data),
+      do: [
+        %{element: "x", instance: nil, cell: nil, deps: nil},
+        %{element: "y", instance: nil, cell: nil}
+      ]
+  end
+
+  defp steps(groups) do
+    for {g, source, scopes} <- PhxCheckWeb.BubbleData.plan(groups),
+        do: {g.id, source.element, scopes}
+  end
+
+  test "the loader reads a default first, and never what nothing keeps" do
+    groups = [
+      %{module: PlanPage, scopes: [""], id: ""},
+      %{module: PlanReusable, scopes: ["bI"], id: "bI"}
+    ]
+
+    assert steps(groups) == [
+             {"", "a", []},
+             {"", "b", []},
+             {"bI", "param_p/bR", ["bI"]},
+             {"", "c", [""]}
+           ]
+  end
+
+  test "a module listing no deps keeps the listed order" do
+    groups = [
+      %{module: PlanLegacy, scopes: [""], id: ""},
+      %{module: PlanPage, scopes: [""], id: ""}
+    ]
+
+    assert steps(groups) == [
+             {"", "x", [""]},
+             {"", "y", [""]},
+             {"", "a", [""]},
+             {"", "b", [""]},
+             {"", "c", [""]}
+           ]
+  end
 end

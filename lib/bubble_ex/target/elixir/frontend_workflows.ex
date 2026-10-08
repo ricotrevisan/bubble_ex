@@ -189,7 +189,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       # Reusable instances in repeating group cells (WTF-494), and the
       # reusable elements each reusable element nests outside its cells.
       {in_cells, nested} = cell_structure(lowered.elements, ctx)
-      ctx = Map.put(ctx, :nested, nested)
+      ctx = ctx |> Map.put(:nested, nested) |> Map.put(:once, once_instances(in_cells, ctx))
 
       # The page's data (WTF-420): its sources are bound against every
       # source that lowered, then only what loads is read by the rest.
@@ -370,6 +370,19 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       end
 
     {in_cells, Map.new(nested, fn {k, v} -> {k, Enum.sort(v)} end)}
+  end
+
+  # The reusable instances each rendered once, in one scope (WTF-520): not
+  # in a repeating group's cell nor another runtime template. Instance =>
+  # `%{surface, holder}`; their properties' defaults may be read from
+  # outside them by the page's data (`Spec.data_read/4`).
+  defp once_instances(in_cells, ctx) do
+    for {id, %{kind: :element, instance_of: holder} = e} <- ctx.raw_elements,
+        is_binary(holder),
+        not Map.has_key?(in_cells, id),
+        rendered?(id, ctx),
+        into: %{},
+        do: {id, %{surface: bubble(e.surface), holder: holder}}
   end
 
   # The element a bound display step sets: the instance for an instance's
@@ -1448,8 +1461,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       else: "element_state"
   end
 
-  defp set_data(ctx, index),
-    do: ctx |> Map.put(:data, index) |> Map.update!(:view, &%{&1 | data_index: index})
+  defp set_data(ctx, index) do
+    index = Map.put(index, :instances, Map.get(ctx, :once, %{}))
+    ctx |> Map.put(:data, index) |> Map.update!(:view, &%{&1 | data_index: index})
+  end
 
   # A diagnostic per residue entry the binding added to a data source (the
   # lowering's have theirs).

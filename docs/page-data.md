@@ -324,9 +324,9 @@ or, when it sets none, its default (with no default, see below), which the
 page computed in the instance's scope under the same key. The page's
 texts and visibility conditions read it when they render, after the
 page's data loaded, and only when every value of the property loads
-(below) and the instance is outside a repeating group's cell; the page's
-own data sources and workflows read only a value the instance sets
-(they run before the instance's sources compute its default).
+(below) and the instance is outside a repeating group's cell. The page's
+own data sources and workflows read it too, the default included
+(WTF-520, *Across instance boundaries* below).
 
 A property with no value (no default, and the instance sets none) reads
 as empty in texts, but a visibility condition reading it is not decided
@@ -430,6 +430,77 @@ the parent's scope.
 A group inside a repeating group's cell holds a value per cell. A
 repeating group or a search inside a cell is residue
 (`:page_data_in_cell`): the page would query once per cell.
+
+### Across instance boundaries (WTF-520)
+
+A data source may read an instance's property from outside the instance
+(`<instance>'s <property>`) where the instance sets no value: the
+property's default, computed inside the instance's reusable element, in
+the instance's scope. A products list whose search is constrained by a
+picker instance's default, or a sibling instance whose property is set
+to it, reads that default. The loader reads the sources of the page and
+of every instance it renders once as one graph, in the order they read
+each other, across instance boundaries:
+
+* each source lists what it reads (`deps` in `__bubble__(:data)`:
+  `{:data, path, element}`, a value kept `path` instances below the
+  scope the source runs in; `{:cell, rg}`, a list for its cells;
+  `{:cell_data, group}`, a value per cell), and `<Web>.BubbleData` reads
+  it after the sources keeping those values, whichever surface they are
+  of: the default before the page's list, the instance's thing and the
+  values it sets before the default;
+* a default is read after the value an instance may set under its key
+  (the default is only for the instances that set none);
+* otherwise the order is the listed one: the page's sources, then each
+  instance's; a reusable instance in a repeating group's cell reads its
+  sources the same way, its nested instances' defaults included, all the
+  cells' together (WTF-494).
+
+Only an instance rendered once (not in a repeating group's cell nor
+another runtime template) is read from outside, when every value of
+the property loads, as `This Reusable's <property>` is. A value the
+instance sets that does not load is not replaced by the default: what
+reads it is not loaded. A property with no default that the instance
+does not set is not read from outside by data sources and workflows
+(`element_state:param`), as before.
+
+**Cycles.** A default that reads, through the instance's thing or
+properties, what reads it (the page's source reading the default sets
+the instance's property the default reads) cannot be ordered: the
+source reading the default from outside, in the cycle, is not loaded
+(`:unresolved_reference`, `reference: "data_source"`), and neither is
+what reads it, as before. The cycle is found with every instance
+expanded in its own scope, so two instances of one reusable element
+reading each other's defaults are no cycle.
+
+What is marked is a source, not one instance's value of it: a cycle
+through two instances of one reusable element (each one's property set
+to the other's default, which reads it) marks both instances' values,
+and since `This Reusable's <property>` loads only when every value of it
+does (WTF-493), the default reading that property is not loaded for any
+instance of the reusable element, nor is what reads it, on every page.
+Scoping it to the instances in the cycle would need a value per instance
+of a source the reusable element computes once; it is not done.
+
+**Fail closed.** Where no source on the page keeps what a source reads
+from outside an instance (the instance is not rendered there, or the
+source keeping it is dropped there itself), the loader does not run the
+source in that scope: it reads nothing, never an empty value in place of
+the default (with `ignore_empty_constraints` an empty value would drop
+the constraint). This is decided from the page's structure before
+reading, not from values: a default that runs and fails (a read that
+raises is logged and kept as nothing) gives what reads it an empty
+value, as any other source that fails does. Every read still goes through Ash as the current user, with
+data access off nothing is read, and a page reads only the sources its
+modules list: the order changes, not what is read.
+
+**Queries.** The order changes when each source runs, not how often: a
+source reads once per load (and once for all the cells), and `once/3`
+shares its queries within a read as before. The order of the page's own
+sources and its instances' is computed once per set of modules and kept
+(`:persistent_term`, again when a module is recompiled); the order of
+the instances in cells, which depends on the lists read, is computed at
+each read.
 
 ## Inputs whose initial content is page data (WTF-520)
 
@@ -554,7 +625,8 @@ page's own, an instance's (`__bubble__(:instances)`) or a cell's it
 read; any other is ignored, so a browser cannot reach a cell of a thing
 the user was not shown, or make up a scope. The scope is never parsed.
 
-Sources are loaded in the order they read each other; a source that
+Sources are loaded in the order they read each other, across instance
+boundaries (WTF-520, above); a source that
 reads one that is not loaded is not loaded either (`:unavailable_input`,
 `inputs: ["data_source"]`), and sources reading each other in a cycle
 are `:unresolved_reference`.
@@ -687,6 +759,35 @@ The frontend workflow metrics (`docs/frontend-workflows.md`, *native*
 and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
+
+### Private fixture app (test version), 2026-10-08, across instance boundaries (WTF-520)
+
+Data sources reading an instance's property default from outside the
+instance (*Across instance boundaries*, above). 43 sources read one
+directly; the rest load because what they read now does (lists filtered
+by such a source, the instances in their cells and the properties those
+set, groups reading those). No cycle through an instance's boundary was
+found.
+
+| | before | after |
+|-|------:|------:|
+| data sources, total | 3,210 | 3,211 |
+| data sources, wired | 2,365 | 2,566 |
+| groups wired | 1,122 | 1,220 |
+| lists wired | 143 | 170 |
+| instance sources wired | 131 | 154 |
+| property values wired | 941 | 993 |
+| `:unavailable_input` residue entries (sources) | 643 | 440 |
+| `:page_data_in_cell` residue entries (sources) | 70 | 71 |
+| workflows, native (generated code) | 794 | 818 |
+| workflows, wired | 529 | 547 |
+| steps, native | 2,380 | 2,429 |
+
+The total grows by one input whose initial content now loads (it is
+tracked, WTF-520 above). One more instance in a cell is marked
+`:page_data_in_cell`: its list now loads, and its reusable element
+searches with its instance. Workflows read instance defaults too, and
+the sources that now load.
 
 ### Private fixture app (test version), 2026-10-08 (WTF-520)
 
@@ -869,6 +970,18 @@ and "Display data" over a group's own source.
   Bubble re-evaluates the initial content after the page loaded (when the
   data it reads changes) is assumed, not replayed. A user's change always
   wins over it.
+* An instance's property read from outside the instance by a data
+  source or a workflow (WTF-520, above) is its default where the
+  instance sets none, computed before what reads it. That Bubble's page
+  searches see the default (not an empty value) when the page loads is
+  assumed from what its texts show, not replayed; so is the order of a
+  default and a search over it when the default changes later. The
+  conservative reading is kept: a default that cannot be computed first
+  (a cycle, an instance not rendered once) is not read, never read as
+  empty.
+* A property an instance sets to a value that is empty at run time does
+  not fall back to the default when read from outside the instance
+  either (WTF-520): the value set wins, empty or not (as above).
 * A search's dynamic sort field that is an empty text (the editor keeps
   `{"entries": {"1": ""}}` once it is cleared) is taken to name no field
   (WTF-520): next to a static sort field, that field sorts; with the sort

@@ -55,7 +55,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
               params: %{},
               set: %{},
               defaults: MapSet.new(),
-              valued: MapSet.new()
+              valued: MapSet.new(),
+              instances: %{}
             },
             cells: %{}
 
@@ -253,8 +254,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   A reusable element's property (`"param_<id>"`, WTF-493) is
   `{:data, %{path: [], element: key}}` read in the reusable element (when
   every value of it loads, see `index.params`), or `{:data, %{path:
-  [instance], element: key}}` read where an instance setting it is, `key`
-  being `param_key/2`.
+  [instance], element: key}}` read where an instance is, `key` being
+  `param_key/2`: the value it sets, else its default (WTF-520), for an
+  instance rendered once (`index.instances`) when every value of the
+  property loads.
   """
   @spec data_read(map(), String.t(), String.t() | nil, term()) ::
           {:ok, term()} | {:error, String.t()}
@@ -306,6 +309,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
       match?(%{surface: ^surface}, Map.get(Map.get(index, :set, %{}), {e, state})) ->
         {:ok, {:data, %{path: [e], element: index.set[{e, state}].key}}}
 
+      key = outside_default(index, surface, e, state) ->
+        {:ok, {:data, %{path: [e], element: key}}}
+
       true ->
         {:error, "element_state:param"}
     end
@@ -326,6 +332,25 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     do: {:error, Atom.to_string(kind)}
 
   def data_read(_index, _surface, _cell, _input), do: {:error, "unknown"}
+
+  # An instance's property read from outside it (WTF-520), where the
+  # instance sets none: its default, computed in the instance's scope. Only
+  # for an instance rendered once (`index.instances`: outside a repeating
+  # group's cell or another runtime template), when every value of the
+  # property loads; the loader reads the default before what reads it,
+  # across the instance's boundary (`<Web>.BubbleData`).
+  defp outside_default(index, surface, instance, param) do
+    with %{surface: ^surface, holder: holder} <-
+           Map.get(Map.get(index, :instances, %{}), instance),
+         false <- MapSet.member?(Map.get(index, :valued, MapSet.new()), {instance, param}),
+         key = param_key(holder, param),
+         true <- MapSet.member?(Map.get(index, :defaults, MapSet.new()), key),
+         true <- Map.get(Map.get(index, :params, %{}), key) == true do
+      key
+    else
+      _ -> nil
+    end
+  end
 
   @doc """
   How the runtime reads a URL input (`{:url_parameter, ref}`, as
@@ -372,10 +397,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   sets (WTF-493), or nil. Only when every value of the property loads
   (`index.params`, so the instance's own value too, and the default), for
   an instance outside a repeating group's cell (rendered once, in one
-  scope). Read when the page renders, after its data loaded; the page's
-  data sources and workflows do not read it (they run before the
-  instance's sources, or the default would be read before it is
-  computed).
+  scope). Read when the page renders, after its data loaded. The page's
+  data sources and workflows read it through `data_read/4` (WTF-520),
+  which the loader orders after the default.
   """
   @spec instance_property(t(), String.t(), String.t(), String.t()) :: {:data, map()} | nil
   def instance_property(%__MODULE__{} = spec, surface, instance, param) do
