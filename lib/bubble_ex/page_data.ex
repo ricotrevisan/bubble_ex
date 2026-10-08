@@ -285,11 +285,15 @@ defmodule BubbleEx.PageData do
         {kind, :none} when kind in [:group, :list] ->
           conditional_source(kind, id, raw, path, at, ctx)
 
-        {_, :none} ->
-          []
+        {kind, :none} ->
+          conditional_residue(kind, id, raw, path, at, ctx)
 
         {kind, {prop, value}} ->
-          [source(kind, id, value, path ++ [props_key(raw), prop], at, ctx)]
+          [
+            kind
+            |> source(id, value, path ++ [props_key(raw), prop], at, ctx)
+            |> with_conditional_residue(raw, path, ctx)
+          ]
       end
 
     inner =
@@ -393,6 +397,45 @@ defmodule BubbleEx.PageData do
         ]
     end
   end
+
+  # The conditional states of an element with a data source of its own,
+  # or of an instance with none, that set one are not applied yet
+  # (WTF-521): the element is residue, never its own source alone.
+  defp with_conditional_residue(%Source{} = source, raw, path, ctx) do
+    if conditional_source?(raw, path, ctx),
+      do: %{source | residue: source.residue ++ [conditional_entry(source.id)]},
+      else: source
+  end
+
+  defp conditional_residue(kind, id, raw, path, at, ctx) do
+    if conditional_source?(raw, path, ctx) do
+      symbol = Symbol.id(:element, id)
+      node = Tree.node(ctx.env.tree, id)
+
+      [
+        %Source{
+          id: symbol,
+          element: id,
+          surface: at.surface,
+          surface_kind: at.surface_kind,
+          kind: kind,
+          holder: if(kind == :instance, do: node && node.instance_of),
+          type: node && node.content,
+          cell: at.cell,
+          residue: [conditional_entry(symbol)],
+          path: Diagnostic.pointer(path)
+        }
+      ]
+    else
+      []
+    end
+  end
+
+  defp conditional_source?(raw, path, ctx),
+    do: conditional_states(raw, path, @source_keys, ctx.env) != []
+
+  defp conditional_entry(symbol),
+    do: Residue.entry(symbol, :unsupported_option, %{options: ["states.data_source"]})
 
   # --- inputs' initial content (WTF-520) ----------------------------------------------
 

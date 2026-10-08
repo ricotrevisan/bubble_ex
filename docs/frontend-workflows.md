@@ -179,26 +179,33 @@ source of its own, a source that reads only what a step showed
 over it until a reset. When the page keeps it depends on when its steps
 may run (WTF-520):
 
-* **Only on events.** Every workflow holding a step on the element is
-  triggered by a click, an input change, a popup opened or closed or a
-  "do every" tick, or is a custom event only those call or schedule (or
-  nothing does): before the event the element shows nothing, as in
-  Bubble, so the page keeps it whether or not those workflows run here.
-  One the runtime refuses never sets it (the click shows the refusal
-  notice); what reads the element reads it empty, as Bubble's page does
-  before the event.
+* **Only on events.** Every workflow that may start a step on the
+  element is a click, an input change or a "do every" tick (directly,
+  or through the custom events it calls or schedules), and the page
+  triggers every one of them (`Spec.wired?/1`): before the event the
+  element shows nothing, as in Bubble, so the page keeps it whether or
+  not the runtime then runs those workflows. A triggered workflow the
+  runtime refuses never sets it (a click or an input change shows the
+  refusal notice; a "do every" tick is refused silently, logged); what
+  reads the element reads it empty, as Bubble's page does before the
+  event. An event the page never triggers (a click in a repeating
+  group's cell, `:trigger_in_runtime_template`, not wired yet) would
+  leave it empty where Bubble shows data: the element stays unloaded.
+  A custom event nothing calls never runs: it sets nothing.
 * **As the page loads.** A step in a page-load or condition-true
-  workflow, one whose event this target does not lower (a plugin's
-  event, "User is logged in / out", which may fire as the page loads),
-  or a custom event any of those calls or schedules: the page keeps the
+  workflow, one whose event this target does not lower or wire (a
+  plugin's event, a popup opened or closed, "User is logged in / out",
+  which may fire as the page loads, or right after), or a custom event
+  any of those calls or schedules: the page keeps the
   element only when every such workflow runs whole here and is
   triggered (native and wired). Otherwise the element stays unloaded
   and what reads it is a `TODO` marker: the page cannot show what
   Bubble would set as it loads. A page-load step that runs sets the
   element right after the connected mount's read, and the page reads
   what depends on it again (one more read of the page's data).
-* **No step at all.** A group, popup or repeating group with a type of
-  content, no data source and no step setting it shows nothing, ever:
+* **No step at all.** A group, popup, floating group, group focus or
+  repeating group with a type of content, no data source and no step
+  setting it, outside a repeating group's cell, shows nothing, ever:
   it is page data too (`read: :displayed`), so what reads it loads.
 
 In a repeating group's cell, only a group from a workflow of the same
@@ -207,7 +214,8 @@ cell (per cell; such workflows are not wired yet,
 cell's group from outside the cell, is `:page_data_in_cell` residue
 (`kind` `"list"`, `"instance"`, `"display"`). An element with no data
 source of its own whose conditions set one has that source (folded,
-`docs/page-data.md`), not the empty one.
+`docs/page-data.md`), not the empty one; one with a source of its own
+whose conditions set another is not loaded yet (WTF-521).
 
 Anything the generated page does not keep is `:unavailable_input` residue,
 never a silent empty value: data the page does not load, a cell's thing
@@ -392,13 +400,13 @@ the visibility its conditions give it. Bubble may apply the steps in
 order (the condition winning there); not replayed.
 
 **When display steps may run (WTF-520).** That a group or repeating
-group only clicks, input changes, popups opened or closed, "do every"
-ticks or the custom events they call set shows nothing before them is
-Bubble's documented behavior; that a "do every" workflow first runs
-after its interval, not as the page loads, is assumed. Plugin events and
-"User is logged in / out" are taken to possibly fire as the page loads
-(the conservative reading): an element they set, directly or through a
-custom event, stays unloaded until they run here.
+group only clicks, input changes, "do every" ticks or the custom events
+they call set shows nothing before them is Bubble's documented
+behavior; that a "do every" workflow first runs after its interval, not
+as the page loads, is assumed. Plugin events, popups opened or closed
+and "User is logged in / out" are taken to possibly fire as the page
+loads (the conservative reading): an element they set, directly or
+through a custom event, stays unloaded until they run here.
 
 To confirm by replay (WTF-358): what "Go to page" appends when the data
 sent to a page with no type of content is a value

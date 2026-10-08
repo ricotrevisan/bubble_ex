@@ -115,8 +115,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   @display_ops [:display_data, :display_list]
 
-  # Events that never fire as the page loads (WTF-520).
-  @event_kinds [:click, :input_change, :popup_opened, :popup_closed, :do_every]
+  # Events that never fire as the page loads (WTF-520). Anything else may
+  # (a page load, a condition, a plugin's event, a popup opened or closed,
+  # a user logged in or out: the conservative reading).
+  @event_kinds [:click, :input_change, :do_every]
 
   # Elements holding data that "Display data" or "Display list" sets.
   @never_holders ~w(Group Popup FloatingGroup GroupFocus RepeatingGroup)
@@ -346,12 +348,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       end)
       |> block(ctx.backend)
 
-    runs =
-      for {_surface, ws} <- bound,
-          w <- ws,
-          Spec.native?(w) and not w.disabled?,
-          into: %{},
-          do: {w.symbol, w}
+    all = for {_surface, ws} <- bound, w <- ws, into: %{}, do: {w.symbol, w}
+    runs = Map.filter(all, fn {_symbol, w} -> Spec.native?(w) and not w.disabled? end)
 
     shown =
       for w <- Map.values(runs),
@@ -360,7 +358,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
           into: MapSet.new(),
           do: step_element(step, w)
 
-    kept = Map.filter(displayed, fn {element, holder} -> kept?(element, holder, runs, shown) end)
+    kept =
+      Map.filter(displayed, fn {element, holder} ->
+        kept?(element, holder, %{all: all, runs: runs}, shown)
+      end)
 
     if map_size(kept) == map_size(displayed),
       do: {ctx, data, bound},
@@ -369,24 +370,29 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   # Whether the page keeps what display steps show in an element
   # faithfully (WTF-520). In a repeating group's cell, when a step that
-  # runs sets it (WTF-492). Elsewhere, when every workflow that may set it
-  # as the page loads (a page-load or condition-true workflow, one whose
-  # event this target does not know, or one that calls or schedules the
-  # custom event holding the step) runs whole and is triggered: before
-  # an event the element shows nothing, as in Bubble, so a step only
-  # events run (a click, an input change, a custom event they call) or
-  # none at all leaves it empty until a step that runs sets it.
-  defp kept?(element, %{cell: cell}, _runs, shown) when is_binary(cell),
+  # runs sets it (WTF-492). Elsewhere, by the workflows that may start
+  # each step (`roots`, `start_roots/1`): every one that may run as the
+  # page loads (a page-load or condition-true workflow, a popup opened or
+  # closed, a plugin's or another event this target does not lower, or
+  # the callers of the custom event holding the step) runs whole and is
+  # triggered; every event-driven one (a click, an input change, a "do
+  # every" tick) is triggered, whether the runtime then runs it or
+  # refuses it with a notice. Before an event the element shows nothing,
+  # as in Bubble; an event the page never triggers (a click in a
+  # repeating group's cell, not wired yet) would leave it empty where
+  # Bubble shows data, so it is not kept. No step at all: empty, kept.
+  defp kept?(element, %{cell: cell}, _workflows, shown) when is_binary(cell),
     do: MapSet.member?(shown, element)
 
-  defp kept?(_element, %{load: load}, runs, _shown) do
-    Enum.all?(load, fn symbol ->
-      case runs[symbol] do
-        nil -> false
-        w -> Spec.wired?(w)
-      end
+  defp kept?(_element, %{roots: roots}, %{all: all, runs: runs}, _shown) do
+    Enum.all?(roots, fn
+      {:load, symbol} -> wired?(runs[symbol])
+      {:event, symbol} -> wired?(all[symbol])
     end)
   end
+
+  defp wired?(nil), do: false
+  defp wired?(w), do: Spec.wired?(w)
 
   # The reusable instances in a repeating group's cell of their surface
   # (instance => `%{surface, cell, holder}`), and for each reusable element
@@ -1106,17 +1112,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # --- displayed data (WTF-492) ------------------------------------------------------------
 
   # The elements "Display data" steps set, by Bubble ID: `%{kind, surface,
-  # cell, holder, type, page_size, load}` (page data holders, see
-  # `Data.index/2`; `load`, the workflows that may set the element as the
-  # page loads, see `kept?/4`). Only an element the page renders that
-  # holds that kind of data. With page data (`own`, the elements with a
-  # source of their own), also the elements no step sets, which show
-  # nothing (WTF-520): a group, popup or repeating group with a type of
-  # content, no data source and no condition setting one, outside a
-  # repeating group's cell. An element with no source of its own that a
-  # condition gives one is left out: its source is not lowered.
+  # cell, holder, type, page_size, roots}` (page data holders, see
+  # `Data.index/2`; `roots`, the workflows that may start the steps, see
+  # `kept?/4`). Only an element the page renders that holds that kind of
+  # data. With page data (`own`, the elements with a source of their own,
+  # a conditional one included: `BubbleEx.PageData`), also the elements
+  # no step sets, which show nothing (WTF-520): a group, popup, floating
+  # group, group focus or repeating group with a type of content and no
+  # data source, outside a repeating group's cell.
   defp displayed(workflows, own, ctx) do
-    load = load_roots(workflows)
+    starts = start_roots(workflows)
 
     steps =
       for w <- workflows,
@@ -1130,14 +1135,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       steps
       |> Enum.group_by(&elem(&1, 0), &Tuple.delete_at(&1, 0))
       |> Enum.reduce(%{}, fn {element, ws}, acc ->
-        case shown_holder(element, ws, load, ctx) do
+        case shown_holder(element, ws, starts, ctx) do
           {:ok, holder} -> Map.put(acc, element, holder)
           :error -> acc
         end
-      end)
-      |> Map.reject(fn {element, holder} ->
-        holder.cell == nil and own != nil and not MapSet.member?(own, element) and
-          conditional_source?(element, ctx)
       end)
 
     if own == nil,
@@ -1148,7 +1149,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # The holder of an element display steps set: in a repeating group's
   # cell, from the steps that lowered (WTF-492); elsewhere from any step,
   # with the workflows that may run it as the page loads.
-  defp shown_holder(element, ws, load, ctx) do
+  defp shown_holder(element, ws, starts, ctx) do
     holders =
       for {w, %Step{op: op, args: args} = step} <- ws,
           display_target?(op, element, bubble(w.surface), ctx),
@@ -1165,17 +1166,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       [{holder, _, _} | _] ->
         roots =
           holders
-          |> Enum.flat_map(fn {_, _, w} -> Map.get(load, w.bubble_id, []) end)
+          |> Enum.flat_map(fn {_, _, w} -> Map.get(starts, w.bubble_id, []) end)
           |> Enum.uniq()
           |> Enum.sort()
 
-        {:ok, Map.put(holder, :load, roots)}
+        {:ok, Map.put(holder, :roots, roots)}
     end
   end
 
   defp lowered_holder(holders) do
     case for({holder, %Step{residue: []}, _w} <- holders, do: holder) do
-      [holder | _] -> {:ok, Map.put(holder, :load, [])}
+      [holder | _] -> {:ok, Map.put(holder, :roots, [])}
       [] -> :error
     end
   end
@@ -1202,36 +1203,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         %{surface: surface, instance_of: nil} = el <- [ctx.elements[id]],
         cell_of(raw, ctx, 0) == nil,
         rendered?(id, ctx),
-        not conditional_source?(id, ctx),
         op = if(type == "RepeatingGroup", do: :display_list, else: :display_data),
         into: %{},
-        do: {id, Map.put(holder(op, id, el, raw, surface, nil, ctx), :load, [])}
+        do: {id, Map.put(holder(op, id, el, raw, surface, nil, ctx), :roots, [])}
   end
 
-  # Whether a condition of the element sets its data source.
-  defp conditional_source?(element, ctx) do
-    case ctx.nodes[element] do
-      %{bindings: %{"condition" => %{payload: payload}}} when is_map(payload) ->
-        Enum.any?(payload, fn
-          {_key, %{} = state} ->
-            props = state["properties"] || state["%p"]
-            is_map(props) and Enum.any?(["data_source", "%ds"], &Map.has_key?(props, &1))
-
-          _ ->
-            false
-        end)
-
-      _ ->
-        false
-    end
-  end
-
-  # For each workflow (Bubble ID), the workflows (symbols) that may run
-  # it as the page loads: itself, unless its event is a click, an input
-  # change, a popup opened or closed or a "do every" tick; for a custom
-  # event, those of every workflow calling or scheduling it (none when
-  # nothing does). Disabled workflows never run.
-  defp load_roots(workflows) do
+  # For each workflow (Bubble ID), the workflows that may start it:
+  # `{:event, symbol}` for a click, an input change or a "do every" tick,
+  # `{:load, symbol}` for any other event (it may fire as the page loads);
+  # for a custom event, those of every workflow calling or scheduling it
+  # (none when nothing does, or only itself through a cycle). Disabled
+  # workflows never run.
+  defp start_roots(workflows) do
     by_id = Map.new(workflows, &{&1.bubble_id, &1})
 
     callers =
@@ -1248,7 +1231,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   end
 
   defp roots_of(%{disabled?: true}, _by_id, _callers, _seen), do: []
-  defp roots_of(%{kind: kind}, _by_id, _callers, _seen) when kind in @event_kinds, do: []
+
+  defp roots_of(%{kind: kind, id: symbol}, _by_id, _callers, _seen) when kind in @event_kinds,
+    do: [{:event, symbol}]
 
   defp roots_of(%{kind: :custom_event, bubble_id: id}, by_id, callers, seen) do
     if MapSet.member?(seen, id) do
@@ -1263,7 +1248,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     end
   end
 
-  defp roots_of(%{id: symbol}, _by_id, _callers, _seen), do: [symbol]
+  defp roots_of(%{id: symbol}, _by_id, _callers, _seen), do: [{:load, symbol}]
 
   # What a display step's element holds, or why the page cannot keep it:
   # a group (popup, floating group, group focus) holds a thing, a

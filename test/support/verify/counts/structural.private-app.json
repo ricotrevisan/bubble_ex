@@ -109,22 +109,22 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 797,
+          "generated": 789,
           "reasons": {
             "residue:api_connector_action": 39,
             "residue:auth_action": 8,
-            "residue:blocked_by_callee": 156,
+            "residue:blocked_by_callee": 150,
             "residue:plugin_action": 338,
             "residue:plugin_event": 250,
             "residue:trigger_in_runtime_template": 194,
-            "residue:unavailable_input": 349,
+            "residue:unavailable_input": 363,
             "residue:uncompiled_expression": 687,
             "residue:unresolved_reference": 20,
             "residue:unsupported_action": 52,
             "residue:unsupported_event": 16,
             "residue:unsupported_option": 34
           },
-          "residue": 2143,
+          "residue": 2151,
           "total": 2940,
           "uncovered": 0
         }
@@ -276,22 +276,22 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 797,
+          "generated": 789,
           "reasons": {
             "residue:api_connector_action": 39,
             "residue:auth_action": 8,
-            "residue:blocked_by_callee": 156,
+            "residue:blocked_by_callee": 150,
             "residue:plugin_action": 338,
             "residue:plugin_event": 250,
             "residue:trigger_in_runtime_template": 194,
-            "residue:unavailable_input": 349,
+            "residue:unavailable_input": 363,
             "residue:uncompiled_expression": 687,
             "residue:unresolved_reference": 20,
             "residue:unsupported_action": 52,
             "residue:unsupported_event": 16,
             "residue:unsupported_option": 34
           },
-          "residue": 2143,
+          "residue": 2151,
           "total": 2940,
           "uncovered": 0
         }

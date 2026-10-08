@@ -74,9 +74,9 @@ defmodule BubbleEx.PageDataTest do
 
       # The shown page's four (WTF-492) included, the initial page's three
       # (WTF-520: a group, an input's initial content, a list) and the
-      # loaded page's four (WTF-520: two groups' searches, a group's and a
-      # conditional source).
-      assert PageData.coverage(pd)["sources"] == %{"total" => 22, "native" => 22, "residue" => 0}
+      # loaded page's six (WTF-520: a group's and three lists' searches,
+      # two conditional sources).
+      assert PageData.coverage(pd)["sources"] == %{"total" => 24, "native" => 24, "residue" => 0}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -287,11 +287,11 @@ defmodule BubbleEx.PageDataTest do
 
       # With the shown page's (WTF-492): its six sources and the six
       # elements with no source its "Display data" steps set; the initial
-      # page's three (WTF-520); the loaded page's four and its two groups
+      # page's three (WTF-520); the loaded page's six and its two groups
       # with no source (WTF-520).
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 30,
-               "wired" => 30,
+               "total" => 32,
+               "wired" => 32,
                "residue" => 0
              }
 
@@ -391,7 +391,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 28
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 30
     end
 
     test "a repeating group in a repeating group's cell is residue" do
@@ -797,6 +797,258 @@ defmodule BubbleEx.PageDataTest do
       assert %{read: {:value, _}, residue: [], reads: cond_reads} = data(spec, "bCond")
       assert {:data, %{path: [], element: "bLoaded"}} in cond_reads
     end
+
+    # WTF-520: a group with no source (bDetail) and a group reading it
+    # (bDetailProj), set only by the given workflows.
+    @detail %{
+      "id" => "bDetail",
+      "type" => "Group",
+      "properties" => %{"group_type" => "custom.task", "width" => 300, "height" => 40},
+      "elements" => %{
+        "bDetailProj" => %{
+          "id" => "bDetailProj",
+          "type" => "Group",
+          "properties" => %{
+            "group_type" => "custom.project",
+            "width" => 300,
+            "height" => 40,
+            "data_source" => %{
+              "type" => "ElementParent",
+              "next" => %{"type" => "Message", "name" => "project_custom_project"}
+            }
+          }
+        }
+      }
+    }
+
+    defp detail_app(workflows, app) do
+      app = put_in(app, ["pages", "shown", "elements", "bDetail"], @detail)
+
+      Enum.reduce(workflows, app, fn w, acc ->
+        put_in(acc, ["pages", "shown", "workflows", w["id"]], w)
+      end)
+    end
+
+    defp wf(id, type, props, actions),
+      do: %{
+        "id" => id,
+        "type" => type,
+        "properties" => props,
+        "actions" =>
+          actions |> Enum.with_index() |> Map.new(fn {a, i} -> {Integer.to_string(i), a} end)
+      }
+
+    defp show_detail(id),
+      do: %{
+        "id" => id,
+        "type" => "DisplayGroupData",
+        "properties" => %{
+          "element_id" => "bDetail",
+          "data_source" => %{
+            "type" => "GetElement",
+            "properties" => %{"element_id" => "bSrcA"},
+            "next" => %{"type" => "Message", "name" => "get_group_data"}
+          }
+        }
+      }
+
+    defp call(id, event, type \\ "TriggerCustomEvent"),
+      do: %{"id" => id, "type" => type, "properties" => %{"custom_event" => event}}
+
+    defp mail(id), do: %{"id" => id, "type" => "SendEmail", "properties" => %{}}
+
+    defp event(id, actions), do: wf(id, "CustomEvent", %{}, actions)
+    defp clicked(id, actions), do: wf(id, "ButtonClicked", %{"element_id" => "bShowA"}, actions)
+
+    defp kept?(workflows, app \\ app()) do
+      {spec, _project, _frontend, _app, _model} = spec(detail_app(workflows, app))
+
+      case data(spec, "bDetail") do
+        %{read: :displayed, residue: []} ->
+          assert %{residue: []} = data(spec, "bDetailProj")
+          true
+
+        nil ->
+          assert %{residue: [%{reason: :unavailable_input}]} = data(spec, "bDetailProj")
+          false
+      end
+    end
+
+    @user_logged_in %{
+      "type" => "CurrentUser",
+      "next" => %{"type" => "Message", "name" => "logged_in"}
+    }
+
+    test "which workflows may start a display step decide whether its element loads (WTF-520)" do
+      # Events: a click, an input change, a "do every" tick; empty before.
+      assert kept?([clicked("wD", [show_detail("aD")])])
+      assert kept?([clicked("wD", [show_detail("aD"), mail("aDm")])])
+      assert kept?([wf("wD", "InputChanged", %{"element_id" => "bPick"}, [show_detail("aD")])])
+      assert kept?([wf("wD", "DoInterval", %{"interval" => 5}, [show_detail("aD")])])
+
+      # As the page loads: kept only when the workflow runs whole.
+      assert kept?([wf("wD", "PageLoaded", %{}, [show_detail("aD")])])
+      refute kept?([wf("wD", "PageLoaded", %{}, [show_detail("aD"), mail("aDm")])])
+
+      cond = %{"condition" => @user_logged_in, "run_when" => "every_time"}
+      assert kept?([wf("wD", "ConditionTrue", cond, [show_detail("aD")])])
+      refute kept?([wf("wD", "ConditionTrue", cond, [show_detail("aD"), mail("aDm")])])
+
+      # Events this target does not wire may fire as the page loads.
+      refute kept?([wf("wD", "LoggedIn", %{}, [show_detail("aD")])])
+      refute kept?([wf("wD", "PopupOpened", %{"element_id" => "bPop"}, [show_detail("aD")])])
+      refute kept?([wf("wD", "PopupClosed", %{"element_id" => "bPop"}, [show_detail("aD")])])
+      refute kept?([wf("wD", "1700000000000x100000000000000000-AAA", %{}, [show_detail("aD")])])
+
+      # A disabled workflow never runs: the element shows nothing.
+      assert kept?([
+               wf("wD", "PageLoaded", %{"workflow_disabled" => true}, [
+                 show_detail("aD"),
+                 mail("aDm")
+               ])
+             ])
+    end
+
+    test "a custom event's callers decide for its display steps (WTF-520)" do
+      # Nothing calls it: it never runs.
+      assert kept?([event("wE", [show_detail("aD")])])
+
+      # A wired click calls it; or schedules it.
+      assert kept?([event("wE", [show_detail("aD")]), clicked("wC", [call("aC", "wE")])])
+
+      assert kept?([
+               event("wE", [show_detail("aD")]),
+               clicked("wC", [call("aC", "wE", "ScheduleCustom")])
+             ])
+
+      # A refused page-load workflow schedules it: not kept.
+      refute kept?([
+               event("wE", [show_detail("aD")]),
+               wf("wL", "PageLoaded", %{}, [call("aC", "wE", "ScheduleCustom"), mail("aLm")])
+             ])
+
+      # A plugin's event calls it, through another custom event.
+      refute kept?([
+               event("wE", [show_detail("aD")]),
+               event("wF", [call("aF", "wE")]),
+               wf("wP", "1700000000000x100000000000000000-AAA", %{}, [call("aP", "wF")])
+             ])
+
+      # A cycle of custom events with no other caller never runs; with a
+      # page-load caller that runs whole, it is kept.
+      cycle = [
+        event("wE", [show_detail("aD"), call("aE", "wF")]),
+        event("wF", [call("aF", "wE")])
+      ]
+
+      assert kept?(cycle)
+      assert kept?(cycle ++ [wf("wL", "PageLoaded", %{}, [call("aL", "wF")])])
+      refute kept?(cycle ++ [wf("wL", "PageLoaded", %{}, [call("aL", "wF"), mail("aLm")])])
+    end
+
+    test "a reusable element's custom event the page calls as it loads (WTF-520)" do
+      # bPanelGroup (inside bPanel) is set by the reusable element's
+      # custom event, which a click on the page calls: kept.
+      {spec, _project, _frontend, _app, _model} = spec(app())
+      assert %{read: :displayed} = data(spec, "bPanelGroup")
+
+      # A refused page-load workflow calls it instead: not kept.
+      app =
+        update_in(app(), ["pages", "shown", "workflows", "wShowPanel"], fn w ->
+          w
+          |> Map.put("type", "PageLoaded")
+          |> Map.put("properties", %{})
+          |> put_in(["actions", "1"], mail("aPanelMail"))
+        end)
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+      refute data(spec, "bPanelGroup")
+    end
+
+    test "a click in a repeating group's cell, not wired yet, sets nothing here (WTF-520)" do
+      button = %{"id" => "bRowBtn", "type" => "Button", "properties" => %{"width" => 30}}
+
+      app =
+        put_in(app(), ["pages", "shown", "elements", "bSrcList", "elements", "bRowBtn"], button)
+
+      row = %{
+        show_detail("aD")
+        | "properties" => %{
+            "element_id" => "bDetail",
+            "data_source" => %{"type" => "CurrentCell"}
+          }
+      }
+
+      # Master-detail: the row's click is a trigger in a runtime template;
+      # the page never triggers it, so bDetail is not read as empty.
+      workflow = wf("wD", "ButtonClicked", %{"element_id" => "bRowBtn"}, [row])
+      refute kept?([workflow], app)
+
+      {spec, _project, _frontend, _app, _model} = spec(detail_app([workflow], app))
+
+      assert %{residue: [%{reason: :trigger_in_runtime_template} | _]} =
+               Enum.find(spec.surfaces["bShownPage"].workflows, &(&1.workflow == "wD"))
+
+      # The same step from a click outside the cell: kept, empty until it.
+      assert kept?([%{workflow | "properties" => %{"element_id" => "bShowA"}}], app)
+    end
+
+    defp state(condition, element),
+      do: %{
+        "condition" => condition,
+        "properties" => %{
+          "data_source" => %{
+            "type" => "GetElement",
+            "properties" => %{"element_id" => element},
+            "next" => %{"type" => "Message", "name" => "get_group_data"}
+          }
+        }
+      }
+
+    test "conditional data sources: the last true state wins; with a source of its own, residue" do
+      states = %{"0" => state(@user_logged_in, "bSrcA"), "1" => state(@user_logged_in, "bSrcB")}
+
+      app =
+        put_in(
+          app(),
+          ["pages", "shown", "elements", "bDetail"],
+          Map.put(@detail, "states", states)
+        )
+
+      {_model, page_data} = build(app)
+
+      # if(state 1, B, if(state 0, A, empty)): the last state outermost.
+      assert %Source{value: %{ir: %IR{op: :if, args: [_, b, %IR{op: :if, args: [_, a, none]}]}}} =
+               source(page_data, "bDetail")
+
+      assert [{:element_state, %{"element" => "bSrcB"}}] = ir_inputs(b)
+      assert [{:element_state, %{"element" => "bSrcA"}}] = ir_inputs(a)
+      assert %IR{op: :empty} = none
+
+      # bSrcA has a data source of its own: a state setting another one is
+      # not applied yet (WTF-521), so bSrcA is residue, never its own
+      # source alone, and what reads it is not loaded.
+      app =
+        put_in(app(), ["pages", "shown", "elements", "bSrcA", "states"], %{
+          "0" => state(@user_logged_in, "bSrcB")
+        })
+
+      {_model, page_data} = build(app)
+
+      assert %Source{
+               residue: [
+                 %{reason: :unsupported_option, detail: %{options: ["states.data_source"]}}
+               ]
+             } =
+               source(page_data, "bSrcA")
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+      assert %{residue: [_ | _]} = data(spec, "bSrcA")
+    end
+
+    defp ir_inputs(%IR{op: :input, args: [kind, ref]}), do: [{kind, ref}]
+    defp ir_inputs(%IR{args: args}), do: Enum.flat_map(args, &ir_inputs/1)
+    defp ir_inputs(_), do: []
 
     test "a group no step sets and with no data source shows nothing (WTF-520)" do
       never = %{

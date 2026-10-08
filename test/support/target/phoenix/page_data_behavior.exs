@@ -1844,8 +1844,10 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
   # WTF-520: /loaded's bLoaded has no data source; a page-load workflow
   # shows bLoadSrc's thing (Eat) in it. A text inside it, a list whose
   # search reads its title and a list whose only source is a condition on
-  # it read it after it. bClicked has no source either, and only a click
-  # the runtime refuses (a step it does not lower) sets it.
+  # it (bCond) read it after it. bClicked has no source either, and only
+  # a click the runtime refuses (a step it does not lower) sets it.
+  # bCondIn's only source is a condition on an input; "Show in cond"
+  # shows bDescList's list (Eat first) in bCond, "Reset cond" resets it.
   test "a page-load Display data step fills a group with no source; what reads it follows", %{
     conn: conn
   } do
@@ -1880,6 +1882,34 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."})
     assert shown(html, "Clicked") == []
     assert shown(html, "Click row") == ["Answer", "Bake"]
+  end
+
+  test "a conditional data source follows its condition after the page loaded", %{conn: conn} do
+    on()
+    {:ok, view, _html} = live(conn, "/loaded")
+    assert shown(render(view), "Cond in row") == []
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bLoadPick", "value" => "go"}
+    })
+
+    Process.sleep(250)
+    assert shown(render(view), "Cond in row") == ["Answer"]
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bLoadPick", "value" => "stop"}
+    })
+
+    Process.sleep(250)
+    assert shown(render(view), "Cond in row") == []
+  end
+
+  test "Display list wins over a conditional data source until a reset", %{conn: conn} do
+    on()
+    {:ok, view, _html} = live(conn, "/loaded")
+    assert shown(render(view), "Cond row") == ["Answer"]
+    assert shown(click(view, "bCondShow"), "Cond row") == ["Eat"]
+    assert shown(click(view, "bCondReset"), "Cond row") == ["Answer"]
   end
 
   test "with data access off, the page-load step shows nothing", %{conn: conn} do
