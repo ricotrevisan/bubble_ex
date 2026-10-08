@@ -129,6 +129,18 @@ defmodule BubbleEx.Target.Elixir.ShapesTest do
     assert eval(result, current_user: %{active_membership: %{team: nil}}) == []
     assert eval(result, current_user: %{active_membership: nil}) == []
 
+    # A list of things converted (an input's): each item's, empty ones dropped.
+    tasks = IR.node(:input, [:step, %{step: "bS1"}], "list.custom.task")
+    converted_tasks = IR.node(:as_list, [tasks], "list.custom.task")
+
+    titles =
+      compile!(IR.node(:field, [converted_tasks, "task", "title_text"], "list.text"), project)
+
+    [%{var: var}] = titles.bindings
+    rows = [%{title: "Alpha"}, %{title: nil}, %{title: %Hidden{}}, %{title: "Bravo"}]
+    assert eval(titles, [{String.to_atom(var), rows}]) == ["Alpha", "Bravo"]
+    assert eval(titles, [{String.to_atom(var), nil}]) == []
+
     # A list converted is the list: its field compiles as the list's does
     # (here not: a field of a list-of-things field's items, stored as IDs).
     teams = IR.node(:field, [user(), "user", "teams_list_custom_team"], "list.custom.team")

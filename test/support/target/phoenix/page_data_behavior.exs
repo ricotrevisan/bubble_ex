@@ -755,7 +755,8 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
           {14, "100% rye"},
           {15, "1000 rye"},
           {16, "snake_case"},
-          {17, "snakeXcase"}
+          {17, "snakeXcase"},
+          {18, "back\\slash"}
         ],
         do:
           Ash.Seed.seed!(PhxCheck.Task, %{id: "1700000000000x2000000000000000#{n}", title: title})
@@ -765,7 +766,15 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
 
     everything =
       Enum.sort(
-        all ++ ["Bake a cake", "Bake the bread", "Bread to bake", "snakeXcase", "snake_case"]
+        all ++
+          [
+            "Bake a cake",
+            "Bake the bread",
+            "Bread to bake",
+            "back\\slash",
+            "snakeXcase",
+            "snake_case"
+          ]
       )
 
     assert Enum.sort(words(html, "Word")) == everything
@@ -779,7 +788,11 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
           {"cake bread", []},
           {"100%", ["100% rye"]},
           {"e_c", ["snake_case"]},
-          {"\\", []}
+          {"\\", ["back\\slash"]},
+          # Past the caps (32 words of the first 256 characters): the input
+          # is never split per row, so a long one costs no more.
+          {String.duplicate("bake ", 2_000),
+           ["Bake", "Bake a cake", "Bake the bread", "Bread to bake"]}
         ] do
       render_change(view, "bubble:change", %{
         "bubble" => %{"scope" => "", "element" => "bWords", "value" => typed}
@@ -789,6 +802,13 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
       html = render(view)
       assert Enum.sort(words(html, "Word")) == found, inspect(typed)
       assert Enum.sort(words(html, "Strict word")) == found, inspect(typed)
+
+      # The in-memory match (a condition, a `:filtered` list of texts)
+      # agrees with the search.
+      in_memory =
+        Enum.filter(everything, &PhxCheck.Bubble.Runtime.text_contains_words?(&1, typed))
+
+      assert in_memory == found, inspect(typed)
     end
 
     # Empty again: ignored by bWordsAll, nothing for bWordsStrict.

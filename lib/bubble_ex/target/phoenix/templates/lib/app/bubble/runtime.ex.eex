@@ -245,16 +245,42 @@ defmodule <%= @module %>.Bubble.Runtime do
   def split(x, sep) when is_binary(x) and is_binary(sep) and sep != "", do: String.split(x, sep)
   def split(x, _sep), do: x
 
-  # TODO(bubble:runtime) Bubble's word-level match.
+  # A keyword search's words, as the generated searches bind them
+  # (BubbleEx.Target.Keywords, WTF-520): the first 256 characters, split
+  # on whitespace, at most 32 words. Bubble's own rule is not verified.
+  @keyword_chars 256
+  @keyword_words 32
+
+  @doc "`contains keyword(s)`: every word of `b` a case-insensitive substring of `a`."
   def text_contains_words?(a, b) when ci?(a) or ci?(b),
     do: text_contains_words?(plain(a), plain(b))
 
-  def text_contains_words?(a, b) when is_binary(a) and is_binary(b) do
-    words = a |> String.downcase() |> String.split(~r/\W+/u, trim: true)
-    b |> String.downcase() |> String.split(~r/\W+/u, trim: true) |> Enum.all?(&(&1 in words))
+  def text_contains_words?(a, b) when is_binary(a) do
+    text = String.downcase(a)
+
+    case keywords(b) do
+      [] -> false
+      words -> Enum.all?(words, &String.contains?(text, String.downcase(&1)))
+    end
   end
 
   def text_contains_words?(_a, _b), do: false
+
+  @doc "The words of a keyword search: whitespace-separated, capped."
+  def keywords(x) when ci?(x), do: x |> plain() |> keywords()
+
+  def keywords(x) when is_binary(x) do
+    x
+    |> String.slice(0, @keyword_chars)
+    |> String.split(~r/\s+/u, trim: true)
+    |> Enum.take(@keyword_words)
+  end
+
+  def keywords(_x), do: []
+
+  @doc "The `ILIKE` patterns of `keywords/1`: `\\`, `%` and `_` escaped, wrapped in `%`."
+  def keyword_patterns(x),
+    do: Enum.map(keywords(x), &("%" <> String.replace(&1, ["\\", "%", "_"], fn c -> "\\" <> c end) <> "%"))
 
   # TODO(bubble:runtime) Bubble capitalizes after spaces only.
   def capitalize_words(x) when ci?(x), do: x |> plain() |> capitalize_words()

@@ -436,7 +436,7 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
     conn: conn,
     u1: u1
   } do
-    for {id, body} <- [{@n1, "Plan the launch"}, {@n2, "Launch plan"}, {@n3, "Notes"}],
+    for {id, body} <- [{@n1, "Plan the launch"}, {@n2, "Launch plan budget"}],
         do: Ash.Seed.update!(Ash.get!(PhxCheck.Note, id, authorize?: false), %{body: body})
 
     data_access_on()
@@ -459,6 +459,48 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
     Process.sleep(250)
     assert body_matches(render(view)) == []
   end
+
+  # WTF-520: `doesn't contain keyword(s)` on the hidden Body: Charlie's
+  # empty Body contains nothing, so it is found; u2's Bravo (whose Body
+  # does not contain "review" either) is not, since u1 may not view its
+  # Body. Under :omit, u1 finds Bravo too.
+  test "doesn't contain keyword(s) on a hidden field: only where the user may view it", %{
+    conn: conn,
+    u1: u1
+  } do
+    for {id, body} <- [{@n1, "Plan the launch"}, {@n2, "Launch plan budget"}, {@n3, nil}],
+        do: Ash.Seed.update!(Ash.get!(PhxCheck.Note, id, authorize?: false), %{body: body})
+
+    data_access_on()
+    {:ok, view, _html} = live(sign_in(conn, u1), "/")
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bNoteQuery", "value" => "review"}
+    })
+
+    Process.sleep(250)
+    assert body_misses(render(view)) == ["Alpha", "Charlie"]
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bNoteQuery", "value" => "plan"}
+    })
+
+    Process.sleep(250)
+    assert body_misses(render(view)) == ["Charlie"]
+
+    # Logged out: nobody views Body, so nothing is found by it.
+    {:ok, view, _html} = live(conn, "/")
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bNoteQuery", "value" => "review"}
+    })
+
+    Process.sleep(250)
+    assert body_misses(render(view)) == []
+  end
+
+  defp body_misses(html),
+    do: ~r/Body miss: (\w+)/ |> Regex.scan(html, capture: :all_but_first) |> List.flatten()
 
   defp body_matches(html),
     do: ~r/Body match: (\w+)/ |> Regex.scan(html, capture: :all_but_first) |> List.flatten()

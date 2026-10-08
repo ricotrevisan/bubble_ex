@@ -15,7 +15,9 @@ defmodule BubbleEx.Target.Ash.Expr do
       `^actor([:current_role, :workspace_id])`); Ash raises on a template
       path through an unloaded relationship
     * `arguments` - the context inputs the filter reads as `^arg(:name)`:
-      `%{name, input, type}` with the IR's input kind and Bubble IDs
+      `%{name, input, type}` with the IR's input kind and Bubble IDs;
+      with `keywords: true`, the `ILIKE` patterns of the input's words
+      (`BubbleEx.Target.Keywords.patterns/1`) rather than its value
     * `sort` - `[{attribute, :asc_nils_last | :desc_nils_last}]` for a
       search's sort (empty values last in both directions, as Bubble sorts
       things; replay 2026-10-07), or

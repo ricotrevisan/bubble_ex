@@ -1131,13 +1131,21 @@ and "Display data" over a group's own source.
   nothing on an empty value (or are dropped with `true`) is assumed.
 * **Keyword searches** (`contains keyword(s)`, WTF-520): compiled with a
   conservative reading, every whitespace-separated word of the input a
-  case-insensitive substring of the field (`ILIKE`, `\`, `%` and `_`
-  matching themselves), an input of spaces only matching nothing. What
+  case-insensitive substring of the field (`ILIKE ALL` over bound
+  patterns, `\`, `%` and `_` matching themselves), an input of spaces
+  only matching nothing. The words are computed in Elixir
+  (`BubbleEx.Target.Keywords`), never split per row, and capped: only
+  the first 32 words of the first 256 characters count, so a long input
+  costs the database no more than a short one (a later word is ignored,
+  which can only widen the result). The in-memory match
+  (`Bubble.Runtime.text_contains_words?/2`, for conditions and lists of
+  texts) uses the same words, so a search and a condition agree. What
   Bubble does needs a replay: whole words or substrings, every word or
-  any, stemming, a minimum word length, punctuation as a separator, and
-  an input of spaces only. In memory (`Bubble.Runtime.text_contains_words?/2`,
-  a condition rather than a search) the runtime still matches whole words,
-  so the two can disagree until the replay settles both.
+  any, stemming, a minimum word length, punctuation as a separator, an
+  input of spaces only, whether a non-breaking space separates words
+  (here it does), whether it caps the input, and case folding beyond
+  ASCII (`ß`, a final sigma, a locale's rules: PostgreSQL's `ILIKE` and
+  Elixir's `String.downcase/1` may differ there too).
 * A page's thing is read from the path segment after the page name; a
   slug is not resolved.
 * A repeating group shows its first page; later pages ("Show next") are

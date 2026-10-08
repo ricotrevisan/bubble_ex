@@ -102,8 +102,17 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @callback date_part(value(), String.t(), value()) :: value()
   @doc "`text contains string`: substring."
   @callback text_contains?(value(), value()) :: boolean()
-  @doc "`text contains`: Bubble's keyword match."
+  @doc """
+  `text contains` (`contains keyword(s)`): every word of `b`
+  (`keywords/1`) a case-insensitive substring of `a`; no words, or an
+  empty `a`, is false. The reading of `BubbleEx.Target.Keywords`, as a
+  search compiles it.
+  """
   @callback text_contains_words?(value(), value()) :: boolean()
+  @doc "The words of a keyword search: `BubbleEx.Target.Keywords.words/1`."
+  @callback keywords(value()) :: [String.t()]
+  @doc "The `ILIKE` patterns of the words: `BubbleEx.Target.Keywords.patterns/1`."
+  @callback keyword_patterns(value()) :: [String.t()]
 
   @doc """
   `:converted to list`: an empty value (`empty?/1`, a field the user may

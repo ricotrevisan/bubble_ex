@@ -329,6 +329,13 @@ defmodule BubbleEx.Target.Elixir do
     {ok(c, &"(#{&1} == true)"), st}
   end
 
+  # The `ILIKE` patterns of a keyword search's words (WTF-520, bound by
+  # `FrontendWorkflows` for `BubbleEx.Target.Ash.Expressions`).
+  defp value(%IR{op: :keyword_patterns, args: [text]}, st) do
+    {t, st} = value(text, st)
+    runtime(st, :keyword_patterns, [t])
+  end
+
   defp value(%IR{op: :count, args: [list]}, st) do
     {l, st} = value(list, st)
     {l, st} = as_list(l, st)

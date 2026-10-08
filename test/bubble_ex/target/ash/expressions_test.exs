@@ -355,6 +355,7 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
   describe "contains keyword(s)" do
     defp keywords(project, op, options, searches \\ :page) do
       env = env(searches: searches)
+
       # A text parameter: `""` is empty like nil.
       q = %{
         "type" => "CurrentWorkflowItem",
@@ -368,111 +369,119 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
     end
 
     @arg "^arg(:parameter_pq_q)"
+    @call ~s|fragment("coalesce(cardinality(?::text[]) > 0 AND ? ILIKE ALL (?::text[]), false)", | <>
+            ~s|^arg(:parameter_keywords_pq_q), title, ^arg(:parameter_keywords_pq_q))|
 
-    test "every word of the input, as a case-insensitive substring, escaped", %{
+    test "the words are bound as patterns: no split per row, the exact SQL", %{
       project: project
     } do
       %{expr: expr, diagnostics: []} =
         keywords(project, "text contains", %{"ignore_empty_constraints" => true})
 
-      assert [%{name: "parameter_pq_q", type: "text"}] = expr.arguments
+      # The input's value (for its emptiness) and its words' patterns,
+      # computed by the caller (`keywords: true`).
+      assert [
+               %{name: "parameter_keywords_pq_q", type: "text", keywords: true, input: input},
+               %{name: "parameter_pq_q", type: "text", input: input} = plain
+             ] = expr.arguments
 
-      assert {:or, [_empty, {:call, "fragment", [{:value, sql}, {:ref, [], "title"}, {:arg, _}]}]} =
-               expr.expr
+      refute Map.has_key?(plain, :keywords)
 
-      # Split on whitespace, empty words skipped; every word must match.
-      assert sql =~ "regexp_split_to_table(?, '\\s+') AS w WHERE w <> ''"
-      assert sql =~ "coalesce(bool_and(? ILIKE '%' || "
-      # LIKE's escape character first, then its wildcards.
-      assert sql =~
-               "replace(replace(replace(w, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%'), false)"
-
-      # The printed filter is valid Elixir, its SQL a literal.
       source = Source.expr(expr)
+      assert source == ~s|expr(is_nil(#{@arg}) or #{@arg} == "" or #{@call})|
+      refute source =~ "regexp"
       assert {:ok, _} = Code.string_to_quoted(source)
-      assert source =~ ~s|fragment("(SELECT coalesce(bool_and(? ILIKE '%' |
-      assert source =~ ~s|, title, #{@arg})|
     end
 
     test "an empty input: dropped when the search ignores empty constraints, else nothing", %{
       project: project
     } do
-      fragment = fn %{expr: expr} ->
-        source = Source.expr(expr)
-        [_, call] = Regex.run(~r/(fragment\(.*\))\)$/, source)
-        {source, call}
+      source = fn options, searches ->
+        Source.expr(keywords(project, "text contains", options, searches).expr)
       end
 
-      {dropped, call} =
-        fragment.(keywords(project, "text contains", %{"ignore_empty_constraints" => true}))
+      nothing = ~s|expr(not (is_nil(#{@arg}) or #{@arg} == "") and #{@call})|
 
-      assert dropped == ~s|expr(is_nil(#{@arg}) or #{@arg} == "" or #{call})|
+      assert source.(%{"ignore_empty_constraints" => true}, :page) ==
+               ~s|expr(is_nil(#{@arg}) or #{@arg} == "" or #{@call})|
 
-      for options <- [%{}, %{"ignore_empty_constraints" => false}] do
-        {nothing, call} = fragment.(keywords(project, "text contains", options))
-        assert nothing == ~s|expr(not (is_nil(#{@arg}) or #{@arg} == "") and #{call})|
-      end
+      for options <- [%{}, %{"ignore_empty_constraints" => false}],
+          do: assert(source.(options, :page) == nothing)
 
       # A backend search matches nothing on an empty input, whatever it states.
-      {backend, call} =
-        fragment.(
-          keywords(project, "text contains", %{"ignore_empty_constraints" => true}, :backend)
-        )
-
-      assert backend == ~s|expr(not (is_nil(#{@arg}) or #{@arg} == "") and #{call})|
+      assert source.(%{"ignore_empty_constraints" => true}, :backend) == nothing
     end
 
     test "doesn't contain keyword(s): an empty field contains none", %{project: project} do
       %{expr: expr, diagnostics: []} =
         keywords(project, "not text contains", %{"ignore_empty_constraints" => true})
 
-      source = Source.expr(expr)
-      assert source =~ "or is_nil(title) or not fragment("
+      assert Source.expr(expr) ==
+               ~s|expr(is_nil(#{@arg}) or #{@arg} == "" or is_nil(title) or not #{@call})|
     end
 
-    test "not compiled outside a search, nor on a value that is not a text", %{
-      project: project
-    } do
-      title =
+    test "a literal's words are computed here, escaped and capped" do
+      assert BubbleEx.Target.Keywords.patterns("  Bread\tBAKE ") == ["%Bread%", "%BAKE%"]
+
+      assert BubbleEx.Target.Keywords.patterns(~S"100% a_b c\d") == [
+               "%100\\%%",
+               "%a\\_b%",
+               ~S"%c\\d%"
+             ]
+
+      assert BubbleEx.Target.Keywords.patterns("   ") == []
+      assert BubbleEx.Target.Keywords.patterns(nil) == []
+      many = Enum.map_join(1..2_000, " ", &"w#{&1}")
+      assert length(BubbleEx.Target.Keywords.words(many)) == 32
+
+      assert BubbleEx.Target.Keywords.words(String.duplicate("x", 300)) == [
+               String.duplicate("x", 256)
+             ]
+    end
+
+    test "not compiled outside a search, on a value that is not a text, or on words that are not",
+         %{project: project} do
+      item = IR.node(:this, [:filter_item], "custom.task")
+      title = IR.node(:field, [item, "task", "title_text"], "text")
+      estimate = IR.node(:field, [item, "task", "estimate_number"], "number")
+      words = &IR.node(:text_contains_words, [&1, &2], "boolean")
+      lit = &IR.node(:literal, [&1], &2)
+
+      rule_title =
         IR.node(
           :field,
           [IR.node(:this, [:rule_record], "custom.task"), "task", "title_text"],
           "text"
         )
 
-      words =
-        IR.node(:text_contains_words, [title, IR.node(:literal, ["a b"], "text")], "boolean")
-
       assert {:ok, %{expr: nil, diagnostics: [diag]}} =
-               Expressions.filter(words, project, resource: "task")
+               Expressions.filter(words.(rule_title, lit.("a b", "text")), project,
+                 resource: "task"
+               )
 
-      assert %{
-               code: :ash_expr_unsupported,
-               details: %{constructs: ["contains keyword(s) outside a search"]}
-             } =
-               diag
+      assert diag.details.constructs == ["contains keyword(s) outside a search"]
 
-      estimate =
-        IR.node(
-          :field,
-          [IR.node(:this, [:filter_item], "custom.task"), "task", "estimate_number"],
-          "number"
-        )
+      for {ir, construct} <- [
+            {words.(estimate, lit.("1", "text")),
+             "contains keyword(s) on a value that is not a text"},
+            {words.(title, lit.(1, "number")), "contains keyword(s) whose words are not a text"},
+            {words.(
+               title,
+               IR.node(:current_user, [], "user")
+               |> then(&IR.node(:field, [&1, "user", "name_text"], "text"))
+             ), "contains keyword(s) whose words are not an input or a literal"}
+          ] do
+        search = IR.node(:search, ["task", ir], "list.custom.task")
+        assert {:ok, %{expr: nil, diagnostics: [diag]}} = Expressions.search(search, project)
+        assert %{code: :ash_expr_unsupported, details: %{constructs: [^construct]}} = diag
+      end
 
-      search =
-        IR.node(
-          :search,
-          [
-            "task",
-            IR.node(:text_contains_words, [estimate, IR.node(:literal, ["1"], "text")], "boolean")
-          ],
-          "list.custom.task"
-        )
+      # A literal's words are compiled in.
+      search = IR.node(:search, ["task", words.(title, lit.("a_b", "text"))], "list.custom.task")
+      assert {:ok, %{expr: expr, diagnostics: []}} = Expressions.search(search, project)
 
-      assert {:ok, %{expr: nil, diagnostics: [diag]}} = Expressions.search(search, project)
-
-      assert %{details: %{constructs: ["contains keyword(s) on a value that is not a text"]}} =
-               diag
+      assert Source.expr(expr) =~
+               ~S|ILIKE ALL (?::text[]), false)", ["%a\\_b%"], title, ["%a\\_b%"])|
     end
   end
 
