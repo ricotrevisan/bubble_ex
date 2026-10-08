@@ -1277,6 +1277,7 @@ defmodule BubbleEx.Frontend.Normalize do
       justify: justify_from(raw, mode),
       align: align_from(raw, mode),
       fill_width?: fill_axis?(raw, :width),
+      fit_width?: fit_width?(raw),
       fill_height?: fill_axis?(raw, :height) || legacy_fixed_fill_height?(raw, mode)
     }
 
@@ -1346,6 +1347,13 @@ defmodule BubbleEx.Frontend.Normalize do
       value when value in ["right", "bottom", "end"] -> "flex-end"
       value -> value
     end
+  end
+
+  # Whether the element fits its width to its content (`fit_width`, not
+  # also fixed): a stored `width` is then the editor's, not its width.
+  defp fit_width?(raw) do
+    if Payload.prop(raw, "fit_width") == true and Payload.prop(raw, "single_width") != true,
+      do: true
   end
 
   defp fill_axis?(raw, axis) do

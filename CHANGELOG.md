@@ -24,12 +24,24 @@ All notable changes to this project are documented here.
   The runtime now reads it as its text wherever a value is used as text:
   dynamic texts and input initial values, `is` / `is not`, `contains` on a
   list of texts, ordering and `:sorted`, the list operators (`:unique
-  elements`, `:merged with`, `:minus item`, …), the text operators, URL parameters and path segments, and
-  what backend workflows write and return.
+  elements`, `:merged with`, `:minus item`, …), the text operators, URL
+  parameters and path segments, and what backend workflows write and
+  return.
   The `/settings` Timezone field of the demo stays blank for another
   reason: it is a Dropdown whose choices are all of an option set's
   options, and only static-choice dropdowns are lowered yet (a
   `TODO(bubble:...)` marker in the template).
+
+- **Floating Groups no longer stretch over the page** (WTF-516). A
+  Floating Group, or a reusable element whose base is one, pinned to
+  "both" horizontal edges (also what an unset reference reads as) was
+  given `left: 0` and `right: 0` whatever its width, so a fit-width side
+  navigation spanned the viewport and hid the page's content under it.
+  Its width is now its own (the instance's over the reusable's): a fixed
+  width is kept, a fit width is `width: fit-content` (`w-[fit-content]`),
+  and a group pinned to both edges stretches between them only when it
+  fills its width; otherwise it sits at the left edge. Left, right and
+  center keep their edges, at that width.
 
 - **`Get data from page URL`: path segments and typed URL parameters**
   (WTF-508), as replayed against Bubble on 2026-10-07 (WTF-387). Texts,
