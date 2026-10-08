@@ -285,9 +285,7 @@ defmodule <%= @web %>.BubbleData do
       {data, by_source, cells} =
         read_pass(fn ->
           {data, by_source} =
-            Enum.reduce(BubbleWorkflows.surfaces(page), {%{}, %{}}, fn {scope, module}, acc ->
-              load_surface(socket, module, scope, acc)
-            end)
+            load_surfaces(socket, BubbleWorkflows.surfaces(page), {%{}, %{}}, nil)
 
           # The reusable instances in cells (WTF-494): one scope per cell read.
           load_cells(socket, page, {data, by_source})
@@ -396,10 +394,7 @@ defmodule <%= @web %>.BubbleData do
         {data, by_source, cells} =
           read_pass(fn ->
             {data, by_source} =
-              Enum.reduce(BubbleWorkflows.surfaces(page), {data, by_source}, fn {scope, module},
-                                                                               acc ->
-                load_surface(socket, module, scope, acc, affected)
-              end)
+              load_surfaces(socket, BubbleWorkflows.surfaces(page), {data, by_source}, affected)
 
             load_cells(socket, page, {data, by_source}, affected)
           end)
@@ -536,57 +531,204 @@ defmodule <%= @web %>.BubbleData do
     FunctionClauseError -> []
   end
 
-  # Every source of the surface, or only those whose element is in `only`;
+  # The page's surfaces (`{scope, module}`: the page, then the instances it
+  # renders once), every source or only those whose element is in `only`;
   # the data, and the topics each source's value needs (by source).
-  defp load_surface(socket, module, scope, acc, only \\ nil),
-    do: load_batch(socket, module, [scope], acc, only, scope)
+  defp load_surfaces(socket, surfaces, acc, only) do
+    groups = for {scope, module} <- surfaces, do: %{module: module, scopes: [scope], id: scope}
+    load_groups(socket, groups, acc, only)
+  end
 
-  # The sources of `module` in every scope of `scopes` (one, or the same
-  # reusable instance in every cell of a repeating group, WTF-494), each
-  # source read for all of them together before the next: see
-  # `read_source/7`. `id` names the batch in the topics by source.
-  defp load_batch(socket, module, scopes, acc, only, id) do
-    {cells, own} =
-      module
-      |> sources()
-      |> Enum.filter(&(is_nil(only) or MapSet.member?(only, &1.element)))
-      |> Enum.split_with(& &1.cell)
+  # Runs the sources of `groups` (a module with the scopes it runs in: one,
+  # or the same reusable instance in every cell of a repeating group,
+  # WTF-494) in the order they read each other (`plan/1`), each source for
+  # every scope of its group together before the next (`load_source/7`). A
+  # group's `id` names it in the topics by source.
+  defp load_groups(socket, groups, acc, only) do
+    groups
+    |> plan()
+    |> Enum.reduce(acc, fn {group, source, scopes}, acc ->
+      if is_nil(only) or MapSet.member?(only, source.element),
+        do: load_source(socket, group, source, scopes, acc),
+        else: acc
+    end)
+  end
 
-    batch? = length(scopes) > 1
+  # The order sources are read in, across surfaces (WTF-520): a source
+  # after those keeping what it reads (`deps`, in `__bubble__(:data)`): a
+  # page's source reading an instance's property after the instance's
+  # default, computed inside it; a default after the value the instance
+  # may set. Otherwise the listed order: the page's, then each instance's
+  # (a surface's own sources before those in its repeating groups' cells).
+  # Sources reading each other in a cycle (the generator leaves none) keep
+  # the listed order. `{group, source, scopes}`: a scope is dropped where
+  # the source reads what nothing on the page keeps for it (an instance's
+  # property from outside, in a scope the page does not render) or what is
+  # dropped itself, so it never reads an empty value in place of one it
+  # was not given. A module listing no `deps` (scaffolded before) keeps
+  # the listed order.
+  defp plan(groups) do
+    nodes =
+      for group <- groups,
+          source <- group.module |> sources() |> own_first(),
+          do: %{group: group, source: source}
 
-    acc =
-      Enum.reduce(own, acc, fn source, acc ->
-        units =
-          for scope <- scopes do
-            key_scope = if source.instance, do: Bubble.nest(scope, source.instance), else: scope
-            key = {key_scope, source.element}
-            %{scope: scope, cell: nil, key: key, shown: key}
-          end
+    nodes = nodes |> Enum.with_index() |> Enum.map(fn {node, i} -> Map.put(node, :i, i) end)
 
-        read_source(socket, module, source, units, acc, id, batch?)
+    if Enum.all?(nodes, &is_list(Map.get(&1.source, :deps))),
+      do: nodes |> order_nodes() |> with_scopes(),
+      else: Enum.map(nodes, &{&1.group, &1.source, &1.group.scopes})
+  end
+
+  # A surface's own sources before those in its cells (they read the lists).
+  defp own_first(sources) do
+    {cells, own} = Enum.split_with(sources, & &1.cell)
+    own ++ cells
+  end
+
+  # What a source keeps in `scope`: its value (an instance's under the
+  # instance's scope), or, in a repeating group's cell, a value per cell.
+  defp written(%{cell: cell, element: e}, scope) when is_binary(cell), do: {scope, e, :cells}
+  defp written(%{instance: i, element: e}, scope) when is_binary(i), do: {Bubble.nest(scope, i), e}
+  defp written(%{element: e}, scope), do: {scope, e}
+
+  defp wanted({:data, path, e}, scope), do: {nest_path(scope, path), e}
+  defp wanted({:cell, rg}, scope), do: {scope, rg}
+  defp wanted({:cell_data, g}, scope), do: {scope, g, :cells}
+
+  # An instance's property read from outside it: some source must keep it.
+  defp needed?({:data, [_ | _], "param_" <> _}), do: true
+  defp needed?(_dep), do: false
+
+  defp order_nodes(nodes) do
+    writers =
+      Enum.reduce(nodes, %{}, fn node, acc ->
+        Enum.reduce(node.group.scopes, acc, fn scope, acc ->
+          Map.update(acc, written(node.source, scope), [node.i], &[node.i | &1])
+        end)
       end)
 
-    # A group in a repeating group's cell holds a value per cell, and so
-    # does an instance there (its thing and properties, under its scope in
-    # that cell, WTF-494): read for every cell together.
-    Enum.reduce(cells, acc, fn source, {data, _by_source} = acc ->
-      units =
-        for scope <- scopes, {item, i} <- cell_items(data, scope, source.cell) do
-          cell_unit(scope, source, item, i)
-        end
+    # Each node's predecessors: who keeps what it reads; for a default
+    # (`default: true`), also the value an instance sets under its key.
+    preds =
+      Map.new(nodes, fn node ->
+        read =
+          for scope <- node.group.scopes,
+              dep <- node.source.deps,
+              w <- Map.get(writers, wanted(dep, scope), []),
+              do: w
 
-      # The relationships the source reads through the cell's thing, for
-      # every cell at once, read as the current user.
-      items =
-        units
-        |> Enum.map(fn %{cell: {item, _}} -> item end)
-        |> load_values(source.cell_loads, data_actor(socket))
+        own =
+          if Map.get(node.source, :default, false),
+            do:
+              for(
+                scope <- node.group.scopes,
+                w <- Map.get(writers, written(node.source, scope), []),
+                do: w
+              ),
+            else: []
 
-      units =
-        Enum.zip_with(units, items, fn %{cell: {_, i}} = unit, item -> %{unit | cell: {item, i}} end)
+        {node.i, (read ++ own) |> Enum.reject(&(&1 == node.i)) |> Enum.uniq()}
+      end)
 
-      read_source(socket, module, source, units, acc, id, true)
-    end)
+    by_i = Map.new(nodes, &{&1.i, &1})
+
+    succs =
+      Enum.reduce(preds, %{}, fn {i, ps}, acc ->
+        Enum.reduce(ps, acc, fn p, acc -> Map.update(acc, p, [i], &[i | &1]) end)
+      end)
+
+    degree = Map.new(preds, fn {i, ps} -> {i, length(ps)} end)
+    ready = :gb_sets.from_list(for {i, 0} <- degree, do: i)
+    {order, left} = kahn_nodes(ready, degree, succs, [])
+
+    # A cycle (the generator marks them): what is left, in listed order.
+    rest = left |> Map.keys() |> Enum.sort()
+    {Enum.map(Enum.reverse(order) ++ rest, &by_i[&1]), writers}
+  end
+
+  defp kahn_nodes(ready, degree, succs, order) do
+    if :gb_sets.is_empty(ready) do
+      {order, degree}
+    else
+      {i, ready} = :gb_sets.take_smallest(ready)
+      degree = Map.delete(degree, i)
+
+      {ready, degree} =
+        succs
+        |> Map.get(i, [])
+        |> Enum.reduce({ready, degree}, fn s, {ready, degree} ->
+          case Map.fetch(degree, s) do
+            {:ok, 1} -> {:gb_sets.add(s, ready), Map.put(degree, s, 0)}
+            {:ok, d} -> {ready, Map.put(degree, s, d - 1)}
+            :error -> {ready, degree}
+          end
+        end)
+
+      kahn_nodes(ready, degree, succs, [i | order])
+    end
+  end
+
+  # The scopes each source runs in, in order: not where what it reads is
+  # kept by nothing (`needed?/1`) or by sources dropped there.
+  defp with_scopes({ordered, writers}) do
+    {steps, _kept} =
+      Enum.map_reduce(ordered, MapSet.new(), fn node, kept ->
+        scopes =
+          Enum.filter(node.group.scopes, fn scope ->
+            Enum.all?(node.source.deps, fn dep ->
+              key = wanted(dep, scope)
+
+              case Map.get(writers, key, []) -- [node.i] do
+                [] -> Map.has_key?(writers, key) or not needed?(dep)
+                _others -> MapSet.member?(kept, key)
+              end
+            end)
+          end)
+
+        kept = Enum.reduce(scopes, kept, &MapSet.put(&2, written(node.source, &1)))
+        {{node.group, node.source, scopes}, kept}
+      end)
+
+    steps
+  end
+
+  # One source of a group, in `scopes` (those of the group it runs in).
+  # Read together (more than one scope, WTF-494), a source never queries
+  # once per scope: see `read_source/7`.
+  defp load_source(_socket, _group, _source, [], acc), do: acc
+
+  defp load_source(socket, group, %{cell: nil} = source, scopes, acc) do
+    units =
+      for scope <- scopes do
+        key_scope = if source.instance, do: Bubble.nest(scope, source.instance), else: scope
+        key = {key_scope, source.element}
+        %{scope: scope, cell: nil, key: key, shown: key}
+      end
+
+    read_source(socket, group.module, source, units, acc, group.id, length(group.scopes) > 1)
+  end
+
+  # A group in a repeating group's cell holds a value per cell, and so
+  # does an instance there (its thing and properties, under its scope in
+  # that cell, WTF-494): read for every cell together.
+  defp load_source(socket, group, source, scopes, {data, _by_source} = acc) do
+    units =
+      for scope <- scopes, {item, i} <- cell_items(data, scope, source.cell) do
+        cell_unit(scope, source, item, i)
+      end
+
+    # The relationships the source reads through the cell's thing, for
+    # every cell at once, read as the current user.
+    items =
+      units
+      |> Enum.map(fn %{cell: {item, _}} -> item end)
+      |> load_values(source.cell_loads, data_actor(socket))
+
+    units =
+      Enum.zip_with(units, items, fn %{cell: {_, i}} = unit, item -> %{unit | cell: {item, i}} end)
+
+    read_source(socket, group.module, source, units, acc, group.id, true)
   end
 
   # The items of a repeating group's list, with their 1-based index.
@@ -885,7 +1027,7 @@ defmodule <%= @web %>.BubbleData do
   # The reusable instances in repeating group cells (WTF-494): for every
   # surface, each instance in the cells of its lists, one scope per cell
   # (`<%= @web %>.Bubble.cell_scope/4`), read for every cell together
-  # (`load_batch/6`); then the instances in their own lists' cells, at
+  # (`load_groups/4`); then the instances in their own lists' cells, at
   # most `max_cell_depth/0` levels down and `max_cells/0` scopes in all.
   # The cells are those of the lists just read, as the current user: a
   # thing the user may not read has no cell, and no scope.
@@ -922,12 +1064,14 @@ defmodule <%= @web %>.BubbleData do
         |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
         |> Enum.sort_by(fn {{rg, n, rel, _}, _} -> {n, rg, rel} end)
 
-      {acc, new} =
-        Enum.reduce(batches, {{data, by_source}, []}, fn {{rg, _n, rel, inner}, scopes},
-                                                       {acc, new} ->
-          acc = load_batch(socket, inner, scopes, acc, only, {:cells, rg, rel, inner})
-          {acc, new ++ Enum.map(scopes, &{&1, inner})}
-        end)
+      # The batches of a round read each other's values (an instance's
+      # property, its nested instance's default) in that order (WTF-520).
+      groups =
+        for {{rg, _n, rel, inner}, scopes} <- batches,
+            do: %{module: inner, scopes: scopes, id: {:cells, rg, rel, inner}}
+
+      acc = load_groups(socket, groups, {data, by_source}, only)
+      new = for %{module: inner, scopes: scopes} <- groups, scope <- scopes, do: {scope, inner}
 
       cell_rounds(socket, new, acc, only, cells ++ new, depth + 1)
     end

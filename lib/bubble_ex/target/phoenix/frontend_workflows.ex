@@ -658,6 +658,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       "cell: #{if d.cell, do: literal(d.cell), else: "nil"}, " <>
       "loads: #{source(loads)}, cell_loads: #{source(cell_loads(d.read))}, topic: #{topic}, " <>
       "inputs: #{source(data_inputs(d.read))}, reads: #{source(data_reads(d))}, " <>
+      "deps: #{source(data_deps(d))}, " <>
       "blocked: #{source(Enum.uniq(Enum.map(d.residue, & &1.subject)))}" <>
       "#{display_meta(d)}#{data_default(d)}#{batch_meta(d, s)}#{query_topics(d)}}"
   end
@@ -760,6 +761,26 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     |> Enum.flat_map(fn
       {:data, %{path: path, element: e}} -> [e | path]
       {_kind, e} when is_binary(e) -> [e]
+      _ -> []
+    end)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  # What a source reads of the page's data, as the loader finds who keeps
+  # it (WTF-520): `{:data, path, element}` (kept under `element`, `path`
+  # instances below the scope the source runs in: possibly a value
+  # another surface computes, an instance's default), `{:cell, rg}` (a
+  # repeating group's list, for its cells) or `{:cell_data, group}` (a
+  # group's value per cell). The loader reads a source after those that
+  # keep what it reads, across surfaces.
+  defp data_deps(d) do
+    d
+    |> Map.get(:reads, [])
+    |> Enum.flat_map(fn
+      {:data, %{path: path, element: e}} -> [{:data, path, e}]
+      {kind, rg} when kind in [:cell, :cell_index] -> [{:cell, rg}]
+      {:cell_data, g} -> [{:cell_data, g}]
       _ -> []
     end)
     |> Enum.uniq()

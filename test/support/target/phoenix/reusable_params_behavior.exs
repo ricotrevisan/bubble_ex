@@ -579,4 +579,48 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
 
     assert log =~ "a relationship load failed; its relationships read as empty"
   end
+
+  # WTF-520: the page `board` renders the reusable element Picker (bPick),
+  # which sets its Seed ("ha") but not its Term, whose default ("Alp" and
+  # the Seed) is computed inside it. The page's list bBoardList searches
+  # for the tasks titled bPick's Term, and the sibling instance bEcho (a
+  # Tag) takes it as its Tag: both read the default from outside bPick,
+  # so the page reads them after it.
+  test "a page's list and a sibling instance read an instance's default",
+       %{conn: conn, user: user} do
+    data_access_on()
+    {:ok, view, html} = live(sign_in(conn, user), "/board")
+
+    refute html =~ "TODO(bubble:bBoardList)"
+    assert text(view, "bPick", "bPickerT") == "Term: Alpha"
+
+    assert view |> element(~s([data-bubble-id="bBoardTerm"])) |> render() =~
+             "Board term: Alpha"
+
+    # The list: Alpha only (Bravo's title is not the Term).
+    rows =
+      ~r/Board: [A-Za-z]+/
+      |> Regex.scan(render(view))
+      |> List.flatten()
+
+    assert rows == ["Board: Alpha"]
+
+    # The sibling instance's property, set from bPick's default.
+    assert text(view, "bEcho", "bTagT") == "Tag: Alpha"
+
+    # Read again (a change notification): the same order, the same rows.
+    Ash.Seed.seed!(PhxCheck.Task, %{id: @t3, title: "Alpha", owner_id: @u1})
+    send(view.pid, {:bubble, :data_changed, PhxCheck.Bubble.Changes.topic("Task")})
+    Process.sleep(100)
+
+    assert view |> render() |> then(&Regex.scan(~r/Board: Alpha/, &1)) |> length() == 2
+    assert text(view, "bEcho", "bTagT") == "Tag: Alpha"
+  end
+
+  test "with data access off the board reads nothing", %{conn: conn, user: user} do
+    {:ok, view, _html} = live(sign_in(conn, user), "/board")
+
+    assert Regex.scan(~r/Board: [A-Za-z]+/, render(view)) == []
+    assert text(view, "bEcho", "bTagT") == "Tag:"
+  end
 end

@@ -910,6 +910,77 @@
       },
       "type": "CustomDefinition"
     },
+    "picker": {
+      "elements": {
+        "bPickerT": {
+          "id": "bPickerT",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Term: ",
+                "1": {
+                  "next": {
+                    "name": "param_pTerm",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bPickerDef"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bPickerDef",
+      "name": "Picker",
+      "properties": {
+        "height": 80,
+        "parameters": {
+          "0": {
+            "btype_id": "text",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pSeed",
+            "param_name": "Seed"
+          },
+          "1": {
+            "btype_id": "text",
+            "default_value": {
+              "entries": {
+                "0": "Alp",
+                "1": {
+                  "next": {
+                    "name": "param_pSeed",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bPickerDef"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pTerm",
+            "param_name": "Term"
+          }
+        },
+        "width": 300
+      },
+      "type": "CustomDefinition"
+    },
     "row": {
       "custom_states": {
         "picked_": {
@@ -1563,6 +1634,141 @@
     }
   },
   "pages": {
+    "board": {
+      "elements": {
+        "bBoardList": {
+          "elements": {
+            "bBoardRowT": {
+              "id": "bBoardRowT",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Board: ",
+                    "1": {
+                      "next": {
+                        "name": "title_text",
+                        "type": "Message"
+                      },
+                      "type": "CurrentDataItem"
+                    }
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bBoardList",
+          "properties": {
+            "columns": 1,
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "title_text",
+                    "value": {
+                      "next": {
+                        "name": "param_pTerm",
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "element_id": "bPick"
+                      },
+                      "type": "GetElement"
+                    }
+                  }
+                },
+                "descending": false,
+                "ignore_empty_constraints": false,
+                "sort_field": "title_text",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.task",
+            "height": 200,
+            "min_height_css": "200px",
+            "order": 2,
+            "rows": 3,
+            "width": 300
+          },
+          "type": "RepeatingGroup"
+        },
+        "bBoardTerm": {
+          "id": "bBoardTerm",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 4,
+            "text": {
+              "entries": {
+                "0": "Board term: ",
+                "1": {
+                  "next": {
+                    "name": "param_pTerm",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bPick"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bEcho": {
+          "id": "bEcho",
+          "properties": {
+            "custom_id": "bTagDef",
+            "height": 80,
+            "order": 3,
+            "param_pTag": {
+              "next": {
+                "name": "param_pTerm",
+                "type": "Message"
+              },
+              "properties": {
+                "element_id": "bPick"
+              },
+              "type": "GetElement"
+            },
+            "width": 300
+          },
+          "type": "CustomElement"
+        },
+        "bPick": {
+          "id": "bPick",
+          "properties": {
+            "custom_id": "bPickerDef",
+            "height": 80,
+            "order": 1,
+            "param_pSeed": {
+              "entries": {
+                "0": "ha"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "CustomElement"
+        }
+      },
+      "id": "bBoardPage",
+      "name": "board",
+      "properties": {
+        "title": "Board"
+      },
+      "type": "Page"
+    },
     "task": {
       "elements": {
         "bCardA": {

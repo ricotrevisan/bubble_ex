@@ -120,7 +120,7 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       # No default, no source.
       refute param(pd, "bCard", "param_pTitle")
 
-      assert %{"by_kind" => %{"param" => %{"total" => 26, "native" => 26}}} =
+      assert %{"by_kind" => %{"param" => %{"total" => 29, "native" => 29}}} =
                PageData.coverage(pd)
     end
 
@@ -153,7 +153,8 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
 
       # Not set by that instance: its default, computed in the instance's
       # scope under the same key, read when the page renders (here none:
-      # empty). The page's sources and workflows do not read it.
+      # empty). With no default, the page's sources and workflows do not
+      # read it (WTF-520: with one, they do).
       assert read.("bTaskPage", "bCardB", "param_pTask") ==
                {:data, %{path: ["bCardB"], element: "param_pTask/bCard"}}
 
@@ -452,6 +453,117 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
     end
   end
 
+  describe "binding, across instance boundaries (WTF-520)" do
+    test "a page's source reads an instance's default, computed inside it", %{spec: spec} do
+      term = {:element_state, %{"element" => "bPick", "state" => "param_pTerm"}}
+
+      # bPick sets no Term: its default ("Alp" and the Seed it sets).
+      assert Spec.data_read(spec.data_index, "bBoardPage", nil, term) ==
+               {:ok, {:data, %{path: ["bPick"], element: "param_pTerm/bPickerDef"}}}
+
+      assert %{residue: [], reads: [{:data, %{path: [], element: "param_pSeed/bPickerDef"}}]} =
+               bound(spec, "bPickerDef", "bPickerDef", "param_pTerm")
+
+      # The list the default filters, and a sibling instance's property.
+      assert %{
+               residue: [],
+               read: {:query, _},
+               reads: [{:data, %{path: ["bPick"], element: "param_pTerm/bPickerDef"}}]
+             } = Enum.find(Spec.data(spec, "bBoardPage"), &(&1.element == "bBoardList"))
+
+      assert %{residue: [], reads: [{:data, %{path: ["bPick"]}}]} =
+               bound(spec, "bBoardPage", "bEcho", "param_pTag")
+    end
+
+    test "not from an instance in a cell, nor one setting no value and with no default",
+         %{spec: spec} do
+      read = fn element, state ->
+        Spec.data_read(
+          spec.data_index,
+          "bTaskPage",
+          nil,
+          {:element_state, %{"element" => element, "state" => state}}
+        )
+      end
+
+      # bCardC is in bList's cell: a default per cell.
+      assert read.("bCardC", "param_pNote") == {:error, "element_state:param"}
+      # bCardB's Task: no default, not set.
+      assert read.("bCardB", "param_pTask") == {:error, "element_state:param"}
+      # bCardB sets its Note: that value, not the default.
+      assert read.("bCardB", "param_pNote") ==
+               {:ok, {:data, %{path: ["bCardB"], element: "param_pNote/bCard"}}}
+    end
+
+    test "a value the instance sets that does not load is not replaced by the default" do
+      app =
+        put_in_app(app(), ~w(pages board elements bPick properties param_pTerm), %{
+          "type" => "NoSuchExpression"
+        })
+
+      %{spec: spec} = build(app)
+
+      assert %{residue: [%{reason: :unavailable_input}]} =
+               Enum.find(Spec.data(spec, "bBoardPage"), &(&1.element == "bBoardList"))
+    end
+
+    test "a cycle through an instance's boundary is not loaded" do
+      # bPick's Seed reads bEcho's Tag, which reads bPick's Term, whose
+      # default reads the Seed.
+      app =
+        put_in_app(app(), ~w(pages board elements bPick properties param_pSeed), %{
+          "type" => "GetElement",
+          "properties" => %{"element_id" => "bEcho"},
+          "next" => %{"type" => "Message", "name" => "param_pTag"}
+        })
+
+      %{spec: spec, files: files} = build(app)
+
+      assert %{residue: [%{reason: :unresolved_reference, detail: %{reference: "data_source"}}]} =
+               bound(spec, "bBoardPage", "bEcho", "param_pTag")
+
+      for {surface, element, param} <- [
+            {"bBoardPage", "bPick", "param_pSeed"},
+            {"bPickerDef", "bPickerDef", "param_pTerm"}
+          ] do
+        assert %{residue: [%{reason: :unavailable_input}]} =
+                 bound(spec, surface, element, param)
+      end
+
+      assert %{residue: [%{reason: :unavailable_input}]} =
+               Enum.find(Spec.data(spec, "bBoardPage"), &(&1.element == "bBoardList"))
+
+      assert files["lib/shop_web/live/board_live.html.heex"] =~
+               "TODO(bubble:bBoardList) its data source is not loaded"
+    end
+
+    test "two instances of one reusable element reading each other's defaults are no cycle" do
+      # bEcho2, a second Picker, takes bPick's Term as its Seed: its own
+      # Term's default reads that, which reads bPick's default.
+      app =
+        put_in_app(app(), ~w(pages board elements bEcho2), %{
+          "id" => "bEcho2",
+          "type" => "CustomElement",
+          "properties" => %{
+            "custom_id" => "bPickerDef",
+            "order" => 5,
+            "height" => 80,
+            "width" => 300,
+            "param_pSeed" => %{
+              "type" => "GetElement",
+              "properties" => %{"element_id" => "bPick"},
+              "next" => %{"type" => "Message", "name" => "param_pTerm"}
+            }
+          }
+        })
+
+      %{spec: spec} = build(app)
+
+      assert %{residue: []} = bound(spec, "bBoardPage", "bEcho2", "param_pSeed")
+      assert %{residue: []} = bound(spec, "bPickerDef", "bPickerDef", "param_pTerm")
+    end
+  end
+
   describe "the generated app" do
     test "the component reads its properties from the page's data, by scope", %{files: files} do
       template = files["lib/shop_web/components/reusables/card.html.heex"]
@@ -517,10 +629,18 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
 
       loader = files["lib/shop_web/bubble_data.ex"]
       assert loader =~ "Map.get(source, :default, false)"
+
+      # What each source reads, for the loader to order them across
+      # surfaces (WTF-520).
+      board = files["lib/shop_web/live/board_live/workflows.ex"]
+      assert board =~ ~s|deps: [{:data, ["bPick"], "param_pTerm/bPickerDef"}]|
+      picker = files["lib/shop_web/components/reusables/picker/workflows.ex"]
+      assert picker =~ ~s|deps: [{:data, [], "param_pSeed/bPickerDef"}]|
+      assert loader =~ "defp plan(groups)"
     end
 
     test "the data coverage counts the properties", %{spec: spec} do
-      assert %{"by_kind" => %{"param" => %{"total" => 26, "wired" => 24}}} =
+      assert %{"by_kind" => %{"param" => %{"total" => 29, "wired" => 27}}} =
                FrontendWorkflows.data_coverage(spec)
     end
   end

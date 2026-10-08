@@ -51,7 +51,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   `{:data, %{path: [], element: key}}`: it loads when every
   instance's value of it (those rendered per cell included) and its
   default load. A thing it holds is read where the instance is, through
-  Ash with the actor, like any other source.
+  Ash with the actor, like any other source. A source may read an
+  instance's property from outside the instance where it sets none
+  (WTF-520): the default, `{:data, %{path: [instance], element: key}}`,
+  for an instance rendered once; the loader reads the sources of the
+  page and its instances in the order they read each other, across the
+  instances' boundaries (`reads`, printed as `deps`), and sources reading
+  each other in a cycle through a boundary are residue
+  (`across_instances/2`).
 
   A reusable instance in a repeating group's cell (WTF-494) is rendered
   once per cell, in a scope of its own (the cell's thing's): its own
@@ -78,7 +85,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       another data source that is not loaded (`inputs: ["data_source"]`)
     * `:unresolved_reference` (`detail.target` `"ash"`) - a type the Ash
       project does not map; `reference: "data_source"` for sources that
-      read each other in a cycle
+      read each other in a cycle (in one surface, or through an
+      instance's boundary: the source reading the instance's default)
   """
 
   alias BubbleEx.Expression.IR
@@ -290,9 +298,207 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     (bound ++ shown)
     |> prune()
     |> per_cell(ctx)
+    |> across_instances(Map.get(Map.get(ctx, :data, %{}), :instances, %{}))
     |> Enum.map(&Map.put(&1, :shared?, &1.residue == [] and shared?(&1)))
     |> Enum.group_by(& &1.surface)
     |> Map.new(fn {surface, bound} -> {surface, order(bound)} end)
+  end
+
+  # --- across instance boundaries (WTF-520) -----------------------------------------------
+
+  # A source may read an instance's property from outside it (its default,
+  # computed inside the instance's reusable element) and that default may
+  # read what is outside the instance (its thing, its other properties):
+  # the loader orders them across surfaces (`<Web>.BubbleData`). Sources
+  # reading each other in a cycle through an instance's boundary cannot be
+  # ordered: what reads the default, in the cycle, is not loaded
+  # (`:unresolved_reference`, as a cycle in one surface), and neither is
+  # what reads it. Found per surface with its instances (`instances`, from
+  # `Spec.data_read/4`'s index) expanded, so two instances of one reusable
+  # element are told apart.
+  defp across_instances(bound, instances) when map_size(instances) == 0, do: bound
+
+  defp across_instances(bound, instances) do
+    case cyclic_readers(bound, instances) do
+      [] ->
+        bound
+
+      cyclic ->
+        cyclic = MapSet.new(cyclic)
+
+        bound
+        |> Enum.map(&cyclic(&1, cyclic))
+        |> prune()
+        |> across_instances(instances)
+    end
+  end
+
+  defp cyclic(%{residue: []} = b, cyclic) do
+    if MapSet.member?(cyclic, {b.surface, id(b)}),
+      do: %{
+        b
+        | read: nil,
+          residue: [Residue.entry(b.symbol, :unresolved_reference, %{reference: "data_source"})]
+      },
+      else: b
+  end
+
+  defp cyclic(b, _cyclic), do: b
+
+  # `{surface, id}` of the sources reading an instance's default in a cycle
+  # through the instance's boundary.
+  defp cyclic_readers(bound, instances) do
+    wired = for b <- bound, b.residue == [], do: b
+
+    by_surface =
+      wired
+      |> Enum.group_by(& &1.surface)
+      |> Map.new(fn {surface, bs} -> {surface, Map.new(bs, &{id(&1), &1})} end)
+
+    nested =
+      instances
+      |> Enum.group_by(fn {_i, %{surface: surface}} -> surface end, fn {i, %{holder: h}} ->
+        {i, h}
+      end)
+      |> Map.new(fn {surface, list} -> {surface, Enum.sort(list)} end)
+
+    # Only a read of an instance's default from outside crosses a boundary
+    # downwards; without one there is no cycle across instances.
+    down? = Enum.any?(wired, fn b -> Enum.any?(b.reads, &default_read?(&1, b, by_surface)) end)
+
+    if down? do
+      # The pages, and the reusable elements no instance renders once
+      # (those in cells only): the others are expanded where they are.
+      held = for {_i, %{holder: h}} <- instances, into: MapSet.new(), do: h
+
+      roots =
+        by_surface
+        |> Map.keys()
+        |> Enum.concat(Map.keys(nested))
+        |> Enum.uniq()
+        |> Enum.reject(&MapSet.member?(held, &1))
+
+      graph = :digraph.new()
+
+      try do
+        Enum.each(roots, &expand(graph, &1, [], by_surface, nested, MapSet.new([&1])))
+
+        for scc <- :digraph_utils.cyclic_strong_components(graph),
+            members = MapSet.new(scc),
+            {scope, surface, bid} <- scc,
+            b = by_surface[surface][bid],
+            read <- b.reads,
+            default_read?(read, b, by_surface),
+            MapSet.member?(members, default_vertex(read, scope, b, nested)),
+            uniq: true,
+            do: {surface, bid}
+      after
+        :digraph.delete(graph)
+      end
+    else
+      []
+    end
+  end
+
+  # An instance's property read where no value the instance sets is a
+  # source of the reader's surface: its default.
+  defp default_read?({:data, %{path: [i], element: "param_" <> _ = p}}, b, by_surface),
+    do: not Map.has_key?(Map.get(by_surface, b.surface, %{}), {i, p})
+
+  defp default_read?(_read, _b, _by_surface), do: false
+
+  defp default_vertex({:data, %{path: [i], element: p}}, scope, b, nested) do
+    case List.keyfind(Map.get(nested, b.surface, []), i, 0) do
+      {^i, holder} -> {[i | scope], holder, {holder, p}}
+      nil -> nil
+    end
+  end
+
+  # The sources of `surface` in `scope` (instance IDs, innermost first) and
+  # of the instances it renders once, as vertices `{scope, surface, id}`
+  # with an edge from each source to what it reads. `stack`: the reusable
+  # elements being expanded (one nesting itself is not followed).
+  defp expand(graph, surface, scope, by_surface, nested, stack) do
+    own = Map.get(by_surface, surface, %{})
+
+    Enum.each(own, fn {bid, _b} -> :digraph.add_vertex(graph, {scope, surface, bid}) end)
+
+    for {i, holder} <- Map.get(nested, surface, []), not MapSet.member?(stack, holder) do
+      expand(graph, holder, [i | scope], by_surface, nested, MapSet.put(stack, holder))
+    end
+
+    parent = parent_surface(scope, nested)
+
+    Enum.each(own, fn {bid, b} ->
+      from = {scope, surface, bid}
+
+      for to <- vertices_read(b, scope, surface, parent, by_surface, nested),
+          to != from,
+          do: :digraph.add_edge(graph, from, to)
+    end)
+  end
+
+  # The surface rendering the instance `scope` names, with its scope.
+  defp parent_surface([], _nested), do: nil
+
+  defp parent_surface([i | outer], nested) do
+    Enum.find_value(nested, fn {surface, list} ->
+      if List.keymember?(list, i, 0), do: {surface, outer}
+    end)
+  end
+
+  defp vertices_read(b, scope, surface, parent, by_surface, nested) do
+    own = Map.get(by_surface, surface, %{})
+
+    at = fn s, sur, bid ->
+      if Map.has_key?(Map.get(by_surface, sur, %{}), bid), do: [{s, sur, bid}], else: []
+    end
+
+    # A default is read where the instance sets none: after the value it
+    # may set (the loader reads that first).
+    after_set =
+      case {b, scope, parent} do
+        {%{kind: :param, element: e, holder: e}, [i | _], {psurface, pscope}} ->
+          at.(pscope, psurface, {i, b.key.element})
+
+        _ ->
+          []
+      end
+
+    after_set ++
+      Enum.flat_map(b.reads, fn
+        {:data, %{path: [], element: "param_" <> _ = p}} ->
+          up =
+            case {scope, parent} do
+              {[i | _], {psurface, pscope}} -> at.(pscope, psurface, {i, p})
+              _ -> []
+            end
+
+          up ++ at.(scope, surface, {surface, p})
+
+        {:data, %{path: [], element: ^surface}} ->
+          case {scope, parent} do
+            {[i | _], {psurface, pscope}} -> at.(pscope, psurface, i)
+            _ -> []
+          end
+
+        {:data, %{path: [i], element: "param_" <> _ = p}} = read ->
+          if Map.has_key?(own, {i, p}),
+            do: [{scope, surface, {i, p}}],
+            else: List.wrap(default_vertex(read, scope, b, nested))
+
+        {:data, %{path: [i]}} ->
+          at.(scope, surface, i)
+
+        {:data, %{element: e}} ->
+          at.(scope, surface, e)
+
+        {kind, e} when kind in [:cell, :cell_index, :cell_data] ->
+          at.(scope, surface, e)
+
+        _ ->
+          []
+      end)
   end
 
   # --- instances in cells (WTF-494) ----------------------------------------------------
@@ -1092,9 +1298,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp read_wired?({:data, %{path: [], element: "param_" <> _ = p}}, _b, {_, params}, wired),
     do: params |> Map.get(p, []) |> Enum.all?(&MapSet.member?(wired, &1))
 
-  # An instance's property, read where the instance is.
-  defp read_wired?({:data, %{path: [i], element: "param_" <> _ = p}}, _b, _maps, wired),
-    do: MapSet.member?(wired, {i, p})
+  # An instance's property, read where the instance is: the value it sets,
+  # else its default (WTF-520), when every value of the property loads.
+  defp read_wired?(
+         {:data, %{path: [i], element: "param_" <> _ = p}},
+         _b,
+         {by_element, params},
+         wired
+       ) do
+    if Map.has_key?(by_element, {i, p}),
+      do: MapSet.member?(wired, {i, p}),
+      else: every_value?(params, p, wired)
+  end
 
   # A read of the surface's own reusable-element thing is the instance's
   # (whatever it holds, possibly nothing).
@@ -1110,6 +1325,15 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     do: MapSet.member?(wired, rg)
 
   defp read_wired?({:cell_data, g}, _b, _by, wired), do: MapSet.member?(wired, g)
+
+  # A property read from outside an instance that sets none: its default
+  # is one of its values, and every value loads.
+  defp every_value?(params, p, wired) do
+    case Map.get(params, p, []) do
+      [] -> false
+      ids -> Enum.all?(ids, &MapSet.member?(wired, &1))
+    end
+  end
 
   # The order a surface reads its sources in: after those they read. The
   # ones reading each other in a cycle are residue.
