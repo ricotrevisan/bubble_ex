@@ -744,6 +744,35 @@ and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
 
+### Private fixture app (test version), 2026-10-08, across instance boundaries (WTF-520)
+
+Data sources reading an instance's property default from outside the
+instance (*Across instance boundaries*, above). 43 sources read one
+directly; the rest load because what they read now does (lists filtered
+by such a source, the instances in their cells and the properties those
+set, groups reading those). No cycle through an instance's boundary was
+found.
+
+| | before | after |
+|-|------:|------:|
+| data sources, total | 3,210 | 3,211 |
+| data sources, wired | 2,365 | 2,566 |
+| groups wired | 1,122 | 1,220 |
+| lists wired | 143 | 170 |
+| instance sources wired | 131 | 154 |
+| property values wired | 941 | 993 |
+| `:unavailable_input` residue entries (sources) | 643 | 440 |
+| `:page_data_in_cell` residue entries (sources) | 70 | 71 |
+| workflows, native (generated code) | 794 | 818 |
+| workflows, wired | 529 | 547 |
+| steps, native | 2,380 | 2,429 |
+
+The total grows by one input whose initial content now loads (it is
+tracked, WTF-520 above). One more instance in a cell is marked
+`:page_data_in_cell`: its list now loads, and its reusable element
+searches with its instance. Workflows read instance defaults too, and
+the sources that now load.
+
 ### Private fixture app (test version), 2026-10-08 (WTF-520)
 
 Inputs whose initial content is page data, and cleared dynamic sort
