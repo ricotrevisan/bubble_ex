@@ -363,7 +363,7 @@ defmodule BubbleEx.Frontend.Export.Css do
           %{
             current
             | box: current.box |> Map.drop(keys) |> Map.merge(Map.take(instance.box, keys)),
-              layout: Map.drop(current.layout || %{}, [fill, Atom.to_string(fill)])
+              layout: instance_fill(current, layout, fill)
           }
         else
           current
@@ -373,6 +373,35 @@ defmodule BubbleEx.Frontend.Export.Css do
   end
 
   defp instance_dimensions(definition, _instance), do: definition
+
+  # The instance sizes the root: a Floating Group root keeps the instance's
+  # width fill flag, which places it (`floating_css/1`); otherwise the
+  # definition's flag is dropped.
+  defp instance_fill(
+         %Node{variant: :floating_group, layout: layout},
+         instance_layout,
+         :fill_width? = fill
+       ) do
+    layout = Map.drop(layout || %{}, [fill, Atom.to_string(fill)])
+
+    case layout_flag(instance_layout, fill) do
+      nil -> layout
+      value -> Map.put(layout, fill, value)
+    end
+  end
+
+  defp instance_fill(%Node{layout: layout}, _instance_layout, fill),
+    do: Map.drop(layout || %{}, [fill, Atom.to_string(fill)])
+
+  # A layout flag that may be false (`layout_value/2` reads false as unset).
+  defp layout_flag(layout, key) when is_map(layout) do
+    case Map.fetch(layout, key) do
+      {:ok, value} -> value
+      :error -> Map.get(layout, Atom.to_string(key))
+    end
+  end
+
+  defp layout_flag(_layout, _key), do: nil
 
   @color_token_names %{
     "%3" => "text",
@@ -643,10 +672,18 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp native_position_css(%Node{kind: :reusable_instance}), do: %{}
   defp native_position_css(_node), do: %{"position" => "relative"}
 
-  defp floating_css(%Node{kind: :floating_group, attributes: attributes}) do
+  # A Floating Group is fixed to the viewport edges its references name.
+  # Horizontally its width is its own (`floating_width/1`): a fixed or
+  # fit-content group pinned to "both" edges sits at the left edge at that
+  # width, and only a group that fills its width (or says nothing about
+  # it) spans the viewport between the left and right edges (WTF-516).
+  defp floating_css(%Node{kind: :floating_group, attributes: attributes} = node) do
+    width = floating_width(node)
+
     %{"position" => "fixed"}
     |> put_floating_axis(attributes["data-floating-vertical"], :vertical)
-    |> put_floating_axis(attributes["data-floating-horizontal"], :horizontal)
+    |> put_floating_horizontal(attributes["data-floating-horizontal"], width)
+    |> then(&if width == :fit, do: Map.put(&1, "width", "fit-content"), else: &1)
   end
 
   defp floating_css(%Node{kind: :reusable_definition, variant: :floating_group} = node),
@@ -697,19 +734,34 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp put_floating_axis(css, "both", :vertical),
     do: css |> Map.put("top", "0") |> Map.put("bottom", "0") |> Map.put("height", "auto")
 
-  defp put_floating_axis(css, value, :horizontal) when value in ["left", "right"],
+  defp put_floating_axis(css, _value, _axis), do: css
+
+  defp put_floating_horizontal(css, value, _width) when value in ["left", "right"],
     do: Map.put(css, value, "0")
 
-  defp put_floating_axis(css, "both", :horizontal),
+  defp put_floating_horizontal(css, "both", :fill),
     do: css |> Map.put("left", "0") |> Map.put("right", "0")
 
-  defp put_floating_axis(css, "center", :horizontal) do
+  defp put_floating_horizontal(css, "both", _width), do: Map.put(css, "left", "0")
+
+  defp put_floating_horizontal(css, "center", _width) do
     css
     |> Map.merge(%{"left" => "0", "right" => "0"})
     |> Map.merge(%{"margin-left" => "auto", "margin-right" => "auto"})
   end
 
-  defp put_floating_axis(css, _value, _axis), do: css
+  defp put_floating_horizontal(css, _value, _width), do: css
+
+  # How a Floating Group sizes its width: `:fixed` (a width of its own),
+  # `:fit` (its content's, `fit_width`) or `:fill` (fills it, or no width
+  # flag at all).
+  defp floating_width(%Node{box: box, layout: layout}) do
+    cond do
+      is_map(box) and box_get(box, :width) not in [nil, "auto"] -> :fixed
+      layout_flag(layout, :fill_width?) == false -> :fit
+      true -> :fill
+    end
+  end
 
   defp layout_css(%Node{layout: nil}), do: %{}
 

@@ -699,6 +699,81 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
     ids
   end
 
+  # WTF-516: a side panel that is a Floating Group reusable, placed by a
+  # fit-width instance with no horizontal reference, sits at the left edge
+  # at its content's width instead of spanning the page over its content.
+  test "a fit-width floating side panel is pinned left, not stretched over the page" do
+    instance = fn props ->
+      %{
+        "id" => "panel-instance",
+        "type" => "CustomElement",
+        "properties" =>
+          Map.merge(
+            %{"custom_id" => "panel-root", "order" => 1, "min_width_css" => "248px"},
+            props
+          )
+      }
+    end
+
+    payload = fn props ->
+      %{
+        "_id" => "side-panel",
+        "pages" => %{
+          "dashboard" => %{
+            "id" => "page",
+            "type" => "Page",
+            "name" => "dashboard",
+            "properties" => %{"container_layout" => "column"},
+            "elements" => %{
+              "panel" => instance.(props),
+              "main" => %{
+                "id" => "main",
+                "type" => "Group",
+                "properties" => %{"container_layout" => "column", "margin_left" => 248}
+              }
+            }
+          }
+        },
+        "element_definitions" => %{
+          "panel" => %{
+            "id" => "panel-root",
+            "type" => "CustomDefinition",
+            "name" => "Side panel",
+            "properties" => %{
+              "element_type" => "FloatingGroup",
+              "container_layout" => "row",
+              "width" => 200
+            },
+            "elements" => %{
+              "label" => %{"id" => "label", "type" => "Text", "properties" => %{"%3" => "Nav"}}
+            }
+          }
+        }
+      }
+    end
+
+    {_, project, _} = render(app("test/support/expression/app.json"))
+
+    classes = fn props ->
+      {:ok, frontend} = BubbleEx.Frontend.normalize(payload.(props))
+      {:ok, files} = Phoenix.render(project, module: "Shop", frontend: frontend)
+      [template] = for {p, c} <- files, p =~ ~r{live/dashboard_live\.html\.heex$}, do: c
+      [call] = Regex.run(~r/<\.side_panel\s[^>]*data-bubble-id="panel-instance"[^>]*>/, template)
+      [_, class] = Regex.run(~r/\sclass="([^"]*)"/, call)
+      String.split(class)
+    end
+
+    fit = classes.(%{"fit_width" => true})
+    assert "fixed" in fit and "top-[0]" in fit and "left-[0]" in fit
+    assert "w-[fit-content]" in fit and "min-w-[248px]" in fit
+    refute "right-[0]" in fit
+
+    # Filling its width, the panel spans the viewport between both edges.
+    fill = classes.(%{"fit_width" => false, "single_width" => false})
+    assert "left-[0]" in fill and "right-[0]" in fill
+    refute "w-[fit-content]" in fill
+  end
+
   describe "Tailwind.utilities/2" do
     test "exact utilities, arbitrary values and arbitrary properties" do
       assert {["flex", "w-[240px]", "[box-shadow:0_2px_4px_#0003]"], []} =
