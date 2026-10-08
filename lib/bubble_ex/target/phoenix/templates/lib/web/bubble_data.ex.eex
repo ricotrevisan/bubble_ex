@@ -536,7 +536,26 @@ defmodule <%= @web %>.BubbleData do
   # the data, and the topics each source's value needs (by source).
   defp load_surfaces(socket, surfaces, acc, only) do
     groups = for {scope, module} <- surfaces, do: %{module: module, scopes: [scope], id: scope}
-    load_groups(socket, groups, acc, only)
+    run_plan(socket, outer_plan(groups), acc, only)
+  end
+
+  # The page's own plan does not depend on its data (the instances it
+  # renders once are fixed): computed once per set of modules and kept
+  # (`:persistent_term`). A recompiled module (its MD5) is planned again.
+  defp outer_plan(groups) do
+    key =
+      {__MODULE__, :plan,
+       :erlang.phash2(for g <- groups, do: {g.scopes, g.module, g.module.module_info(:md5)})}
+
+    case :persistent_term.get(key, nil) do
+      nil ->
+        steps = plan(groups)
+        :persistent_term.put(key, steps)
+        steps
+
+      steps ->
+        steps
+    end
   end
 
   # Runs the sources of `groups` (a module with the scopes it runs in: one,
@@ -544,9 +563,10 @@ defmodule <%= @web %>.BubbleData do
   # WTF-494) in the order they read each other (`plan/1`), each source for
   # every scope of its group together before the next (`load_source/7`). A
   # group's `id` names it in the topics by source.
-  defp load_groups(socket, groups, acc, only) do
-    groups
-    |> plan()
+  defp load_groups(socket, groups, acc, only), do: run_plan(socket, plan(groups), acc, only)
+
+  defp run_plan(socket, steps, acc, only) do
+    steps
     |> Enum.reduce(acc, fn {group, source, scopes}, acc ->
       if is_nil(only) or MapSet.member?(only, source.element),
         do: load_source(socket, group, source, scopes, acc),
@@ -566,8 +586,9 @@ defmodule <%= @web %>.BubbleData do
   # property from outside, in a scope the page does not render) or what is
   # dropped itself, so it never reads an empty value in place of one it
   # was not given. A module listing no `deps` (scaffolded before) keeps
-  # the listed order.
-  defp plan(groups) do
+  # the listed order. Public for the generated tests only.
+  @doc false
+  def plan(groups) do
     nodes =
       for group <- groups,
           source <- group.module |> sources() |> own_first(),

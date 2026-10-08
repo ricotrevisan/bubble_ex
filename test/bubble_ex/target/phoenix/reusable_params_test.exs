@@ -120,7 +120,7 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       # No default, no source.
       refute param(pd, "bCard", "param_pTitle")
 
-      assert %{"by_kind" => %{"param" => %{"total" => 29, "native" => 29}}} =
+      assert %{"by_kind" => %{"param" => %{"total" => 33, "native" => 33}}} =
                PageData.coverage(pd)
     end
 
@@ -537,6 +537,42 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
                "TODO(bubble:bBoardList) its data source is not loaded"
     end
 
+    test "two instances of one reusable element reading each other's Term are a cycle" do
+      # bP2's Seed is bP3's Term and bP3's Seed is bP2's Term: each Term's
+      # default reads its Seed.
+      app =
+        app()
+        |> put_in_app(~w(pages board elements bP2 properties param_pSeed), %{
+          "type" => "GetElement",
+          "properties" => %{"element_id" => "bP3"},
+          "next" => %{"type" => "Message", "name" => "param_pTerm"}
+        })
+
+      %{spec: spec} = build(app)
+
+      for instance <- ~w(bP2 bP3) do
+        assert %{residue: [%{reason: :unresolved_reference, detail: %{reference: "data_source"}}]} =
+                 bound(spec, "bBoardPage", instance, "param_pSeed")
+      end
+
+      # Picker's Term reads This Picker's Seed, which loads only when every
+      # instance's Seed does: the default is not loaded for any instance,
+      # bPick's included, and neither is what reads it (docs/page-data.md,
+      # Cycles).
+      assert %{residue: [%{reason: :unavailable_input}]} =
+               bound(spec, "bPickerDef", "bPickerDef", "param_pTerm")
+
+      assert %{residue: [%{reason: :unavailable_input}]} =
+               Enum.find(Spec.data(spec, "bBoardPage"), &(&1.element == "bBoardList"))
+    end
+
+    test "a reusable rendered per cell reads its nested instance's default", %{spec: spec} do
+      assert %{residue: [], reads: [{:data, %{path: ["bRowPicker"]}}]} =
+               bound(spec, "bRowDef", "bRowTagged", "param_pTag")
+
+      assert %{cells: %{"bRowC" => %{residue: []}}} = spec
+    end
+
     test "two instances of one reusable element reading each other's defaults are no cycle" do
       # bEcho2, a second Picker, takes bPick's Term as its Seed: its own
       # Term's default reads that, which reads bPick's default.
@@ -636,11 +672,13 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       assert board =~ ~s|deps: [{:data, ["bPick"], "param_pTerm/bPickerDef"}]|
       picker = files["lib/shop_web/components/reusables/picker/workflows.ex"]
       assert picker =~ ~s|deps: [{:data, [], "param_pSeed/bPickerDef"}]|
-      assert loader =~ "defp plan(groups)"
+      assert loader =~ "def plan(groups)"
+      # The page's own plan is kept, not computed on every read.
+      assert loader =~ ":persistent_term.get(key, nil)"
     end
 
     test "the data coverage counts the properties", %{spec: spec} do
-      assert %{"by_kind" => %{"param" => %{"total" => 29, "wired" => 27}}} =
+      assert %{"by_kind" => %{"param" => %{"total" => 33, "wired" => 31}}} =
                FrontendWorkflows.data_coverage(spec)
     end
   end
@@ -698,7 +736,7 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       page = files["lib/shop_web/live/task_live/workflows.ex"]
 
       assert page =~
-               ~r/\{"bList",\s*\[\s*\{"bRowC", ShopWeb\.Reusables\.Row\.Workflows\},\s*\{"bRowC-bRowChip", ShopWeb\.Reusables\.Chip\.Workflows\}\s*\]\}/
+               ~r/\{"bList",\s*\[\s*\{"bRowC", ShopWeb\.Reusables\.Row\.Workflows\},\s*\{"bRowC-bRowChip", ShopWeb\.Reusables\.Chip\.Workflows\},\s*\{"bRowC-bRowPicker", ShopWeb\.Reusables\.Picker\.Workflows\},\s*\{"bRowC-bRowTagged", ShopWeb\.Reusables\.Tag\.Workflows\}\s*\]\}/
 
       assert page =~ ~r/\{"bTags", \[\{"bTagC", ShopWeb\.Reusables\.Tag\.Workflows\}\]\}/
 

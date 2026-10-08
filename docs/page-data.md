@@ -436,8 +436,8 @@ repeating group or a search inside a cell is residue
 A data source may read an instance's property from outside the instance
 (`<instance>'s <property>`) where the instance sets no value: the
 property's default, computed inside the instance's reusable element, in
-the instance's scope. A meetings list whose search is constrained by a
-filter instance's default, or a sibling instance whose property is set
+the instance's scope. A products list whose search is constrained by a
+picker instance's default, or a sibling instance whose property is set
 to it, reads that default. The loader reads the sources of the page and
 of every instance it renders once as one graph, in the order they read
 each other, across instance boundaries:
@@ -473,18 +473,34 @@ what reads it, as before. The cycle is found with every instance
 expanded in its own scope, so two instances of one reusable element
 reading each other's defaults are no cycle.
 
-**Fail closed.** Where nothing on the page keeps what a source reads
+What is marked is a source, not one instance's value of it: a cycle
+through two instances of one reusable element (each one's property set
+to the other's default, which reads it) marks both instances' values,
+and since `This Reusable's <property>` loads only when every value of it
+does (WTF-493), the default reading that property is not loaded for any
+instance of the reusable element, nor is what reads it, on every page.
+Scoping it to the instances in the cycle would need a value per instance
+of a source the reusable element computes once; it is not done.
+
+**Fail closed.** Where no source on the page keeps what a source reads
 from outside an instance (the instance is not rendered there, or the
-source keeping it is not read), the loader does not run the source in
-that scope: it reads nothing, never an empty value in place of the
-default (with `ignore_empty_constraints` an empty value would drop the
-constraint). Every read still goes through Ash as the current user, with
+source keeping it is dropped there itself), the loader does not run the
+source in that scope: it reads nothing, never an empty value in place of
+the default (with `ignore_empty_constraints` an empty value would drop
+the constraint). This is decided from the page's structure before
+reading, not from values: a default that runs and fails (a read that
+raises is logged and kept as nothing) gives what reads it an empty
+value, as any other source that fails does. Every read still goes through Ash as the current user, with
 data access off nothing is read, and a page reads only the sources its
 modules list: the order changes, not what is read.
 
 **Queries.** The order changes when each source runs, not how often: a
 source reads once per load (and once for all the cells), and `once/3`
-shares its queries within a read as before.
+shares its queries within a read as before. The order of the page's own
+sources and its instances' is computed once per set of modules and kept
+(`:persistent_term`, again when a module is recompiled); the order of
+the instances in cells, which depends on the lists read, is computed at
+each read.
 
 ## Inputs whose initial content is page data (WTF-520)
 
@@ -963,6 +979,9 @@ and "Display data" over a group's own source.
   conservative reading is kept: a default that cannot be computed first
   (a cycle, an instance not rendered once) is not read, never read as
   empty.
+* A property an instance sets to a value that is empty at run time does
+  not fall back to the default when read from outside the instance
+  either (WTF-520): the value set wins, empty or not (as above).
 * A search's dynamic sort field that is an empty text (the editor keeps
   `{"entries": {"1": ""}}` once it is cleared) is taken to name no field
   (WTF-520): next to a static sort field, that field sorts; with the sort
