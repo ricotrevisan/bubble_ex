@@ -160,9 +160,43 @@ defmodule <%= @web %>.Bubble do
 
   def state(_states, _scope, _element, _state), do: nil
 
-  @doc "The value of input `element` in instance `scope`."
-  def input(inputs, scope, element) when is_map(inputs), do: Map.get(inputs, {scope, element})
+  @doc """
+  The value of input `element` in instance `scope`. An input whose first
+  value is page data (WTF-520) holds `:data` until it changes: read it
+  with `input/4`.
+  """
+  def input(inputs, scope, element) when is_map(inputs) do
+    case Map.get(inputs, {scope, element}) do
+      :data -> nil
+      value -> value
+    end
+  end
+
   def input(_inputs, _scope, _element), do: nil
+
+  @doc """
+  The value of input `element` in instance `scope` whose first value is
+  page data (WTF-520): until it changes, its initial content as the page's
+  data computed it (`data`, with its conditional states applied); until
+  the page has read its data (the first, disconnected render), `initial`
+  (its initial content's binding, or nil). With data access off it starts
+  empty, not `:data`.
+  """
+  def input(inputs, data, scope, element, initial \\ nil)
+
+  def input(inputs, data, scope, element, initial) when is_map(inputs) do
+    case Map.get(inputs, {scope, element}) do
+      :data ->
+        if is_map(data) and Map.has_key?(data, {scope, element}),
+          do: Map.get(data, {scope, element}),
+          else: initial
+
+      value ->
+        value
+    end
+  end
+
+  def input(_inputs, _data, _scope, _element, initial), do: initial
 
   @doc """
   What a text input shows (WTF-475): its value, or `shown` (its first

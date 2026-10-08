@@ -172,6 +172,7 @@ element (not a mobile view):
 | a property a reusable-element instance sets (WTF-493) | `:param` | its value, computed where the instance is, kept under the instance (`This Reusable's <property>` inside it) |
 | a reusable element property's default value | `:param` | computed inside the reusable element, for an instance that sets no value |
 | a group, popup, repeating group or instance with no data source that a "Display data" / "Display list" step sets (WTF-492) | its kind | what the step showed (`read: :displayed`), read again as the current user; nothing before a step |
+| an input's (Input, Multiline Input) initial content that is an expression, outside a repeating group's cell (WTF-520) | `:input` | its value, its conditional states that set the content applied, computed where the input is: the input's first value |
 
 A **search** (with its constraints, its sort, optionally under `first
 item`, `item #n`, `items until #n` or `count`) is an Ash query: its filter
@@ -430,6 +431,48 @@ A group inside a repeating group's cell holds a value per cell. A
 repeating group or a search inside a cell is residue
 (`:page_data_in_cell`): the page would query once per cell.
 
+## Inputs whose initial content is page data (WTF-520)
+
+An input's initial content may read data: a field of its group's thing,
+the current user's, another source's. Before, the page tracked only
+inputs with a static first value; one with an expression showed it but
+was not tracked, so every data source, condition and workflow reading
+the input's value was not loaded (`:unavailable_input`,
+`element_state:get_data`), however simple the search.
+
+Such an initial content is now a source of the input (`:input`), computed
+where the input is (`Parent group` is the input's group) with the
+conditional states that set the content folded in Bubble's order (the
+last state whose condition is yes wins; an empty condition is no: IR
+`:if`). When it loads, the page tracks the input:
+
+* its first value is `:data` (`__bubble__(:surface).inputs`, `{type,
+  :data}`): until the user changes it, the input holds the value the page
+  computed (`<Web>.BubbleWorkflows.input/3` and `<Web>.Bubble.input/5`
+  read it from `@bubble_data`), and it follows that value when the data is
+  read again (a change notification, a write), as an input's initial
+  content does in Bubble;
+* what reads the input (a search's constraint, a value) is read after its
+  initial content (`reads` names the input) and again when it changes;
+* the user's value wins from the first change on, whatever the data does;
+  a value sent back unchanged (a blur with no typing, a form recovered on
+  reconnect, the text shown before the data changed under a focused
+  input), compared as the input shows it (a number by value, a text as
+  text, empty as empty), keeps `:data` and runs no "An input's value is
+  changed" workflow; a reset ("Reset a group", "Reset inputs") puts back
+  `:data`, so the input shows its initial content again;
+* with data access off the page loads nothing, so the input starts empty
+  (not `:data`): the input, texts, conditions and workflows all read the
+  same empty value.
+
+An initial content that does not load (it does not compile, or reads a
+source that is not loaded) leaves the input as before: not tracked, its
+binding shown, what reads it not loaded; its source is left out of
+`__bubble__(:data)`. A static initial content with conditional states
+that set the content is not lowered yet (the static value is the first
+value, as before), and neither is an input in a repeating group's cell, a
+Dropdown's or a Checkbox's.
+
 ## Reusable instances in repeating group cells (WTF-494)
 
 A reusable-element instance in a repeating group's cell is rendered once
@@ -645,6 +688,31 @@ and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
 
+### Private fixture app (test version), 2026-10-08 (WTF-520)
+
+Inputs whose initial content is page data, and cleared dynamic sort
+fields. Of 49 inputs whose initial content is an expression, 48 lower
+and 26 are tracked (the others are placeholders, in a runtime template,
+or read a source that is not loaded). Two searches whose dynamic sort
+field was an empty text now compile.
+
+| | before | after |
+|-|------:|------:|
+| data sources, total | 3,184 | 3,210 |
+| data sources, wired | 2,321 | 2,365 |
+| lists wired | 139 | 143 |
+| instance sources wired | 127 | 131 |
+| property values wired | 931 | 941 |
+| `:unavailable_input` residue entries (sources) | 658 | 643 |
+| workflows, native (generated code) | 790 | 794 |
+| workflows, wired | 525 | 529 |
+| "An input's value is changed" workflows, native | 2 | 6 |
+| steps, native | 2,371 | 2,380 |
+
+The total grows by the 26 inputs' sources; 18 more sources load besides
+them (lists filtered by such an input, the instances in their cells and
+the properties those set).
+
 ### Private fixture app (test version), 2026-10-04 (WTF-494)
 
 Reusable instances in repeating group cells. Of the 61 instances in a
@@ -796,3 +864,14 @@ and "Display data" over a group's own source.
 * A property an instance sets to a value that is empty at run time stays
   empty; whether Bubble shows the property's default then is not replayed
   (WTF-387).
+* An input whose initial content is page data (WTF-520, above) follows it
+  until the user changes the input, and a reset brings it back; that
+  Bubble re-evaluates the initial content after the page loaded (when the
+  data it reads changes) is assumed, not replayed. A user's change always
+  wins over it.
+* A search's dynamic sort field that is an empty text (the editor keeps
+  `{"entries": {"1": ""}}` once it is cleared) is taken to name no field
+  (WTF-520): next to a static sort field, that field sorts; with the sort
+  field set to Dynamic (`_dynamic_sort_field`) and the field cleared, the
+  search is not sorted. A dynamic sort field that is not empty is still
+  not compiled, whatever the sort field.

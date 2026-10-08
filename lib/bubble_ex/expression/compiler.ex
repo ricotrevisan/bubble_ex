@@ -680,8 +680,8 @@ defmodule BubbleEx.Expression.Compiler do
   # primary one first: `{:ok, [{field, descending?}]}`, or an uncompiled
   # diagnostic for an option with no IR (a dynamic sort field, a
   # geographic sort). The editor's display names (`*_friendly`) and unset
-  # settings (an `Empty` dynamic sort field or geographic reference) say
-  # nothing.
+  # settings (an `Empty` dynamic sort field or geographic reference, a
+  # dynamic sort field that is an empty text) say nothing.
   defp search_options(options, path) do
     options = settings(options)
 
@@ -701,6 +701,7 @@ defmodule BubbleEx.Expression.Compiler do
     for {k, v} <- options,
         not (is_binary(k) and String.ends_with?(k, "_friendly")),
         not (k in ["dynamic_sort_field", "geo_reference"] and empty_setting?(v)),
+        not (k == "dynamic_sort_field" and empty_text?(v)),
         into: %{},
         do: {k, v}
   end
@@ -710,6 +711,23 @@ defmodule BubbleEx.Expression.Compiler do
   defp empty_setting?(nil), do: true
   defp empty_setting?(v) when is_map(v), do: Keys.value(v, :type) == "Empty"
   defp empty_setting?(_v), do: false
+
+  # A dynamic sort field that is an empty text (the editor keeps
+  # `{"entries": {"1": ""}}` once it is cleared) names no field (WTF-520).
+  defp empty_text?(""), do: true
+
+  defp empty_text?(v) when is_map(v),
+    do: Keys.value(v, :type) == "TextExpression" and empty_entries?(Keys.value(v, :entries))
+
+  defp empty_text?(_v), do: false
+
+  defp empty_entries?(nil), do: true
+
+  defp empty_entries?(entries) when is_map(entries),
+    do: Enum.all?(Map.values(entries), &(&1 == ""))
+
+  defp empty_entries?(entries) when is_list(entries), do: Enum.all?(entries, &(&1 == ""))
+  defp empty_entries?(_entries), do: false
 
   # `{field, descending?}` of the primary sort; `_dynamic_sort_field` names
   # a dynamic one, which has no IR (its options keep `dynamic_sort_field`).

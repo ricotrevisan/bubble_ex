@@ -6,11 +6,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
 
     * `namespace` - the root module the resource names are relative to
     * `surfaces` - by page or reusable Bubble ID: `%{kind, workflows,
-      states, inputs}`. `workflows` (sorted by Bubble ID) are described
+      states, inputs, initial, data}`. `workflows` (sorted by Bubble ID) are described
       below; `states` are the custom states of the surface's elements
       (`%{element, state, default}`, `default` a literal or nil); `inputs`
       the inputs whose value the page tracks (element => `:text`,
-      `:number` or `:boolean`)
+      `:number` or `:boolean`); `initial` those of them whose first value
+      is page data (their initial content's source, WTF-520), sorted
     * `elements` - by Bubble ID: `%{surface, instance_of, root?}` for every
       element of a surface (`root?`: the page or reusable element itself)
     * `cells` - the reusable instances in a repeating group's cell

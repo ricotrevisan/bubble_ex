@@ -233,7 +233,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       for {scope, module} <- surfaces,
           {element, {_type, value}} <- module.__bubble__(:surface).inputs,
           into: %{},
-          do: {{scope, element}, value}
+          do: {{scope, element}, first_value(value)}
 
     if connected?(socket) do
       send(self(), {:bubble, :page_loaded})
@@ -420,8 +420,48 @@ defmodule <%= @web %>.BubbleWorkflows do
            params,
          {:ok, module} <- surface(socket, page, scope),
          %{^element => {type, _first}} <- module.__bubble__(:surface).inputs,
-         {:ok, value} <- coerce(type, Map.get(params, "value")) do
+         {:ok, value} <- coerce(type, Map.get(params, "value")),
+         false <- untouched?(socket, scope, element, type, value) do
       {:ok, module, scope, element, value}
+    end
+  end
+
+  # An input whose first value is page data (WTF-520) and still holds it
+  # (`:data`) sends that value back when nothing changed it: a blur with
+  # no typing, a form recovered on reconnect, the text shown before the
+  # data changed under a focused input. Compared as the input shows it (a
+  # number by value, a text as text, empty as empty), it stays `:data`
+  # and runs no workflow.
+  defp untouched?(socket, scope, element, type, value) do
+    key = {scope, element}
+
+    Map.get(socket.assigns.bubble_inputs, key) == :data and
+      same_value?(type, Map.get(Map.get(socket.assigns, :bubble_data) || %{}, key), value)
+  end
+
+  defp same_value?(:number, shown, value), do: as_number(shown) == as_number(value)
+  defp same_value?(_type, shown, value), do: as_text(shown) == as_text(value)
+
+  defp as_number(%Decimal{} = n), do: Decimal.to_float(n)
+  defp as_number(n) when is_number(n), do: n * 1.0
+
+  defp as_number(text) when is_binary(text) do
+    case coerce(:number, text) do
+      {:ok, n} when is_number(n) -> n * 1.0
+      _ -> nil
+    end
+  end
+
+  defp as_number(_value), do: nil
+
+  defp as_text(nil), do: nil
+  defp as_text(""), do: nil
+  defp as_text(text) when is_binary(text), do: text
+
+  defp as_text(value) do
+    case String.Chars.impl_for(value) do
+      nil -> value
+      _ -> as_text(to_string(value))
     end
   end
 
@@ -440,6 +480,12 @@ defmodule <%= @web %>.BubbleWorkflows do
     key = {scope, element}
     committed = Map.get(socket.assigns, :bubble_committed) || %{}
     before = Map.get(committed, key, Map.get(socket.assigns.bubble_first_inputs, key))
+
+    # A first value that is page data (WTF-520) is what the page showed.
+    before =
+      if before == :data,
+        do: Map.get(Map.get(socket.assigns, :bubble_data) || %{}, key),
+        else: before
     socket = assign(socket, :bubble_committed, Map.put(committed, key, value))
 
     runs =
@@ -674,7 +720,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     inputs =
       for {scope, module} <- cells,
           {element, {_type, value}} <- module.__bubble__(:surface).inputs,
-          do: {{scope, element}, value}
+          do: {{scope, element}, first_value(value)}
 
     socket
     |> assign(:bubble_cells, cells)
@@ -684,6 +730,13 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_committed, drop_scopes(Map.get(socket.assigns, :bubble_committed) || %{}, gone))
     |> assign(:bubble_displayed, drop_scopes(Map.get(socket.assigns, :bubble_displayed) || %{}, gone))
   end
+
+  # An input's first value. One that is page data (WTF-520) is `:data`, read
+  # from what the page loaded; with data access off the page loads
+  # nothing, so it starts empty, as every reader of it (the input, texts,
+  # conditions, workflows) then sees.
+  defp first_value(:data), do: if(BubbleData.data_access?(), do: :data, else: nil)
+  defp first_value(value), do: value
 
   defp put_new(map, pairs), do: Enum.reduce(pairs, map, fn {k, v}, acc -> Map.put_new(acc, k, v) end)
 
@@ -1389,8 +1442,20 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc "Custom state `state` of `element` (in the instance `path` below)."
   def state(ctx, path, element, state), do: Map.get(ctx.states, {scope(ctx, path), element, state})
 
-  @doc "The value of input `element` (in the instance `path` below)."
-  def input(ctx, path, element), do: Map.get(ctx.inputs, {scope(ctx, path), element})
+  @doc """
+  The value of input `element` (in the instance `path` below). An input
+  whose first value is page data (WTF-520) holds `:data` until it changes
+  (or again after a reset): its initial content as the page's data
+  computed it (`ctx.data`, read after it while loading).
+  """
+  def input(ctx, path, element) do
+    key = {scope(ctx, path), element}
+
+    case Map.get(ctx.inputs, key) do
+      :data -> Map.get(ctx.data, key)
+      value -> value
+    end
+  end
 
   @doc "URL parameter `name`, as text."
   def url(ctx, name), do: Map.get(ctx.url, name)
@@ -1507,7 +1572,7 @@ defmodule <%= @web %>.BubbleWorkflows do
           ),
         else:
           Enum.reduce(inputs, ctx.inputs, fn {element, first}, acc ->
-            Map.put(acc, {scope, element}, first)
+            Map.put(acc, {scope, element}, first_value(first))
           end)
 
     {:cont, %{ctx | inputs: values, js: [%{op: "reset", to: to} | ctx.js]}}
