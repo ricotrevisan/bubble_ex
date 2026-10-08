@@ -375,19 +375,22 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp instance_dimensions(definition, _instance), do: definition
 
   # The instance sizes the root: a Floating Group root keeps the instance's
-  # width fill flag, which places it (`floating_css/1`); otherwise the
-  # definition's flag is dropped.
+  # width flags, which place it (`floating_css/1`); otherwise the
+  # definition's fill flag is dropped.
   defp instance_fill(
          %Node{variant: :floating_group, layout: layout},
          instance_layout,
-         :fill_width? = fill
+         :fill_width?
        ) do
-    layout = Map.drop(layout || %{}, [fill, Atom.to_string(fill)])
+    flags = [:fill_width?, :fit_width?]
+    layout = Map.drop(layout || %{}, flags ++ Enum.map(flags, &Atom.to_string/1))
 
-    case layout_flag(instance_layout, fill) do
-      nil -> layout
-      value -> Map.put(layout, fill, value)
-    end
+    Enum.reduce(flags, layout, fn flag, acc ->
+      case layout_flag(instance_layout, flag) do
+        nil -> acc
+        value -> Map.put(acc, flag, value)
+      end
+    end)
   end
 
   defp instance_fill(%Node{layout: layout}, _instance_layout, fill),
@@ -752,11 +755,14 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp put_floating_horizontal(css, _value, _width), do: css
 
-  # How a Floating Group sizes its width: `:fixed` (a width of its own),
-  # `:fit` (its content's, `fit_width`) or `:fill` (fills it, or no width
-  # flag at all).
+  # How a Floating Group sizes its width: `:fill` (fills it), `:fit` (its
+  # content's, `fit_width`), `:fixed` (a width of its own), else `:fill`
+  # (no width flag at all). The flags come first: a fit or fill group can
+  # keep a stored editor `width`.
   defp floating_width(%Node{box: box, layout: layout}) do
     cond do
+      layout_flag(layout, :fill_width?) == true -> :fill
+      layout_flag(layout, :fit_width?) == true -> :fit
       is_map(box) and box_get(box, :width) not in [nil, "auto"] -> :fixed
       layout_flag(layout, :fill_width?) == false -> :fit
       true -> :fill

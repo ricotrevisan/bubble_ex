@@ -96,6 +96,10 @@ See the [overlay audit](overlay-runtime-audit.md) for the reproduction and resul
   bases, authenticated assets, and the unsupported native kinds remain gaps.
   Overlay opening is evidenced only by revealing the exported markup the way a
   runtime would (removing `hidden`); workflows are not executed.
+- Unverified (WTF-516): a Floating Group pinned to "both" horizontal edges, or
+  with no horizontal reference, at a fixed or fit width is assumed to sit at the
+  left edge at that width. One Bubble capture of such a group is needed to
+  confirm it; only a right-pinned fit-width group (`bpgwgmpz`) is captured.
 - Existing controlled cases do not establish exhaustive theme/style precedence,
   accessibility, browser, or responsive coverage for arbitrary apps.
 - Shared reusable icon IDs need instance-scoped source geometry correlation.

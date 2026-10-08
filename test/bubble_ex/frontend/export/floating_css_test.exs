@@ -69,11 +69,16 @@ defmodule BubbleEx.Frontend.Export.FloatingCssTest do
     }
   end
 
-  defp instance_root(app) do
+  defp instance_and_definition(app) do
     {:ok, frontend} = Frontend.normalize(app)
     [page] = frontend.pages
     instance = Enum.find(page.children, &(&1.kind == :reusable_instance))
     definition = Enum.find(frontend.reusables, &(&1.source.bubble_id == "panel-root"))
+    {instance, definition}
+  end
+
+  defp instance_root(app) do
+    {instance, definition} = instance_and_definition(app)
     Css.lower_root(definition, instance).declarations |> Map.new()
   end
 
@@ -143,6 +148,32 @@ defmodule BubbleEx.Frontend.Export.FloatingCssTest do
       assert css["width"] == "fit-content"
     end
 
+    test "an instance with no width flags keeps a fit-width reusable's fit, not its stored width" do
+      definition = Map.merge(@fit, %{"width" => 200})
+      app = side_panel_app(%{}, definition)
+      {instance, _definition} = instance_and_definition(app)
+      refute Map.has_key?(instance.layout, :fill_width?)
+
+      css = instance_root(app)
+      assert css["left"] == "0"
+      refute Map.has_key?(css, "right")
+      assert css["width"] == "fit-content"
+    end
+
+    test "the HTML exporter's instance rule pins it left at its content's width" do
+      {instance, definition} =
+        instance_and_definition(side_panel_app(Map.merge(@fit, %{"min_width_css" => "248px"})))
+
+      css = Css.expanded_definition(definition, "panel/expanded", instance)
+      [_, root] = Regex.run(~r/\[data-exporter-id="panel\/expanded"\] \{([^}]*)\}/s, css)
+
+      assert root =~ "position: fixed;"
+      assert root =~ "left: 0;"
+      assert root =~ "width: fit-content;"
+      assert root =~ "min-width: 248px;"
+      refute root =~ "right: 0;"
+    end
+
     test "the instance's horizontal reference wins over the reusable's" do
       css =
         instance_root(
@@ -182,6 +213,36 @@ defmodule BubbleEx.Frontend.Export.FloatingCssTest do
     test "no reference reads as both" do
       assert {floating(@fill)["left"], floating(@fill)["right"]} == {"0", "0"}
       assert {floating(@fit)["left"], floating(@fit)["right"]} == {"0", nil}
+    end
+
+    test "a fit-width group keeps its content's width over a stored editor width" do
+      css =
+        floating(
+          Map.merge(@fit, %{"width" => 200, "floating_reference_horizontal_resp" => "left"})
+        )
+
+      assert {css["left"], css["right"], css["width"]} == {"0", nil, "fit-content"}
+
+      css = floating(Map.merge(@fit, %{"width" => 200}))
+      assert {css["left"], css["right"], css["width"]} == {"0", nil, "fit-content"}
+    end
+
+    test "a fill-width group stretches over a stored editor width" do
+      css =
+        floating(
+          Map.merge(@fill, %{"width" => 200, "floating_reference_horizontal_resp" => "both"})
+        )
+
+      assert {css["left"], css["right"]} == {"0", "0"}
+      refute css["width"] in ["fit-content", "200px"]
+    end
+
+    test "center with a fill width spans between the edges" do
+      css = floating(Map.put(@fill, "floating_reference_horizontal_resp", "center"))
+
+      assert {css["left"], css["right"]} == {"0", "0"}
+      assert {css["margin-left"], css["margin-right"]} == {"auto", "auto"}
+      refute css["width"] == "fit-content"
     end
 
     test "center centers the group at its own width" do
