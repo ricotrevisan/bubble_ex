@@ -178,6 +178,36 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
              "expr(if(is_nil(if(estimate > 3.0, true, false)), true, if(estimate > 3.0, true, false)) == true)"
   end
 
+  # WTF-514: pages and workflows read an empty text as empty (`"" is nil`,
+  # BubbleEx.Target.Elixir), but the generated privacy policies keep the
+  # stricter rule (owner decision, 2026-09-29): `""` and nil stay apart,
+  # and an empty actor side matches nothing, an empty field included.
+  test "policies keep an empty text apart from empty (WTF-514)", %{project: project} do
+    this = IR.node(:this, [:rule_record], "custom.task")
+    title = IR.node(:field, [this, "task", "title_text"], "text")
+    parent = IR.node(:field, [this, "task", "parent_custom_task"], "custom.task")
+    parent_title = IR.node(:field, [parent, "task", "title_text"], "text")
+    name = IR.node(:field, [IR.node(:current_user, [], "user"), "user", "name_text"], "text")
+    empty_text = IR.node(:literal, [""], "text")
+
+    cases = [
+      {IR.node(:eq, [title, parent_title], "boolean"),
+       "expr(is_not_distinct_from(title, parent.title))"},
+      {IR.node(:neq, [title, parent_title], "boolean"),
+       "expr(is_distinct_from(title, parent.title))"},
+      {IR.node(:eq, [title, empty_text], "boolean"), ~s|expr(title == "")|},
+      {IR.node(:eq, [title, name], "boolean"),
+       ~s|expr(^actor(:name) != "" and title == ^actor(:name))|},
+      {IR.node(:neq, [title, name], "boolean"),
+       ~s|expr(not is_nil(^actor(:name)) and ^actor(:name) != "" and is_distinct_from(title, ^actor(:name)))|}
+    ]
+
+    for {ir, expected} <- cases do
+      {:ok, %{expr: e, diagnostics: []}} = Expressions.filter(ir, project, resource: "task")
+      assert Source.expr(e) == expected
+    end
+  end
+
   test "a search compiles to a filter on the searched resource, with its sort", %{
     project: project
   } do

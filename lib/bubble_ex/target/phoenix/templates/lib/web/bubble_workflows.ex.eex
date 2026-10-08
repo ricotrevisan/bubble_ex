@@ -1711,7 +1711,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   defp segment_text(value)
        when is_binary(value) or is_number(value) or is_boolean(value) or is_struct(value, Decimal) or
               is_struct(value, Date) or is_struct(value, DateTime) or
-              is_struct(value, NaiveDateTime),
+              is_struct(value, NaiveDateTime) or is_struct(value, Ash.CiString),
        do: <%= @module %>.Bubble.Runtime.text(value)
 
   defp segment_text(_value), do: nil

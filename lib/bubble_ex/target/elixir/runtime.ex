@@ -18,7 +18,9 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @doc """
   A value as text (URL parameters, values a page workflow writes): `nil`
   is `""`, `1.0` is `"1"`, yes/no, a date Bubble's default display text in
-  the user's time zone (`Oct 7, 2026 12:00 am`, replay 2026-10-07).
+  the user's time zone (`Oct 7, 2026 12:00 am`, replay 2026-10-07), a
+  case-insensitive text (`Ash.CiString`, the generated User's email) its
+  text, never its debug output (WTF-515).
   """
   @callback text(value()) :: String.t()
   @doc "`text/1` as Bubble's server converts a value (backend workflows): dates in UTC (replay 2026-10-07)."
@@ -29,12 +31,15 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @callback empty?(value()) :: boolean()
   @doc """
   A compared value as Bubble reads it: a field the user may not view
-  (`%Ash.ForbiddenField{}`) is empty (nil), any other value itself. `is` and
-  `is not` between values that may both be empty compare through it.
+  (`%Ash.ForbiddenField{}`) and an empty text (`""`, WTF-514: Bubble has
+  no empty text apart from empty) are empty (nil), a case-insensitive text
+  (`Ash.CiString`) is its text (WTF-515), any other value itself. `is` and
+  `is not` compare every side that may be text or empty through it.
   """
   @callback unhidden(value()) :: value()
   @doc """
-  A thing's Bubble ID: a record's `id`, an ID itself, nil otherwise. `is`,
+  A thing's Bubble ID: a record's `id`, an ID itself, nil otherwise (an
+  empty text included, WTF-514). `is`,
   `is not` and `contains` compare things by ID through it when a side is
   not a field path (an element's thing, a property, a custom state).
   """

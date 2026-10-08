@@ -25,7 +25,10 @@ defmodule BubbleEx.Target.Elixir do
   comparison with a value read from the current user is false when that
   value is empty, in either polarity (negation is pushed down to the
   comparisons); between other values empty equals empty (not verified
-  against Bubble); an empty list contains nothing; `not` of an empty yes/no
+  against Bubble), and an empty text (`""`) is empty, so `"" is nil`
+  (WTF-514; Bubble has no empty text apart from empty, inferred, not
+  replayed; the generated privacy policies keep `""` and nil apart, the
+  stricter reading); an empty list contains nothing; `not` of an empty yes/no
   is true; `x is not y` between yes/no values (not conditions), one at
   least stored, reads an empty one as no, as Bubble does (`x is not no` needs a stored yes,
   WTF-471), while `x is y` keeps empty equal only to empty; a comparison
@@ -46,6 +49,7 @@ defmodule BubbleEx.Target.Elixir do
   | `display(x)` | a value shown on a page (`:display`): `text/1` with dates in Bubble's default format |
   | `utc_text(x)` | `text/1` as Bubble's server converts a value (`:utc`, backend workflows): dates in UTC (replay 2026-10-07) |
   | `empty?(x)` | `is empty`: nil, `""` or `[]` |
+  | `unhidden(x)` | a value `is` / `is not` compares: an empty text (`""`) or a field the user may not view is nil, a case-insensitive text its text |
   | `compare(op, a, b)` | `>`, `<`, `>=`, `<=`; false when either side is empty |
   | `add/sub/mul/div/mod(a, b)` | arithmetic; dates plus intervals |
   | `default(x, d)` | `defaulting to`: `x` unless it is empty (as `empty?/1`; a reference is its loaded record, nil when unset or gone), else `d`; a field of it reads through whichever holds |
@@ -558,15 +562,18 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   # `is` / `is not`: records compare by ID; empty equals empty unless a side
-  # is read from the current user (guarded). A field the user may not view
-  # is empty (WTF-500): it differs from nil only against a side that may be
-  # empty too, so there the operands go through the runtime's `unhidden/1`;
-  # against a value literal, `==` and `!=` already answer as for empty.
+  # is read from the current user (guarded). A compared value goes through
+  # the runtime's `unhidden/1`, which reads it as Bubble does: a field the
+  # user may not view is empty (WTF-500), and so is an empty text (`""`,
+  # WTF-514: Bubble has no empty string distinct from empty), and a
+  # case-insensitive text (`Ash.CiString`) is its text (WTF-515). Against
+  # a literal that is no text (a number, a yes/no, an option), `==` and
+  # `!=` already answer so, and the source stays plain.
   defp atom_(%IR{op: op, args: [l, r]}, st) when op in [:eq, :neq] do
     {[a, b], st} = Enum.map_reduce([l, r], st, &id_value/2)
 
     {[a, b], st} =
-      if present_literal?(l) or present_literal?(r),
+      if plain_literal?(l) or plain_literal?(r),
         do: {[a, b], st},
         else: Enum.map_reduce([{l, a}, {r, b}], st, &unhidden/2)
 
@@ -611,6 +618,7 @@ defmodule BubbleEx.Target.Elixir do
     if member_list?(list) do
       {[l, i], st} = Enum.map_reduce([list, item], st, &id_value/2)
       {items, st} = as_list(l, st)
+      {items, i, st} = member_texts(list, items, i, st)
       member = "Enum.member?(#{items}, #{i})"
       {all_ok({member, "not #{member}", [{list, l}, {item, i}]}, [items, i]), st}
     else
@@ -632,14 +640,30 @@ defmodule BubbleEx.Target.Elixir do
 
   defp atom_(%IR{op: op}, st), do: unsupported(st, {"#{op}", nil})
 
-  # A literal that is not empty, or an option: never a hidden field.
-  defp present_literal?(%IR{op: :literal, args: [v]}), do: v not in [nil, "", []]
-  defp present_literal?(%IR{op: :option}), do: true
-  defp present_literal?(_ir), do: false
+  # A list of texts and its item compare as `is` does (`unhidden/1`): a
+  # case-insensitive text (the User's email) is its text (WTF-515).
+  defp member_texts(%IR{type: "list.text"}, items, i, st)
+       when is_binary(items) and is_binary(i) do
+    {each, st} = runtime(st, :unhidden, ["&1"])
+    {item, st} = runtime(st, :unhidden, [i])
+    {"Enum.map(#{items}, &#{each})", item, st}
+  end
 
-  # A compared value that may be a field the user may not view, as empty
-  # (literals, options and records' IDs never are).
+  defp member_texts(_list, items, i, st), do: {items, i, st}
+
+  # A literal that is neither empty nor text, or an option: compared with
+  # `==` it already answers as Bubble for an empty, hidden or
+  # case-insensitive other side.
+  defp plain_literal?(%IR{op: :literal, args: [v]}), do: v not in [nil, []] and not is_binary(v)
+  defp plain_literal?(%IR{op: :option}), do: true
+  defp plain_literal?(_ir), do: false
+
+  # A compared value as Bubble reads it (the runtime's `unhidden/1`): an
+  # empty text is empty, as is a field the user may not view. Literals,
+  # options and records' IDs need no call; an empty text literal is nil.
   defp unhidden({_ir, :error}, st), do: {:error, st}
+
+  defp unhidden({%IR{op: :literal, args: [""]}, _part}, st), do: {"nil", st}
 
   defp unhidden({%IR{op: op} = ir, part}, st) do
     if op in [:literal, :empty, :option, :all_options] or record_type?(ir.type),

@@ -137,7 +137,8 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     assert tag(files["lib/shop_web/live/index_live.html.heex"], "bTabOpen") =~
              ~s|hidden={!visible_btabopen(Map.get(@bubble_url, "tab"))}|
 
-    assert files["lib/shop_web/live/index_live.ex"] =~ ~s|url_parameter_tab == "open"|
+    assert files["lib/shop_web/live/index_live.ex"] =~
+             ~s|Shop.Bubble.Runtime.unhidden(url_parameter_tab) == "open"|
 
     # In a reusable element, from the map its caller passes down.
     assert files["lib/shop_web/components/reusables/card.ex"] =~

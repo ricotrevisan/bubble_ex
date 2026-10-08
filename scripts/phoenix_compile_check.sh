@@ -42,7 +42,8 @@
 #     test/support/target/phoenix/page_load_behavior.exs); for
 #     phoenix_tables, Bubble's Table element
 #     (test/support/target/phoenix/tables_behavior.exs); for
-#     phoenix_url, `Get data from page URL` (WTF-508,
+#     phoenix_url, `Get data from page URL` (WTF-508) and empty and
+#     case-insensitive texts (WTF-514, WTF-515;
 #     test/support/target/phoenix/url_behavior.exs)
 #   * the same checks with privacy: :enforced (WTF-423) on the fixtures
 #     with privacy rules, pages and workflows (a second scratch project,
