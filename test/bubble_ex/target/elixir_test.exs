@@ -36,6 +36,7 @@ defmodule BubbleEx.Target.ElixirTest do
     def as_list(x) when is_list(x), do: x
     def as_list(x), do: if(empty?(x), do: [], else: [x])
     def unhidden(""), do: nil
+    def unhidden(%Ash.CiString{} = x), do: x |> to_string() |> unhidden()
     def unhidden(x), do: x
     def id(%BubbleEx.Target.ElixirTest.Hidden{}), do: nil
     def id(""), do: nil
@@ -276,6 +277,27 @@ defmodule BubbleEx.Target.ElixirTest do
       refute eval(guarded, this: %{title: nil}, current_user: %{name: ""}), "#{op}"
       refute eval(guarded, this: %{title: ""}, current_user: %{name: nil}), "#{op}"
     end
+  end
+
+  # WTF-515: a list of texts holding case-insensitive texts (emails)
+  # contains an item by its text, as `is` compares it.
+  test "contains on a list of texts compares as is does", %{project: project} do
+    emails =
+      IR.node(:input, [:element_state, %{"element" => "bG1", "state" => "param_p1"}], "list.text")
+
+    {:ok, result} =
+      Target.compile(
+        IR.node(:member, [emails, IR.node(:literal, ["a@x.io"], "text")], "boolean"),
+        project,
+        runtime: @runtime
+      )
+
+    assert result.source =~ "unhidden"
+    ci = %Ash.CiString{string: "a@x.io"}
+    assert eval(result, element_state_bg1_param_p1: [ci])
+    assert eval(result, element_state_bg1_param_p1: ["a@x.io"])
+    refute eval(result, element_state_bg1_param_p1: [%Ash.CiString{string: "b@x.io"}])
+    refute eval(result, element_state_bg1_param_p1: nil)
   end
 
   test "the stand-in runtime's id/1: a record's ID, an ID, else nil" do

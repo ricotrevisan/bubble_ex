@@ -25,7 +25,7 @@ defmodule <%= @module %>.Bubble.Runtime do
   # compiles on its own.
   defguardp ci?(x) when is_struct(x, Ash.CiString)
 
-  defp plain(x) when ci?(x), do: to_string(x)
+  defp plain(x) when ci?(x), do: to_string(x) || ""
   defp plain(x), do: x
 
   @default_date_format "mmm d, yyyy h:MM tt"
@@ -175,7 +175,6 @@ defmodule <%= @module %>.Bubble.Runtime do
 
   @doc "`defaulting to`."
   def default(x, d), do: if(empty?(x), do: d, else: x)
-
 
   def lowercase(x) when ci?(x), do: x |> plain() |> lowercase()
   def lowercase(x) when is_binary(x), do: String.downcase(x)
@@ -596,6 +595,7 @@ defmodule <%= @module %>.Bubble.Runtime do
 
   @doc "What identifies a list item: a thing's Bubble ID, else the value."
   def list_key(%{id: id}), do: id
+  def list_key(x) when ci?(x), do: plain(x)
   def list_key(x), do: x
 
   defp list(x) when is_list(x), do: x

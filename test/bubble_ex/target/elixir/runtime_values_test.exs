@@ -87,5 +87,22 @@ defmodule BubbleEx.Target.Elixir.RuntimeValuesTest do
       assert rt.is_email(ci("a@x.io"))
       assert rt.to_number(ci("12")) == 12
     end
+
+    test "list items: unique, merged, minus and contains by their text", %{rt: rt} do
+      a = ci("a@x.io")
+      b = ci("b@x.io")
+      assert rt.list_key(a) == "a@x.io"
+      assert rt.unique([a, "a@x.io", b]) == [a, b]
+      assert rt.merge([a], ["a@x.io", b]) == [a, b]
+      assert rt.minus_item([a, b], "a@x.io") == [b]
+      assert rt.minus_list([a, b], ["b@x.io"]) == [a]
+      assert rt.intersect([a], ["a@x.io"]) == ["a@x.io"]
+    end
+
+    test "Ash 3's case: :lower downcases until cast", %{rt: rt} do
+      assert rt.text(%Ash.CiString{string: "A@X.io", case: :lower}) == "a@x.io"
+      assert rt.text(%Ash.CiString{string: "A@X.io", case: :lower, casted?: true}) == "A@X.io"
+      assert rt.text(%Ash.CiString{string: nil}) == ""
+    end
   end
 end

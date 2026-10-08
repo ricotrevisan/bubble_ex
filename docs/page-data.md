@@ -744,8 +744,10 @@ value, so pages and workflows compare `""` as empty: `is` and `is not`
 through the runtime's `unhidden/1`, which maps `""` (and a field the user
 may not view) to nil. A path segment that is not there (nil, a bare
 `/home`) therefore equals a value set to an empty text, and `?q=` equals
-a missing `q`. `is empty` already counted `""` as empty; `Runtime.id/1`
-gives no ID for `""`. Numbers, yes/no values and dates are unchanged (`0`
+a missing `q`. `is empty` already counted `""` as empty;
+`Bubble.Runtime.id/1` gives no ID for `""` in expressions on pages
+(workflow writes are unchanged: `Workflows.Runtime.id/1` passes `""`
+through). Numbers, yes/no values and dates are unchanged (`0`
 is not empty), as is the current user's guard: a comparison with an
 empty value read from the current user is false in either polarity.
 This is inferred from Bubble's data model, not replayed.
@@ -759,7 +761,9 @@ this).
 **A case-insensitive text is its text.** The generated User's email is
 an `Ash.CiString`. The runtime reads it as its text wherever a value is
 used as text: shown (`text/1`, `display/1`, an input's initial value),
-compared (`unhidden/1`, ordering and `:sorted`), given to a text operator,
+compared (`unhidden/1`, `contains` on a list of texts, ordering and
+`:sorted`), as a list item (`list_key/1`: `:unique elements`, `:merged
+with`, `:minus item`, …), given to a text operator,
 sent as a URL parameter or path segment, written by a backend workflow
 or returned by it. Before, `text/1` showed its debug output
 (`#Ash.CiString<...>`), and `is` never matched it.
@@ -773,7 +777,10 @@ and "Display data" over a group's own source.
 
 * **An empty text is empty** (WTF-514, above): that Bubble compares
   `""` as equal to an empty value in `is` / `is not` is inferred from
-  its data model (it stores no empty texts), not replayed.
+  its data model (it stores no empty texts), not replayed. A condition
+  and the equivalent server search can disagree: in memory `is` treats
+  `""` as empty, but a search with the same constraint still compiles to
+  `== ""` (`BubbleEx.Target.Ash.Expressions`).
 * **Matches nothing for operators other than `equals`.** The replay
   tried `equals`; that `>`, `contains`, `in` and the others match
   nothing on an empty value (or are dropped with `true`) is assumed.

@@ -12,8 +12,9 @@ All notable changes to this project are documented here.
   URL path segment that is not there (a bare `/home`) found no current
   tab and hid every panel. Pages and workflows now read `""` as empty in
   every `is` / `is not` (conditions, visibility conditionals, `Only
-  when`), through one runtime helper, `unhidden/1`; `id/1` gives no ID for
-  `""`. Numbers, yes/no values, dates and the current user's guard are
+  when`), through one runtime helper, `unhidden/1`; `Bubble.Runtime.id/1`
+  gives no ID for `""` in expressions on pages. Workflow writes are
+  unchanged (`Workflows.Runtime.id/1` still passes `""` through). Numbers, yes/no values, dates and the current user's guard are
   unchanged. Inferred from Bubble's data model, not replayed (listed as
   unverified in `docs/page-data.md`). The generated privacy policies keep
   the stricter rule (owner decision, 2026-09-29): `""` and empty stay
@@ -21,8 +22,9 @@ All notable changes to this project are documented here.
 - **The User's email showed as `#Ash.CiString<...>`** (WTF-515). The
   generated User's email is a case-insensitive text (`Ash.CiString`).
   The runtime now reads it as its text wherever a value is used as text:
-  dynamic texts and input initial values, `is` / `is not`, ordering and
-  `:sorted`, the text operators, URL parameters and path segments, and
+  dynamic texts and input initial values, `is` / `is not`, `contains` on a
+  list of texts, ordering and `:sorted`, the list operators (`:unique
+  elements`, `:merged with`, `:minus item`, …), the text operators, URL parameters and path segments, and
   what backend workflows write and return.
   The `/settings` Timezone field of the demo stays blank for another
   reason: it is a Dropdown whose choices are all of an option set's

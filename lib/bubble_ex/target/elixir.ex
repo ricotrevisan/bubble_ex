@@ -618,6 +618,7 @@ defmodule BubbleEx.Target.Elixir do
     if member_list?(list) do
       {[l, i], st} = Enum.map_reduce([list, item], st, &id_value/2)
       {items, st} = as_list(l, st)
+      {items, i, st} = member_texts(list, items, i, st)
       member = "Enum.member?(#{items}, #{i})"
       {all_ok({member, "not #{member}", [{list, l}, {item, i}]}, [items, i]), st}
     else
@@ -638,6 +639,17 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   defp atom_(%IR{op: op}, st), do: unsupported(st, {"#{op}", nil})
+
+  # A list of texts and its item compare as `is` does (`unhidden/1`): a
+  # case-insensitive text (the User's email) is its text (WTF-515).
+  defp member_texts(%IR{type: "list.text"}, items, i, st)
+       when is_binary(items) and is_binary(i) do
+    {each, st} = runtime(st, :unhidden, ["&1"])
+    {item, st} = runtime(st, :unhidden, [i])
+    {"Enum.map(#{items}, &#{each})", item, st}
+  end
+
+  defp member_texts(_list, items, i, st), do: {items, i, st}
 
   # A literal that is neither empty nor text, or an option: compared with
   # `==` it already answers as Bubble for an empty, hidden or
