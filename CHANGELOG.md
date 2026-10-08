@@ -6,6 +6,17 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Floating Groups no longer stretch over the page** (WTF-516). A
+  Floating Group, or a reusable element whose base is one, pinned to
+  "both" horizontal edges (also what an unset reference reads as) was
+  given `left: 0` and `right: 0` whatever its width, so a fit-width side
+  navigation spanned the viewport and hid the page's content under it.
+  Its width is now its own (the instance's over the reusable's): a fixed
+  width is kept, a fit width is `width: fit-content` (`w-[fit-content]`),
+  and a group pinned to both edges stretches between them only when it
+  fills its width; otherwise it sits at the left edge. Left, right and
+  center keep their edges, at that width.
+
 - **`Get data from page URL`: path segments and typed URL parameters**
   (WTF-508), as replayed against Bubble on 2026-10-07 (WTF-387). Texts,
   visibility conditions, data sources and workflows now read:
