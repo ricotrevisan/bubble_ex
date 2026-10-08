@@ -72,9 +72,11 @@ defmodule BubbleEx.PageDataTest do
                {:page_thing, %{"page" => "bTaskPage"}}
              ]
 
-      # The shown page's four (WTF-492) included, and the initial page's
-      # three (WTF-520: a group, an input's initial content, a list).
-      assert PageData.coverage(pd)["sources"] == %{"total" => 18, "native" => 18, "residue" => 0}
+      # The shown page's four (WTF-492) included, the initial page's three
+      # (WTF-520: a group, an input's initial content, a list) and the
+      # loaded page's four (WTF-520: two groups' searches, a group's and a
+      # conditional source).
+      assert PageData.coverage(pd)["sources"] == %{"total" => 22, "native" => 22, "residue" => 0}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -285,10 +287,11 @@ defmodule BubbleEx.PageDataTest do
 
       # With the shown page's (WTF-492): its six sources and the six
       # elements with no source its "Display data" steps set; the initial
-      # page's three (WTF-520).
+      # page's three (WTF-520); the loaded page's four and its two groups
+      # with no source (WTF-520).
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 24,
-               "wired" => 24,
+               "total" => 30,
+               "wired" => 30,
                "residue" => 0
              }
 
@@ -388,7 +391,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 22
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 28
     end
 
     test "a repeating group in a repeating group's cell is residue" do
@@ -680,33 +683,197 @@ defmodule BubbleEx.PageDataTest do
                steps(spec, "bPanel")["aPanelShow1"]
     end
 
-    test "an element only a step that never runs would show stays unloaded, loudly" do
-      residue = %{"id" => "aMail", "type" => "SendEmail", "properties" => %{}}
+    # Adds a step the lowering leaves as residue: its workflow never runs.
+    defp refused(app, workflow, key) do
+      residue = %{"id" => "aMail" <> key, "type" => "SendEmail", "properties" => %{}}
 
+      update_in(
+        app,
+        ["pages", "shown", "workflows", workflow, "actions"],
+        &Map.put(&1, key, residue)
+      )
+    end
+
+    test "an element only refused events would set shows nothing until one runs (WTF-520)" do
       app =
         app()
-        |> update_in(
-          ["pages", "shown", "workflows", "wShowA", "actions"],
-          &Map.put(&1, "1", residue)
-        )
-        |> update_in(
-          ["pages", "shown", "workflows", "wShowB", "actions"],
-          &Map.put(&1, "1", residue)
-        )
-        |> update_in(
-          ["pages", "shown", "workflows", "wChain", "actions"],
-          &Map.put(&1, "2", residue)
-        )
+        |> refused("wShowA", "1")
+        |> refused("wShowB", "1")
+        |> refused("wChain", "2")
 
       {spec, _project, _frontend, _app, _model} = spec(app)
 
-      # bShown has no source and no running step: it is not page data, and
-      # what reads it is not loaded either.
-      refute data(spec, "bShown")
-
-      assert %{read: nil, residue: [%{reason: :unavailable_input}]} = data(spec, "bShownProj")
-      # The popup's step still runs.
+      # bShown has no source and only clicks set it: as in Bubble, it shows
+      # nothing before a click, and the page loads what reads it.
+      assert %{read: :displayed, residue: []} = data(spec, "bShown")
+      assert %{residue: []} = data(spec, "bShownProj")
       assert %{read: :displayed} = data(spec, "bPop")
+    end
+
+    test "an element a refused page-load workflow would set stays unloaded, loudly (WTF-520)" do
+      app =
+        app()
+        |> refused("wShowA", "1")
+        |> update_in(["pages", "shown", "workflows", "wShowA"], fn w ->
+          w |> Map.put("type", "PageLoaded") |> Map.put("properties", %{})
+        end)
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+
+      # Bubble sets bShown as the page loads; the page cannot: it is not
+      # page data, and what reads it is not loaded either (the clicks
+      # setting it too do not change that).
+      refute data(spec, "bShown")
+      assert %{read: nil, residue: [%{reason: :unavailable_input}]} = data(spec, "bShownProj")
+
+      # Run whole, it sets bShown as the page loads: page data again.
+      app =
+        update_in(app(), ["pages", "shown", "workflows", "wShowA"], fn w ->
+          w |> Map.put("type", "PageLoaded") |> Map.put("properties", %{})
+        end)
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+      assert %{read: :displayed, residue: []} = data(spec, "bShown")
+      assert %{residue: []} = data(spec, "bShownProj")
+    end
+
+    test "a custom event a page-load workflow calls sets its element as the page loads" do
+      event = %{
+        "id" => "wShowEvent",
+        "type" => "CustomEvent",
+        "properties" => %{},
+        "actions" => %{
+          "0" =>
+            app()
+            |> get_in(["pages", "shown", "workflows", "wShowA", "actions", "0"])
+            |> Map.put("id", "aShowEvent1")
+        }
+      }
+
+      call = %{
+        "id" => "wLoadCall",
+        "type" => "PageLoaded",
+        "properties" => %{},
+        "actions" => %{
+          "0" => %{
+            "id" => "aLoadCall1",
+            "type" => "TriggerCustomEvent",
+            "properties" => %{"custom_event" => "wShowEvent"}
+          }
+        }
+      }
+
+      app =
+        app()
+        |> put_in(["pages", "shown", "workflows", "wShowEvent"], event)
+        |> put_in(["pages", "shown", "workflows", "wLoadCall"], call)
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+      assert %{read: :displayed} = data(spec, "bShown")
+
+      # The page-load caller refused, the custom event never runs as the
+      # page loads: bShown is not page data.
+      {spec, _project, _frontend, _app, _model} = spec(refused(app, "wLoadCall", "1"))
+      refute data(spec, "bShown")
+    end
+
+    test "a page-load step, a refused click and a conditional source (WTF-520)" do
+      {spec, _project, _frontend, _app, _model} = spec(app())
+
+      # A page-load workflow that runs sets bLoaded: page data, read by a
+      # text and a list's search, ordered after it.
+      assert %{read: :displayed, residue: []} = data(spec, "bLoaded")
+      assert %{residue: [], reads: reads} = data(spec, "bLoadedList")
+      assert {:data, %{path: [], element: "bLoaded"}} in reads
+
+      # Only a refused click sets bClicked: empty until then, read anyway.
+      assert %{read: :displayed, residue: []} = data(spec, "bClicked")
+      assert %{residue: []} = data(spec, "bClickedList")
+
+      assert %{blocked_by: [_ | _]} =
+               Enum.find(spec.surfaces["bLoadedPage"].workflows, &(&1.workflow == "wClicked"))
+
+      # bCond's only source is its condition's, reading bLoaded.
+      assert %{read: {:value, _}, residue: [], reads: cond_reads} = data(spec, "bCond")
+      assert {:data, %{path: [], element: "bLoaded"}} in cond_reads
+    end
+
+    test "a group no step sets and with no data source shows nothing (WTF-520)" do
+      never = %{
+        "id" => "bNever",
+        "type" => "Group",
+        "properties" => %{"group_type" => "custom.task", "width" => 300, "height" => 40},
+        "elements" => %{
+          "bNeverProj" => %{
+            "id" => "bNeverProj",
+            "type" => "Group",
+            "properties" => %{
+              "group_type" => "custom.project",
+              "width" => 300,
+              "height" => 40,
+              "data_source" => %{
+                "type" => "ElementParent",
+                "next" => %{"type" => "Message", "name" => "project_custom_project"}
+              }
+            }
+          }
+        }
+      }
+
+      app = put_in(app(), ["pages", "shown", "elements", "bNever"], never)
+      {spec, _project, _frontend, _app, _model} = spec(app)
+
+      assert %{read: :displayed, residue: []} = data(spec, "bNever")
+      assert %{residue: []} = data(spec, "bNeverProj")
+
+      # A condition giving it a data source: the group shows that source
+      # while the condition is yes, else nothing (WTF-520).
+      conditional = %{
+        "0" => %{
+          "condition" => %{
+            "type" => "CurrentUser",
+            "next" => %{"type" => "Message", "name" => "logged_in"}
+          },
+          "properties" => %{
+            "data_source" => %{
+              "type" => "GetElement",
+              "properties" => %{"element_id" => "bSrcA"},
+              "next" => %{"type" => "Message", "name" => "get_group_data"}
+            }
+          }
+        }
+      }
+
+      app = put_in(app, ["pages", "shown", "elements", "bNever", "states"], conditional)
+      {_model, page_data} = build(app)
+
+      assert %Source{kind: :group, residue: [], value: %{ir: %IR{op: :if, args: [_, _, none]}}} =
+               source(page_data, "bNever")
+
+      assert %IR{op: :empty} = none
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+      assert %{read: {:value, _}, residue: [], displayed?: false} = data(spec, "bNever")
+      assert %{residue: []} = data(spec, "bNeverProj")
+
+      # A state with no condition is residue: the group is not read as
+      # empty, and what reads it is not loaded.
+      app =
+        update_in(
+          app,
+          ["pages", "shown", "elements", "bNever", "states", "0"],
+          &Map.delete(&1, "condition")
+        )
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+      assert %{residue: [%{reason: :uncompiled_expression}]} = data(spec, "bNever")
+      assert %{residue: [%{reason: :unavailable_input}]} = data(spec, "bNeverProj")
+
+      # Without page data, nothing is read as empty.
+      {spec, _project, _frontend, _app, _model} =
+        spec(put_in(app(), ["pages", "shown", "elements", "bNever"], never), page_data: false)
+
+      refute data(spec, "bNever")
     end
 
     test "in a repeating group's cell, only a group, from a workflow of that cell" do

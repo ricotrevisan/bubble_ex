@@ -1841,6 +1841,55 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."})
   end
 
+  # WTF-520: /loaded's bLoaded has no data source; a page-load workflow
+  # shows bLoadSrc's thing (Eat) in it. A text inside it, a list whose
+  # search reads its title and a list whose only source is a condition on
+  # it read it after it. bClicked has no source either, and only a click
+  # the runtime refuses (a step it does not lower) sets it.
+  test "a page-load Display data step fills a group with no source; what reads it follows", %{
+    conn: conn
+  } do
+    on()
+    {:ok, view, _html} = live(conn, "/loaded")
+    html = render(view)
+    assert shown(html, "Loaded") == ["Eat"]
+    assert shown(html, "Load row") == ["Eat"]
+    assert shown(html, "Cond row") == ["Answer"]
+
+    # The page kept a unique ID: the group and its readers follow a change.
+    PhxCheck.Task
+    |> Ash.get!("1700000000000x200000000000000005", authorize?: false)
+    |> Ash.Changeset.for_update(:update, %{title: "Eaten"})
+    |> Ash.update!(authorize?: false)
+
+    Process.sleep(150)
+    html = render(view)
+    assert shown(html, "Loaded") == ["Eaten"]
+    assert shown(html, "Load row") == ["Eaten"]
+  end
+
+  test "a group only a refused click sets shows nothing; what reads it loads", %{conn: conn} do
+    on()
+    {:ok, view, _html} = live(conn, "/loaded")
+    html = render(view)
+    assert shown(html, "Clicked") == []
+    # Its search ignores empty constraints: an empty group drops it.
+    assert shown(html, "Click row") == ["Answer", "Bake"]
+
+    html = click(view, "bClick")
+    assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."})
+    assert shown(html, "Clicked") == []
+    assert shown(html, "Click row") == ["Answer", "Bake"]
+  end
+
+  test "with data access off, the page-load step shows nothing", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/loaded")
+    html = render(view)
+    assert shown(html, "Loaded") == []
+    assert shown(html, "Load row") == []
+    assert shown(html, "Cond row") == []
+  end
+
   # WTF-520: an input whose initial content is page data (bInitQuery: its
   # group's project's name, or "Dr" while that is empty) starts with it,
   # and the list searching by it (bInitList) shows what matches.

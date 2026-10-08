@@ -32,7 +32,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       pinned when the filter needs it
     * an element with no data source that a "Display data" step sets
       (WTF-492, `ctx.displayed`) reads what the step showed
-      (`read: :displayed`); every source a step sets is `displayed?`
+      (`read: :displayed`), and so does one no step sets, which shows
+      nothing (WTF-520); every source a step sets is `displayed?`
 
   What a source reads of the page is bound as a workflow's values are
   (`BubbleEx.Target.Elixir.FrontendWorkflows`), plus the page's data:

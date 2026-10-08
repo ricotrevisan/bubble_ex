@@ -115,6 +115,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   @display_ops [:display_data, :display_list]
 
+  # Events that never fire as the page loads (WTF-520).
+  @event_kinds [:click, :input_change, :popup_opened, :popup_closed, :do_every]
+
+  # Elements holding data that "Display data" or "Display list" sets.
+  @never_holders ~w(Group Popup FloatingGroup GroupFocus RepeatingGroup)
+  @group_holders ~w(Group Popup FloatingGroup GroupFocus CustomElement)
+
   @doc """
   Binds `lowered` to `project` (`BubbleEx.Target.Ash.map/3` of the same
   Model).
@@ -198,9 +205,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       # The inputs whose first value is page data (WTF-520): tracked when
       # their initial content loads. What "Display data" steps show
       # (WTF-492): the elements they set, held as page data (with no
-      # source of their own, read from what the step showed). Only the
-      # elements a step the runtime starts (whole) shows data in: the
-      # others stay unloaded, loudly.
+      # source of their own, read from what the step showed), and those no
+      # step sets (WTF-520). One a step may set as the page loads only when
+      # every workflow that may do so runs whole (`kept?/4`): the others
+      # stay unloaded, loudly.
       {ctx, data, bound} =
         bind_with_inputs(initial_inputs(page_data, ctx), lowered, page_data, ctx)
 
@@ -262,7 +270,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
     {ctx, data, bound} =
       bind_data_and_workflows(
-        displayed(lowered.workflows, ctx),
+        displayed(lowered.workflows, own_elements(page_data), ctx),
         lowered,
         with_inputs(page_data, initial),
         ctx
@@ -280,6 +288,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       do: {ctx, data, bound},
       else: bind_with_inputs(kept, lowered, page_data, base)
   end
+
+  # The elements with a data source of their own, or nil without page data.
+  defp own_elements(nil), do: nil
+
+  defp own_elements(page_data),
+    do: for(s <- page_data.sources, s.kind != :param, into: MapSet.new(), do: s.element)
 
   # The page data with the initial contents of the inputs `initial` only.
   defp with_inputs(nil, _initial), do: nil
@@ -312,7 +326,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   end
 
   # Binds the page data and the workflows with the elements `displayed`
-  # holds, until every one of them has a display step that runs.
+  # holds, until the page keeps every one of them faithfully (`kept?/4`).
   defp bind_data_and_workflows(displayed, lowered, page_data, ctx) do
     ctx = Map.put(ctx, :displayed, displayed)
 
@@ -332,20 +346,46 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       end)
       |> block(ctx.backend)
 
-    shown =
+    runs =
       for {_surface, ws} <- bound,
           w <- ws,
           Spec.native?(w) and not w.disabled?,
+          into: %{},
+          do: {w.symbol, w}
+
+    shown =
+      for w <- Map.values(runs),
           %{op: op, residue: []} = step <- w.steps,
           op in @display_ops,
           into: MapSet.new(),
           do: step_element(step, w)
 
-    kept = Map.filter(displayed, fn {element, _} -> MapSet.member?(shown, element) end)
+    kept = Map.filter(displayed, fn {element, holder} -> kept?(element, holder, runs, shown) end)
 
     if map_size(kept) == map_size(displayed),
       do: {ctx, data, bound},
       else: bind_data_and_workflows(kept, lowered, page_data, ctx)
+  end
+
+  # Whether the page keeps what display steps show in an element
+  # faithfully (WTF-520). In a repeating group's cell, when a step that
+  # runs sets it (WTF-492). Elsewhere, when every workflow that may set it
+  # as the page loads (a page-load or condition-true workflow, one whose
+  # event this target does not know, or one that calls or schedules the
+  # custom event holding the step) runs whole and is triggered: before
+  # an event the element shows nothing, as in Bubble, so a step only
+  # events run (a click, an input change, a custom event they call) or
+  # none at all leaves it empty until a step that runs sets it.
+  defp kept?(element, %{cell: cell}, _runs, shown) when is_binary(cell),
+    do: MapSet.member?(shown, element)
+
+  defp kept?(_element, %{load: load}, runs, _shown) do
+    Enum.all?(load, fn symbol ->
+      case runs[symbol] do
+        nil -> false
+        w -> Spec.wired?(w)
+      end
+    end)
   end
 
   # The reusable instances in a repeating group's cell of their surface
@@ -1066,19 +1106,164 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # --- displayed data (WTF-492) ------------------------------------------------------------
 
   # The elements "Display data" steps set, by Bubble ID: `%{kind, surface,
-  # cell, holder, type, page_size}` (page data holders, see
-  # `Data.index/2`). Only steps the lowering lowered, into an element the
-  # page renders that holds that kind of data.
-  defp displayed(workflows, ctx) do
-    for w <- workflows,
-        %Step{op: op, residue: [], args: args} <- w.steps,
-        op in @display_ops,
-        surface = bubble(w.surface),
-        {:ok, holder} <- [display_holder(op, args, w, surface, ctx)],
-        reduce: %{} do
-      acc -> Map.put_new(acc, args.element, holder)
+  # cell, holder, type, page_size, load}` (page data holders, see
+  # `Data.index/2`; `load`, the workflows that may set the element as the
+  # page loads, see `kept?/4`). Only an element the page renders that
+  # holds that kind of data. With page data (`own`, the elements with a
+  # source of their own), also the elements no step sets, which show
+  # nothing (WTF-520): a group, popup or repeating group with a type of
+  # content, no data source and no condition setting one, outside a
+  # repeating group's cell. An element with no source of its own that a
+  # condition gives one is left out: its source is not lowered.
+  defp displayed(workflows, own, ctx) do
+    load = load_roots(workflows)
+
+    steps =
+      for w <- workflows,
+          not w.disabled?,
+          %Step{op: op, args: %{element: element}} = step <- w.steps,
+          op in @display_ops,
+          is_binary(element),
+          do: {element, w, step}
+
+    set =
+      steps
+      |> Enum.group_by(&elem(&1, 0), &Tuple.delete_at(&1, 0))
+      |> Enum.reduce(%{}, fn {element, ws}, acc ->
+        case shown_holder(element, ws, load, ctx) do
+          {:ok, holder} -> Map.put(acc, element, holder)
+          :error -> acc
+        end
+      end)
+      |> Map.reject(fn {element, holder} ->
+        holder.cell == nil and own != nil and not MapSet.member?(own, element) and
+          conditional_source?(element, ctx)
+      end)
+
+    if own == nil,
+      do: set,
+      else: Map.merge(never_shown(steps, own, ctx), set)
+  end
+
+  # The holder of an element display steps set: in a repeating group's
+  # cell, from the steps that lowered (WTF-492); elsewhere from any step,
+  # with the workflows that may run it as the page loads.
+  defp shown_holder(element, ws, load, ctx) do
+    holders =
+      for {w, %Step{op: op, args: args} = step} <- ws,
+          display_target?(op, element, bubble(w.surface), ctx),
+          {:ok, holder} <- [display_holder(op, args, w, bubble(w.surface), ctx)],
+          do: {holder, step, w}
+
+    case holders do
+      [] ->
+        :error
+
+      [{%{cell: cell}, _, _} | _] when is_binary(cell) ->
+        lowered_holder(holders)
+
+      [{holder, _, _} | _] ->
+        roots =
+          holders
+          |> Enum.flat_map(fn {_, _, w} -> Map.get(load, w.bubble_id, []) end)
+          |> Enum.uniq()
+          |> Enum.sort()
+
+        {:ok, Map.put(holder, :load, roots)}
     end
   end
+
+  defp lowered_holder(holders) do
+    case for({holder, %Step{residue: []}, _w} <- holders, do: holder) do
+      [holder | _] -> {:ok, Map.put(holder, :load, [])}
+      [] -> :error
+    end
+  end
+
+  # Whether a display step's element holds that kind of data (a step
+  # naming another element sets nothing).
+  defp display_target?(:display_list, element, _surface, ctx),
+    do: match?(%{type: "RepeatingGroup"}, ctx.raw_elements[element])
+
+  defp display_target?(:display_data, surface, surface, _ctx), do: true
+
+  defp display_target?(:display_data, element, _surface, ctx),
+    do: match?(%{type: type} when type in @group_holders, ctx.raw_elements[element])
+
+  # Elements that hold data no step ever sets: they show nothing.
+  defp never_shown(steps, own, ctx) do
+    stepped = MapSet.new(steps, &elem(&1, 0))
+
+    for {id, %{kind: :element, type: type, content: content} = raw} <- ctx.raw_elements,
+        type in @never_holders,
+        is_binary(content) and content != "",
+        not MapSet.member?(stepped, id),
+        not MapSet.member?(own, id),
+        %{surface: surface, instance_of: nil} = el <- [ctx.elements[id]],
+        cell_of(raw, ctx, 0) == nil,
+        rendered?(id, ctx),
+        not conditional_source?(id, ctx),
+        op = if(type == "RepeatingGroup", do: :display_list, else: :display_data),
+        into: %{},
+        do: {id, Map.put(holder(op, id, el, raw, surface, nil, ctx), :load, [])}
+  end
+
+  # Whether a condition of the element sets its data source.
+  defp conditional_source?(element, ctx) do
+    case ctx.nodes[element] do
+      %{bindings: %{"condition" => %{payload: payload}}} when is_map(payload) ->
+        Enum.any?(payload, fn
+          {_key, %{} = state} ->
+            props = state["properties"] || state["%p"]
+            is_map(props) and Enum.any?(["data_source", "%ds"], &Map.has_key?(props, &1))
+
+          _ ->
+            false
+        end)
+
+      _ ->
+        false
+    end
+  end
+
+  # For each workflow (Bubble ID), the workflows (symbols) that may run
+  # it as the page loads: itself, unless its event is a click, an input
+  # change, a popup opened or closed or a "do every" tick; for a custom
+  # event, those of every workflow calling or scheduling it (none when
+  # nothing does). Disabled workflows never run.
+  defp load_roots(workflows) do
+    by_id = Map.new(workflows, &{&1.bubble_id, &1})
+
+    callers =
+      for w <- workflows,
+          not w.disabled?,
+          %Step{op: op, args: %{workflow: callee}} <- w.steps,
+          op in [:call, :call_reusable, :schedule_custom],
+          is_binary(callee),
+          reduce: %{} do
+        acc -> Map.update(acc, callee, [w.bubble_id], &[w.bubble_id | &1])
+      end
+
+    Map.new(workflows, fn w -> {w.bubble_id, roots_of(w, by_id, callers, MapSet.new())} end)
+  end
+
+  defp roots_of(%{disabled?: true}, _by_id, _callers, _seen), do: []
+  defp roots_of(%{kind: kind}, _by_id, _callers, _seen) when kind in @event_kinds, do: []
+
+  defp roots_of(%{kind: :custom_event, bubble_id: id}, by_id, callers, seen) do
+    if MapSet.member?(seen, id) do
+      []
+    else
+      seen = MapSet.put(seen, id)
+
+      callers
+      |> Map.get(id, [])
+      |> Enum.flat_map(&roots_of(by_id[&1], by_id, callers, seen))
+      |> Enum.uniq()
+    end
+  end
+
+  defp roots_of(%{id: symbol}, _by_id, _callers, _seen), do: [symbol]
 
   # What a display step's element holds, or why the page cannot keep it:
   # a group (popup, floating group, group focus) holds a thing, a
