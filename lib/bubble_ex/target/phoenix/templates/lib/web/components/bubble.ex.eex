@@ -177,9 +177,10 @@ defmodule <%= @web %>.Bubble do
   @doc """
   The value of input `element` in instance `scope` whose first value is
   page data (WTF-520): until it changes, its initial content as the page's
-  data computed it (`data`, with its conditional states applied); while
-  the page has not loaded it, `initial` (its initial content's binding,
-  shown as before, or nil).
+  data computed it (`data`, with its conditional states applied); until
+  the page has read its data (the first, disconnected render), `initial`
+  (its initial content's binding, or nil). With data access off it starts
+  empty, not `:data`.
   """
   def input(inputs, data, scope, element, initial \\ nil)
 

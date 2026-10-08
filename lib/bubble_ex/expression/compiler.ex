@@ -701,6 +701,7 @@ defmodule BubbleEx.Expression.Compiler do
     for {k, v} <- options,
         not (is_binary(k) and String.ends_with?(k, "_friendly")),
         not (k in ["dynamic_sort_field", "geo_reference"] and empty_setting?(v)),
+        not (k == "dynamic_sort_field" and empty_text?(v)),
         into: %{},
         do: {k, v}
   end
@@ -708,20 +709,17 @@ defmodule BubbleEx.Expression.Compiler do
   defp settings(_options), do: %{}
 
   defp empty_setting?(nil), do: true
-  defp empty_setting?(""), do: true
-
-  # A dynamic text with no part but empty texts (the editor keeps
-  # `{"entries": {"1": ""}}` once a dynamic sort field is cleared) names
-  # no field (WTF-520).
-  defp empty_setting?(v) when is_map(v) do
-    case Keys.value(v, :type) do
-      "Empty" -> true
-      "TextExpression" -> v |> Keys.value(:entries) |> empty_entries?()
-      _ -> false
-    end
-  end
-
+  defp empty_setting?(v) when is_map(v), do: Keys.value(v, :type) == "Empty"
   defp empty_setting?(_v), do: false
+
+  # A dynamic sort field that is an empty text (the editor keeps
+  # `{"entries": {"1": ""}}` once it is cleared) names no field (WTF-520).
+  defp empty_text?(""), do: true
+
+  defp empty_text?(v) when is_map(v),
+    do: Keys.value(v, :type) == "TextExpression" and empty_entries?(Keys.value(v, :entries))
+
+  defp empty_text?(_v), do: false
 
   defp empty_entries?(nil), do: true
 

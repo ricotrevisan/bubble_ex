@@ -1159,8 +1159,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         e <- dep_element(read, b),
         Map.has_key?(by_element, e),
         # A property's value reading itself (a default naming its own
-        # property) is a cycle.
-        e != id(b) or b.kind == :param,
+        # property), or an input's initial content reading the input
+        # (WTF-520), is a cycle.
+        e != id(b) or b.kind in [:param, :input],
         uniq: true,
         do: e
   end

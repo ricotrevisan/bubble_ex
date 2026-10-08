@@ -957,6 +957,21 @@ defmodule BubbleEx.PageDataTest do
              } = data(spec, "bInitList")
     end
 
+    test "reading the input itself is a cycle: the input is not tracked" do
+      own = %{
+        "type" => "GetElement",
+        "properties" => %{"element_id" => "bInitQuery"},
+        "next" => %{"type" => "Message", "name" => "get_data"}
+      }
+
+      {spec, _project, _frontend, _app, _model} =
+        spec(put_in(app(), initial_path(["bInitQuery", "properties", "content"]), own))
+
+      assert spec.surfaces["bInitPage"].initial == []
+      assert data(spec, "bInitQuery") == nil
+      assert %{read: nil} = data(spec, "bInitList")
+    end
+
     test "is printed: the page keeps :data as the first value and shows the loaded one" do
       {spec, project, frontend, app, model} = spec(app())
 

@@ -455,10 +455,15 @@ last state whose condition is yes wins; an empty condition is no: IR
 * what reads the input (a search's constraint, a value) is read after its
   initial content (`reads` names the input) and again when it changes;
 * the user's value wins from the first change on, whatever the data does;
-  a reset ("Reset a group", "Reset inputs") puts back `:data`, so the input
-  shows its initial content again;
-* while the page has not loaded it (data access off), the input shows its
-  initial content's binding as before.
+  a value sent back unchanged (a blur with no typing, a form recovered on
+  reconnect, the text shown before the data changed under a focused
+  input), compared as the input shows it (a number by value, a text as
+  text, empty as empty), keeps `:data` and runs no "An input's value is
+  changed" workflow; a reset ("Reset a group", "Reset inputs") puts back
+  `:data`, so the input shows its initial content again;
+* with data access off the page loads nothing, so the input starts empty
+  (not `:data`): the input, texts, conditions and workflows all read the
+  same empty value.
 
 An initial content that does not load (it does not compile, or reads a
 source that is not loaded) leaves the input as before: not tracked, its
@@ -865,7 +870,8 @@ and "Display data" over a group's own source.
   data it reads changes) is assumed, not replayed. A user's change always
   wins over it.
 * A search's dynamic sort field that is an empty text (the editor keeps
-  `{"entries": {"1": ""}}` once it is cleared) is taken to name no field,
-  so the static sort field sorts (WTF-520). A dynamic sort field that is
-  set (`_dynamic_sort_field`, or any non-empty value next to a static
-  field) is still not compiled.
+  `{"entries": {"1": ""}}` once it is cleared) is taken to name no field
+  (WTF-520): next to a static sort field, that field sorts; with the sort
+  field set to Dynamic (`_dynamic_sort_field`) and the field cleared, the
+  search is not sorted. A dynamic sort field that is not empty is still
+  not compiled, whatever the sort field.

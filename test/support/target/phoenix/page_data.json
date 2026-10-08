@@ -50,7 +50,34 @@
         "title": "Initial"
       },
       "workflows": {
-        "wInitReset": {
+        "wInitChanged": {
+        "id": "wInitChanged",
+        "type": "InputChanged",
+        "properties": {
+          "element_id": "bInitQuery"
+        },
+        "actions": {
+          "0": {
+            "id": "aInitChanged1",
+            "type": "NewThing",
+            "properties": {
+              "thing_type": "custom.task",
+              "initial_values": {
+                "0": {
+                  "key": "title_text",
+                  "value": {
+                    "type": "TextExpression",
+                    "entries": {
+                      "0": "Changed"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "wInitReset": {
           "id": "wInitReset",
           "type": "ButtonClicked",
           "properties": {

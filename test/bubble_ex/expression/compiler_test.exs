@@ -543,6 +543,27 @@ defmodule BubbleEx.Expression.CompilerTest do
                  ir(search("custom.task", [], Map.put(options, "dynamic_sort_field", cleared)))
       end
 
+      # Set to Dynamic with the field cleared: no field sorts.
+      dynamic_cleared =
+        Map.merge(options, %{
+          "sort_field" => "_dynamic_sort_field",
+          "dynamic_sort_field" => %{"type" => "TextExpression", "entries" => %{"1" => ""}},
+          "additional_sort_fields" => %{}
+        })
+
+      assert %IR{op: :search} = ir(search("custom.task", [], dynamic_cleared))
+
+      # Only the dynamic sort field reads an empty text as unset: a
+      # geographic reference that is one is still not compiled.
+      assert %{ir: nil, diagnostics: [%{details: %{construct: :search_option}}]} =
+               compile(
+                 search(
+                   "custom.task",
+                   [],
+                   Map.put(options, "geo_reference", %{"type" => "TextExpression"})
+                 )
+               )
+
       # A dynamic or geographic sort key is not compiled.
       for extra <- [
             %{"dynamic_sort_field" => text(["x"])},

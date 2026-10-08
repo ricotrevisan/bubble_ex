@@ -1903,11 +1903,61 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert init_cells(html) == ["Clean"]
   end
 
+  defp changed_runs,
+    do: PhxCheck.Task |> Ash.read!(authorize?: false) |> Enum.count(&(&1.title == "Changed"))
+
+  # The review of #212: a value sent back unchanged (a blur with no typing,
+  # a form recovered on reconnect, a number sent as text) keeps the input
+  # following its data and runs no "An input's value is changed" workflow.
+  test "an untouched input sent back as shown stays page data and runs nothing", %{conn: conn} do
+    rename_project("ea")
+    on()
+    {:ok, view, _html} = live(conn, "/initial")
+
+    # Blur with no typing, then a reconnect's form recovery.
+    render_blur(view, "bubble:commit", %{
+      "scope" => "",
+      "element" => "bInitQuery",
+      "value" => "ea"
+    })
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bInitQuery", "value" => "ea"}
+    })
+
+    Process.sleep(200)
+    assert changed_runs() == 0
+
+    # Still following its data.
+    rename_project("Bak")
+    Process.sleep(100)
+    html = render(view)
+    assert query_shown(html) == ["Bak"]
+    assert init_cells(html) == ["Bake"]
+
+    # A real change runs the workflow once.
+    render_blur(view, "bubble:commit", %{
+      "scope" => "",
+      "element" => "bInitQuery",
+      "value" => "Dr"
+    })
+
+    Process.sleep(200)
+    assert changed_runs() == 1
+    assert init_cells(render(view)) == ["Draw"]
+  end
+
   test "with data access off, an input whose initial content is page data is empty", %{
     conn: conn
   } do
-    {:ok, _view, html} = live(conn, "/initial")
+    {:ok, view, html} = live(conn, "/initial")
     assert query_shown(html) == [""]
     assert init_cells(html) == []
+    # The input shows what its readers read: nothing.
+    refute html =~ ~r/data-bubble-id="bInitQuery"[^>]*value="[^"]/
+
+    # A reset leaves it empty too.
+    click(view, "bInitReset")
+    assert query_shown(render(view)) == [""]
   end
 end
