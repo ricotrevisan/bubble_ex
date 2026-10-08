@@ -327,7 +327,11 @@ empty value when it has none, as an input's initial content is. Each
 state's source replaces the base whole: a repeating group whose own
 source is a search with constraints and a sort, and whose condition sets
 another search, shows that other search with its own constraints and
-sort, never one merged with the base's.
+sort, never one merged with the base's. A state whose source is another
+kind of value than the element holds (another data type, a list in a
+group, one thing in a repeating group) cannot be shown in it: residue
+(`:uncompiled_expression`, construct `conditional_source_type`; an
+untyped side or an empty value is not checked).
 
 Outside a repeating group's cell the source is read as
 `read: {:switch, %{cases, else}}`
@@ -341,22 +345,35 @@ The queries go through `BubbleData.read/4`, so one already read in the
 same pass (`once/3`) is not read again, and nothing is read for a branch
 that does not win. In a repeating group's cell the fold is one value,
 computed per cell, as before; a search there stays `:page_data_in_cell`.
-In a reusable element whose instances are in cells, a conditional source
-with a search that reads the instance's scope blocks the per-cell
-rendering, as a search does (WTF-494): it would query once per cell.
+In a reusable element rendered in cells (one of its instances is in a
+repeating group's cell, or it is nested in one that is), a conditional
+source with a search that reads the instance's scope would query once
+per cell: that source is `:page_data_in_cell` residue (`kind` `"query"`),
+and so is what reads it, but its instances are still rendered per cell
+(WTF-494). A search that reads nothing of the scope is the same query in
+every cell, read once. A value over searches read first (WTF-495) in
+such a reusable element is held to the same rule (before, it was read
+once per cell). A search source of its own that reads the scope still
+blocks the per-cell rendering of its instances, as before.
 
 What the source reads is the union of what the base, the conditions and
 the branches read: its `inputs`, `reads` and `deps` in
 `__bubble__(:data)` list them all, so the loader orders it after all of
 them and an input change or a reload of any of them reads it again, the
 conditions included (the change may flip which branch wins). Its change
-topics are every branch's resources. If any part does not load (a state
-with no condition, a condition or a source that does not compile, a
-search the Ash compiler rejects, a source it reads that is not loaded),
-the element is not loaded, never shown from its base alone or from part
-of its states: with a source of its own, `:unsupported_option`
-(`options: ["states.data_source"]`) next to the parts' own residue
-(`:uncompiled_expression`); with none, the parts' residue. What a
+topics are every branch's resources. A condition or branch reading the
+element's own value is a cycle (`:unresolved_reference`, `reference:
+"data_source"`): as the page loads that value is empty, so the condition
+would always decide on nothing. If any part does not load, the element
+is not loaded, never shown from its base alone or from part of its
+states. When a part does not lower to IR (a state with no condition, a
+condition or a source that does not compile, a state of another kind of
+value), an element with a source of its own carries
+`:unsupported_option` (`options: ["states.data_source"]`) next to the
+parts' own residue, one with none only the parts' residue. When the
+target cannot bind a part (a search the Ash compiler rejects, a value it
+cannot compile, a source it reads that is not loaded, a cycle), the
+element carries that target residue only, without the marker. What a
 "Display data" or "Display list" step shows wins over the folded source
 until a reset, as over any source of the element's own (unverified for a
 conditional source, below). Privacy is unchanged: every branch is read
@@ -834,32 +851,37 @@ and what reads them kept 173 sources from loading.
 | | before | after |
 |-|------:|------:|
 | data sources, total | 3,342 | 3,342 |
-| data sources, wired | 2,534 | 2,586 |
-| groups wired | 1,267 | 1,314 |
-| lists wired | 130 | 161 |
-| instance sources wired | 140 | 139 |
-| property values wired | 965 | 940 |
-| read as a switch (`read: {:switch, ...}`) | 0 | 75 |
+| data sources, wired | 2,534 | 2,634 |
+| groups wired | 1,267 | 1,305 |
+| lists wired | 130 | 160 |
+| instance sources wired | 140 | 151 |
+| property values wired | 965 | 986 |
+| read as a switch (`read: {:switch, ...}`) | 0 | 68 |
 | `:unsupported_option` residue entries (sources) | 101 | 26 |
-| `:page_data_in_cell` residue entries (sources) | 59 | 133 |
-| `:unavailable_input` residue entries (sources) | 520 | 459 |
+| `:uncompiled_expression` residue entries (sources) | 135 | 171 |
+| `:page_data_in_cell` residue entries (sources) | 59 | 83 |
+| `:unavailable_input` residue entries (sources) | 520 | 461 |
+| `:unresolved_reference` residue entries (sources) | 0 | 2 |
 | data sources, native (IR) | 3,034 | 3,109 |
-| workflows, wired | 532 | 527 |
+| workflows, wired | 532 | 536 |
+| steps, native | 2,411 | 2,422 |
 
-How the wired sources move: of the 101, 53 load (26 lists, 21 groups,
-6 instances); 26 stay residue because a state's condition or source
-does not compile to IR, and 22 because the target cannot bind a part
-(a search the Ash compiler rejects, a value it cannot compile, a source
-it reads that does not load, a list in a cell). 68 sources reading them
-load too (+121 in all). Against that, 12 reusable instances in
-repeating group cells and 49 property values they set, and 8 sources
-reading them, no longer load (-69): their reusable element's conditional source is now
-loaded, and one of its searches reads the instance, so it would query
-once per cell (WTF-494); before, that source was residue and the
-instances were rendered per cell without it. Net, 2,534 to 2,586. The
-wired switches (75) also include the elements with no source of their
-own that were folded before (read as a value then); the workflows
-reading what no longer loads are no longer wired.
+How the wired sources move (+100): of the 101, 53 bind and 68 sources
+reading them load with them (+121). Of those, 5 conditional sources are
+in reusable elements rendered in repeating group cells and search with
+the instance: they are `:page_data_in_cell` residue, and 10 sources
+reading them do not load either (-15); their instances are still
+rendered per cell. 6 values over a search read first, in such reusable
+elements and searching with the instance, were read once per cell; they
+are now `:page_data_in_cell` residue too (-6). Of the 101, 26 stay
+residue because a state's condition or source does not lower to IR (no
+state has a source of another kind of value), and 22 because the target
+cannot bind a part (a search the Ash compiler rejects, a value it cannot
+compile, a source it reads that does not load, a list in a cell). The 2
+`:unresolved_reference` entries are a conditional source and a property
+default reading each other in a cycle; no condition reads its own
+element here. The 68 switches also include the elements with no source
+of their own that were folded before (read as a value then).
 
 ### Private fixture app (test version), 2026-10-08, elements no data source fills (WTF-520)
 

@@ -58,11 +58,14 @@ defmodule BubbleEx.PageData do
   ## Residue
 
   On the element (`element:<id>`) or page (`page:<id>`) symbol:
-  `:uncompiled_expression` (the data source does not compile to IR),
-  `:unsupported_option` (`detail.options`: `["page_item_type"]` for a page
-  whose type of content is not a data type; `["states.data_source"]` for an
-  element with a data source of its own whose conditional states could not
-  be folded over it, because it or a state does not compile) and `:search_field_restricted`
+  `:uncompiled_expression` (the data source does not compile to IR;
+  construct `conditional_source_type` for a conditional state whose source
+  is another kind of value than the element holds), `:unsupported_option`
+  (`detail.options`: `["page_item_type"]` for a page whose type of content
+  is not a data type; `["states.data_source"]` for an element with a data
+  source of its own whose conditional states could not be folded over it
+  here, at the IR level, because it or a state does not lower; what the
+  target cannot bind is its own residue) and `:search_field_restricted`
   (`detail.fields`: a search whose constraints or sort name fields a
   privacy rule of the searched type keeps out of searches, which Bubble
   limits per user and the generated page cannot).
@@ -367,7 +370,11 @@ defmodule BubbleEx.PageData do
         symbol = Symbol.id(:element, id)
         node = Tree.node(ctx.env.tree, id)
         content = node && node.content
-        residue = Lowering.expr_residue(symbol, Enum.flat_map(states, &Tuple.to_list/1))
+
+        residue =
+          Lowering.expr_residue(symbol, Enum.flat_map(states, &Tuple.to_list/1)) ++
+            branch_types(symbol, value_type(kind, content, nil), states)
+
         {_condition, %Lowering.Expr{path: vpath}} = List.last(states)
 
         none = %Lowering.Expr{
@@ -409,7 +416,9 @@ defmodule BubbleEx.PageData do
         source
 
       states ->
-        residue = Lowering.expr_residue(source.id, Enum.flat_map(states, &Tuple.to_list/1))
+        residue =
+          Lowering.expr_residue(source.id, Enum.flat_map(states, &Tuple.to_list/1)) ++
+            branch_types(source.id, source.type, states)
 
         if source.residue == [] and residue == [] do
           value = fold(source.value, states)
@@ -423,6 +432,52 @@ defmodule BubbleEx.PageData do
   # `states` folded over `base` in order: the last state is outermost.
   defp fold(%Lowering.Expr{} = base, states),
     do: %{base | ir: Enum.reduce(states, base.ir, &conditional/2)}
+
+  # A state whose source is not the element's kind of value (another data
+  # type, a list where the element holds a thing or the reverse) cannot be
+  # shown in it: residue (`:uncompiled_expression`, construct
+  # `conditional_source_type`). `expected` is the element's type (its
+  # type of content, else its own source's); an untyped side, or an empty
+  # value, is not checked.
+  defp branch_types(_symbol, nil, _states), do: []
+
+  defp branch_types(symbol, expected, states) do
+    mismatched =
+      Enum.count(states, fn {_condition, %Lowering.Expr{ir: ir}} ->
+        match?(%IR{}, ir) and ir.op != :empty and not same_shape?(expected, ir.type)
+      end)
+
+    if mismatched == 0,
+      do: [],
+      else: [
+        Residue.entry(symbol, :uncompiled_expression, %{
+          expressions: mismatched,
+          constructs: ["conditional_source_type"]
+        })
+      ]
+  end
+
+  @doc false
+  # Whether two types hold the same kind of value (data type, scalar,
+  # option set, one or many); an unknown side matches anything.
+  @spec same_shape?(String.t() | nil, String.t() | nil) :: boolean()
+  def same_shape?(a, b) do
+    case {shape(a), shape(b)} do
+      {nil, _} -> true
+      {_, nil} -> true
+      {x, y} -> x == y
+    end
+  end
+
+  defp shape(type) when is_binary(type) do
+    case Type.classify(type) do
+      {%Type{kind: kind, cardinality: card}, _} when kind == :unknown or card == :unknown -> nil
+      {%Type{} = t, _} -> {t.kind, t.base, t.target, t.cardinality}
+      _ -> nil
+    end
+  end
+
+  defp shape(_type), do: nil
 
   defp conditional_entry(symbol),
     do: Residue.entry(symbol, :unsupported_option, %{options: ["states.data_source"]})

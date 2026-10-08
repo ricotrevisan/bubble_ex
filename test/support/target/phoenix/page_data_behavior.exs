@@ -1946,6 +1946,41 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert shown(render(view), "Own row") == ["Bake", "Clean"]
   end
 
+  defp pick(view, value, element \\ "bLoadPick") do
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => element, "value" => value}
+    })
+
+    Process.sleep(250)
+    render(view)
+  end
+
+  # WTF-521: what a Display list step shows in bOwnList wins over its own
+  # source and its condition until a reset, even when the condition flips;
+  # after the reset the folded source shows again, as the condition now
+  # says.
+  test "Display list wins over an own source with conditions until a reset", %{conn: conn} do
+    on()
+    {:ok, view, _html} = live(conn, "/loaded")
+    assert shown(render(view), "Own row") == ["Bake", "Clean"]
+    assert shown(click(view, "bOwnShow"), "Own row") == ["Eat", "Draw"]
+    assert shown(pick(view, "flip"), "Own row") == ["Eat", "Draw"]
+    assert shown(click(view, "bOwnReset"), "Own row") == ["Answer"]
+    assert shown(pick(view, "stop"), "Own row") == ["Bake", "Clean"]
+  end
+
+  # WTF-521: bCondSearch's condition is a search (a task titled as
+  # bSearchPick's value exists); it is read again as the input changes.
+  test "a condition that searches switches the source when what it searches changes", %{
+    conn: conn
+  } do
+    on()
+    {:ok, view, _html} = live(conn, "/loaded")
+    assert shown(render(view), "Search cond row") == ["Bake", "Clean"]
+    assert shown(pick(view, "Clean", "bSearchPick"), "Search cond row") == ["Answer"]
+    assert shown(pick(view, "Nothing", "bSearchPick"), "Search cond row") == ["Bake", "Clean"]
+  end
+
   defp switch_queries(acc \\ []) do
     receive do
       {:switch_query, source} -> switch_queries([source | acc])
@@ -1969,6 +2004,7 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert shown(html, "Load row") == []
     assert shown(html, "Cond row") == []
     assert shown(html, "Own row") == []
+    assert shown(html, "Search cond row") == []
   end
 
   # WTF-520: an input whose initial content is page data (bInitQuery: its

@@ -74,10 +74,10 @@ defmodule BubbleEx.PageDataTest do
 
       # The shown page's four (WTF-492) included, the initial page's three
       # (WTF-520: a group, an input's initial content, a list) and the
-      # loaded page's seven (WTF-520: a group's and three lists' searches,
-      # two conditional sources; WTF-521: a list's own search with a
-      # conditional one).
-      assert PageData.coverage(pd)["sources"] == %{"total" => 25, "native" => 25, "residue" => 0}
+      # loaded page's eight (WTF-520: a group's and three lists' searches,
+      # two conditional sources; WTF-521: two lists' own searches with
+      # conditional ones).
+      assert PageData.coverage(pd)["sources"] == %{"total" => 26, "native" => 26, "residue" => 0}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -288,12 +288,12 @@ defmodule BubbleEx.PageDataTest do
 
       # With the shown page's (WTF-492): its six sources and the six
       # elements with no source its "Display data" steps set; the initial
-      # page's three (WTF-520); the loaded page's seven (WTF-521: a list's
-      # own search with a conditional one included) and its two groups
-      # with no source (WTF-520).
+      # page's three (WTF-520); the loaded page's eight (WTF-521: two
+      # lists' own searches with conditional ones included) and its two
+      # groups with no source (WTF-520).
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 33,
-               "wired" => 33,
+               "total" => 34,
+               "wired" => 34,
                "residue" => 0
              }
 
@@ -393,7 +393,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 31
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 32
     end
 
     test "a repeating group in a repeating group's cell is residue" do
@@ -1401,6 +1401,96 @@ defmodule BubbleEx.PageDataTest do
 
       # Typing in bQuery reads it again: both the condition and the base read it.
       assert index =~ ~r/element: "bList",.*?read: :query,.*?inputs: \["bQuery"\]/s
+    end
+
+    test "a condition reading the element's own value is a cycle, not an always-empty read" do
+      own_empty = %{
+        "type" => "GetElement",
+        "properties" => %{"element_id" => "bSrcA"},
+        "next" => %{
+          "type" => "Message",
+          "name" => "get_group_data",
+          "next" => %{"type" => "Message", "name" => "is_empty"}
+        }
+      }
+
+      app = with_states(app(), "shown", "bSrcA", %{"0" => state(own_empty, "bSrcB")})
+      {_model, page_data} = build(app)
+      assert %Source{residue: [], value: %{ir: %IR{op: :if}}} = source(page_data, "bSrcA")
+
+      # Read as the page loads, This Group's Task is always empty there:
+      # the override would always win. Fail closed, and so does what
+      # reads it.
+      {spec, _project, _frontend, _app, _model} = spec(app)
+
+      assert %{
+               read: nil,
+               residue: [%{reason: :unresolved_reference, detail: %{reference: "data_source"}}]
+             } = data(spec, "bSrcA")
+    end
+
+    test "a state whose source is another kind of value than the element's is residue" do
+      task_list = %{
+        "type" => "Search",
+        "properties" => %{"type_to_find" => "custom.task", "sort_field" => "title_text"}
+      }
+
+      cases = [
+        # A Task group, a list of tasks.
+        {"bSrcA",
+         %{"condition" => @user_logged_in, "properties" => %{"data_source" => task_list}}},
+        # A Task group, a Project.
+        {"bSrcA", state(@user_logged_in, "bShownProj")},
+        # A Task list, one task.
+        {"bSrcList", state(@user_logged_in, "bSrcA")}
+      ]
+
+      for {element, bad} <- cases do
+        app = with_states(app(), "shown", element, %{"0" => bad})
+        {_model, page_data} = build(app)
+        %Source{residue: residue} = source(page_data, element)
+
+        assert %{
+                 reason: :uncompiled_expression,
+                 detail: %{constructs: ["conditional_source_type"]}
+               } =
+                 Enum.find(residue, &(&1.reason == :uncompiled_expression)),
+               element
+
+        assert %{reason: :unsupported_option} = List.last(residue)
+
+        {spec, _project, _frontend, _app, _model} = spec(app)
+        assert %{residue: [_ | _], read: nil} = data(spec, element)
+      end
+    end
+
+    test "a state's search on a field privacy keeps out of searches is residue" do
+      rules = %{
+        "everyone" => %{
+          "permissions" => %{
+            "search_for" => true,
+            "view_all" => true,
+            "non_filterable_fields" => %{"0" => "done_boolean"}
+          }
+        }
+      }
+
+      states = %{
+        "0" => %{"condition" => @user_logged_in, "properties" => %{"data_source" => @search_done}}
+      }
+
+      app =
+        app()
+        |> put_in(["user_types", "task", "privacy_role"], rules)
+        |> with_states("index", "bStrict", states)
+
+      {_model, page_data} = build(app)
+
+      assert [%{reason: :search_field_restricted, detail: %{fields: ["done_boolean"]}}] =
+               source(page_data, "bStrict").residue
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+      assert %{read: nil, residue: [_ | _]} = data(spec, "bStrict")
     end
 
     test "in a repeating group's cell, the fold stays one value computed per cell" do
