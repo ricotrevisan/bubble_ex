@@ -683,6 +683,31 @@ and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
 
+### Private fixture app (test version), 2026-10-08 (WTF-520)
+
+Inputs whose initial content is page data, and cleared dynamic sort
+fields. Of 49 inputs whose initial content is an expression, 48 lower
+and 26 are tracked (the others are placeholders, in a runtime template,
+or read a source that is not loaded). Two searches whose dynamic sort
+field was an empty text now compile.
+
+| | before | after |
+|-|------:|------:|
+| data sources, total | 3,184 | 3,210 |
+| data sources, wired | 2,321 | 2,365 |
+| lists wired | 139 | 143 |
+| instance sources wired | 127 | 131 |
+| property values wired | 931 | 941 |
+| `:unavailable_input` residue entries (sources) | 658 | 643 |
+| workflows, native (generated code) | 790 | 794 |
+| workflows, wired | 525 | 529 |
+| "An input's value is changed" workflows, native | 2 | 6 |
+| steps, native | 2,371 | 2,380 |
+
+The total grows by the 26 inputs' sources; 18 more sources load besides
+them (lists filtered by such an input, the instances in their cells and
+the properties those set).
+
 ### Private fixture app (test version), 2026-10-04 (WTF-494)
 
 Reusable instances in repeating group cells. Of the 61 instances in a
