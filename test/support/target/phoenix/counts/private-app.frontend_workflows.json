@@ -3,7 +3,7 @@
     "generated": {
       "by_kind": {
         "click": {
-          "native": 507,
+          "native": 509,
           "total": 1358
         },
         "condition_true": {
@@ -11,7 +11,7 @@
           "total": 102
         },
         "custom_event": {
-          "native": 260,
+          "native": 261,
           "total": 489
         },
         "do_every": {
@@ -53,11 +53,11 @@
           "total": 634
         },
         "reusable": {
-          "native": 530,
+          "native": 533,
           "total": 1636
         }
       },
-      "data": 187,
+      "data": 190,
       "residue_reasons": {
         "api_connector_action": 30,
         "auth_action": 14,
@@ -65,7 +65,7 @@
         "plugin_event": 250,
         "target_not_rendered": 2,
         "trigger_in_runtime_template": 194,
-        "unavailable_input": 481,
+        "unavailable_input": 476,
         "uncompiled_expression": 692,
         "unresolved_reference": 41,
         "unsupported_action": 67,
@@ -78,7 +78,7 @@
         "create": 31,
         "delete": 3,
         "display_data": 58,
-        "display_list": 6,
+        "display_list": 7,
         "focus": 32,
         "hide": 163,
         "log_out": 4,
@@ -100,17 +100,17 @@
         "update_list": 1
       },
       "steps": {
-        "native": 2422,
-        "residue": 1588,
+        "native": 2423,
+        "residue": 1587,
         "total": 4010
       },
       "workflows": {
         "client": 101,
-        "native": 806,
-        "native_own_body": 964,
-        "residue": 1464,
+        "native": 809,
+        "native_own_body": 967,
+        "residue": 1461,
         "total": 2270,
-        "wired": 536
+        "wired": 538
       }
     },
     "ir": {
@@ -226,7 +226,7 @@
       "by_kind": {
         "group": {
           "total": 1659,
-          "wired": 1305
+          "wired": 1321
         },
         "input": {
           "total": 30,
@@ -238,7 +238,7 @@
         },
         "list": {
           "total": 249,
-          "wired": 160
+          "wired": 165
         },
         "page_thing": {
           "total": 2,
@@ -246,27 +246,27 @@
         },
         "param": {
           "total": 1202,
-          "wired": 986
+          "wired": 989
         }
       },
       "reads": {
         "displayed": 119,
-        "query": 153,
-        "switch": 68,
+        "query": 155,
+        "switch": 71,
         "url_thing": 2,
-        "value": 2292
+        "value": 2311
       },
       "residue_reasons": {
-        "page_data_in_cell": 83,
-        "unavailable_input": 461,
-        "uncompiled_expression": 171,
+        "page_data_in_cell": 84,
+        "unavailable_input": 441,
+        "uncompiled_expression": 166,
         "unresolved_reference": 2,
         "unsupported_option": 26
       },
       "sources": {
-        "residue": 708,
+        "residue": 684,
         "total": 3342,
-        "wired": 2634
+        "wired": 2658
       }
     },
     "page_data_ir": {

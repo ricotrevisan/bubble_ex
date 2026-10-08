@@ -744,6 +744,15 @@ defmodule BubbleEx.Target.PhoenixTest do
       # :search like any other search.
       refute page =~ "TODO(bubble:element:bRandom)"
       assert page =~ "|> BubbleData.random_sort()"
+
+      # WTF-520: a keyword search on Body (its owner only) too; the check
+      # reads a fragment's expressions, so it sees the field.
+      refute page =~ "TODO(bubble:element:bNoteWords)"
+      assert page =~ ~r/fragment\(\s+"\(SELECT coalesce\(bool_and\(\? ILIKE/
+      assert search_fields =~ "body: [[:privacy_rule_owner]]"
+
+      assert search_fields =~
+               "defp names({tag, expression}, stack) when tag in [:expr, :casted_expr]"
     end
 
     # WTF-459: the generated project's `mix format --check-formatted` must

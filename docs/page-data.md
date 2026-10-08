@@ -1129,6 +1129,15 @@ and "Display data" over a group's own source.
 * **Matches nothing for operators other than `equals`.** The replay
   tried `equals`; that `>`, `contains`, `in` and the others match
   nothing on an empty value (or are dropped with `true`) is assumed.
+* **Keyword searches** (`contains keyword(s)`, WTF-520): compiled with a
+  conservative reading, every whitespace-separated word of the input a
+  case-insensitive substring of the field (`ILIKE`, `\`, `%` and `_`
+  matching themselves), an input of spaces only matching nothing. What
+  Bubble does needs a replay: whole words or substrings, every word or
+  any, stemming, a minimum word length, punctuation as a separator, and
+  an input of spaces only. In memory (`Bubble.Runtime.text_contains_words?/2`,
+  a condition rather than a search) the runtime still matches whole words,
+  so the two can disagree until the replay settles both.
 * A page's thing is read from the path segment after the page name; a
   slug is not resolved.
 * A repeating group shows its first page; later pages ("Show next") are

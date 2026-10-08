@@ -1,5 +1,5 @@
 {
-  "_comment": "Invented app for the enforced privacy policies (WTF-423): the backend workflows of test/support/target/workflows/backend.json and the pages of test/support/target/phoenix/page_data.json, with privacy rules on Task and a file field. scripts/phoenix_compile_check.sh renders it with privacy: :enforced and runs test/support/target/phoenix/enforced_behavior.exs, which must pass, and renders it with privacy: :omit, where the same tests must fail. Note (WTF-457): everyone finds every note and views its Title only; its owner views everything (its Score makes the owner's field policy head 100 columns, where Elixir 1.17/1.18 and 1.19+ format it differently unless the generator breaks it, WTF-459). The index page lists the flagged notes (a search constrained on Flagged, a field only the owner views): a user finds only the flagged notes they own (stricter than Bubble, which matches the stored value for every user who may search by it). Memo (WTF-475): only admins (the Current User's Admin is yes) find and view memos; the index page lists them, so a user demoted while the page is open stops seeing them on the next read, however narrow. WTF-494: the index page's list renders the reusable Task card once per cell (bCellCard, its thing the cell's task, with a workflow): a cell exists only for a task the user finds, and an event in the scope of any other is ignored. Team (WTF-494): everyone views a team's Name, its lead everything; a Board rule reads the Current User's Team's Name, so the actor is loaded with it (without authorization, for the policies). The Task card shows the Current User's Team: its Secret must read as hidden for a member who is not its lead, in a cell too.",
+  "_comment": "Invented app for the enforced privacy policies (WTF-423): the backend workflows of test/support/target/workflows/backend.json and the pages of test/support/target/phoenix/page_data.json, with privacy rules on Task and a file field. scripts/phoenix_compile_check.sh renders it with privacy: :enforced and runs test/support/target/phoenix/enforced_behavior.exs, which must pass, and renders it with privacy: :omit, where the same tests must fail. Note (WTF-457): everyone finds every note and views its Title only; its owner views everything (its Score makes the owner's field policy head 100 columns, where Elixir 1.17/1.18 and 1.19+ format it differently unless the generator breaks it, WTF-459). The index page lists the flagged notes (a search constrained on Flagged, a field only the owner views): a user finds only the flagged notes they own (stricter than Bubble, which matches the stored value for every user who may search by it). Memo (WTF-475): only admins (the Current User's Admin is yes) find and view memos; the index page lists them, so a user demoted while the page is open stops seeing them on the next read, however narrow. WTF-494: the index page's list renders the reusable Task card once per cell (bCellCard, its thing the cell's task, with a workflow): a cell exists only for a task the user finds, and an event in the scope of any other is ignored. Team (WTF-494): everyone views a team's Name, its lead everything; a Board rule reads the Current User's Team's Name, so the actor is loaded with it (without authorization, for the policies). The Task card shows the Current User's Team: its Secret must read as hidden for a member who is not its lead, in a cell too. WTF-520: Note's Body (its owner only) is searched by keyword (bNoteWords, Bubble's `contains keyword(s)` on the input bNoteQuery): a user finds only the notes whose Body they may view.",
   "_id": "enforced-probe",
   "api": {
     "wBlocked": {
@@ -1181,6 +1181,79 @@
               }
             }
           }
+        },
+        "bNoteQuery": {
+          "id": "bNoteQuery",
+          "type": "Input",
+          "properties": {
+            "content_format": "text",
+            "order": 10,
+            "width": 300,
+            "height": 40
+          }
+        },
+        "bNoteWords": {
+          "id": "bNoteWords",
+          "type": "RepeatingGroup",
+          "properties": {
+            "_comment": "WTF-520: a keyword search on a field only the owner views (Body).",
+            "columns": 1,
+            "rows": 5,
+            "order": 11,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.note",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.note",
+                "constraints": {
+                  "0": {
+                    "constraint_type": "text contains",
+                    "key": "body_text",
+                    "value": {
+                      "type": "GetElement",
+                      "properties": {
+                        "element_id": "bNoteQuery"
+                      },
+                      "next": {
+                        "type": "Message",
+                        "name": "get_data"
+                      }
+                    }
+                  }
+                },
+                "ignore_empty_constraints": true,
+                "sort_field": "title_text",
+                "descending": false
+              }
+            }
+          },
+          "elements": {
+            "bNoteWordsTitle": {
+              "id": "bNoteWordsTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Body match: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       },
       "id": "bHome",
@@ -1387,6 +1460,10 @@
         "score_number": {
           "display": "Score",
           "value": "number"
+        },
+        "body_text": {
+          "display": "Body",
+          "value": "text"
         }
       },
       "privacy_role": {

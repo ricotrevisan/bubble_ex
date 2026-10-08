@@ -6,6 +6,26 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Keyword searches compile** (WTF-520). A search constraint `contains
+  keyword(s)` on a text field (`:text_contains_words`) left the search
+  uncompiled, so a list filtered by a search box showed no rows. It now
+  compiles to a PostgreSQL fragment: the input is split into words on
+  whitespace, and a record matches when its field contains every word,
+  case-insensitively, as a substring (`ILIKE`, with `\`, `%` and `_` in a
+  word matching themselves); `doesn't contain keyword(s)` is its
+  negation. An empty input follows `ignore_empty_constraints` like any
+  constraint; an input of spaces only has no word and matches nothing.
+  This is a conservative reading: Bubble's own rule (whole words or
+  substrings, every word or any, stemming, a minimum word length) is not
+  verified and is listed in `docs/page-data.md`. With enforced policies
+  `<App>.Privacy.SearchFields` now reads a fragment's arguments, so a
+  keyword search on a field some users may not view finds only the
+  records where they may (WTF-457). Not compiled in privacy rules.
+- **A field of a converted list compiles** (WTF-520). `(x :converted to
+  list)'s field` was "a field of as_list" in pages; it is now `(x's
+  field) :converted to list`. A reusable element's property whose value
+  on one instance read it left the property, and everything reading it
+  through every instance, unloaded.
 - **Inputs whose initial content reads data give pages their value**
   (WTF-520). An Input or Multiline Input whose initial content is an
   expression (a field of its group's thing, say a number of days, with a

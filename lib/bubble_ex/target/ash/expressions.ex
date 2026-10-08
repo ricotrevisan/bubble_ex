@@ -36,6 +36,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   | `list doesn't contain item` | `is_nil(list) or is_nil(item) or not (item in list)` (an empty list contains nothing); an actor-side item must not be empty and an actor-side list needs a logged-in actor |
   | `not x` for a yes/no value | `is_distinct_from(x, true)` (empty is not yes), guarded like `is not` on the actor side |
   | `text contains string` | `contains(text, string)` |
+  | `text contains keyword(s)` (Bubble's keyword match), in a search on a text field | `fragment(<SQL>, text, part)`: the part split into words on whitespace, every word a case-insensitive substring of the text (`ILIKE`, `\`, `%` and `_` in a word matching themselves); no words or an empty text matches nothing, and `doesn't contain` is `is_nil(text) or not fragment(...)`. A conservative reading, **not verified against Bubble** (whole words or substrings, every word or any, stemming, a minimum word length); not compiled in privacy rules (PostgreSQL only, which a policy evaluated in Elixir cannot run) |
   | `+`, `-`, `*`, `/` on numbers | the operator |
   | `x defaulting to d` | `if(<x is empty>, d, x)`, emptiness as `is empty` tests it (nil, `""`, `[]`, a reference whose record is gone); `(x defaulting to d)'s a` is the chain over `x` when it is not empty, else over `d`; `(x defaulting to d) is empty` is both empty |
   | a context input (element value, parameter, …) | `^arg(:name)`, listed in `arguments`, where allowed (`inputs: :arguments`); unsupported in privacy rules |
@@ -95,6 +96,14 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
   @compare %{gt: ">", lt: "<", gte: ">=", lte: "<="}
   @arithmetic %{add: "+", sub: "-", mul: "*", div: "/"}
+  # `contains keyword(s)` (`:text_contains_words`): true when the text
+  # (the first `?`) contains every whitespace-separated word of the part
+  # (the second), case-insensitively; `LIKE`'s escape character, `%` and
+  # `_` in a word match themselves. No words, or an empty text: false.
+  @keywords_sql "(SELECT coalesce(bool_and(? ILIKE '%' || " <>
+                  "replace(replace(replace(w, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%'), false) " <>
+                  "FROM regexp_split_to_table(?, '\\s+') AS w WHERE w <> '')"
+
   # IR ops whose yes/no value may be empty (not predicates).
   @boolean_values [:field, :input, :option_attribute, :option_label, :external_field, :fallback]
 
@@ -195,7 +204,9 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
     case unsort(ir) do
       {%IR{op: :search, args: [type, pred]}, sort} ->
-        opts = Keyword.merge([inputs: :arguments], Keyword.put(opts, :resource, type))
+        opts =
+          Keyword.merge([inputs: :arguments, search?: true], Keyword.put(opts, :resource, type))
+
         pred = pred || IR.node(:literal, [true], "boolean")
         result = do_filter(pred, lookup, opts)
         {:ok, sort_result(result, sort, type, lookup, opts)}
@@ -343,6 +354,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
       lookup: lookup,
       resource: Keyword.fetch!(opts, :resource),
       inputs: Keyword.get(opts, :inputs, :unsupported),
+      search?: Keyword.get(opts, :search?, false),
       loads: MapSet.new(),
       args: %{},
       at: path_text(Keyword.get(opts, :path, "")),
@@ -586,6 +598,27 @@ defmodule BubbleEx.Target.Ash.Expressions do
     absent = {:or, [{:call, "is_nil", [t]}, {:not, contains}]}
     {all_ok({contains, absent, [{t, text.type}, {p, part.type}]}, [t, p]), st}
   end
+
+  # Bubble's keyword match (`contains keyword(s)`), read conservatively:
+  # the part split into words on whitespace, the text containing every
+  # word, case-insensitively, as a substring (`ILIKE`, with `\`, `%` and
+  # `_` escaped in each word). A part with no words matches nothing; an
+  # empty text contains nothing, so its negation holds there. In a search
+  # only: the filter is SQL (PostgreSQL), which a policy evaluated in
+  # Elixir (a create's, a field's) cannot run.
+  defp atom_(%IR{op: :text_contains_words, args: [text, part]}, %{search?: true} = st) do
+    if text.type == "text" do
+      {[t, p], st} = values([text, part], st)
+      contains = {:call, "fragment", [{:value, @keywords_sql}, t, p]}
+      absent = {:or, [{:call, "is_nil", [t]}, {:not, contains}]}
+      {all_ok({contains, absent, [{t, text.type}, {p, part.type}]}, [t, p]), st}
+    else
+      unsupported(st, {"contains keyword(s) on a value that is not a text", nil})
+    end
+  end
+
+  defp atom_(%IR{op: :text_contains_words}, st),
+    do: unsupported(st, {"contains keyword(s) outside a search", nil})
 
   # A yes/no value: `x == true`; negated, empty is not yes.
   defp atom_(%IR{op: op} = ir, st) when op in @boolean_values do

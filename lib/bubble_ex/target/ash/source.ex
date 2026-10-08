@@ -1083,6 +1083,8 @@ defmodule BubbleEx.Target.Ash.Source do
       defp names(%{__operator__?: true, left: left, right: right}, stack), do: names(left, stack) ++ names(right, stack)
       defp names(%{__function__?: true, arguments: arguments}, stack), do: names(arguments, stack)
       defp names(%Ash.Query.Call{args: args}, stack), do: names(args, stack)
+      # A fragment's arguments (keyword search): its expressions, not its SQL.
+      defp names({tag, expression}, stack) when tag in [:expr, :casted_expr], do: names(expression, stack)
       defp names(list, stack) when is_list(list), do: Enum.flat_map(list, &names(&1, stack))
       defp names(_other, _stack), do: []
 

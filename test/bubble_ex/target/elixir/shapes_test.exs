@@ -97,6 +97,53 @@ defmodule BubbleEx.Target.Elixir.ShapesTest do
     assert eval(result, [{String.to_atom(var), tasks_value}]) == ["Alpha", "Bravo"]
   end
 
+  # WTF-520: `Current User's membership's team :converted to list's name`
+  # was "a field of as_list" (not compiled); it is the field of the thing,
+  # converted. A thing's field is one item, an empty or hidden one none.
+  test "a field of a converted list is the converted field", %{project: project} do
+    membership =
+      IR.node(
+        :field,
+        [user(), "user", "active_membership_custom_membership"],
+        "custom.membership"
+      )
+
+    team = IR.node(:field, [membership, "membership", "team_custom_team"], "custom.team")
+
+    names =
+      IR.node(
+        :field,
+        [IR.node(:as_list, [team], "list.custom.team"), "team", "name_text"],
+        "list.text"
+      )
+
+    result = compile!(names, project)
+    assert result.loads == %{"current_user" => [["active_membership", "team"]]}
+
+    with_name = fn name -> %{active_membership: %{team: %{name: name}}} end
+    assert eval(result, current_user: with_name.("Red")) == ["Red"]
+
+    for empty <- [nil, "", %Hidden{}],
+        do: assert(eval(result, current_user: with_name.(empty)) == [])
+
+    assert eval(result, current_user: %{active_membership: %{team: nil}}) == []
+    assert eval(result, current_user: %{active_membership: nil}) == []
+
+    # A list converted is the list: its field compiles as the list's does
+    # (here not: a field of a list-of-things field's items, stored as IDs).
+    teams = IR.node(:field, [user(), "user", "teams_list_custom_team"], "list.custom.team")
+    converted = IR.node(:as_list, [teams], "list.custom.team")
+
+    [direct, through] =
+      for base <- [teams, converted] do
+        ir = IR.node(:field, [base, "team", "name_text"], "list.text")
+        {:ok, result} = Target.compile(ir, project, runtime: @runtime)
+        {result.source, Enum.map(result.diagnostics, &{&1.code, &1.details})}
+      end
+
+    assert through == direct
+  end
+
   test "the current user's hidden field is empty in a comparison, in either polarity",
        %{project: project} do
     name = IR.node(:field, [user(), "user", "name_text"], "text")

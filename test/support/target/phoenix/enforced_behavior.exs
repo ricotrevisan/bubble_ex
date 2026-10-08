@@ -428,6 +428,41 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
            |> Ash.read!(action: :search, actor: nil) == []
   end
 
+  # WTF-520: a keyword search (`contains keyword(s)`) on a field some
+  # users may not view (Note's Body: its owner only) is guarded as any
+  # other (WTF-457): it finds only the notes whose Body the user may view,
+  # though u2's Bravo matches too. Under :omit, u1 finds Bravo.
+  test "a keyword search on a hidden field finds only where the user may view it", %{
+    conn: conn,
+    u1: u1
+  } do
+    for {id, body} <- [{@n1, "Plan the launch"}, {@n2, "Launch plan"}, {@n3, "Notes"}],
+        do: Ash.Seed.update!(Ash.get!(PhxCheck.Note, id, authorize?: false), %{body: body})
+
+    data_access_on()
+    {:ok, view, _html} = live(sign_in(conn, u1), "/")
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bNoteQuery", "value" => "PLAN launch"}
+    })
+
+    Process.sleep(250)
+    assert body_matches(render(view)) == ["Alpha"]
+
+    # Logged out: nobody views Body, so nothing is found by it.
+    {:ok, view, _html} = live(conn, "/")
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bNoteQuery", "value" => "plan"}
+    })
+
+    Process.sleep(250)
+    assert body_matches(render(view)) == []
+  end
+
+  defp body_matches(html),
+    do: ~r/Body match: (\w+)/ |> Regex.scan(html, capture: :all_but_first) |> List.flatten()
+
   # Review of #179: the other ways a read can name Note's hidden fields.
   # Under :omit the first assertion fails (u1 views u2's Owner there).
   test "a hidden field is guarded however a read names it", %{u1: u1} do

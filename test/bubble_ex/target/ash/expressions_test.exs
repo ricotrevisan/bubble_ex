@@ -347,6 +347,135 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
     end
   end
 
+  # WTF-520: `contains keyword(s)` (Bubble's keyword match) on a text
+  # field, read conservatively: every whitespace-separated word of the
+  # input a case-insensitive substring of the field, `\`, `%` and `_`
+  # escaped. The SQL itself runs in scripts/phoenix_compile_check.sh
+  # (page_data_behavior.exs: several words, case, escaping, empty input).
+  describe "contains keyword(s)" do
+    defp keywords(project, op, options, searches \\ :page) do
+      env = env(searches: searches)
+      # A text parameter: `""` is empty like nil.
+      q = %{
+        "type" => "CurrentWorkflowItem",
+        "properties" => %{"btype_id" => "text", "param_id" => "pQ", "param_name" => "q"}
+      }
+
+      raw = search("custom.task", [con("title_text", op, q)], options)
+      {:ok, %{ir: ir}} = Compiler.compile(parse!(raw, env), env)
+      {:ok, result} = Expressions.search(ir, project)
+      result
+    end
+
+    @arg "^arg(:parameter_pq_q)"
+
+    test "every word of the input, as a case-insensitive substring, escaped", %{
+      project: project
+    } do
+      %{expr: expr, diagnostics: []} =
+        keywords(project, "text contains", %{"ignore_empty_constraints" => true})
+
+      assert [%{name: "parameter_pq_q", type: "text"}] = expr.arguments
+
+      assert {:or, [_empty, {:call, "fragment", [{:value, sql}, {:ref, [], "title"}, {:arg, _}]}]} =
+               expr.expr
+
+      # Split on whitespace, empty words skipped; every word must match.
+      assert sql =~ "regexp_split_to_table(?, '\\s+') AS w WHERE w <> ''"
+      assert sql =~ "coalesce(bool_and(? ILIKE '%' || "
+      # LIKE's escape character first, then its wildcards.
+      assert sql =~
+               "replace(replace(replace(w, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%'), false)"
+
+      # The printed filter is valid Elixir, its SQL a literal.
+      source = Source.expr(expr)
+      assert {:ok, _} = Code.string_to_quoted(source)
+      assert source =~ ~s|fragment("(SELECT coalesce(bool_and(? ILIKE '%' |
+      assert source =~ ~s|, title, #{@arg})|
+    end
+
+    test "an empty input: dropped when the search ignores empty constraints, else nothing", %{
+      project: project
+    } do
+      fragment = fn %{expr: expr} ->
+        source = Source.expr(expr)
+        [_, call] = Regex.run(~r/(fragment\(.*\))\)$/, source)
+        {source, call}
+      end
+
+      {dropped, call} =
+        fragment.(keywords(project, "text contains", %{"ignore_empty_constraints" => true}))
+
+      assert dropped == ~s|expr(is_nil(#{@arg}) or #{@arg} == "" or #{call})|
+
+      for options <- [%{}, %{"ignore_empty_constraints" => false}] do
+        {nothing, call} = fragment.(keywords(project, "text contains", options))
+        assert nothing == ~s|expr(not (is_nil(#{@arg}) or #{@arg} == "") and #{call})|
+      end
+
+      # A backend search matches nothing on an empty input, whatever it states.
+      {backend, call} =
+        fragment.(
+          keywords(project, "text contains", %{"ignore_empty_constraints" => true}, :backend)
+        )
+
+      assert backend == ~s|expr(not (is_nil(#{@arg}) or #{@arg} == "") and #{call})|
+    end
+
+    test "doesn't contain keyword(s): an empty field contains none", %{project: project} do
+      %{expr: expr, diagnostics: []} =
+        keywords(project, "not text contains", %{"ignore_empty_constraints" => true})
+
+      source = Source.expr(expr)
+      assert source =~ "or is_nil(title) or not fragment("
+    end
+
+    test "not compiled outside a search, nor on a value that is not a text", %{
+      project: project
+    } do
+      title =
+        IR.node(
+          :field,
+          [IR.node(:this, [:rule_record], "custom.task"), "task", "title_text"],
+          "text"
+        )
+
+      words =
+        IR.node(:text_contains_words, [title, IR.node(:literal, ["a b"], "text")], "boolean")
+
+      assert {:ok, %{expr: nil, diagnostics: [diag]}} =
+               Expressions.filter(words, project, resource: "task")
+
+      assert %{
+               code: :ash_expr_unsupported,
+               details: %{constructs: ["contains keyword(s) outside a search"]}
+             } =
+               diag
+
+      estimate =
+        IR.node(
+          :field,
+          [IR.node(:this, [:filter_item], "custom.task"), "task", "estimate_number"],
+          "number"
+        )
+
+      search =
+        IR.node(
+          :search,
+          [
+            "task",
+            IR.node(:text_contains_words, [estimate, IR.node(:literal, ["1"], "text")], "boolean")
+          ],
+          "list.custom.task"
+        )
+
+      assert {:ok, %{expr: nil, diagnostics: [diag]}} = Expressions.search(search, project)
+
+      assert %{details: %{constructs: ["contains keyword(s) on a value that is not a text"]}} =
+               diag
+    end
+  end
+
   test "Bubble's random sort compiles to :random; an unknown sort field does not (WTF-452)", %{
     project: project
   } do
