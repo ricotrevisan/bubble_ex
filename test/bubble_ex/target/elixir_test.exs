@@ -35,8 +35,10 @@ defmodule BubbleEx.Target.ElixirTest do
     def default(x, d), do: if(empty?(x), do: d, else: x)
     def as_list(x) when is_list(x), do: x
     def as_list(x), do: if(empty?(x), do: [], else: [x])
+    def unhidden(""), do: nil
     def unhidden(x), do: x
     def id(%BubbleEx.Target.ElixirTest.Hidden{}), do: nil
+    def id(""), do: nil
     def id(%{id: id}), do: id
     def id(id) when is_binary(id), do: id
     def id(_x), do: nil
@@ -212,6 +214,67 @@ defmodule BubbleEx.Target.ElixirTest do
 
       assert eval(eq, element_state_bg1_param_p1: empty, this: %{assignee_id: nil})
       refute eval(eq, element_state_bg1_param_p1: empty, this: %{assignee_id: "u1"})
+    end
+  end
+
+  # WTF-514: Bubble has no empty text apart from empty, so `is` and `is
+  # not` read `""` as empty (inferred, not replayed). The generated
+  # policies keep the stricter rule (Target.Ash.ExpressionsTest).
+  test "an empty text is empty in is / is not; numbers and the actor guard unchanged", %{
+    project: project
+  } do
+    this = IR.node(:this, [:rule_record], "custom.task")
+    title = IR.node(:field, [this, "task", "title_text"], "text")
+    parent = IR.node(:field, [this, "task", "parent_custom_task"], "custom.task")
+    parent_title = IR.node(:field, [parent, "task", "title_text"], "text")
+    segment = IR.node(:input, [:url, %{"type" => "path_segment", "index" => 2}], "text")
+    empty_text = IR.node(:literal, [""], "text")
+
+    compile_ir = fn ir ->
+      {:ok, result} = Target.compile(ir, project, runtime: @runtime)
+      assert result.source, inspect(result.diagnostics)
+      result
+    end
+
+    is = compile_ir.(IR.node(:eq, [title, parent_title], "boolean"))
+    is_not = compile_ir.(IR.node(:neq, [title, parent_title], "boolean"))
+
+    for a <- [nil, ""], b <- [nil, ""] do
+      this = %{title: a, parent: %{title: b}}
+      assert eval(is, this: this), "#{inspect(a)} is #{inspect(b)}"
+      refute eval(is_not, this: this), "#{inspect(a)} is not #{inspect(b)}"
+    end
+
+    refute eval(is, this: %{title: "", parent: %{title: "Plan"}})
+    assert eval(is_not, this: %{title: "", parent: %{title: "Plan"}})
+
+    # Against an empty text literal: nil is it too.
+    for op <- [:eq, :neq], value <- [nil, "", "Plan"] do
+      result = compile_ir.(IR.node(op, [title, empty_text], "boolean"))
+      assert eval(result, this: %{title: value}) == (op == :eq == (value != "Plan"))
+    end
+
+    # The demo's tab: a value set to an empty text against a URL path
+    # segment that is not there (nil).
+    tab = compile_ir.(IR.node(:eq, [segment, title], "boolean"))
+    [%{var: var}] = Enum.reject(tab.bindings, &(&1.var == "this"))
+    assert eval(tab, [{String.to_atom(var), nil}, this: %{title: ""}])
+    refute eval(tab, [{String.to_atom(var), "x"}, this: %{title: ""}])
+
+    # Numbers keep their semantics: 0 is not empty.
+    estimate = IR.node(:field, [this, "task", "estimate_number"], "number")
+    parent_estimate = IR.node(:field, [parent, "task", "estimate_number"], "number")
+    numbers = compile_ir.(IR.node(:eq, [estimate, parent_estimate], "boolean"))
+    refute eval(numbers, this: %{estimate: 0, parent: %{estimate: nil}})
+    assert eval(numbers, this: %{estimate: nil, parent: %{estimate: nil}})
+
+    # The current user's empty text still matches nothing (fail-safe).
+    name = IR.node(:field, [IR.node(:current_user, [], "user"), "user", "name_text"], "text")
+
+    for op <- [:eq, :neq] do
+      guarded = compile_ir.(IR.node(op, [title, name], "boolean"))
+      refute eval(guarded, this: %{title: nil}, current_user: %{name: ""}), "#{op}"
+      refute eval(guarded, this: %{title: ""}, current_user: %{name: nil}), "#{op}"
     end
   end
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "Synthetic fixture: Get data from page URL (WTF-508), as replayed 2026-10-07. All data invented.",
+  "_comment": "Synthetic fixture: Get data from page URL (WTF-508), as replayed 2026-10-07; empty texts (WTF-514) and the case-insensitive User email (WTF-515). All data invented.",
   "_id": "url-fixture",
   "element_definitions": {
     "nav": {
@@ -312,6 +312,76 @@
               "type": "TextExpression"
             },
             "width": 300
+          },
+          "type": "Text"
+        },
+        "bEmail": {
+          "id": "bEmail",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 32,
+            "text": {
+              "entries": {
+                "0": "Email: ",
+                "1": {
+                  "next": {
+                    "name": "email",
+                    "type": "Message"
+                  },
+                  "type": "CurrentUser"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bEmailIsE": {
+          "id": "bEmailIsE",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 33,
+            "text": {
+              "entries": {
+                "0": "Email is e"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "email",
+                  "next": {
+                    "args": {
+                      "properties": {
+                        "parameter_name": {
+                          "entries": {
+                            "0": "e"
+                          },
+                          "type": "TextExpression"
+                        }
+                      },
+                      "type": "GetParamFromUrl"
+                    },
+                    "name": "equals",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
           },
           "type": "Text"
         },
@@ -706,6 +776,101 @@
               "type": "TextExpression"
             },
             "width": 300
+          },
+          "type": "Text"
+        },
+        "bSegEmpty": {
+          "id": "bSegEmpty",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 30,
+            "text": {
+              "entries": {
+                "0": "Segment empty"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "args": 2,
+                  "name": "specific_item",
+                  "next": {
+                    "args": {
+                      "entries": {},
+                      "type": "TextExpression"
+                    },
+                    "name": "equals",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "type": "path_segment"
+                },
+                "type": "GetParamFromUrl"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bSegIsQ": {
+          "id": "bSegIsQ",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 31,
+            "text": {
+              "entries": {
+                "0": "Segment is q"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "args": 2,
+                  "name": "specific_item",
+                  "next": {
+                    "args": {
+                      "properties": {
+                        "parameter_name": {
+                          "entries": {
+                            "0": "q"
+                          },
+                          "type": "TextExpression"
+                        }
+                      },
+                      "type": "GetParamFromUrl"
+                    },
+                    "name": "equals",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "type": "path_segment"
+                },
+                "type": "GetParamFromUrl"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
           },
           "type": "Text"
         },

@@ -444,6 +444,9 @@ defmodule <%= @module %>.Workflows.Runtime do
   def text(%struct{} = x) when struct in [DateTime, NaiveDateTime, Date],
     do: <%= @module %>.Bubble.Runtime.utc_text(x)
 
+  # A case-insensitive text (the User's email) is its text (WTF-515).
+  def text(x) when is_struct(x, Ash.CiString), do: to_string(x)
+
   def text(x) do
     if String.Chars.impl_for(x) != nil and not is_map(x), do: to_string(x), else: inspect(x)
   end
@@ -486,6 +489,7 @@ defmodule <%= @module %>.Workflows.Runtime do
   def dump(%Decimal{} = d), do: Decimal.to_float(d)
   def dump(%Time{} = t), do: Time.to_iso8601(t)
   def dump(%NaiveDateTime{} = d), do: NaiveDateTime.to_iso8601(d)
+  def dump(x) when is_struct(x, Ash.CiString), do: to_string(x)
 <%= if @enforced? do %>  # A field the privacy rules hide from the actor is empty, as in Bubble.
   def dump(%Ash.ForbiddenField{}), do: nil
 <% end %>  def dump(%{__struct__: _, id: id}), do: id

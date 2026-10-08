@@ -26,6 +26,7 @@ defmodule BubbleEx.Target.Elixir.ShapesTest do
     def as_list(x) when is_list(x), do: x
     def as_list(x), do: if(empty?(x), do: [], else: [x])
     def unhidden(%Hidden{}), do: nil
+    def unhidden(""), do: nil
     def unhidden(x), do: x
     def id(%Hidden{}), do: nil
     def id(%{id: id}), do: id
@@ -146,11 +147,19 @@ defmodule BubbleEx.Target.Elixir.ShapesTest do
     refute eval(is, this: %{title: "Plan", parent: %{title: %Hidden{}}})
     assert eval(is_not, this: %{title: "Plan", parent: %{title: %Hidden{}}})
 
-    # Against a value literal nothing changes: `==`/`!=` already answer as
-    # for empty, so the source stays plain.
-    plain = compile!(IR.node(:neq, [title, lit("Plan", "text")], "boolean"), project)
+    # Against a literal that is no text nothing changes: `==`/`!=` already
+    # answer as for empty, so the source stays plain.
+    estimate = IR.node(:field, [this(), "task", "estimate_number"], "number")
+    plain = compile!(IR.node(:neq, [estimate, lit(3.0, "number")], "boolean"), project)
     refute plain.source =~ "unhidden"
-    assert eval(plain, this: %{title: %Hidden{}})
+    assert eval(plain, this: %{estimate: %Hidden{}})
+
+    # A text literal: the other side may be a case-insensitive text
+    # (WTF-515), so it is read through unhidden/1 too.
+    text = compile!(IR.node(:neq, [title, lit("Plan", "text")], "boolean"), project)
+    assert text.source =~ "unhidden"
+    assert eval(text, this: %{title: %Hidden{}})
+    refute eval(text, this: %{title: "Plan"})
   end
 
   test "a hidden thing compared with an empty one is empty against empty", %{project: project} do

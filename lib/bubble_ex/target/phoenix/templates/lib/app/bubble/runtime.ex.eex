@@ -19,6 +19,15 @@ defmodule <%= @module %>.Bubble.Runtime do
 
   import Kernel, except: [abs: 1, div: 2, round: 1]
 
+  # A case-insensitive text (`Ash.CiString`: the User's email) is its text
+  # wherever a value is read as text: shown, compared, sorted, or given to
+  # a text operator (WTF-515). Matched by its struct name, so this module
+  # compiles on its own.
+  defguardp ci?(x) when is_struct(x, Ash.CiString)
+
+  defp plain(x) when ci?(x), do: to_string(x)
+  defp plain(x), do: x
+
   @default_date_format "mmm d, yyyy h:MM tt"
   @default_day_format "mmm d, yyyy"
 
@@ -35,6 +44,9 @@ defmodule <%= @module %>.Bubble.Runtime do
   # policies, so policies added to the app later read the same; matched by
   # its struct name, so this module compiles on its own).
   def text(%{__struct__: Ash.ForbiddenField}), do: ""
+  # A case-insensitive text (`Ash.CiString`, the User's email) is its text,
+  # never its debug output (WTF-515).
+  def text(x) when ci?(x), do: plain(x)
   def text(true), do: "yes"
   def text(false), do: "no"
   def text(x) when is_float(x), do: js_number(x)
@@ -92,15 +104,24 @@ defmodule <%= @module %>.Bubble.Runtime do
   def empty?(%{__struct__: Ash.ForbiddenField}), do: true
   def empty?(x), do: x in [nil, "", []]
 
-  @doc "A compared value: a field the user may not view is empty (nil), as in Bubble."
+  @doc """
+  A compared value (`is`, `is not`) as Bubble reads it: a field the user
+  may not view is empty (nil), and so is an empty text: Bubble has no
+  empty text apart from empty, so `""` is nil (WTF-514, inferred, not
+  replayed). A case-insensitive text is its text (WTF-515).
+  """
   def unhidden(%{__struct__: Ash.ForbiddenField}), do: nil
+  def unhidden(""), do: nil
+  def unhidden(x) when ci?(x), do: x |> plain() |> unhidden()
   def unhidden(x), do: x
 
   @doc """
   A thing's Bubble ID: a record's `id`, an ID itself, nil otherwise (a
-  field the user may not view is empty, so it has none).
+  field the user may not view is empty, so it has none; an empty text is
+  no ID).
   """
   def id(%{__struct__: Ash.ForbiddenField}), do: nil
+  def id(""), do: nil
   def id(%{id: id}), do: id
   def id(id) when is_binary(id), do: id
   def id(_x), do: nil
@@ -119,6 +140,8 @@ defmodule <%= @module %>.Bubble.Runtime do
       end
     end
   end
+
+  defp order(a, b) when ci?(a) or ci?(b), do: order(plain(a), plain(b))
 
   # Ecto's naive datetimes hold UTC.
   defp order(%NaiveDateTime{} = a, b), do: order(DateTime.from_naive!(a, "Etc/UTC"), b)
@@ -153,12 +176,17 @@ defmodule <%= @module %>.Bubble.Runtime do
   @doc "`defaulting to`."
   def default(x, d), do: if(empty?(x), do: d, else: x)
 
+
+  def lowercase(x) when ci?(x), do: x |> plain() |> lowercase()
   def lowercase(x) when is_binary(x), do: String.downcase(x)
   def lowercase(x), do: x
+  def uppercase(x) when ci?(x), do: x |> plain() |> uppercase()
   def uppercase(x) when is_binary(x), do: String.upcase(x)
   def uppercase(x), do: x
+  def trim(x) when ci?(x), do: x |> plain() |> trim()
   def trim(x) when is_binary(x), do: String.trim(x)
   def trim(x), do: x
+  def text_length(x) when ci?(x), do: x |> plain() |> text_length()
   def text_length(x) when is_binary(x), do: String.length(x)
   def text_length(_x), do: 0
   def abs(x) when is_number(x), do: Kernel.abs(x)
@@ -167,6 +195,7 @@ defmodule <%= @module %>.Bubble.Runtime do
   def round(x), do: x
   def to_text(x), do: text(x)
 
+  def to_number(x) when ci?(x), do: x |> plain() |> to_number()
   def to_number(x) when is_number(x), do: x
 
   def to_number(x) when is_binary(x) do
@@ -179,11 +208,16 @@ defmodule <%= @module %>.Bubble.Runtime do
   def to_number(_x), do: nil
 
   @doc "`text contains string`: substring."
+  def text_contains?(a, b) when ci?(a) or ci?(b), do: text_contains?(plain(a), plain(b))
   def text_contains?(a, b) when is_binary(a) and is_binary(b), do: String.contains?(a, b)
   def text_contains?(_a, _b), do: false
 
+  def truncate(x, n) when ci?(x), do: x |> plain() |> truncate(n)
   def truncate(x, n) when is_binary(x) and is_integer(n), do: String.slice(x, 0, n)
   def truncate(x, _n), do: x
+
+  def replace(x, find, replacement, regex?) when ci?(x) or ci?(find),
+    do: replace(plain(x), plain(find), replacement, regex?)
 
   def replace(x, find, replacement, false) when is_binary(x) and is_binary(find),
     do: String.replace(x, find, text(replacement))
@@ -208,10 +242,14 @@ defmodule <%= @module %>.Bubble.Runtime do
 
   def replace(x, _find, _replacement, _regex?), do: x
 
+  def split(x, sep) when ci?(x) or ci?(sep), do: split(plain(x), plain(sep))
   def split(x, sep) when is_binary(x) and is_binary(sep) and sep != "", do: String.split(x, sep)
   def split(x, _sep), do: x
 
   # TODO(bubble:runtime) Bubble's word-level match.
+  def text_contains_words?(a, b) when ci?(a) or ci?(b),
+    do: text_contains_words?(plain(a), plain(b))
+
   def text_contains_words?(a, b) when is_binary(a) and is_binary(b) do
     words = a |> String.downcase() |> String.split(~r/\W+/u, trim: true)
     b |> String.downcase() |> String.split(~r/\W+/u, trim: true) |> Enum.all?(&(&1 in words))
@@ -220,12 +258,15 @@ defmodule <%= @module %>.Bubble.Runtime do
   def text_contains_words?(_a, _b), do: false
 
   # TODO(bubble:runtime) Bubble capitalizes after spaces only.
+  def capitalize_words(x) when ci?(x), do: x |> plain() |> capitalize_words()
+
   def capitalize_words(x) when is_binary(x),
     do: x |> String.split(" ") |> Enum.map_join(" ", &String.capitalize/1)
 
   def capitalize_words(x), do: x
 
   # TODO(bubble:runtime) Bubble's JSON-safe text (quotes escaped, no outer quotes).
+  def json_encode(x) when ci?(x), do: x |> plain() |> json_encode()
   def json_encode(x) when is_binary(x), do: x |> Jason.encode!() |> String.slice(1..-2//1)
   # JSON-safe is text whatever it formats (WTF-500): a yes/no is `"true"` or
   # `"false"` (never `"yes"`), a number its text and a date ISO 8601 (not
@@ -245,10 +286,12 @@ defmodule <%= @module %>.Bubble.Runtime do
   def json_encode(%{__struct__: Ash.ForbiddenField}), do: nil
   def json_encode(x), do: x
 
+  def url_encode(x) when ci?(x), do: x |> plain() |> url_encode()
   def url_encode(x) when is_binary(x), do: URI.encode_www_form(x)
   def url_encode(x), do: x
 
   # TODO(bubble:runtime) Bubble's email check.
+  def is_email(x) when ci?(x), do: x |> plain() |> is_email()
   def is_email(x) when is_binary(x), do: Regex.match?(~r/\A[^@\s]+@[^@\s]+\.[^@\s]+\z/, x)
   def is_email(_x), do: false
 

@@ -249,6 +249,44 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
     end
   end
 
+  describe "empty and case-insensitive texts" do
+    # WTF-514: Bubble has no empty text apart from empty (inferred, not
+    # replayed): a missing path segment (nil) is an empty text (`""`).
+    test "an empty text is empty: a missing segment is it, and so is ?q=", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/")
+      refute hidden?(view, "bSegEmpty")
+      refute hidden?(view, "bSegIsQ")
+
+      {:ok, view, _html} = live(conn, "/?q=")
+      refute hidden?(view, "bSegIsQ")
+
+      {:ok, view, _html} = live(conn, "/?q=x")
+      assert hidden?(view, "bSegIsQ")
+
+      {:ok, view, _html} = live(conn, "/index/x")
+      assert hidden?(view, "bSegEmpty")
+      assert hidden?(view, "bSegIsQ")
+
+      {:ok, view, _html} = live(conn, "/index/x?q=x")
+      refute hidden?(view, "bSegIsQ")
+    end
+
+    # WTF-515: the User's email is a case-insensitive text (Ash.CiString):
+    # shown as its text, compared as text.
+    test "the current user's email shows and compares as text", %{conn: conn, u1: u1} do
+      {:ok, view, _html} = live(sign_in(conn, u1), "/?e=one%40example.com")
+      assert text(view, "bEmail") == "Email: one@example.com"
+      refute hidden?(view, "bEmailIsE")
+
+      {:ok, view, _html} = live(sign_in(conn, u1), "/?e=two%40example.com")
+      assert hidden?(view, "bEmailIsE")
+
+      {:ok, view, _html} = live(conn, "/?e=")
+      assert text(view, "bEmail") == "Email:"
+      assert hidden?(view, "bEmailIsE")
+    end
+  end
+
   describe "a thing in the URL" do
     test "is read by its unique ID through Ash as the user; an unknown ID is empty", %{
       conn: conn,
