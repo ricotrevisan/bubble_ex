@@ -144,10 +144,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
     uses_js? = Enum.any?(workflows, & &1.client?)
 
-    queries? =
-      Enum.any?(data, fn d ->
-        match?(%{read: {:query, _}}, d) or match?(%{read: {:value, %{queries: [_ | _]}}}, d)
-      end)
+    queries? = Enum.any?(data, &Spec.reads_query?/1)
 
     """
     defmodule #{s.module} do
@@ -670,6 +667,8 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       case read do
         {:value, v} -> Map.get(v, :queries, [])
         {:query, q} -> Map.get(q, :queries, [])
+        # A conditional source (WTF-521): every branch's and condition's.
+        {:switch, sw} -> Enum.flat_map(Spec.switch_reads(sw), &switch_queries/1)
         _ -> []
       end
 
@@ -680,6 +679,9 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   end
 
   defp query_topics(_d), do: ""
+
+  defp switch_queries({:query, q}), do: [q | Map.get(q, :queries, [])]
+  defp switch_queries({:value, v}), do: Map.get(v, :queries, [])
 
   # How a source is read for every cell of a repeating group together
   # (WTF-494): a reusable element's sources (its instances in cells) and a
@@ -748,6 +750,9 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp read_bindings({:query, q}),
     do: pin_bindings(q) ++ Enum.flat_map(Map.get(q, :queries, []), &pin_bindings/1)
 
+  # A conditional source (WTF-521): what its conditions and branches read.
+  defp read_bindings({:switch, sw}), do: Enum.flat_map(Spec.switch_reads(sw), &read_bindings/1)
+
   defp read_bindings(_), do: []
 
   defp pin_bindings(%{pins: pins}),
@@ -792,6 +797,10 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp data_read_kind({:query, _}), do: ":query"
   # A value over queries (WTF-495) follows their type's changes too.
   defp data_read_kind({:value, %{queries: [_ | _]}}), do: ":query"
+
+  defp data_read_kind({:switch, _} = read),
+    do: if(Spec.reads_query?(%{read: read}), do: ":query", else: ":value")
+
   defp data_read_kind(_), do: ":value"
 
   defp data_instance(%{kind: :instance, element: element}), do: literal(element)
@@ -845,24 +854,46 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     """
   end
 
+  # A conditional source (WTF-521): the conditions tested in order, the
+  # last state first, and only the winning branch read (or the base), each
+  # a function of its own.
+  defp data_source(%{read: {:switch, sw}} = d, _s, ctx) do
+    fun = data_fun(d)
+    n = length(sw.cases)
+
+    clauses =
+      sw.cases
+      |> Enum.with_index(1)
+      |> Enum.map_join("", fn {_case, i} ->
+        "    #{fun}_when_#{i}(ctx) == true -> #{fun}_then_#{i}(ctx)\n"
+      end)
+
+    parts =
+      sw.cases
+      |> Enum.with_index(1)
+      |> Enum.map_join("", fn {c, i} ->
+        data_part("#{fun}_when_#{i}", condition_body(c.when, ctx)) <>
+          data_part("#{fun}_then_#{i}", read_body(c.then, d, ctx))
+      end)
+
+    """
+    # bubble:data #{data_marker(d)}
+    # Of #{n} conditional state#{if n == 1, do: "", else: "s"}, the last whose condition is yes wins, else the base (WTF-521).
+    @doc false
+    def #{fun}(ctx) do
+      cond do
+    #{clauses}    true -> #{fun}_else(ctx)
+      end
+    end
+    #{parts}#{data_part("#{fun}_else", read_body(sw.else, d, ctx))}
+    """
+  end
+
   defp data_source(d, _s, ctx) do
     body =
       case d.read do
-        :url_thing ->
-          "BubbleData.url_thing(ctx, #{ctx.module}.#{d.resource})"
-
-        {:value, %{queries: [_ | _] = queries} = v} ->
-          resource = if d.resource, do: "#{ctx.module}.#{d.resource}", else: "nil"
-
-          "#{queries_source(queries, [v], ctx)}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?}, #{inspect(d.page_size)})"
-
-        {:value, v} ->
-          resource = if d.resource, do: "#{ctx.module}.#{d.resource}", else: "nil"
-
-          "#{prelude([v], d.cell != nil, true)}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?}, #{inspect(d.page_size)})"
-
-        {:query, q} ->
-          query_source(q, d, ctx)
+        :url_thing -> "BubbleData.url_thing(ctx, #{ctx.module}.#{d.resource})"
+        read -> read_body(read, d, ctx)
       end
 
     arg = if String.contains?(body, "ctx"), do: "ctx", else: "_ctx"
@@ -875,6 +906,38 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     end
     """
   end
+
+  defp data_part(name, body) do
+    arg = if String.contains?(body, "ctx"), do: "ctx", else: "_ctx"
+
+    """
+
+    defp #{name}(#{arg}) do
+      #{body}
+    end
+    """
+  end
+
+  # What a source's read evaluates to.
+  defp read_body({:value, %{queries: [_ | _] = queries} = v}, d, ctx) do
+    resource = if d.resource, do: "#{ctx.module}.#{d.resource}", else: "nil"
+
+    "#{queries_source(queries, [v], ctx)}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?}, #{inspect(d.page_size)})"
+  end
+
+  defp read_body({:value, v}, d, ctx) do
+    resource = if d.resource, do: "#{ctx.module}.#{d.resource}", else: "nil"
+
+    "#{prelude([v], d.cell != nil, true)}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?}, #{inspect(d.page_size)})"
+  end
+
+  defp read_body({:query, q}, d, ctx), do: query_source(q, d, ctx)
+
+  # A conditional state's condition: a value, yes only when it is yes.
+  defp condition_body({:value, %{queries: [_ | _] = queries} = v}, ctx),
+    do: "#{queries_source(queries, [v], ctx)}(#{v.source})"
+
+  defp condition_body({:value, v}, _ctx), do: "#{prelude([v], false, true)}(#{v.source})"
 
   defp query_source(%{queries: [_ | _] = queries} = q, d, ctx) do
     """

@@ -1904,6 +1904,56 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert shown(render(view), "Cond in row") == []
   end
 
+  # WTF-521: bOwnList has a data source of its own (open tasks, A to Z, two
+  # rows); its condition on bLoadPick swaps in a whole other search (done
+  # tasks, Z to A), not one merged with the base's constraint, which would
+  # show nothing.
+  test "a conditional data source over an element's own one switches and back", %{conn: conn} do
+    on()
+    {:ok, view, _html} = live(conn, "/loaded")
+    assert shown(render(view), "Own row") == ["Bake", "Clean"]
+
+    # Only the winning branch is read: one query of tasks, not the base's too.
+    handler = "page-data-switch-#{System.unique_integer([:positive])}"
+    parent = self()
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:phx_check, :repo, :query],
+        fn _, _, meta, _ -> send(parent, {:switch_query, meta.source}) end,
+        nil
+      )
+
+    try do
+      render_change(view, "bubble:change", %{
+        "bubble" => %{"scope" => "", "element" => "bLoadPick", "value" => "flip"}
+      })
+
+      Process.sleep(250)
+      assert shown(render(view), "Own row") == ["Answer"]
+    after
+      :telemetry.detach(handler)
+    end
+
+    assert switch_queries() == %{"task" => 1}
+
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bLoadPick", "value" => "stop"}
+    })
+
+    Process.sleep(250)
+    assert shown(render(view), "Own row") == ["Bake", "Clean"]
+  end
+
+  defp switch_queries(acc \\ []) do
+    receive do
+      {:switch_query, source} -> switch_queries([source | acc])
+    after
+      0 -> Enum.frequencies(acc)
+    end
+  end
+
   test "Display list wins over a conditional data source until a reset", %{conn: conn} do
     on()
     {:ok, view, _html} = live(conn, "/loaded")
@@ -1918,6 +1968,7 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert shown(html, "Loaded") == []
     assert shown(html, "Load row") == []
     assert shown(html, "Cond row") == []
+    assert shown(html, "Own row") == []
   end
 
   # WTF-520: an input whose initial content is page data (bInitQuery: its

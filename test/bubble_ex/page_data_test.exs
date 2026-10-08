@@ -74,9 +74,10 @@ defmodule BubbleEx.PageDataTest do
 
       # The shown page's four (WTF-492) included, the initial page's three
       # (WTF-520: a group, an input's initial content, a list) and the
-      # loaded page's six (WTF-520: a group's and three lists' searches,
-      # two conditional sources).
-      assert PageData.coverage(pd)["sources"] == %{"total" => 24, "native" => 24, "residue" => 0}
+      # loaded page's seven (WTF-520: a group's and three lists' searches,
+      # two conditional sources; WTF-521: a list's own search with a
+      # conditional one).
+      assert PageData.coverage(pd)["sources"] == %{"total" => 25, "native" => 25, "residue" => 0}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -287,11 +288,12 @@ defmodule BubbleEx.PageDataTest do
 
       # With the shown page's (WTF-492): its six sources and the six
       # elements with no source its "Display data" steps set; the initial
-      # page's three (WTF-520); the loaded page's six and its two groups
+      # page's three (WTF-520); the loaded page's seven (WTF-521: a list's
+      # own search with a conditional one included) and its two groups
       # with no source (WTF-520).
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 32,
-               "wired" => 32,
+               "total" => 33,
+               "wired" => 33,
                "residue" => 0
              }
 
@@ -391,7 +393,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 30
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 31
     end
 
     test "a repeating group in a repeating group's cell is residue" do
@@ -793,8 +795,9 @@ defmodule BubbleEx.PageDataTest do
       assert %{blocked_by: [_ | _]} =
                Enum.find(spec.surfaces["bLoadedPage"].workflows, &(&1.workflow == "wClicked"))
 
-      # bCond's only source is its condition's, reading bLoaded.
-      assert %{read: {:value, _}, residue: [], reads: cond_reads} = data(spec, "bCond")
+      # bCond's only source is its condition's, reading bLoaded (WTF-521:
+      # the condition tested, then only its branch read).
+      assert %{read: {:switch, _}, residue: [], reads: cond_reads} = data(spec, "bCond")
       assert {:data, %{path: [], element: "bLoaded"}} in cond_reads
     end
 
@@ -1005,7 +1008,7 @@ defmodule BubbleEx.PageDataTest do
         }
       }
 
-    test "conditional data sources: the last true state wins; with a source of its own, residue" do
+    test "conditional data sources with no source of their own: the last true state wins" do
       states = %{"0" => state(@user_logged_in, "bSrcA"), "1" => state(@user_logged_in, "bSrcB")}
 
       app =
@@ -1024,26 +1027,6 @@ defmodule BubbleEx.PageDataTest do
       assert [{:element_state, %{"element" => "bSrcB"}}] = ir_inputs(b)
       assert [{:element_state, %{"element" => "bSrcA"}}] = ir_inputs(a)
       assert %IR{op: :empty} = none
-
-      # bSrcA has a data source of its own: a state setting another one is
-      # not applied yet (WTF-521), so bSrcA is residue, never its own
-      # source alone, and what reads it is not loaded.
-      app =
-        put_in(app(), ["pages", "shown", "elements", "bSrcA", "states"], %{
-          "0" => state(@user_logged_in, "bSrcB")
-        })
-
-      {_model, page_data} = build(app)
-
-      assert %Source{
-               residue: [
-                 %{reason: :unsupported_option, detail: %{options: ["states.data_source"]}}
-               ]
-             } =
-               source(page_data, "bSrcA")
-
-      {spec, _project, _frontend, _app, _model} = spec(app)
-      assert %{residue: [_ | _]} = data(spec, "bSrcA")
     end
 
     defp ir_inputs(%IR{op: :input, args: [kind, ref]}), do: [{kind, ref}]
@@ -1105,7 +1088,7 @@ defmodule BubbleEx.PageDataTest do
       assert %IR{op: :empty} = none
 
       {spec, _project, _frontend, _app, _model} = spec(app)
-      assert %{read: {:value, _}, residue: [], displayed?: false} = data(spec, "bNever")
+      assert %{read: {:switch, _}, residue: [], displayed?: false} = data(spec, "bNever")
       assert %{residue: []} = data(spec, "bNeverProj")
 
       # A state with no condition is residue: the group is not read as
@@ -1182,6 +1165,269 @@ defmodule BubbleEx.PageDataTest do
                Enum.find(spec.surfaces["bShownPage"].workflows, &(&1.workflow == "wShowA"))
 
       refute data(spec, "bCellShown")
+    end
+  end
+
+  # WTF-521: an element with a data source of its own whose conditional
+  # states set another: the states fold over its own source (the base),
+  # the last true one winning; outside a cell the page tests the
+  # conditions and reads only the winning branch.
+  describe "conditional data sources over an element's own" do
+    defp with_states(app, page, element, states),
+      do: put_in(app, ["pages", page, "elements", element, "states"], states)
+
+    defp render_files(app) do
+      {spec, project, frontend, app, model} = spec(app)
+
+      {:ok, compiled} =
+        BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend,
+          runtime: "Shop.Bubble.Runtime",
+          namespace: "Shop"
+        )
+
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, backend} = BubbleEx.Workflows.Backend.build(app, model, index)
+      {:ok, workflows} = BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "Shop")
+
+      {:ok, files} =
+        Phoenix.render(project,
+          name: "Shop",
+          frontend: frontend,
+          expressions: compiled,
+          workflows: workflows,
+          frontend_workflows: spec
+        )
+
+      files
+    end
+
+    @search_done %{
+      "type" => "Search",
+      "properties" => %{
+        "type_to_find" => "custom.task",
+        "sort_field" => "title_text",
+        "descending" => true,
+        "constraints" => %{
+          "0" => %{"constraint_type" => "equals", "key" => "done_boolean", "value" => true}
+        }
+      }
+    }
+
+    test "the base plus one condition: the state over its own source" do
+      app = with_states(app(), "shown", "bSrcA", %{"0" => state(@user_logged_in, "bSrcB")})
+      {_model, page_data} = build(app)
+
+      # if(state 0, B, own source): its own source is the base.
+      assert %Source{
+               kind: :group,
+               residue: [],
+               value: %{ir: %IR{op: :if, args: [%IR{op: :logged_in}, b, %IR{op: :first}]}}
+             } = source(page_data, "bSrcA")
+
+      assert [{:element_state, %{"element" => "bSrcB"}}] = ir_inputs(b)
+
+      # Bound: the condition, then the branch, else the base's own search
+      # (a whole query, its first item). It reads what all of them read.
+      {spec, _project, _frontend, _app, _model} = spec(app)
+
+      assert %{
+               residue: [],
+               read:
+                 {:switch,
+                  %{
+                    cases: [%{when: {:value, _}, then: {:value, _}}],
+                    else: {:query, %{take: :first, resource: "Task"}}
+                  }},
+               reads: reads
+             } = data(spec, "bSrcA")
+
+      assert {:data, %{path: [], element: "bSrcB"}} in reads
+    end
+
+    test "several conditions: the last state is tested first, then the others, then the base" do
+      states = %{
+        "0" => state(@user_logged_in, "bSrcB"),
+        "1" => state(@user_logged_in, "bSrcIn")
+      }
+
+      app = with_states(app(), "shown", "bSrcA", states)
+      {_model, page_data} = build(app)
+
+      assert %Source{
+               residue: [],
+               value: %{ir: %IR{op: :if, args: [_, last, %IR{op: :if, args: [_, first, base]}]}}
+             } = source(page_data, "bSrcA")
+
+      assert [{:element_state, %{"element" => "bSrcIn"}}] = ir_inputs(last)
+      assert [{:element_state, %{"element" => "bSrcB"}}] = ir_inputs(first)
+      assert %IR{op: :first} = base
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+
+      assert %{read: {:switch, %{cases: [one, two], else: {:query, _}}}, reads: reads} =
+               data(spec, "bSrcA")
+
+      assert {:value, %{bindings: [%{bind: {:data, %{element: "bSrcIn"}}}]}} = one.then
+      assert {:value, %{bindings: [%{bind: {:data, %{element: "bSrcB"}}}]}} = two.then
+      assert {:data, %{path: [], element: "bSrcB"}} in reads
+      assert {:data, %{path: [], element: "bSrcIn"}} in reads
+
+      # Printed: the conditions in order, each branch and the base a
+      # function of its own, so only the winning one runs.
+      shown = render_files(app)["lib/shop_web/live/shown_live/workflows.ex"]
+
+      [fun] =
+        Regex.run(~r/def (data_bsrca_\w+)\(ctx\) do\n\s+cond do/, shown, capture: :all_but_first)
+
+      assert shown =~
+               ~r/cond do\s+#{fun}_when_1\(ctx\) == true -> #{fun}_then_1\(ctx\)\s+#{fun}_when_2\(ctx\) == true -> #{fun}_then_2\(ctx\)\s+true -> #{fun}_else\(ctx\)\s+end/
+
+      assert shown =~ "defp #{fun}_else(ctx) do"
+      assert shown =~ ~r/element: "bSrcA",.*?reads: \["bSrcB", "bSrcIn"\]/s
+      assert {:ok, _} = Code.string_to_quoted(shown)
+    end
+
+    test "a condition or an override that does not compile keeps the residue" do
+      no_condition = Map.delete(state(@user_logged_in, "bSrcB"), "condition")
+
+      bad_override =
+        put_in(state(@user_logged_in, "bSrcB"), ["properties", "data_source"], %{
+          "type" => "NoSuchExpression"
+        })
+
+      for bad <- [no_condition, bad_override] do
+        app =
+          app()
+          |> with_states("shown", "bSrcA", %{"0" => state(@user_logged_in, "bSrcB"), "1" => bad})
+
+        {_model, page_data} = build(app)
+        %Source{residue: residue, value: value} = source(page_data, "bSrcA")
+
+        # Never its own source alone, nor a partial fold.
+        assert Enum.any?(residue, &(&1.reason == :uncompiled_expression))
+
+        assert %{reason: :unsupported_option, detail: %{options: ["states.data_source"]}} =
+                 List.last(residue)
+
+        assert %IR{op: :first} = value.ir
+
+        {spec, _project, _frontend, _app, _model} = spec(app)
+        assert %{residue: [_ | _], read: nil} = data(spec, "bSrcA")
+      end
+    end
+
+    test "a reusable instance: its own thing is the base; with none, empty" do
+      app =
+        app()
+        |> with_states("index", "bCard1", %{"0" => state(@user_logged_in, "bFirstOpen")})
+        |> with_states("shown", "bPanel1", %{"0" => state(@user_logged_in, "bSrcA")})
+
+      {_model, page_data} = build(app)
+
+      assert %Source{
+               kind: :instance,
+               holder: "bCard",
+               residue: [],
+               value: %{ir: %IR{op: :if, args: [_, _, %IR{op: :first}]}}
+             } = source(page_data, "bCard1")
+
+      assert %Source{
+               kind: :instance,
+               holder: "bPanel",
+               residue: [],
+               value: %{ir: %IR{op: :if, args: [_, _, %IR{op: :empty}]}}
+             } = source(page_data, "bPanel1")
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+
+      assert %{residue: [], read: {:switch, %{else: {:query, _}}}, reads: reads} =
+               data(spec, "bCard1")
+
+      assert {:data, %{path: [], element: "bFirstOpen"}} in reads
+
+      assert %{residue: [], read: {:switch, %{else: {:value, _}}}, key: %{path: ["bPanel1"]}} =
+               data(spec, "bPanel1")
+    end
+
+    test "a repeating group's search: the state is a whole other search, never merged" do
+      condition = %{
+        "type" => "GetElement",
+        "properties" => %{"element_id" => "bQuery"},
+        "next" => %{
+          "type" => "Message",
+          "name" => "get_data",
+          "next" => %{
+            "type" => "Message",
+            "name" => "equals",
+            "args" => %{"type" => "TextExpression", "entries" => %{"0" => "done"}}
+          }
+        }
+      }
+
+      states = %{
+        "0" => %{"condition" => condition, "properties" => %{"data_source" => @search_done}}
+      }
+
+      app = with_states(app(), "index", "bList", states)
+      {_model, page_data} = build(app)
+      assert %Source{kind: :list, page_size: 3, residue: []} = source(page_data, "bList")
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+
+      assert %{
+               residue: [],
+               page_size: 3,
+               read:
+                 {:switch,
+                  %{cases: [%{when: {:value, _}, then: {:query, then}}], else: {:query, base}}}
+             } = data(spec, "bList")
+
+      # Each branch is its own query: its constraints and sort, no other's.
+      assert %{take: :all, sort: [{"title", :desc_nils_last}], pins: []} = then
+      assert then.filter.expr == {:op, "==", {:ref, [], "done"}, {:value, true}}
+      assert %{take: :all, sort: [{"title", :asc_nils_last}], pins: [_, _]} = base
+      assert {:or, [_, {:call, "contains", [{:ref, [], "title"}, {:pin, _}]}]} = base.filter.expr
+      refute Map.has_key?(then, :queries) or Map.has_key?(base, :queries)
+
+      index = render_files(app)["lib/shop_web/live/index_live/workflows.ex"]
+
+      [fun] =
+        Regex.run(~r/def (data_blist_\w+)\(ctx\) do\n\s+cond do/, index, capture: :all_but_first)
+
+      # The base and the branch each read a page of their own query.
+      for part <- ["then_1", "else"] do
+        assert index =~ ~r/defp #{fun}_#{part}\(ctx\) do.*?\|> BubbleData.read\(ctx, :all, 3\)/s
+      end
+
+      # Typing in bQuery reads it again: both the condition and the base read it.
+      assert index =~ ~r/element: "bList",.*?read: :query,.*?inputs: \["bQuery"\]/s
+    end
+
+    test "in a repeating group's cell, the fold stays one value computed per cell" do
+      state = %{
+        "condition" => @user_logged_in,
+        "properties" => %{
+          "data_source" => %{
+            "type" => "CurrentDataItem",
+            "next" => %{"type" => "Message", "name" => "project_custom_project"}
+          }
+        }
+      }
+
+      app =
+        update_in(
+          app(),
+          ["pages", "index", "elements", "bList", "elements", "bCellGroup"],
+          &Map.put(&1, "states", %{"0" => state})
+        )
+
+      {_model, page_data} = build(app)
+
+      assert %Source{cell: "bList", residue: [], value: %{ir: %IR{op: :if}}} =
+               source(page_data, "bCellGroup")
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+      assert %{residue: [], cell: "bList", read: {:value, _}} = data(spec, "bCellGroup")
     end
   end
 

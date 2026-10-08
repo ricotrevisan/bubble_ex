@@ -498,13 +498,32 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   end
 
   @doc """
+  The reads of a conditional source (`{:switch, sw}`, WTF-521): its
+  conditions', its branches' and its base's, in order.
+  """
+  @spec switch_reads(map()) :: [tuple()]
+  def switch_reads(%{cases: cases, else: otherwise}),
+    do: Enum.flat_map(cases, &[&1.when, &1.then]) ++ [otherwise]
+
+  @doc "Whether a bound source reads a query (a search, in any branch)."
+  @spec reads_query?(map()) :: boolean()
+  def reads_query?(%{read: {:query, _}}), do: true
+  def reads_query?(%{read: {:value, %{queries: [_ | _]}}}), do: true
+
+  def reads_query?(%{read: {:switch, sw}}),
+    do: Enum.any?(switch_reads(sw), &reads_query?(%{read: &1}))
+
+  def reads_query?(_bound), do: false
+
+  @doc """
   Generated-code coverage of the page's data sources (WTF-420), with
   string keys: `"sources"` (`total`; `wired`: loaded by the generated
   page, with no residue, neither the lowering's nor this target's, and
   every source it reads loaded too; `residue`), `"by_kind"` (`{total,
   wired}` per kind), `"reads"` (wired sources per read: `url_thing`,
   `query`, `value`, `displayed`: an element with no source of its own
-  that a "Display data" step sets, WTF-492) and `"residue_reasons"`.
+  that a "Display data" step sets, WTF-492; `switch`: a data source with
+  the conditional states that set one, WTF-521) and `"residue_reasons"`.
   """
   @spec data_coverage(t()) :: map()
   def data_coverage(%__MODULE__{surfaces: surfaces}) do

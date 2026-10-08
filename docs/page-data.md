@@ -173,7 +173,7 @@ element (not a mobile view):
 | a reusable element property's default value | `:param` | computed inside the reusable element, for an instance that sets no value |
 | a group, popup, repeating group or instance with no data source that a "Display data" / "Display list" step sets (WTF-492) | its kind | what the step showed (`read: :displayed`), read again as the current user; nothing before a step |
 | a group, popup, floating group, group focus or repeating group with a type of content, no data source and no step setting it, outside a repeating group's cell (WTF-520) | its kind | nothing, ever (`read: :displayed`) |
-| a group, popup, floating group, group focus or repeating group with no data source whose conditional states set one (WTF-520) | its kind | the value of the last state whose condition is yes, else nothing (IR `:if`), computed where the element is |
+| a group, popup, floating group, group focus, repeating group, table or reusable-element instance whose conditional states set a data source (WTF-520, WTF-521) | its kind | the value of the last state whose condition is yes, else its own data source, or nothing when it has none (IR `:if`), computed where the element is; outside a repeating group's cell only the winning branch is read (`read: {:switch, ...}`) |
 | an input's (Input, Multiline Input) initial content that is an expression, outside a repeating group's cell (WTF-520) | `:input` | its value, its conditional states that set the content applied, computed where the input is: the input's first value |
 
 A **search** (with its constraints, its sort, optionally under `first
@@ -316,22 +316,53 @@ field, a search constrained by it, a reusable property's default) loads,
 reading an empty value: with `ignore_empty_constraints` a constraint on
 it is dropped, as in Bubble.
 
-**Conditional data sources (WTF-520).** A group, popup, floating group,
-group focus or repeating group with no data source of its own may get
-one from its conditional states ("when ... data source: ..."). Its
-source is then those states folded in Bubble's order (the last state
-whose condition is yes wins, an empty condition is no, IR `:if`) over
-an empty value, as an input's initial content is, read again when what
-the conditions read changes. What a "Display data" or "Display list"
-step shows wins over it until a reset, as over any source of the
-element's own (unverified for a conditional source, below). A state
-with no condition, or one that does not compile, leaves the element
-unloaded (`:uncompiled_expression`), never empty. **Not lowered yet
-(WTF-521):** the conditional states of an element that has a data
-source of its own, or of a reusable-element instance with none, that
-set a data source: the element is residue (`:unsupported_option`,
-`options: ["states.data_source"]`), so it and what reads it are not
-loaded, never shown from its own source alone.
+**Conditional data sources (WTF-520, WTF-521).** A group, popup,
+floating group, group focus, repeating group, table or reusable-element
+instance may get a data source from its conditional states ("when ...
+data source: ..."). Its source is then those states folded in Bubble's
+order over a base (the last state whose condition is yes wins, an empty
+condition is no, IR `:if`, the last state outermost): the base is the
+element's own data source (an instance's thing for an instance), or an
+empty value when it has none, as an input's initial content is. Each
+state's source replaces the base whole: a repeating group whose own
+source is a search with constraints and a sort, and whose condition sets
+another search, shows that other search with its own constraints and
+sort, never one merged with the base's.
+
+Outside a repeating group's cell the source is read as
+`read: {:switch, %{cases, else}}`
+(`BubbleEx.Target.Elixir.FrontendWorkflows.Data`): the generated function
+tests the conditions in order (`data_<element>_when_<n>`, the last state
+first) and reads only the winning branch (`data_<element>_then_<n>`), or
+the base (`data_<element>_else`). Each branch is a whole read of its own,
+a search as an Ash query with its constraints, sort and the element's
+page size, or a value; a condition is a value, its searches read first.
+The queries go through `BubbleData.read/4`, so one already read in the
+same pass (`once/3`) is not read again, and nothing is read for a branch
+that does not win. In a repeating group's cell the fold is one value,
+computed per cell, as before; a search there stays `:page_data_in_cell`.
+In a reusable element whose instances are in cells, a conditional source
+with a search that reads the instance's scope blocks the per-cell
+rendering, as a search does (WTF-494): it would query once per cell.
+
+What the source reads is the union of what the base, the conditions and
+the branches read: its `inputs`, `reads` and `deps` in
+`__bubble__(:data)` list them all, so the loader orders it after all of
+them and an input change or a reload of any of them reads it again, the
+conditions included (the change may flip which branch wins). Its change
+topics are every branch's resources. If any part does not load (a state
+with no condition, a condition or a source that does not compile, a
+search the Ash compiler rejects, a source it reads that is not loaded),
+the element is not loaded, never shown from its base alone or from part
+of its states: with a source of its own, `:unsupported_option`
+(`options: ["states.data_source"]`) next to the parts' own residue
+(`:uncompiled_expression`); with none, the parts' residue. What a
+"Display data" or "Display list" step shows wins over the folded source
+until a reset, as over any source of the element's own (unverified for a
+conditional source, below). Privacy is unchanged: every branch is read
+as the current user through Ash, with `data_access` off nothing is read,
+and with enforced policies a branch's search is checked like any other
+(`:search_field_hidden`, `:search_field_restricted`).
 
 ## Reusable element properties (WTF-493)
 
@@ -793,6 +824,43 @@ and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
 
+### Private fixture app (test version), 2026-10-08, conditional sources over own ones (WTF-521)
+
+The 101 elements with a data source of their own (or instances with
+none) whose conditions set another, residue until now (*Conditional data
+sources*, above), fold their states over their own source. Before, they
+and what reads them kept 173 sources from loading.
+
+| | before | after |
+|-|------:|------:|
+| data sources, total | 3,342 | 3,342 |
+| data sources, wired | 2,534 | 2,586 |
+| groups wired | 1,267 | 1,314 |
+| lists wired | 130 | 161 |
+| instance sources wired | 140 | 139 |
+| property values wired | 965 | 940 |
+| read as a switch (`read: {:switch, ...}`) | 0 | 75 |
+| `:unsupported_option` residue entries (sources) | 101 | 26 |
+| `:page_data_in_cell` residue entries (sources) | 59 | 133 |
+| `:unavailable_input` residue entries (sources) | 520 | 459 |
+| data sources, native (IR) | 3,034 | 3,109 |
+| workflows, wired | 532 | 527 |
+
+How the wired sources move: of the 101, 53 load (26 lists, 21 groups,
+6 instances); 26 stay residue because a state's condition or source
+does not compile to IR, and 22 because the target cannot bind a part
+(a search the Ash compiler rejects, a value it cannot compile, a source
+it reads that does not load, a list in a cell). 68 sources reading them
+load too (+121 in all). Against that, 12 reusable instances in
+repeating group cells and 49 property values they set, and 8 sources
+reading them, no longer load (-69): their reusable element's conditional source is now
+loaded, and one of its searches reads the instance, so it would query
+once per cell (WTF-494); before, that source was residue and the
+instances were rendered per cell without it. Net, 2,534 to 2,586. The
+wired switches (75) also include the elements with no source of their
+own that were folded before (read as a value then); the workflows
+reading what no longer loads are no longer wired.
+
 ### Private fixture app (test version), 2026-10-08, elements no data source fills (WTF-520)
 
 Groups, popups and repeating groups with no data source of their own
@@ -1070,12 +1138,20 @@ and "Display data" over a group's own source.
   either (WTF-520): the value set wins, empty or not (as above).
 * A group, popup or repeating group with no data source that no step
   sets shows nothing (WTF-520): inferred from Bubble's data model, not
-  replayed. Its conditional states that set a data source are folded in
-  the order an input's content states are (the last true one wins), also
-  assumed, and what a "Display data" or "Display list" step shows is
-  taken to win over such a source until a reset, as it does over a
-  source of the element's own (replayed for that, not for a conditional
-  one). Elements a plugin's event, a popup opened or closed or "User is
+  replayed.
+* **Conditions over the base** (WTF-520, WTF-521): an element's
+  conditional states that set a data source are folded in the order an
+  input's content states are, over its own data source (or empty): the
+  last state whose condition is yes wins, and its source replaces the
+  base whole (a search is not merged with the base's constraints or
+  sort). Assumed from how Bubble applies other conditional properties,
+  not replayed for data sources.
+* **A Display step over a conditional source** (WTF-520, WTF-521): what
+  a "Display data" or "Display list" step shows is taken to win over a
+  folded source until a reset, even when a condition later flips, as it
+  does over a source of the element's own (replayed for that, not for a
+  conditional one).
+* Elements a plugin's event, a popup opened or closed or "User is
   logged in / out" may set are taken to be set as the page loads
   (conservative, see `docs/frontend-workflows.md`).
 * A search's dynamic sort field that is an empty text (the editor keeps

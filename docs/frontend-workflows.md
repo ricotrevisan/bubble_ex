@@ -212,10 +212,9 @@ In a repeating group's cell, only a group from a workflow of the same
 cell (per cell; such workflows are not wired yet,
 `:trigger_in_runtime_template`); a list or an instance there, or a
 cell's group from outside the cell, is `:page_data_in_cell` residue
-(`kind` `"list"`, `"instance"`, `"display"`). An element with no data
-source of its own whose conditions set one has that source (folded,
-`docs/page-data.md`), not the empty one; one with a source of its own
-whose conditions set another is not loaded yet (WTF-521).
+(`kind` `"list"`, `"instance"`, `"display"`). An element whose conditions set a data source
+has that source folded over its own, or over the empty one when it has
+none (`docs/page-data.md`, WTF-521).
 
 Anything the generated page does not keep is `:unavailable_input` residue,
 never a silent empty value: data the page does not load, a cell's thing
