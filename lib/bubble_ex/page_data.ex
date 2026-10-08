@@ -25,6 +25,7 @@ defmodule BubbleEx.PageData do
   |--------|--------|-------|
   | a page's "Type of content" | `:page_thing` | none: the thing whose unique ID is the URL's path segment after the page name (`/<page>/<id>`) |
   | a Group's, Popup's, Floating Group's or Group Focus's data source | `:group` | the thing (or value) it holds |
+  | a Group's, Popup's or Repeating Group's conditional states that set a data source, when it has none of its own (WTF-520) | `:group` / `:list` | the last state's value whose condition is yes, else empty (IR `:if` over `:empty`, the last state outermost) |
   | a Repeating Group's data source | `:list` | its list (a search with constraints and sort, a list field, option values, …); `page_size` the items a page of it shows (rows × columns), nil when it shows them all |
   | a Table's data source | `:list` | its list, one repeated row per item; `page_size` its repeated row's fixed number of rows, nil when it shows them all |
   | a reusable-element instance's data source | `:instance` | the reusable element's thing, for that instance (`holder`: the reusable element) |
@@ -88,6 +89,9 @@ defmodule BubbleEx.PageData do
   # form's, as `BubbleEx.Frontend.normalize/2` reads them first).
   @inputs ~w(Input MultiLineInput)
   @content_keys ~w(content %c1 %3 initial_content)
+
+  # The keys a data source is kept under (the editor's and the compact form's).
+  @source_keys ~w(data_source %ds)
 
   @holders %{
     "Group" => :group,
@@ -278,11 +282,18 @@ defmodule BubbleEx.PageData do
         {nil, _} ->
           []
 
-        {_, :none} ->
-          []
+        {kind, :none} when kind in [:group, :list] ->
+          conditional_source(kind, id, raw, path, at, ctx)
+
+        {kind, :none} ->
+          conditional_residue(kind, id, raw, path, at, ctx)
 
         {kind, {prop, value}} ->
-          [source(kind, id, value, path ++ [props_key(raw), prop], at, ctx)]
+          [
+            kind
+            |> source(id, value, path ++ [props_key(raw), prop], at, ctx)
+            |> with_conditional_residue(raw, path, ctx)
+          ]
       end
 
     inner =
@@ -337,6 +348,95 @@ defmodule BubbleEx.PageData do
     }
   end
 
+  # --- conditional data sources (WTF-520) ---------------------------------------------
+
+  # A group or repeating group with no data source of its own whose
+  # conditional states set one: its data is the value of the last state
+  # whose condition is yes, else nothing (IR `:if`, the last state
+  # outermost), computed where the element is. Without such states it has
+  # no source (what "Display data" steps show, `BubbleEx.Target.Elixir.FrontendWorkflows`).
+  defp conditional_source(kind, id, raw, path, at, ctx) do
+    env = %{ctx.env | host: id}
+
+    case conditional_states(raw, path, @source_keys, env) do
+      [] ->
+        []
+
+      states ->
+        symbol = Symbol.id(:element, id)
+        node = Tree.node(ctx.env.tree, id)
+        content = node && node.content
+        exprs = Enum.flat_map(states, &Tuple.to_list/1)
+        residue = Lowering.expr_residue(symbol, exprs)
+        {_condition, %Lowering.Expr{path: vpath}} = List.last(states)
+
+        none = %Lowering.Expr{
+          path: vpath,
+          ir: IR.node(:empty, [], value_type(kind, content, nil))
+        }
+
+        value =
+          if residue == [],
+            do: %{none | ir: Enum.reduce(states, none.ir, &conditional/2)},
+            else: none
+
+        [
+          %Source{
+            id: symbol,
+            element: id,
+            surface: at.surface,
+            surface_kind: at.surface_kind,
+            kind: kind,
+            type: value_type(kind, content, value),
+            value: value,
+            cell: at.cell,
+            page_size: if(kind == :list, do: node && node.page_size),
+            residue: residue ++ search_fields(symbol, value, ctx.model),
+            path: vpath
+          }
+        ]
+    end
+  end
+
+  # The conditional states of an element with a data source of its own,
+  # or of an instance with none, that set one are not applied yet
+  # (WTF-521): the element is residue, never its own source alone.
+  defp with_conditional_residue(%Source{} = source, raw, path, ctx) do
+    if conditional_source?(raw, path, ctx),
+      do: %{source | residue: source.residue ++ [conditional_entry(source.id)]},
+      else: source
+  end
+
+  defp conditional_residue(kind, id, raw, path, at, ctx) do
+    if conditional_source?(raw, path, ctx) do
+      symbol = Symbol.id(:element, id)
+      node = Tree.node(ctx.env.tree, id)
+
+      [
+        %Source{
+          id: symbol,
+          element: id,
+          surface: at.surface,
+          surface_kind: at.surface_kind,
+          kind: kind,
+          holder: if(kind == :instance, do: node && node.instance_of),
+          type: node && node.content,
+          cell: at.cell,
+          residue: [conditional_entry(symbol)],
+          path: Diagnostic.pointer(path)
+        }
+      ]
+    else
+      []
+    end
+  end
+
+  defp conditional_source?(raw, path, ctx),
+    do: conditional_states(raw, path, @source_keys, ctx.env) != []
+
+  defp conditional_entry(symbol),
+    do: Residue.entry(symbol, :unsupported_option, %{options: ["states.data_source"]})
+
   # --- inputs' initial content (WTF-520) ----------------------------------------------
 
   # An input whose initial content is an expression (outside a repeating
@@ -354,7 +454,7 @@ defmodule BubbleEx.PageData do
       content when is_map(content) ->
         env = %{ctx.env | host: id}
         base = Lowering.expr(content, ppath ++ [key], env)
-        states = content_states(raw, path, env)
+        states = conditional_states(raw, path, @content_keys, env)
         symbol = Symbol.id(:element, id)
         exprs = [base | Enum.flat_map(states, &Tuple.to_list/1)]
         residue = Lowering.expr_residue(symbol, exprs)
@@ -384,9 +484,10 @@ defmodule BubbleEx.PageData do
     end
   end
 
-  # The conditional states that set the content, in order: `{condition,
-  # content}` as expressions. A state with no condition is residue.
-  defp content_states(raw, path, env) do
+  # The conditional states that set one of `keys` (the content, the data
+  # source), in order: `{condition, value}` as expressions. A state with
+  # no condition is residue.
+  defp conditional_states(raw, path, keys, env) do
     {key, payload} =
       case Json.get(raw, ~w(states %st)) do
         {key, payload} when is_map(payload) -> {key, payload}
@@ -394,7 +495,7 @@ defmodule BubbleEx.PageData do
       end
 
     for {skey, %{condition: condition, properties: sprops}} <- Conditions.keyed(payload),
-        ckey = Enum.find(@content_keys, &(sprops[&1] != nil)),
+        ckey = Enum.find(keys, &(sprops[&1] != nil)),
         ckey != nil do
       spath = path ++ [key, skey]
 

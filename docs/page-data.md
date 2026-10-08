@@ -172,6 +172,8 @@ element (not a mobile view):
 | a property a reusable-element instance sets (WTF-493) | `:param` | its value, computed where the instance is, kept under the instance (`This Reusable's <property>` inside it) |
 | a reusable element property's default value | `:param` | computed inside the reusable element, for an instance that sets no value |
 | a group, popup, repeating group or instance with no data source that a "Display data" / "Display list" step sets (WTF-492) | its kind | what the step showed (`read: :displayed`), read again as the current user; nothing before a step |
+| a group, popup, floating group, group focus or repeating group with a type of content, no data source and no step setting it, outside a repeating group's cell (WTF-520) | its kind | nothing, ever (`read: :displayed`) |
+| a group, popup, floating group, group focus or repeating group with no data source whose conditional states set one (WTF-520) | its kind | the value of the last state whose condition is yes, else nothing (IR `:if`), computed where the element is |
 | an input's (Input, Multiline Input) initial content that is an expression, outside a repeating group's cell (WTF-520) | `:input` | its value, its conditional states that set the content applied, computed where the input is: the input's first value |
 
 A **search** (with its constraints, its sort, optionally under `first
@@ -297,8 +299,39 @@ unique ID only (`@bubble_displayed`) and reads it again, as the current
 user through Ash, at every read of its data: a workflow never shows
 what the user may not read. Its entry in `__bubble__(:data)` says so
 (`display: %{page_size: ...}`); one with no source of its own has no
-function (`read: :displayed`, `fun: nil`, nothing `blocked`). Only an
-element a step that runs sets is listed.
+function (`read: :displayed`, `fun: nil`, nothing `blocked`).
+
+Which elements are listed depends on when their steps may run (WTF-520,
+`docs/frontend-workflows.md`, "Display data"): an element only events
+set (clicks, input changes, "do every" ticks, the custom events they
+call) is listed when the page triggers every one of those events,
+whether or not the runtime then runs their workflows, since it shows
+nothing before the event, as in Bubble; one a step may set as the page
+loads (a page-load, condition-true, popup or plugin-event workflow, or a
+custom event one of them calls) only when every such workflow runs
+whole here; otherwise it is not listed, and what reads it is not loaded.
+An element no step sets, with no data source, shows nothing and is
+listed too, so what reads it (a group inside it reading `Parent group's`
+field, a search constrained by it, a reusable property's default) loads,
+reading an empty value: with `ignore_empty_constraints` a constraint on
+it is dropped, as in Bubble.
+
+**Conditional data sources (WTF-520).** A group, popup, floating group,
+group focus or repeating group with no data source of its own may get
+one from its conditional states ("when ... data source: ..."). Its
+source is then those states folded in Bubble's order (the last state
+whose condition is yes wins, an empty condition is no, IR `:if`) over
+an empty value, as an input's initial content is, read again when what
+the conditions read changes. What a "Display data" or "Display list"
+step shows wins over it until a reset, as over any source of the
+element's own (unverified for a conditional source, below). A state
+with no condition, or one that does not compile, leaves the element
+unloaded (`:uncompiled_expression`), never empty. **Not lowered yet
+(WTF-521):** the conditional states of an element that has a data
+source of its own, or of a reusable-element instance with none, that
+set a data source: the element is residue (`:unsupported_option`,
+`options: ["states.data_source"]`), so it and what reads it are not
+loaded, never shown from its own source alone.
 
 ## Reusable element properties (WTF-493)
 
@@ -760,6 +793,59 @@ and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
 
+### Private fixture app (test version), 2026-10-08, elements no data source fills (WTF-520)
+
+Groups, popups and repeating groups with no data source of their own
+(*Display data* and *Conditional data sources*, above). Before, 79
+sources were not loaded because they read such an element. Grouped by
+what fills the element (sources reading it directly, then with what
+reads them):
+
+| what fills the element | direct | with readers |
+|-|------:|------:|
+| a custom event a plugin's event calls | 18 | 61 |
+| nothing (no step, no source) | 28 | 42 |
+| its conditional states | 11 | 32 |
+| only events, whose workflows the runtime refuses | 7 | 29 |
+| a condition-true workflow that is not lowered | 1 | 9 |
+| a page-load step | 0 | 0 |
+
+The first and the last but one stay unloaded (they may be set as the
+page loads); the others load. Separately, 101 elements with a data
+source of their own whose conditions set another one are now residue
+(WTF-521): they were loaded from their own source alone, which could
+show the wrong data.
+
+| | before | after |
+|-|------:|------:|
+| data sources, total | 3,211 | 3,342 |
+| data sources, wired | 2,566 | 2,534 |
+| groups wired | 1,220 | 1,267 |
+| lists wired | 170 | 130 |
+| instance sources wired | 154 | 140 |
+| property values wired | 993 | 965 |
+| inputs wired | 27 | 30 |
+| elements read as what steps showed (`read: :displayed`) | 23 | 119 |
+| `:unavailable_input` residue entries (sources) | 440 | 520 |
+| `:unsupported_option` residue entries (sources) | 0 | 101 |
+| workflows, native (generated code) | 818 | 800 |
+| workflows, wired | 547 | 532 |
+| steps, native | 2,429 | 2,411 |
+
+How the wired sources move, step by step: the elements no step fills,
+those only triggered events fill and the conditional sources of
+elements with no source of their own load (2,566 to 2,737, the total
+growing by the elements now read as empty and the conditional sources);
+elements a plugin's event, a popup opened or closed, or an event the
+page does not trigger (a click in a repeating group's cell) may set are
+no longer loaded, nor what reads them, among them 13 that were before
+(to 2,707); the 101 elements whose conditions replace their own source,
+and what reads them, are no longer loaded (to 2,534). The total grows by
+131: the elements now read as empty until a step sets them, the 32
+conditional sources (5 do not compile), an instance whose conditions
+set its source (residue) and 3 inputs whose initial content now loads.
+The workflows reading what is no longer loaded are no longer native.
+
 ### Private fixture app (test version), 2026-10-08, across instance boundaries (WTF-520)
 
 Data sources reading an instance's property default from outside the
@@ -982,6 +1068,16 @@ and "Display data" over a group's own source.
 * A property an instance sets to a value that is empty at run time does
   not fall back to the default when read from outside the instance
   either (WTF-520): the value set wins, empty or not (as above).
+* A group, popup or repeating group with no data source that no step
+  sets shows nothing (WTF-520): inferred from Bubble's data model, not
+  replayed. Its conditional states that set a data source are folded in
+  the order an input's content states are (the last true one wins), also
+  assumed, and what a "Display data" or "Display list" step shows is
+  taken to win over such a source until a reset, as it does over a
+  source of the element's own (replayed for that, not for a conditional
+  one). Elements a plugin's event, a popup opened or closed or "User is
+  logged in / out" may set are taken to be set as the page loads
+  (conservative, see `docs/frontend-workflows.md`).
 * A search's dynamic sort field that is an empty text (the editor keeps
   `{"entries": {"1": ""}}` once it is cleared) is taken to name no field
   (WTF-520): next to a static sort field, that field sorts; with the sort
