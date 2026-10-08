@@ -10,7 +10,7 @@
           "element": 10761,
           "workflow": 8955
         },
-        "elixir_compiled": 15522,
+        "elixir_compiled": 15523,
         "ir_compiled": 16663,
         "roots": 19716,
         "searches": 735,
@@ -21,7 +21,7 @@
             "ash_expr_unsupported:a field of filter": 4,
             "ash_expr_unsupported:a field of first": 1,
             "ash_expr_unsupported:a field of input": 278,
-            "ash_expr_unsupported:the condition :text_contains_words": 2,
+            "ash_expr_unsupported:contains keyword(s) whose words are not an input or a literal": 2,
             "ash_expr_unsupported:the value :concat": 42,
             "ash_expr_unsupported:the value :date_add": 62,
             "ash_expr_unsupported:the value :date_floor": 3,
@@ -34,7 +34,6 @@
           },
           "elixir": {
             "elixir_expr_unsupported:a URL path segment after the second (pages route up to /<page>/<x>)": 4,
-            "elixir_expr_unsupported:a field of as_list": 1,
             "elixir_expr_unsupported:a field of filter": 25,
             "elixir_expr_unsupported:a field of first": 134,
             "elixir_expr_unsupported:a field of item_at": 4,
@@ -94,7 +93,7 @@
           "element": 10761,
           "workflow": 8955
         },
-        "elixir_compiled": 15522,
+        "elixir_compiled": 15523,
         "ir_compiled": 16663,
         "roots": 19716,
         "searches": 735,
@@ -105,7 +104,7 @@
             "ash_expr_unsupported:a field of filter": 4,
             "ash_expr_unsupported:a field of first": 1,
             "ash_expr_unsupported:a field of input": 278,
-            "ash_expr_unsupported:the condition :text_contains_words": 2,
+            "ash_expr_unsupported:contains keyword(s) whose words are not an input or a literal": 2,
             "ash_expr_unsupported:the value :concat": 42,
             "ash_expr_unsupported:the value :date_add": 62,
             "ash_expr_unsupported:the value :date_floor": 3,
@@ -118,7 +117,6 @@
           },
           "elixir": {
             "elixir_expr_unsupported:a URL path segment after the second (pages route up to /<page>/<x>)": 4,
-            "elixir_expr_unsupported:a field of as_list": 1,
             "elixir_expr_unsupported:a field of filter": 25,
             "elixir_expr_unsupported:a field of first": 134,
             "elixir_expr_unsupported:a field of item_at": 4,
@@ -178,7 +176,7 @@
           "element": 10761,
           "workflow": 8955
         },
-        "elixir_compiled": 15522,
+        "elixir_compiled": 15523,
         "ir_compiled": 16622,
         "roots": 19716,
         "searches": 727,
@@ -189,7 +187,7 @@
             "ash_expr_unsupported:a field of filter": 4,
             "ash_expr_unsupported:a field of first": 1,
             "ash_expr_unsupported:a field of input": 274,
-            "ash_expr_unsupported:the condition :text_contains_words": 2,
+            "ash_expr_unsupported:contains keyword(s) whose words are not an input or a literal": 2,
             "ash_expr_unsupported:the value :concat": 41,
             "ash_expr_unsupported:the value :date_add": 60,
             "ash_expr_unsupported:the value :date_floor": 3,
@@ -201,7 +199,6 @@
           },
           "elixir": {
             "elixir_expr_unsupported:a URL path segment after the second (pages route up to /<page>/<x>)": 4,
-            "elixir_expr_unsupported:a field of as_list": 1,
             "elixir_expr_unsupported:a field of filter": 15,
             "elixir_expr_unsupported:a field of first": 133,
             "elixir_expr_unsupported:a field of item_at": 4,

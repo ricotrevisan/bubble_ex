@@ -438,6 +438,36 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
     @a ~w(b a b c)
     @b ~w(c d a)
 
+    # WTF-520: a keyword search's words, as the searches bind them
+    # (BubbleEx.Target.Keywords), and the in-memory keyword match on the
+    # same reading, so a search and a condition agree.
+    test "keywords: the generator's words and patterns; the in-memory match", %{rt: rt} do
+      long = Enum.map_join(1..2_000, " ", &"w#{&1}")
+
+      for text <- [
+            "  Bread\tBAKE ",
+            ~S"100% a_b c\d",
+            "   ",
+            "",
+            nil,
+            long,
+            String.duplicate("x", 300)
+          ] do
+        assert rt.keywords(text) == BubbleEx.Target.Keywords.words(text), inspect(text)
+        assert rt.keyword_patterns(text) == BubbleEx.Target.Keywords.patterns(text), inspect(text)
+      end
+
+      assert rt.text_contains_words?("Bake", "ake")
+      assert rt.text_contains_words?("Bake the bread", "BREAD bake")
+      refute rt.text_contains_words?("Bake a cake", "bread bake")
+      assert rt.text_contains_words?("100% rye", "100%")
+      refute rt.text_contains_words?("1000 rye", "100%")
+      assert rt.text_contains_words?(~S"back\slash", "\\")
+      refute rt.text_contains_words?("Bake", "   ")
+      refute rt.text_contains_words?("", "a")
+      refute rt.text_contains_words?(nil, "a")
+    end
+
     test "duplicates, merges and intersections", %{rt: rt} do
       assert rt.unique(@a) == ~w(b a c)
       assert rt.merge(@a, @b) == ~w(b a c d)

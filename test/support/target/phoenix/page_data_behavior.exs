@@ -739,6 +739,105 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert strict(html) == []
   end
 
+  # WTF-520: Bubble's `contains keyword(s)`, read conservatively (its
+  # exact rule is not verified, docs/page-data.md): every whitespace-
+  # separated word of the input is a case-insensitive substring of the
+  # title, in any order; `%` and `_` match themselves. bWordsAll ignores
+  # empty constraints (an empty input lists everything), bWordsStrict does
+  # not (nothing).
+  test "a keyword input: every word, any case, a substring, escaped", %{conn: conn} do
+    on()
+
+    for {n, title} <- [
+          {11, "Bake the bread"},
+          {12, "Bread to bake"},
+          {13, "Bake a cake"},
+          {14, "100% rye"},
+          {15, "1000 rye"},
+          {16, "snake_case"},
+          {17, "snakeXcase"},
+          {18, "back\\slash"}
+        ],
+        do:
+          Ash.Seed.seed!(PhxCheck.Task, %{id: "1700000000000x2000000000000000#{n}", title: title})
+
+    {:ok, view, html} = live(conn, "/keywords")
+    all = ~w(Answer Bake Clean Draw Eat) ++ ["100% rye", "1000 rye"]
+
+    everything =
+      Enum.sort(
+        all ++
+          [
+            "Bake a cake",
+            "Bake the bread",
+            "Bread to bake",
+            "back\\slash",
+            "snakeXcase",
+            "snake_case"
+          ]
+      )
+
+    assert Enum.sort(words(html, "Word")) == everything
+    assert words(html, "Strict word") == []
+
+    for {typed, found} <- [
+          {"bread BAKE", ["Bake the bread", "Bread to bake"]},
+          {"  bake\tREAD  ", ["Bake the bread", "Bread to bake"]},
+          {"ake",
+           ["Bake", "Bake a cake", "Bake the bread", "Bread to bake", "snakeXcase", "snake_case"]},
+          {"cake bread", []},
+          {"100%", ["100% rye"]},
+          {"e_c", ["snake_case"]},
+          {"\\", ["back\\slash"]},
+          # Past the caps (32 words of the first 256 characters): the input
+          # is never split per row, so a long one costs no more.
+          {String.duplicate("bake ", 2_000),
+           ["Bake", "Bake a cake", "Bake the bread", "Bread to bake"]}
+        ] do
+      render_change(view, "bubble:change", %{
+        "bubble" => %{"scope" => "", "element" => "bWords", "value" => typed}
+      })
+
+      Process.sleep(200)
+      html = render(view)
+      assert Enum.sort(words(html, "Word")) == found, inspect(typed)
+      assert Enum.sort(words(html, "Strict word")) == found, inspect(typed)
+
+      # The in-memory match (a condition, a `:filtered` list of texts)
+      # agrees with the search.
+      in_memory =
+        Enum.filter(everything, &PhxCheck.Bubble.Runtime.text_contains_words?(&1, typed))
+
+      assert in_memory == found, inspect(typed)
+    end
+
+    # Empty again: ignored by bWordsAll, nothing for bWordsStrict.
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bWords", "value" => ""}
+    })
+
+    Process.sleep(200)
+    html = render(view)
+    assert Enum.sort(words(html, "Word")) == everything
+    assert words(html, "Strict word") == []
+
+    # Spaces only: not empty, and no word, so nothing matches.
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bWords", "value" => "   "}
+    })
+
+    Process.sleep(200)
+    html = render(view)
+    assert words(html, "Word") == []
+    assert words(html, "Strict word") == []
+  end
+
+  defp words(html, label),
+    do:
+      ~r/(?<![\w ])#{label}: ([^;<]+);/
+      |> Regex.scan(html, capture: :all_but_first)
+      |> List.flatten()
+
   test "conditions see freshly loaded data on page load and on notification" do
     on()
     socket = %Phoenix.LiveView.Socket{transport_pid: self()}

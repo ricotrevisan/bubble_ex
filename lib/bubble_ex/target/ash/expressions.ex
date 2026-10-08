@@ -36,6 +36,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   | `list doesn't contain item` | `is_nil(list) or is_nil(item) or not (item in list)` (an empty list contains nothing); an actor-side item must not be empty and an actor-side list needs a logged-in actor |
   | `not x` for a yes/no value | `is_distinct_from(x, true)` (empty is not yes), guarded like `is not` on the actor side |
   | `text contains string` | `contains(text, string)` |
+  | `text contains keyword(s)` (Bubble's keyword match), in a search on a text field, its words an input or a literal | `fragment("coalesce(cardinality(?::text[]) > 0 AND ? ILIKE ALL (?::text[]), false)", patterns, text, patterns)`: the words (`BubbleEx.Target.Keywords`: split on whitespace, at most 32 words of the first 256 characters) computed in Elixir, each an `ILIKE` substring pattern with `\`, `%` and `_` escaped; an input's patterns are an argument of their own (`keywords: true` in `arguments`, the caller computes them from the input's value). No words or an empty text matches nothing; `doesn't contain` is `is_nil(text) or not fragment(...)`. A conservative reading, **not verified against Bubble** (whole words or substrings, every word or any, stemming, a minimum word length, Unicode case folding); not compiled in privacy rules (PostgreSQL only, which a policy evaluated in Elixir cannot run) |
   | `+`, `-`, `*`, `/` on numbers | the operator |
   | `x defaulting to d` | `if(<x is empty>, d, x)`, emptiness as `is empty` tests it (nil, `""`, `[]`, a reference whose record is gone); `(x defaulting to d)'s a` is the chain over `x` when it is not empty, else over `d`; `(x defaulting to d) is empty` is both empty |
   | a context input (element value, parameter, …) | `^arg(:name)`, listed in `arguments`, where allowed (`inputs: :arguments`); unsupported in privacy rules |
@@ -95,6 +96,14 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
   @compare %{gt: ">", lt: "<", gte: ">=", lte: "<="}
   @arithmetic %{add: "+", sub: "-", mul: "*", div: "/"}
+  # `contains keyword(s)` (`:text_contains_words`): the text (the second
+  # `?`) matches every pattern of the bound list (the first and third,
+  # `BubbleEx.Target.Keywords.patterns/1`, computed in Elixir: nothing is
+  # split per row); no pattern, or an empty text, is false, never NULL.
+  # Ash splits a fragment on every `?` (a literal one would be `\\?`):
+  # this SQL has none but the placeholders.
+  @keywords_sql "coalesce(cardinality(?::text[]) > 0 AND ? ILIKE ALL (?::text[]), false)"
+
   # IR ops whose yes/no value may be empty (not predicates).
   @boolean_values [:field, :input, :option_attribute, :option_label, :external_field, :fallback]
 
@@ -195,7 +204,9 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
     case unsort(ir) do
       {%IR{op: :search, args: [type, pred]}, sort} ->
-        opts = Keyword.merge([inputs: :arguments], Keyword.put(opts, :resource, type))
+        opts =
+          Keyword.merge([inputs: :arguments, search?: true], Keyword.put(opts, :resource, type))
+
         pred = pred || IR.node(:literal, [true], "boolean")
         result = do_filter(pred, lookup, opts)
         {:ok, sort_result(result, sort, type, lookup, opts)}
@@ -343,6 +354,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
       lookup: lookup,
       resource: Keyword.fetch!(opts, :resource),
       inputs: Keyword.get(opts, :inputs, :unsupported),
+      search?: Keyword.get(opts, :search?, false),
       loads: MapSet.new(),
       args: %{},
       at: path_text(Keyword.get(opts, :path, "")),
@@ -375,8 +387,12 @@ defmodule BubbleEx.Target.Ash.Expressions do
         actor_loads: st.loads |> MapSet.to_list() |> Enum.sort(),
         arguments:
           st.args
-          |> Enum.map(fn {{kind, ref}, {name, type}} ->
-            %{name: name, input: {kind, ref}, type: type}
+          |> Enum.map(fn
+            {{{:keywords, kind}, ref}, {name, type}} ->
+              %{name: name, input: {kind, ref}, type: type, keywords: true}
+
+            {{kind, ref}, {name, type}} ->
+              %{name: name, input: {kind, ref}, type: type}
           end)
           |> Enum.sort_by(& &1.name)
       }
@@ -586,6 +602,35 @@ defmodule BubbleEx.Target.Ash.Expressions do
     absent = {:or, [{:call, "is_nil", [t]}, {:not, contains}]}
     {all_ok({contains, absent, [{t, text.type}, {p, part.type}]}, [t, p]), st}
   end
+
+  # Bubble's keyword match (`contains keyword(s)`), read conservatively:
+  # the words of the part (`BubbleEx.Target.Keywords`: split on
+  # whitespace, capped), each a case-insensitive substring of the text
+  # (`ILIKE ALL` over their patterns, `\`, `%` and `_` escaped). A part
+  # with no words matches nothing; an empty text contains nothing, so its
+  # negation holds there. The words are computed in Elixir, so the part
+  # must be a context input (bound as a second argument of the same input,
+  # `keywords: true`) or a literal; in a search only: the filter is SQL
+  # (PostgreSQL), which a policy evaluated in Elixir cannot run.
+  defp atom_(%IR{op: :text_contains_words, args: [text, part]}, %{search?: true} = st) do
+    cond do
+      text.type != "text" ->
+        unsupported(st, {"contains keyword(s) on a value that is not a text", nil})
+
+      part.type != "text" ->
+        unsupported(st, {"contains keyword(s) whose words are not a text", nil})
+
+      true ->
+        {t, st} = value(text, st)
+        {p, st} = keyword_patterns(part, st)
+        contains = {:call, "fragment", [{:value, @keywords_sql}, p, t, p]}
+        absent = {:or, [{:call, "is_nil", [t]}, {:not, contains}]}
+        {all_ok({contains, absent, [{t, text.type}]}, [t, p]), st}
+    end
+  end
+
+  defp atom_(%IR{op: :text_contains_words}, st),
+    do: unsupported(st, {"contains keyword(s) outside a search", nil})
 
   # A yes/no value: `x == true`; negated, empty is not yes.
   defp atom_(%IR{op: op} = ir, st) when op in @boolean_values do
@@ -1190,6 +1235,28 @@ defmodule BubbleEx.Target.Ash.Expressions do
   # IR types are Bubble descriptors; the Model classifies them.
   defp classify(type) when is_binary(type), do: type |> Type.classify() |> elem(0)
   defp classify(_type), do: nil
+
+  # The `ILIKE` patterns of a keyword search's words: a literal's computed
+  # here, an input's bound as an argument of its own (`keywords: true`),
+  # computed by the caller from the input's value.
+  defp keyword_patterns(%IR{op: :literal, args: [text]}, st),
+    do: {{:value, BubbleEx.Target.Keywords.patterns(text)}, st}
+
+  defp keyword_patterns(%IR{op: :input, args: [kind, ref]}, %{inputs: :arguments} = st) do
+    key = {{:keywords, kind}, ref}
+
+    case Map.get(st.args, key) do
+      {name, _} ->
+        {{:arg, name}, st}
+
+      nil ->
+        name = argument_name(kind, Map.put(ref, "_keywords", "keywords"), st.args)
+        {{:arg, name}, %{st | args: Map.put(st.args, key, {name, "text"})}}
+    end
+  end
+
+  defp keyword_patterns(_part, st),
+    do: unsupported(st, {"contains keyword(s) whose words are not an input or a literal", nil})
 
   # Argument names from the input kind and its Bubble IDs, deterministic;
   # a clash gets a numeric suffix.

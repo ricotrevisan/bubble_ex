@@ -76,8 +76,8 @@ defmodule BubbleEx.PageDataTest do
       # (WTF-520: a group, an input's initial content, a list) and the
       # loaded page's eight (WTF-520: a group's and three lists' searches,
       # two conditional sources; WTF-521: two lists' own searches with
-      # conditional ones).
-      assert PageData.coverage(pd)["sources"] == %{"total" => 26, "native" => 26, "residue" => 0}
+      # conditional ones) and the keywords page's two lists (WTF-520).
+      assert PageData.coverage(pd)["sources"] == %{"total" => 28, "native" => 28, "residue" => 0}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -290,10 +290,11 @@ defmodule BubbleEx.PageDataTest do
       # elements with no source its "Display data" steps set; the initial
       # page's three (WTF-520); the loaded page's eight (WTF-521: two
       # lists' own searches with conditional ones included) and its two
-      # groups with no source (WTF-520).
+      # groups with no source (WTF-520); the keywords page's two lists
+      # (WTF-520: keyword searches).
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 34,
-               "wired" => 34,
+               "total" => 36,
+               "wired" => 36,
                "residue" => 0
              }
 
@@ -393,7 +394,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 32
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 34
     end
 
     test "a repeating group in a repeating group's cell is residue" do

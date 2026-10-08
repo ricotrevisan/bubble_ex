@@ -6,6 +6,32 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Keyword searches compile** (WTF-520). A search constraint `contains
+  keyword(s)` on a text field (`:text_contains_words`) left the search
+  uncompiled, so a list filtered by a search box showed no rows. The
+  input's words (`BubbleEx.Target.Keywords`: split on whitespace, the
+  first 32 words of the first 256 characters) are computed in Elixir and
+  bound as `ILIKE` patterns (`\`, `%` and `_` escaped); a record matches
+  when its field matches every one, case-insensitively, as a substring
+  (`coalesce(cardinality(p) > 0 AND field ILIKE ALL (p), false)`). The
+  database never splits the input per row, and the caps bound what a
+  public search box can ask of it. `doesn't contain keyword(s)` is its
+  negation (an empty field contains nothing). An empty input follows
+  `ignore_empty_constraints` like any constraint; an input of spaces only
+  has no word and matches nothing. The words must be an input or a
+  literal. The in-memory `Bubble.Runtime.text_contains_words?/2` now
+  reads the same words (it matched whole words), so a search and a
+  condition agree. This is a conservative reading: Bubble's own rule is
+  not verified and is listed in `docs/page-data.md`. With enforced
+  policies `<App>.Privacy.SearchFields` now reads a fragment's
+  arguments, so a keyword search on a field some users may not view
+  finds only the records where they may (WTF-457). Not compiled in
+  privacy rules.
+- **A field of a converted list compiles** (WTF-520). `(x :converted to
+  list)'s field` was "a field of as_list" in pages; it is now `(x's
+  field) :converted to list`. A reusable element's property whose value
+  on one instance read it left the property, and everything reading it
+  through every instance, unloaded.
 - **Inputs whose initial content reads data give pages their value**
   (WTF-520). An Input or Multiline Input whose initial content is an
   expression (a field of its group's thing, say a number of days, with a

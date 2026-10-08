@@ -347,6 +347,144 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
     end
   end
 
+  # WTF-520: `contains keyword(s)` (Bubble's keyword match) on a text
+  # field, read conservatively: every whitespace-separated word of the
+  # input a case-insensitive substring of the field, `\`, `%` and `_`
+  # escaped. The SQL itself runs in scripts/phoenix_compile_check.sh
+  # (page_data_behavior.exs: several words, case, escaping, empty input).
+  describe "contains keyword(s)" do
+    defp keywords(project, op, options, searches \\ :page) do
+      env = env(searches: searches)
+
+      # A text parameter: `""` is empty like nil.
+      q = %{
+        "type" => "CurrentWorkflowItem",
+        "properties" => %{"btype_id" => "text", "param_id" => "pQ", "param_name" => "q"}
+      }
+
+      raw = search("custom.task", [con("title_text", op, q)], options)
+      {:ok, %{ir: ir}} = Compiler.compile(parse!(raw, env), env)
+      {:ok, result} = Expressions.search(ir, project)
+      result
+    end
+
+    @arg "^arg(:parameter_pq_q)"
+    @call ~s|fragment("coalesce(cardinality(?::text[]) > 0 AND ? ILIKE ALL (?::text[]), false)", | <>
+            ~s|^arg(:parameter_keywords_pq_q), title, ^arg(:parameter_keywords_pq_q))|
+
+    test "the words are bound as patterns: no split per row, the exact SQL", %{
+      project: project
+    } do
+      %{expr: expr, diagnostics: []} =
+        keywords(project, "text contains", %{"ignore_empty_constraints" => true})
+
+      # The input's value (for its emptiness) and its words' patterns,
+      # computed by the caller (`keywords: true`).
+      assert [
+               %{name: "parameter_keywords_pq_q", type: "text", keywords: true, input: input},
+               %{name: "parameter_pq_q", type: "text", input: input} = plain
+             ] = expr.arguments
+
+      refute Map.has_key?(plain, :keywords)
+
+      source = Source.expr(expr)
+      assert source == ~s|expr(is_nil(#{@arg}) or #{@arg} == "" or #{@call})|
+      refute source =~ "regexp"
+      assert {:ok, _} = Code.string_to_quoted(source)
+    end
+
+    test "an empty input: dropped when the search ignores empty constraints, else nothing", %{
+      project: project
+    } do
+      source = fn options, searches ->
+        Source.expr(keywords(project, "text contains", options, searches).expr)
+      end
+
+      nothing = ~s|expr(not (is_nil(#{@arg}) or #{@arg} == "") and #{@call})|
+
+      assert source.(%{"ignore_empty_constraints" => true}, :page) ==
+               ~s|expr(is_nil(#{@arg}) or #{@arg} == "" or #{@call})|
+
+      for options <- [%{}, %{"ignore_empty_constraints" => false}],
+          do: assert(source.(options, :page) == nothing)
+
+      # A backend search matches nothing on an empty input, whatever it states.
+      assert source.(%{"ignore_empty_constraints" => true}, :backend) == nothing
+    end
+
+    test "doesn't contain keyword(s): an empty field contains none", %{project: project} do
+      %{expr: expr, diagnostics: []} =
+        keywords(project, "not text contains", %{"ignore_empty_constraints" => true})
+
+      assert Source.expr(expr) ==
+               ~s|expr(is_nil(#{@arg}) or #{@arg} == "" or is_nil(title) or not #{@call})|
+    end
+
+    test "a literal's words are computed here, escaped and capped" do
+      assert BubbleEx.Target.Keywords.patterns("  Bread\tBAKE ") == ["%Bread%", "%BAKE%"]
+
+      assert BubbleEx.Target.Keywords.patterns(~S"100% a_b c\d") == [
+               "%100\\%%",
+               "%a\\_b%",
+               ~S"%c\\d%"
+             ]
+
+      assert BubbleEx.Target.Keywords.patterns("   ") == []
+      assert BubbleEx.Target.Keywords.patterns(nil) == []
+      many = Enum.map_join(1..2_000, " ", &"w#{&1}")
+      assert length(BubbleEx.Target.Keywords.words(many)) == 32
+
+      assert BubbleEx.Target.Keywords.words(String.duplicate("x", 300)) == [
+               String.duplicate("x", 256)
+             ]
+    end
+
+    test "not compiled outside a search, on a value that is not a text, or on words that are not",
+         %{project: project} do
+      item = IR.node(:this, [:filter_item], "custom.task")
+      title = IR.node(:field, [item, "task", "title_text"], "text")
+      estimate = IR.node(:field, [item, "task", "estimate_number"], "number")
+      words = &IR.node(:text_contains_words, [&1, &2], "boolean")
+      lit = &IR.node(:literal, [&1], &2)
+
+      rule_title =
+        IR.node(
+          :field,
+          [IR.node(:this, [:rule_record], "custom.task"), "task", "title_text"],
+          "text"
+        )
+
+      assert {:ok, %{expr: nil, diagnostics: [diag]}} =
+               Expressions.filter(words.(rule_title, lit.("a b", "text")), project,
+                 resource: "task"
+               )
+
+      assert diag.details.constructs == ["contains keyword(s) outside a search"]
+
+      for {ir, construct} <- [
+            {words.(estimate, lit.("1", "text")),
+             "contains keyword(s) on a value that is not a text"},
+            {words.(title, lit.(1, "number")), "contains keyword(s) whose words are not a text"},
+            {words.(
+               title,
+               IR.node(:current_user, [], "user")
+               |> then(&IR.node(:field, [&1, "user", "name_text"], "text"))
+             ), "contains keyword(s) whose words are not an input or a literal"}
+          ] do
+        search = IR.node(:search, ["task", ir], "list.custom.task")
+        assert {:ok, %{expr: nil, diagnostics: [diag]}} = Expressions.search(search, project)
+        assert %{code: :ash_expr_unsupported, details: %{constructs: [^construct]}} = diag
+      end
+
+      # A literal's words are compiled in.
+      search = IR.node(:search, ["task", words.(title, lit.("a_b", "text"))], "list.custom.task")
+      assert {:ok, %{expr: expr, diagnostics: []}} = Expressions.search(search, project)
+
+      assert Source.expr(expr) =~
+               ~S|ILIKE ALL (?::text[]), false)", ["%a\\_b%"], title, ["%a\\_b%"])|
+    end
+  end
+
   test "Bubble's random sort compiles to :random; an unknown sort field does not (WTF-452)", %{
     project: project
   } do

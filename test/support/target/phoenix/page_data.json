@@ -41,6 +41,150 @@
     }
   },
   "pages": {
+    "keywords": {
+      "_comment": "WTF-520: a list filtered by a keyword input (Bubble's `contains keyword(s)`), read conservatively: every word of the input a case-insensitive substring of the title. bWordsAll ignores empty constraints, bWordsStrict does not.",
+      "id": "bWordsPage",
+      "name": "keywords",
+      "type": "Page",
+      "properties": {
+        "title": "Keywords"
+      },
+      "elements": {
+        "bWords": {
+          "id": "bWords",
+          "type": "Input",
+          "properties": {
+            "content_format": "text",
+            "order": 1,
+            "width": 300,
+            "height": 40
+          }
+        },
+        "bWordsAll": {
+          "id": "bWordsAll",
+          "type": "RepeatingGroup",
+          "properties": {
+            "group_type": "custom.task",
+            "order": 2,
+            "width": 300,
+            "height": 400,
+            "rows": 20,
+            "columns": 1,
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "sort_field": "title_text",
+                "descending": false,
+                "constraints": {
+                  "0": {
+                    "constraint_type": "text contains",
+                    "key": "title_text",
+                    "value": {
+                      "type": "GetElement",
+                      "properties": {
+                        "element_id": "bWords"
+                      },
+                      "next": {
+                        "type": "Message",
+                        "name": "get_data"
+                      }
+                    }
+                  }
+                },
+                "ignore_empty_constraints": true
+              }
+            }
+          },
+          "elements": {
+            "bWordsAllCell": {
+              "id": "bWordsAllCell",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 20,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Word: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    },
+                    "2": ";"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bWordsStrict": {
+          "id": "bWordsStrict",
+          "type": "RepeatingGroup",
+          "properties": {
+            "group_type": "custom.task",
+            "order": 3,
+            "width": 300,
+            "height": 400,
+            "rows": 20,
+            "columns": 1,
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "sort_field": "title_text",
+                "descending": false,
+                "constraints": {
+                  "0": {
+                    "constraint_type": "text contains",
+                    "key": "title_text",
+                    "value": {
+                      "type": "GetElement",
+                      "properties": {
+                        "element_id": "bWords"
+                      },
+                      "next": {
+                        "type": "Message",
+                        "name": "get_data"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bWordsStrictCell": {
+              "id": "bWordsStrictCell",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 20,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Strict word: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    },
+                    "2": ";"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "initial": {
       "_comment": "WTF-520: an input whose initial content is page data (its group's project's name, or \"Dr\" while that is empty), read by a search.",
       "id": "bInitPage",

@@ -65,7 +65,8 @@ defmodule BubbleEx.Target.Elixir do
   constraints per item (`item`); `:sorted` on texts, numbers or dates is
   `sort_values(list, descending?)`. An option's label or attribute of a list
   of options maps over it (a list attribute of each is one list of their
-  items).
+  items). A field of `x :converted to list` is the field of `x`, converted
+  (`(x's a) :converted to list`).
 
   Data shapes never raise (WTF-500): every list read (`count`, `:first
   item`, `contains`, `:filtered`, a list of options or files) goes through
@@ -326,6 +327,13 @@ defmodule BubbleEx.Target.Elixir do
   defp value(%IR{op: op} = ir, st) when op in @conditions do
     {c, st} = cond(ir, st, true)
     {ok(c, &"(#{&1} == true)"), st}
+  end
+
+  # The `ILIKE` patterns of a keyword search's words (WTF-520, bound by
+  # `FrontendWorkflows` for `BubbleEx.Target.Ash.Expressions`).
+  defp value(%IR{op: :keyword_patterns, args: [text]}, st) do
+    {t, st} = value(text, st)
+    runtime(st, :keyword_patterns, [t])
   end
 
   defp value(%IR{op: :count, args: [list]}, st) do
@@ -841,6 +849,14 @@ defmodule BubbleEx.Target.Elixir do
     {empty, st} = runtime(st, :empty?, [xv])
     {[a, b], st} = Enum.map_reduce([x, d], st, &chain(&1, steps, mode, &2))
     {all_ok("(if #{empty}, do: #{b}, else: #{a})", [empty, a, b]), st}
+  end
+
+  # A field chain over `x :converted to list` is the chain over `x`,
+  # converted: `(x :converted to list)'s a` is `(x's a) :converted to
+  # list` (a thing's `a`, one item; a list's, each item's; empty, none).
+  defp path(%IR{op: :as_list, args: [x]}, steps, mode, st) do
+    {v, st} = chain(x, steps, mode, st)
+    as_list(v, st)
   end
 
   defp path(%IR{op: op}, _steps, _mode, st), do: unsupported(st, {"a field of #{op}", nil})
