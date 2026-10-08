@@ -702,6 +702,128 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       refute Spec.per_cell?(spec, "bCardA")
     end
 
+    # WTF-521: a conditional data source in the reusable element. Its
+    # condition reading the instance is computed per cell; a search that
+    # reads nothing of the instance is one query for every cell (`once/3`).
+    # One constrained by the instance's property would query once per
+    # cell: that source is residue, and the instance stays per cell.
+    test "a conditional source querying per cell is residue; its instance stays per cell" do
+      flag = %{
+        "type" => "GetElement",
+        "properties" => %{"element_id" => "bRowDef"},
+        "next" => %{
+          "type" => "Message",
+          "name" => "param_pFlag",
+          "next" => %{"type" => "Message", "name" => "is_true"}
+        }
+      }
+
+      search = fn constraints ->
+        %{
+          "type" => "Search",
+          "properties" => %{
+            "type_to_find" => "custom.project",
+            "sort_field" => "name_text",
+            "descending" => true,
+            "ignore_empty_constraints" => false,
+            "constraints" => constraints
+          },
+          "next" => %{"type" => "Message", "name" => "first_element"}
+        }
+      end
+
+      by_label = %{
+        "0" => %{
+          "constraint_type" => "equals",
+          "key" => "name_text",
+          "value" => %{
+            "type" => "GetElement",
+            "properties" => %{"element_id" => "bRowDef"},
+            "next" => %{"type" => "Message", "name" => "param_pLabel"}
+          }
+        }
+      }
+
+      with_state = fn constraints ->
+        put_in(app(), ["element_definitions", "row", "elements", "bRowAny", "states"], %{
+          "0" => %{
+            "condition" => flag,
+            "properties" => %{"data_source" => search.(constraints)}
+          }
+        })
+      end
+
+      %{spec: spec} = build(with_state.(%{}))
+      assert %{read: {:switch, _}, residue: []} = bound(spec, "bRowDef", "bRowAny", nil)
+      assert Spec.per_cell?(spec, "bRowC")
+
+      %{spec: spec} = build(with_state.(by_label))
+
+      assert %{read: nil, residue: [%{reason: :page_data_in_cell, detail: %{kind: "query"}}]} =
+               bound(spec, "bRowDef", "bRowAny", nil)
+
+      assert Spec.per_cell?(spec, "bRowC")
+      assert spec.cells["bRowC"].residue == []
+    end
+
+    # A value over a search read first (WTF-495) in the reusable element
+    # whose search reads the instance would query once per cell too: as a
+    # conditional source, that value is residue and the instance stays per
+    # cell.
+    test "a value over a search reading the instance is residue; its instance stays per cell" do
+      source = fn constraints ->
+        %{
+          "type" => "Search",
+          "properties" => %{
+            "type_to_find" => "custom.project",
+            "sort_field" => "name_text",
+            "descending" => false,
+            "ignore_empty_constraints" => false,
+            "constraints" => constraints
+          },
+          "next" => %{
+            "type" => "Message",
+            "name" => "unique",
+            "next" => %{"type" => "Message", "name" => "first_element"}
+          }
+        }
+      end
+
+      by_label = %{
+        "0" => %{
+          "constraint_type" => "equals",
+          "key" => "name_text",
+          "value" => %{
+            "type" => "GetElement",
+            "properties" => %{"element_id" => "bRowDef"},
+            "next" => %{"type" => "Message", "name" => "param_pLabel"}
+          }
+        }
+      }
+
+      with_source = fn constraints ->
+        put_in(
+          app(),
+          ["element_definitions", "row", "elements", "bRowAny", "properties", "data_source"],
+          source.(constraints)
+        )
+      end
+
+      %{spec: spec} = build(with_source.(%{}))
+
+      assert %{read: {:value, %{queries: [_]}}, residue: []} =
+               bound(spec, "bRowDef", "bRowAny", nil)
+
+      assert Spec.per_cell?(spec, "bRowC")
+
+      %{spec: spec} = build(with_source.(by_label))
+
+      assert %{read: nil, residue: [%{reason: :page_data_in_cell, detail: %{kind: "query"}}]} =
+               bound(spec, "bRowDef", "bRowAny", nil)
+
+      assert Spec.per_cell?(spec, "bRowC")
+    end
+
     test "its thing and properties are computed per cell, after the list", %{spec: spec} do
       assert %{
                cell: "bList",

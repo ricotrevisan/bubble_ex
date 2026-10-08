@@ -198,7 +198,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       # Reusable instances in repeating group cells (WTF-494), and the
       # reusable elements each reusable element nests outside its cells.
       {in_cells, nested} = cell_structure(lowered.elements, ctx)
-      ctx = ctx |> Map.put(:nested, nested) |> Map.put(:once, once_instances(in_cells, ctx))
+
+      ctx =
+        ctx
+        |> Map.put(:nested, nested)
+        |> Map.put(:in_cells, in_cells)
+        |> Map.put(:once, once_instances(in_cells, ctx))
 
       # The page's data (WTF-420): its sources are bound against every
       # source that lowered, then only what loads is read by the rest.

@@ -30,6 +30,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       may view them). A value the Ash filter cannot compute (a list
       operator, a search, a dynamic text) is computed in Elixir and
       pinned when the filter needs it
+    * a data source with the conditional states that set one (WTF-521,
+      folded by `BubbleEx.PageData`), outside a repeating group's cell, is
+      `read: {:switch, %{cases, else}}`: each case `%{when, then}`, a
+      condition (a value) and a branch (a whole query or a value, as
+      above), and the base (`else`: the element's own source, or empty);
+      the runtime tests the conditions in order and reads only the winning
+      branch. In a cell the fold is one value, computed per cell
     * an element with no data source that a "Display data" step sets
       (WTF-492, `ctx.displayed`) reads what the step showed
       (`read: :displayed`), and so does one no step sets, which shows
@@ -504,10 +511,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   # --- instances in cells (WTF-494) ----------------------------------------------------
 
-  # An instance in a cell that would query once per cell is not rendered
-  # per cell: its own sources are residue, and so is what reads them.
+  # An instance in a cell that would query once per cell (a search source
+  # of its reusable element reads its scope) is not rendered per cell: its
+  # own sources are residue, and so is what reads them. A value over
+  # searches read first (WTF-495) or a conditional source (WTF-521) of a
+  # reusable element rendered in cells, one of whose searches reads the
+  # scope, is residue itself, and what reads it, but its instances are
+  # still rendered per cell.
   defp per_cell(bound, ctx) do
-    blocked = not_per_cell(bound, Map.get(ctx, :nested, %{}))
+    nested = Map.get(ctx, :nested, %{})
+    bound = queries_in_cells(bound, in_cell_reusables(Map.get(ctx, :in_cells, %{}), nested))
+    blocked = not_per_cell(bound, nested)
 
     if MapSet.size(blocked) == 0,
       do: bound,
@@ -522,6 +536,36 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   end
 
   defp block_in_cell(b, _blocked), do: b
+
+  defp queries_in_cells(bound, reusables) do
+    marked =
+      Enum.map(bound, fn
+        %{residue: [], cell: nil, read: {kind, _} = read} = b when kind in [:switch, :value] ->
+          if MapSet.member?(reusables, b.surface) and per_cell_query?(read, b),
+            do: %{b | read: nil, residue: [in_cell_entry(b.symbol, :query)]},
+            else: b
+
+        b ->
+          b
+      end)
+
+    if marked == bound, do: bound, else: prune(marked)
+  end
+
+  # The reusable elements whose sources run once per cell: those with an
+  # instance in a repeating group's cell, and the ones they nest outside
+  # their own cells.
+  defp in_cell_reusables(in_cells, nested) do
+    start = for {_instance, %{holder: h}} <- in_cells, into: MapSet.new(), do: h
+    nest_closure(MapSet.to_list(start), start, nested)
+  end
+
+  defp nest_closure([], seen, _nested), do: seen
+
+  defp nest_closure([r | rest], seen, nested) do
+    new = nested |> Map.get(r, []) |> Enum.reject(&MapSet.member?(seen, &1))
+    nest_closure(new ++ rest, Enum.into(new, seen), nested)
+  end
 
   # The instances in cells that cannot be read for every cell together:
   # their own data source is a search (once per cell), or their reusable
@@ -542,8 +586,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # cells) that reads something of the instance's scope.
   defp per_cell_blocked(bound, nested) do
     direct =
-      for %{residue: [], read: {:query, _}, cell: nil} = b <- bound,
-          not shared?(b),
+      for %{residue: [], read: read, cell: nil} = b <- bound,
+          match?({:query, _}, read),
+          per_cell_query?(read, b),
           into: MapSet.new(),
           do: b.surface
 
@@ -552,6 +597,28 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
     for r <- reusables, blocked?(r, direct, nested, MapSet.new()), into: MapSet.new(), do: r
   end
+
+  # A search that would read once per cell: one whose filter reads the
+  # scope. A value's searches read first (WTF-495) and a conditional
+  # source's (WTF-521) are checked the same way: the values themselves are
+  # computed per cell, and a search that reads nothing of the scope is the
+  # same query in every cell, read once in the pass (`once/3`).
+  defp per_cell_query?({:query, _}, b), do: not shared?(b)
+
+  defp per_cell_query?({:value, %{queries: [_ | _]}} = read, _b), do: scoped_query?([read])
+
+  defp per_cell_query?({:switch, sw}, _b), do: sw |> Spec.switch_reads() |> scoped_query?()
+
+  defp per_cell_query?(_read, _b), do: false
+
+  defp scoped_query?(reads) do
+    reads
+    |> Enum.flat_map(&queries_of/1)
+    |> Enum.any?(fn q -> not Enum.all?(bindings_of({:query, q}), &unscoped?/1) end)
+  end
+
+  defp queries_of({:query, q}), do: [q | Map.get(q, :queries, [])]
+  defp queries_of({:value, v}), do: Map.get(v, :queries, [])
 
   defp blocked?(r, direct, nested, seen) do
     cond do
@@ -575,15 +642,24 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   (WTF-494).
   """
   @spec shared?(map()) :: boolean()
-  def shared?(%{cell: nil, read: {kind, _}} = b) when kind in [:value, :query],
+  def shared?(%{cell: nil, read: {kind, _}} = b) when kind in [:value, :query, :switch],
     do: b |> read_bindings() |> Enum.all?(&unscoped?/1)
 
   def shared?(_bound), do: false
 
-  defp read_bindings(%{read: {:value, %{bindings: bindings}}}), do: bindings
+  defp read_bindings(%{read: read}), do: bindings_of(read)
 
-  defp read_bindings(%{read: {:query, %{pins: pins}}}),
+  defp bindings_of({:value, %{bindings: bindings}}), do: bindings
+
+  defp bindings_of({:query, %{pins: pins}}),
     do: for(%{value: %{bindings: bindings}} <- pins, b <- bindings, do: b)
+
+  # A conditional source (WTF-521): every condition's and branch's, their
+  # queries' too.
+  defp bindings_of({:switch, sw}), do: Enum.flat_map(Spec.switch_reads(sw), &all_bindings/1)
+
+  defp all_bindings({_kind, read} = r),
+    do: bindings_of(r) ++ Enum.flat_map(Map.get(read, :queries, []), &bindings_of({:query, &1}))
 
   defp unscoped?(%{bind: {kind, _}}), do: kind in [:url, :url_value, :url_thing]
   defp unscoped?(%{bind: bind}), do: bind in [:actor, :now]
@@ -736,9 +812,94 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         in_cell(base, :query)
 
       :value ->
-        if s.cell != nil and queries?(ir),
-          do: in_cell(base, :query),
-          else: value_source(s, %{s.value | ir: ir}, base, bctx, fns)
+        cond do
+          s.cell != nil and queries?(ir) -> in_cell(base, :query)
+          s.cell == nil and fold?(s, ir) -> switch_source(s, ir, base, bctx, fns)
+          true -> value_source(s, %{s.value | ir: ir}, base, bctx, fns)
+        end
+    end
+  end
+
+  # --- conditional data sources (WTF-521) ------------------------------------------------
+
+  # A data source folded with the conditional states that set one
+  # (`BubbleEx.PageData`, IR `:if`, the last state outermost), outside a
+  # repeating group's cell: read as `{:switch, %{cases, else}}`, each case
+  # `%{when, then}`. The runtime tests the conditions in order (the last
+  # state first) and reads only the winning branch, or the base (`else`):
+  # each branch is a whole read of its own, a search with its constraints,
+  # sort and page size (`{:query, q}`) or a value (`{:value, compiled}`),
+  # and each condition a value. What it reads is the union of what they
+  # all read (`reads`), so a change to the base's inputs or the
+  # conditions' reads it again. Any part that does not bind leaves the
+  # source unloaded. In a cell the fold is one value, computed per cell.
+  defp fold?(%Source{kind: kind}, %IR{op: :if}) when kind in [:group, :list, :instance],
+    do: true
+
+  defp fold?(_source, _ir), do: false
+
+  defp switch_source(s, ir, base, ctx, fns) do
+    {cases, otherwise} = unfold(ir, [])
+
+    parts =
+      Enum.map(cases, fn {c, v} ->
+        {condition_read(s, c, base, ctx, fns), branch(s, v, base, ctx, fns)}
+      end)
+
+    otherwise = branch(s, otherwise, base, ctx, fns)
+    all = Enum.flat_map(parts, &Tuple.to_list/1) ++ [otherwise]
+
+    case Enum.flat_map(all, & &1.residue) do
+      [] ->
+        %{
+          base
+          | read:
+              {:switch,
+               %{
+                 cases: Enum.map(parts, fn {c, v} -> %{when: c.read, then: v.read} end),
+                 else: otherwise.read
+               }},
+            resource: resource(s.type, ctx),
+            reads: all |> Enum.flat_map(& &1.reads) |> Enum.uniq()
+        }
+
+      residue ->
+        %{base | residue: Enum.uniq(residue)}
+    end
+  end
+
+  # The cases of a fold, outermost (the last state) first, and its base.
+  defp unfold(%IR{op: :if, args: [c, v, rest]}, acc), do: unfold(rest, [{c, v} | acc])
+  defp unfold(base, acc), do: {Enum.reverse(acc), base}
+
+  # A condition: a value (its searches read first, as any value's).
+  defp condition_read(s, c, base, ctx, fns),
+    do: value_source(s, %{s.value | ir: c}, %{base | read: nil, reads: []}, ctx, fns)
+
+  # A branch: a whole search, or a value, of the element's kind of value
+  # (`BubbleEx.PageData` checks the states; checked again here, after the
+  # list operators are lowered).
+  defp branch(s, ir, base, ctx, fns) do
+    base = %{base | read: nil, reads: []}
+
+    cond do
+      ir.op != :empty and not PageData.same_shape?(s.type, ir.type) ->
+        %{
+          base
+          | residue: [
+              Residue.entry(s.id, :uncompiled_expression, %{
+                expressions: 1,
+                constructs: ["conditional_source_type"]
+              })
+            ]
+        }
+
+      match?({:query, _, _}, query(ir)) ->
+        {:query, search, take} = query(ir)
+        search_source(s, base, search, take, ctx, fns)
+
+      true ->
+        value_source(s, %{s.value | ir: ir}, base, ctx, fns)
     end
   end
 
@@ -1384,9 +1545,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         e <- dep_element(read, b),
         Map.has_key?(by_element, e),
         # A property's value reading itself (a default naming its own
-        # property), or an input's initial content reading the input
-        # (WTF-520), is a cycle.
-        e != id(b) or b.kind in [:param, :input],
+        # property), an input's initial content reading the input
+        # (WTF-520), or a conditional source whose condition or branch
+        # reads the element's own value (WTF-521: it would read it empty,
+        # and decide on that), is a cycle.
+        e != id(b) or b.kind in [:param, :input] or match?({:switch, _}, b.read),
         uniq: true,
         do: e
   end
