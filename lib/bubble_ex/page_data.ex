@@ -473,7 +473,6 @@ defmodule BubbleEx.PageData do
     case Type.classify(type) do
       {%Type{kind: kind, cardinality: card}, _} when kind == :unknown or card == :unknown -> nil
       {%Type{} = t, _} -> {t.kind, t.base, t.target, t.cardinality}
-      _ -> nil
     end
   end
 
