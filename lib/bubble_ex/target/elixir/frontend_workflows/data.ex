@@ -545,7 +545,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
         # An instance in a cell, and its properties, are rendered per cell
         # of the list (WTF-494): they need it loaded.
-        reads = Enum.uniq(data_reads(compiled.bindings) ++ query_reads(queries))
+        reads =
+          Enum.uniq(data_reads(compiled.bindings, ctx) ++ query_reads(queries, ctx))
 
         reads =
           if s.cell != nil and s.kind in [:instance, :param],
@@ -670,10 +671,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp queries?(_arg), do: false
 
   # The page data the queries' pins read.
-  defp query_reads(queries) do
+  defp query_reads(queries, ctx) do
     for q <- queries,
         %{value: %{bindings: bindings}} <- q.pins,
-        read <- data_reads(bindings),
+        read <- data_reads(bindings, ctx),
         do: read
   end
 
@@ -715,7 +716,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
           base
           | read: {:query, query},
             resource: query.resource,
-            reads: Enum.uniq(query_reads([query]) ++ query_reads(queries))
+            reads: Enum.uniq(query_reads([query], ctx) ++ query_reads(queries, ctx))
         }
 
       {:error, residue} ->
@@ -1023,13 +1024,25 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   # --- reading each other --------------------------------------------------------------
 
-  # The page data a compiled value reads.
-  defp data_reads(bindings) do
+  # The page data a compiled value reads: an input whose first value is
+  # page data (WTF-520, `ctx.initial`) is read after its initial content.
+  defp data_reads(bindings, ctx) do
+    initial = Map.get(ctx, :initial, MapSet.new())
+
     for %{bind: bind} <- bindings,
-        match?({kind, _} when kind in [:data, :cell, :cell_index, :cell_data], bind),
+        read <- data_read(bind, initial),
         uniq: true,
-        do: bind
+        do: read
   end
+
+  defp data_read({kind, _} = bind, _initial) when kind in [:data, :cell, :cell_index, :cell_data],
+    do: [bind]
+
+  defp data_read({:input, %{path: [], element: e}}, initial) do
+    if MapSet.member?(initial, e), do: [{:data, %{path: [], element: e}}], else: []
+  end
+
+  defp data_read(_bind, _initial), do: []
 
   # A source whose value reads another source that is not bound (or reads
   # page data outside what its surface keeps) is not loaded either,

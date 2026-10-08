@@ -180,6 +180,32 @@ defmodule BubbleEx.Target.ElixirTest do
     end
   end
 
+  # WTF-520: an input's initial content with a conditional state: the
+  # state's value while its condition holds, else the content; an empty
+  # condition (a yes/no field with no value) does not hold.
+  test "a conditional state's value: the state's while its condition holds", %{
+    project: project
+  } do
+    this = IR.node(:this, [:rule_record], "custom.task")
+    estimate = IR.node(:field, [this, "task", "estimate_number"], "number")
+    public = IR.node(:field, [this, "task", "public_boolean"], "boolean")
+    ten = IR.node(:literal, [10], "number")
+    empty = IR.node(:is_empty, [estimate], "boolean")
+
+    {:ok, result} =
+      Target.compile(IR.node(:if, [empty, ten, estimate], "number"), project, runtime: @runtime)
+
+    assert eval(result, this: %{estimate: nil}) == 10
+    assert eval(result, this: %{estimate: 3}) == 3
+
+    {:ok, result} =
+      Target.compile(IR.node(:if, [public, ten, estimate], "number"), project, runtime: @runtime)
+
+    assert eval(result, this: %{public: true, estimate: 3}) == 10
+    assert eval(result, this: %{public: false, estimate: 3}) == 3
+    assert eval(result, this: %{public: nil, estimate: 3}) == 3
+  end
+
   test "a record held by an element compares by ID with a reference field", %{project: project} do
     this = IR.node(:this, [:rule_record], "custom.task")
     assignee = IR.node(:field, [this, "task", "assignee_user"], "user")

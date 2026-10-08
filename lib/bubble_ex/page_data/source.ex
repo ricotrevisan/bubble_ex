@@ -7,7 +7,8 @@ defmodule BubbleEx.PageData.Source do
     * `element` - the Bubble ID of the page or element whose data it is
     * `surface` - the Bubble ID of its page or reusable element;
       `surface_kind` `:page` or `:reusable`
-    * `kind` - `:page_thing`, `:group`, `:list`, `:instance` or `:param`
+    * `kind` - `:page_thing`, `:group`, `:list`, `:instance`, `:param` or
+      `:input` (an input's initial content, its first value, WTF-520)
     * `holder` - for `:instance`, the reusable element whose thing it sets;
       for `:param`, the reusable element whose property it sets
     * `param` - for `:param`, the property (`"param_<id>"`, the element
@@ -44,7 +45,7 @@ defmodule BubbleEx.PageData.Source do
           element: String.t(),
           surface: String.t(),
           surface_kind: :page | :reusable,
-          kind: :page_thing | :group | :list | :instance | :param,
+          kind: :page_thing | :group | :list | :instance | :param | :input,
           holder: String.t() | nil,
           param: String.t() | nil,
           type: String.t() | nil,

@@ -72,8 +72,9 @@ defmodule BubbleEx.PageDataTest do
                {:page_thing, %{"page" => "bTaskPage"}}
              ]
 
-      # The shown page's four (WTF-492) included.
-      assert PageData.coverage(pd)["sources"] == %{"total" => 15, "native" => 15, "residue" => 0}
+      # The shown page's four (WTF-492) included, and the initial page's
+      # three (WTF-520: a group, an input's initial content, a list).
+      assert PageData.coverage(pd)["sources"] == %{"total" => 18, "native" => 18, "residue" => 0}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -283,10 +284,11 @@ defmodule BubbleEx.PageDataTest do
       assert Enum.map(Spec.data(spec, "bTaskPage"), & &1.element) == ["bTaskPage", "bProjGroup"]
 
       # With the shown page's (WTF-492): its six sources and the six
-      # elements with no source its "Display data" steps set.
+      # elements with no source its "Display data" steps set; the initial
+      # page's three (WTF-520).
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 21,
-               "wired" => 21,
+               "total" => 24,
+               "wired" => 24,
                "residue" => 0
              }
 
@@ -386,7 +388,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 19
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 22
     end
 
     test "a repeating group in a repeating group's cell is residue" do
@@ -815,6 +817,185 @@ defmodule BubbleEx.PageDataTest do
 
       assert files["lib/shop_web/bubble_data.ex"] =~
                "def show(ctx, {resource, list?, value}, page_size)"
+    end
+  end
+
+  # WTF-520: an input whose initial content reads data starts with that
+  # value, its conditional states applied, and what reads the input waits
+  # for it.
+  describe "an input's initial content" do
+    defp initial_path(rest), do: ["pages", "initial", "elements", "bInitBox", "elements" | rest]
+
+    test "is a source of the input, its content states folded in Bubble's order" do
+      {_model, pd} = build(app())
+
+      assert %Source{kind: :input, type: "text", cell: nil, residue: []} =
+               init = source(pd, "bInitQuery")
+
+      # Its group's project's name, or "Dr" while that is empty.
+      assert %IR{
+               op: :if,
+               args: [
+                 %IR{op: :is_empty},
+                 %IR{op: :literal, args: ["Dr"]},
+                 %IR{op: :field, args: [_, "project", "name_text"]}
+               ]
+             } = init.value.ir
+
+      assert PageData.inputs(init) == [
+               {:element_state, %{"element" => "bInitBox", "state" => "get_group_data"}}
+             ]
+
+      # A static initial content is the page's, not a source.
+      assert source(pd, "bQuery") == nil
+
+      # The last state that is true wins: a later state is outermost.
+      later = %{
+        "condition" => %{
+          "type" => "ElementParent",
+          "next" => %{
+            "type" => "Message",
+            "name" => "name_text",
+            "next" => %{"type" => "Message", "name" => "is_not_empty"}
+          }
+        },
+        "properties" => %{"content" => "Ea"}
+      }
+
+      {_model, pd} = build(put_in(app(), initial_path(["bInitQuery", "states", "1"]), later))
+
+      assert %IR{
+               op: :if,
+               args: [_, %IR{args: ["Ea"]}, %IR{op: :if, args: [_, %IR{args: ["Dr"]}, _]}]
+             } =
+               source(pd, "bInitQuery").value.ir
+    end
+
+    test "that does not compile is residue; in a repeating group's cell it is no source" do
+      no_condition =
+        put_in(app(), initial_path(["bInitQuery", "states", "0", "condition"]), nil)
+
+      {_model, pd} = build(no_condition)
+
+      assert %Source{kind: :input, residue: [%{reason: :uncompiled_expression}]} =
+               source(pd, "bInitQuery")
+
+      in_cell =
+        put_in(
+          app(),
+          ["pages", "initial", "elements", "bInitList", "elements", "bInCell"],
+          %{
+            "id" => "bInCell",
+            "type" => "Input",
+            "properties" => %{
+              "content_format" => "text",
+              "content" => %{
+                "type" => "CurrentDataItem",
+                "next" => %{"type" => "Message", "name" => "title_text"}
+              }
+            }
+          }
+        )
+
+      {_model, pd} = build(in_cell)
+      assert source(pd, "bInCell") == nil
+    end
+
+    test "makes the input tracked, read after its group and before what reads it" do
+      {spec, _project, _frontend, _app, _model} = spec(app())
+      page = spec.surfaces["bInitPage"]
+
+      assert page.inputs == %{"bInitQuery" => :text}
+      assert page.initial == ["bInitQuery"]
+
+      assert %{
+               kind: :input,
+               read: {:value, _},
+               residue: [],
+               reads: [{:data, %{element: "bInitBox"}}]
+             } =
+               data(spec, "bInitQuery")
+
+      assert %{read: {:query, q}, residue: []} = list = data(spec, "bInitList")
+      assert {:data, %{path: [], element: "bInitQuery"}} in list.reads
+
+      assert Enum.any?(
+               q.pins,
+               &match?(
+                 %{value: %{bindings: [%{bind: {:input, %{element: "bInitQuery"}}} | _]}},
+                 &1
+               )
+             )
+
+      assert Enum.map(Spec.data(spec, "bInitPage"), & &1.element) ==
+               ["bInitBox", "bInitQuery", "bInitList"]
+
+      # Other inputs keep a static first value.
+      assert spec.surfaces["bHome"].initial == []
+    end
+
+    test "that does not load leaves the input untracked, and what reads it unloaded" do
+      unloaded =
+        update_in(
+          app(),
+          ["pages", "initial", "elements", "bInitBox", "properties", "data_source", "properties"],
+          &Map.put(&1, "dynamic_sort_field", "x")
+        )
+
+      {spec, _project, _frontend, _app, _model} = spec(unloaded)
+      page = spec.surfaces["bInitPage"]
+
+      assert page.inputs == %{}
+      assert page.initial == []
+      assert data(spec, "bInitQuery") == nil
+
+      assert %{
+               read: nil,
+               residue: [
+                 %{reason: :unavailable_input, detail: %{inputs: ["element_state:get_data"]}}
+               ]
+             } = data(spec, "bInitList")
+    end
+
+    test "is printed: the page keeps :data as the first value and shows the loaded one" do
+      {spec, project, frontend, app, model} = spec(app())
+
+      {:ok, compiled} =
+        BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend,
+          runtime: "Shop.Bubble.Runtime",
+          namespace: "Shop"
+        )
+
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, backend} = BubbleEx.Workflows.Backend.build(app, model, index)
+      {:ok, workflows} = BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "Shop")
+
+      {:ok, files} =
+        Phoenix.render(project,
+          name: "Shop",
+          frontend: frontend,
+          expressions: compiled,
+          workflows: workflows,
+          frontend_workflows: spec
+        )
+
+      flows = files["lib/shop_web/live/initial_live/workflows.ex"]
+      assert flows =~ ~s|inputs: %{"bInitQuery" => {:text, :data}}|
+      assert flows =~ ~s|BubbleWorkflows.reset(ctx, [], "bInitBox", [{"bInitQuery", :data}])|
+
+      assert flows =~
+               ~r/element: "bInitList",.*?inputs: \["bInitQuery"\],\s*reads: \["bInitQuery"\]/s
+
+      assert flows =~ ~r/if\(\s*Shop.Bubble.Runtime.empty\?\(/
+
+      template = files["lib/shop_web/live/initial_live.html.heex"]
+      assert template =~ ~s|Bubble.input(@bubble_inputs, @bubble_data, "", "bInitQuery"|
+      refute template =~ "TODO(bubble:bInitQuery"
+      refute template =~ "TODO(bubble:bInitList"
+
+      component = files["lib/shop_web/components/bubble.ex"]
+      assert component =~ "def input(inputs, data, scope, element, initial \\\\ nil)"
+      assert files["lib/shop_web/bubble_workflows.ex"] =~ ":data -> Map.get(ctx.data, key)"
     end
   end
 end

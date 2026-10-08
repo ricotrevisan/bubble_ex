@@ -408,6 +408,14 @@ defmodule BubbleEx.Target.Elixir do
     runtime(st, :default, [a, b])
   end
 
+  # A conditional state's value (WTF-520): the condition holds only when
+  # it is yes; an empty one does not.
+  defp value(%IR{op: :if, args: [c, a, b]}, st) do
+    {cs, st} = truth(c, st)
+    {[x, y], st} = Enum.map_reduce([a, b], st, &value/2)
+    {all_ok("(if #{cs}, do: #{x}, else: #{y})", [cs, x, y]), st}
+  end
+
   # `:converted to text` on the server is its text in UTC.
   defp value(%IR{op: :to_text, args: [x]}, %{shown: :utc_text} = st) do
     {a, st} = value(x, st)
@@ -999,6 +1007,15 @@ defmodule BubbleEx.Target.Elixir do
     else
       {"#{st.runtime}.#{fun}(#{Enum.join(args, ", ")})", %{st | used: MapSet.put(st.used, fun)}}
     end
+  end
+
+  # A condition's truth: a condition as compiled (an empty side never
+  # holds), any other value only when it is yes.
+  defp truth(%IR{op: op} = c, st) when op in @conditions, do: cond(c, st, true)
+
+  defp truth(c, st) do
+    {v, st} = value(c, st)
+    {ok(v, &"(#{&1} == true)"), st}
   end
 
   defp ok(:error, _fun), do: :error

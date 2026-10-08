@@ -530,6 +530,19 @@ defmodule BubbleEx.Expression.CompilerTest do
       # A list of things with no sort field keeps its order.
       assert %IR{op: :search} = ir(chain(search("custom.task", []), [msg("sorted", nil, %{})]))
 
+      # A dynamic sort field cleared in the editor (an empty text, with
+      # its entries or without) names no field: the static one sorts
+      # (WTF-520).
+      for cleared <- [
+            %{"type" => "TextExpression", "entries" => %{"1" => ""}},
+            %{"type" => "TextExpression"},
+            text(["", ""]),
+            ""
+          ] do
+        assert %IR{op: :sort, args: [_, "title_text", true]} =
+                 ir(search("custom.task", [], Map.put(options, "dynamic_sort_field", cleared)))
+      end
+
       # A dynamic or geographic sort key is not compiled.
       for extra <- [
             %{"dynamic_sort_field" => text(["x"])},

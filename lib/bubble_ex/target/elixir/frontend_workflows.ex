@@ -183,11 +183,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
           )
       }
 
-      inputs = inputs(lowered.elements, ctx)
-      ctx = Map.put(ctx, :inputs, inputs)
       {states, state_diags} = states(lowered.states, ctx)
       ctx = Map.put(ctx, :states, states)
-      ctx = Map.put(ctx, :view, %Spec{elements: elements, surfaces: surfaces_view(ctx)})
 
       # Reusable instances in repeating group cells (WTF-494), and the
       # reusable elements each reusable element nests outside its cells.
@@ -198,12 +195,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       # source that lowered, then only what loads is read by the rest.
       page_data = Keyword.get(opts, :page_data)
 
-      # What "Display data" steps show (WTF-492): the elements they set,
-      # held as page data (with no source of their own, read from what
-      # the step showed). Only the elements a step the runtime starts
-      # (whole) shows data in: the others stay unloaded, loudly.
+      # The inputs whose first value is page data (WTF-520): tracked when
+      # their initial content loads. What "Display data" steps show
+      # (WTF-492): the elements they set, held as page data (with no
+      # source of their own, read from what the step showed). Only the
+      # elements a step the runtime starts (whole) shows data in: the
+      # others stay unloaded, loudly.
       {ctx, data, bound} =
-        bind_data_and_workflows(displayed(lowered.workflows, ctx), lowered, page_data, ctx)
+        bind_with_inputs(initial_inputs(page_data, ctx), lowered, page_data, ctx)
+
+      inputs = ctx.inputs
 
       surfaces =
         Map.new(kinds, fn {id, kind} ->
@@ -215,6 +216,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
              workflows: Enum.map(workflows, &Map.delete(&1, :diagnostics)),
              states: Enum.filter(states, &(elements[&1.element].surface == id)),
              inputs: Map.get(inputs, id, %{}),
+             initial: ctx.initial |> Enum.filter(&(elements[&1].surface == id)) |> Enum.sort(),
              data: Map.get(data, id, [])
            }}
         end)
@@ -245,6 +247,69 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
          :invalid_input,
          "expected a BubbleEx.Workflows.Frontend, a BubbleEx.Target.Ash.Project and options"
        )}
+
+  # Binds the page data and the workflows with the inputs `initial` (whose
+  # first value is page data, WTF-520) tracked, until the initial content
+  # of every one of them loads: an input whose initial content does not
+  # load is not tracked (as before), and its source is left out.
+  defp bind_with_inputs(initial, lowered, page_data, base) do
+    ctx =
+      base
+      |> Map.put(:initial, initial)
+      |> Map.put(:inputs, inputs(lowered.elements, base, initial))
+
+    ctx = Map.put(ctx, :view, %Spec{elements: ctx.elements, surfaces: surfaces_view(ctx)})
+
+    {ctx, data, bound} =
+      bind_data_and_workflows(
+        displayed(lowered.workflows, ctx),
+        lowered,
+        with_inputs(page_data, initial),
+        ctx
+      )
+
+    loaded =
+      for {_surface, sources} <- data,
+          %{kind: :input, residue: []} = d <- sources,
+          into: MapSet.new(),
+          do: d.element
+
+    kept = MapSet.intersection(initial, loaded)
+
+    if kept == initial,
+      do: {ctx, data, bound},
+      else: bind_with_inputs(kept, lowered, page_data, base)
+  end
+
+  # The page data with the initial contents of the inputs `initial` only.
+  defp with_inputs(nil, _initial), do: nil
+
+  defp with_inputs(page_data, initial) do
+    sources =
+      Enum.reject(page_data.sources, fn s ->
+        s.kind == :input and not MapSet.member?(initial, s.element)
+      end)
+
+    %{page_data | sources: sources}
+  end
+
+  # The inputs a page could track with page data as their first value: an
+  # input rendered natively whose only dynamic part is its initial content,
+  # which lowered (`BubbleEx.PageData`'s `:input` sources).
+  defp initial_inputs(nil, _ctx), do: MapSet.new()
+
+  defp initial_inputs(page_data, ctx) do
+    for %{kind: :input, element: id, residue: []} <- page_data.sources,
+        %{kind: :element, type: type, value: value, instance_of: nil} <- [
+          ctx.raw_elements[id]
+        ],
+        {values, kind} <- [Map.get(@inputs, type, {[], nil})],
+        value in values,
+        rendered?(id, ctx),
+        initial_input?(ctx.nodes[id], kind),
+        into: MapSet.new(),
+        do: id
+  end
 
   # Binds the page data and the workflows with the elements `displayed`
   # holds, until every one of them has a display step that runs.
@@ -369,13 +434,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # --- inputs and states -------------------------------------------------------------------
 
   # The inputs a page tracks: rendered natively (not a placeholder, not in
-  # a runtime template), of a tracked value type, with a static first value.
-  defp inputs(elements, ctx) do
+  # a runtime template), of a tracked value type, with a static first value
+  # or (`initial`, WTF-520) one the page's data gives.
+  defp inputs(elements, ctx, initial) do
     for {id, %{kind: :element, type: type, value: value, instance_of: nil} = e} <- elements,
         {values, kind} <- [Map.get(@inputs, type, {[], nil})],
         value in values,
         rendered?(id, ctx),
-        native_input?(ctx.nodes[id], kind),
+        native_input?(ctx.nodes[id], kind) or MapSet.member?(initial, id),
         reduce: %{} do
       acc ->
         Map.update(
@@ -1166,6 +1232,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     do: not Enum.any?(@dynamic_slots, &Map.has_key?(node.bindings || %{}, &1))
 
   defp native_input?(_node, _kind), do: false
+
+  # A native input whose initial content is its only dynamic part.
+  defp initial_input?(%Normalized.Node{kind: kind, placeholder?: false} = node, kind) do
+    bindings = node.bindings || %{}
+
+    Map.has_key?(bindings, "value") and
+      not Enum.any?(~w(checked choices), &Map.has_key?(bindings, &1))
+  end
+
+  defp initial_input?(_node, _kind), do: false
 
   # Every normalized node with a Bubble ID.
   defp native_nodes(%Normalized{} = frontend) do

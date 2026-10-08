@@ -1840,4 +1840,74 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert shown(html, "Shown") == []
     assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."})
   end
+
+  # WTF-520: an input whose initial content is page data (bInitQuery: its
+  # group's project's name, or "Dr" while that is empty) starts with it,
+  # and the list searching by it (bInitList) shows what matches.
+  defp init_cells(html),
+    do: ~r/Init: (\w+)/ |> Regex.scan(html, capture: :all_but_first) |> List.flatten()
+
+  defp query_shown(html), do: Regex.run(~r/Query: (\w*)/, html, capture: :all_but_first)
+
+  defp rename_project(name) do
+    PhxCheck.Project
+    |> Ash.get!(@p1, authorize?: false)
+    |> Ash.Changeset.for_update(:update, %{name: name})
+    |> Ash.update!(authorize?: false)
+  end
+
+  test "an input whose initial content is page data starts with it; a search reads it", %{
+    conn: conn
+  } do
+    rename_project("ea")
+    on()
+    {:ok, view, html} = live(conn, "/initial")
+
+    assert html =~ ~r/data-bubble-id="bInitQuery"[^>]*value="ea"/
+    assert query_shown(html) == ["ea"]
+    assert init_cells(html) == ["Clean"]
+
+    # Untouched, it follows its initial content: the project renamed, and
+    # its conditional state while the name is empty.
+    rename_project("Bak")
+    Process.sleep(100)
+    html = render(view)
+    assert query_shown(html) == ["Bak"]
+    assert init_cells(html) == ["Bake"]
+
+    rename_project(nil)
+    Process.sleep(100)
+    html = render(view)
+    assert query_shown(html) == ["Dr"]
+    assert init_cells(html) == ["Draw"]
+
+    # Typed, it holds what the user typed, whatever the data does.
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bInitQuery", "value" => "Ea"}
+    })
+
+    Process.sleep(200)
+    assert init_cells(render(view)) == ["Eat"]
+
+    rename_project("ea")
+    Process.sleep(100)
+    html = render(view)
+    assert query_shown(html) == ["Ea"]
+    assert init_cells(html) == ["Eat"]
+
+    # A reset puts its initial content back.
+    click(view, "bInitReset")
+    Process.sleep(100)
+    html = render(view)
+    assert query_shown(html) == ["ea"]
+    assert init_cells(html) == ["Clean"]
+  end
+
+  test "with data access off, an input whose initial content is page data is empty", %{
+    conn: conn
+  } do
+    {:ok, _view, html} = live(conn, "/initial")
+    assert query_shown(html) == [""]
+    assert init_cells(html) == []
+  end
 end

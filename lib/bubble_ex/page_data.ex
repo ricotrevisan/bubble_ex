@@ -30,6 +30,7 @@ defmodule BubbleEx.PageData do
   | a reusable-element instance's data source | `:instance` | the reusable element's thing, for that instance (`holder`: the reusable element) |
   | a property a reusable-element instance sets (WTF-493) | `:param` | its value, computed where the instance is (`holder`: the reusable element; `param`: `"param_<id>"`) |
   | a reusable element property's default value | `:param` | computed inside the reusable element (`element` and `holder` are the reusable element), for the instances that do not set it |
+  | an Input's or Multiline Input's initial content that is an expression, outside a repeating group's cell (WTF-520) | `:input` | the input's first value, computed where the input is, the conditional states that set its content folded in Bubble's order (IR `:if`, the last state outermost) |
 
   An instance in a repeating group's cell (WTF-494) lists the properties
   it sets, like any other: their values are computed per cell (`cell`).
@@ -70,6 +71,7 @@ defmodule BubbleEx.PageData do
 
   alias BubbleEx.{Diagnostic, Error, Model}
   alias BubbleEx.Expression.{Env, IR, Tree}
+  alias BubbleEx.Frontend.Conditions
   alias BubbleEx.Index.Symbol
   alias BubbleEx.Model.Type
   alias BubbleEx.PageData.Source
@@ -80,6 +82,12 @@ defmodule BubbleEx.PageData do
   defstruct sources: [], diagnostics: []
 
   @type t :: %__MODULE__{sources: [Source.t()], diagnostics: [Diagnostic.t()]}
+
+  # Inputs whose initial content can be page data (WTF-520), and the keys
+  # an input's initial content is kept under (the editor's and the compact
+  # form's, as `BubbleEx.Frontend.normalize/2` reads them first).
+  @inputs ~w(Input MultiLineInput)
+  @content_keys ~w(content %c1 %3 initial_content)
 
   @holders %{
     "Group" => :group,
@@ -277,21 +285,26 @@ defmodule BubbleEx.PageData do
           [source(kind, id, value, path ++ [props_key(raw), prop], at, ctx)]
       end
 
-    params =
-      if type == "CustomElement",
-        do: instance_params(id, props, path ++ [props_key(raw)], at, ctx),
-        else: []
-
     inner =
       case Tree.node(ctx.env.tree, id) do
         %Tree.Node{} = node -> %{at | cell: Tree.cell_holder(node, id) || at.cell}
         nil -> at
       end
 
-    own ++ params ++ elements(raw, path, inner, ctx)
+    own ++ element_values(type, raw, id, path, at, ctx) ++ elements(raw, path, inner, ctx)
   end
 
   defp element(_raw, _path, _key, _at, _ctx), do: []
+
+  # The properties an instance sets (WTF-493); an input's initial content
+  # (WTF-520).
+  defp element_values("CustomElement", raw, id, path, at, ctx),
+    do: instance_params(id, props(raw), path ++ [props_key(raw)], at, ctx)
+
+  defp element_values(type, raw, id, path, %{cell: nil} = at, ctx) when type in @inputs,
+    do: initial_content(raw, id, path, at, ctx)
+
+  defp element_values(_type, _raw, _id, _path, _at, _ctx), do: []
 
   defp data_source(props) do
     cond do
@@ -323,6 +336,79 @@ defmodule BubbleEx.PageData do
       path: Diagnostic.pointer(vpath)
     }
   end
+
+  # --- inputs' initial content (WTF-520) ----------------------------------------------
+
+  # An input whose initial content is an expression (outside a repeating
+  # group's cell): its first value is page data, computed where the input
+  # is, with the conditional states that set its content applied in
+  # Bubble's order (the last true one wins). A static initial content is
+  # the page's (the target's first value), not a source.
+  defp initial_content(raw, id, path, at, ctx) do
+    props = props(raw)
+    ppath = path ++ [props_key(raw)]
+
+    key = Enum.find(@content_keys, &(props[&1] != nil))
+
+    case key && props[key] do
+      content when is_map(content) ->
+        env = %{ctx.env | host: id}
+        base = Lowering.expr(content, ppath ++ [key], env)
+        states = content_states(raw, path, env)
+        symbol = Symbol.id(:element, id)
+        exprs = [base | Enum.flat_map(states, &Tuple.to_list/1)]
+        residue = Lowering.expr_residue(symbol, exprs)
+
+        value =
+          if residue == [],
+            do: %{base | ir: Enum.reduce(states, base.ir, &conditional/2)},
+            else: base
+
+        [
+          %Source{
+            id: symbol,
+            element: id,
+            surface: at.surface,
+            surface_kind: at.surface_kind,
+            kind: :input,
+            type: value_type(:input, nil, value),
+            value: value,
+            cell: at.cell,
+            residue: residue ++ search_fields(symbol, value, ctx.model),
+            path: Diagnostic.pointer(ppath ++ [key])
+          }
+        ]
+
+      _ ->
+        []
+    end
+  end
+
+  # The conditional states that set the content, in order: `{condition,
+  # content}` as expressions. A state with no condition is residue.
+  defp content_states(raw, path, env) do
+    {key, payload} =
+      case Json.get(raw, ~w(states %st)) do
+        {key, payload} when is_map(payload) -> {key, payload}
+        _ -> {"states", %{}}
+      end
+
+    for {skey, %{condition: condition, properties: sprops}} <- Conditions.keyed(payload),
+        ckey = Enum.find(@content_keys, &(sprops[&1] != nil)),
+        ckey != nil do
+      spath = path ++ [key, skey]
+
+      condition =
+        if is_map(condition),
+          do: Lowering.expr(condition, spath ++ ["condition"], env),
+          else: %Lowering.Expr{path: Diagnostic.pointer(spath), constructs: ["condition"]}
+
+      {condition, Lowering.expr(sprops[ckey], spath ++ ["properties", ckey], env)}
+    end
+  end
+
+  defp conditional({%Lowering.Expr{ir: c}, %Lowering.Expr{ir: v}}, acc),
+    do: IR.node(:if, [c, v, acc], acc.type || v.type)
 
   # --- reusable element properties (WTF-493) ------------------------------------------
 
@@ -530,6 +616,7 @@ defmodule BubbleEx.PageData do
 
   defp kind_text(:page_thing), do: "type of content"
   defp kind_text(:param), do: "property value"
+  defp kind_text(:input), do: "initial content"
   defp kind_text(_kind), do: "data source"
 
   defp text(value) when is_binary(value) and value != "", do: value

@@ -41,6 +41,7 @@ defmodule BubbleEx.Expression.IR do
   | `:add`, `:sub`, `:mul`, `:div`, `:mod` | `[left, right]` | arithmetic |
   | `:concat` | `[part, …]` | dynamic text: parts in order, each shown as text |
   | `:fallback` | `[x, default]` | `x defaulting to default` |
+  | `:if` | `[condition, then, else]` | a conditional state's value: `then` while `condition` is yes (an empty condition is no), else `else` (an input's initial content with the states that set it, WTF-520) |
   | `:lowercase`, `:uppercase`, `:trim`, `:capitalize_words`, `:text_length`, `:json_encode`, `:url_encode`, `:is_email`, `:abs`, `:round`, `:to_text` | `[x]` | text and number operators |
   | `:to_number` | `[x]` | `converted to number` |
   | `:format_date` | `[date, format, zone]` | `formatted as` a date: `format` is Bubble's pattern (a named format is its own pattern, `custom` its `custom_format`; `"iso_date"` for ISO 8601; nil for Bubble's default); `zone` (see below) |

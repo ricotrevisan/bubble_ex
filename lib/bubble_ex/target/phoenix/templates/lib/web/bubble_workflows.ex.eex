@@ -440,6 +440,12 @@ defmodule <%= @web %>.BubbleWorkflows do
     key = {scope, element}
     committed = Map.get(socket.assigns, :bubble_committed) || %{}
     before = Map.get(committed, key, Map.get(socket.assigns.bubble_first_inputs, key))
+
+    # A first value that is page data (WTF-520) is what the page showed.
+    before =
+      if before == :data,
+        do: Map.get(Map.get(socket.assigns, :bubble_data) || %{}, key),
+        else: before
     socket = assign(socket, :bubble_committed, Map.put(committed, key, value))
 
     runs =
@@ -1389,8 +1395,20 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc "Custom state `state` of `element` (in the instance `path` below)."
   def state(ctx, path, element, state), do: Map.get(ctx.states, {scope(ctx, path), element, state})
 
-  @doc "The value of input `element` (in the instance `path` below)."
-  def input(ctx, path, element), do: Map.get(ctx.inputs, {scope(ctx, path), element})
+  @doc """
+  The value of input `element` (in the instance `path` below). An input
+  whose first value is page data (WTF-520) holds `:data` until it changes
+  (or again after a reset): its initial content as the page's data
+  computed it (`ctx.data`, read after it while loading).
+  """
+  def input(ctx, path, element) do
+    key = {scope(ctx, path), element}
+
+    case Map.get(ctx.inputs, key) do
+      :data -> Map.get(ctx.data, key)
+      value -> value
+    end
+  end
 
   @doc "URL parameter `name`, as text."
   def url(ctx, name), do: Map.get(ctx.url, name)

@@ -22,19 +22,26 @@ defmodule BubbleEx.Frontend.Conditions do
 
   @doc "The states of a `:condition` binding's payload, in Bubble's order."
   @spec states(term()) :: [state()]
-  def states(payload) when is_map(payload) do
+  def states(payload), do: payload |> keyed() |> Enum.map(&elem(&1, 1))
+
+  @doc """
+  The states of a `:condition` binding's payload with their keys in the
+  payload, in Bubble's order: `{key, state}`.
+  """
+  @spec keyed(term()) :: [{term(), state()}]
+  def keyed(payload) when is_map(payload) do
     payload
     |> Enum.sort_by(fn {key, _} -> order(key) end)
     |> Enum.flat_map(fn
-      {_key, state} when is_map(state) ->
-        [%{condition: state["condition"] || state["%c"], properties: properties(state)}]
+      {key, state} when is_map(state) ->
+        [{key, %{condition: state["condition"] || state["%c"], properties: properties(state)}}]
 
       _ ->
         []
     end)
   end
 
-  def states(_payload), do: []
+  def keyed(_payload), do: []
 
   @doc """
   The states that set visibility, in order: `{condition, visible?}`;

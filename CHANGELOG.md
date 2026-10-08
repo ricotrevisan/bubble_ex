@@ -6,6 +6,25 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Inputs whose initial content reads data give pages their value**
+  (WTF-520). An Input or Multiline Input whose initial content is an
+  expression (a field of its group's thing, say a number of days, with a
+  conditional state that sets 10 while it is empty) was not tracked: every
+  search, condition and workflow reading its value was left unloaded, so
+  the lists filtered by it showed no rows and the input showed its value
+  without its conditional default. Its initial content is now a page data
+  source (`BubbleEx.PageData` kind `:input`, conditional content states
+  folded with the new IR op `:if`); when it loads, the page tracks the
+  input with `:data` as its first value, reads what depends on it after
+  it, keeps the user's value once changed and puts the initial content
+  back on a reset (`docs/page-data.md`). That Bubble re-evaluates an
+  untouched input's initial content when its data changes is assumed, not
+  replayed.
+- **A search whose dynamic sort field was cleared compiles** (WTF-520).
+  The editor keeps an empty dynamic text (`{"entries": {"1": ""}}`) once a
+  dynamic sort field is cleared; it names no field, so the static sort
+  field sorts and the search is no longer `:search_option` residue.
+
 - **An empty text is empty in `is` and `is not`** (WTF-514). Bubble has no
   empty text apart from an empty value; Elixir's `"" == nil` is false. A
   generated page whose tabs compare a value set to an empty text with a

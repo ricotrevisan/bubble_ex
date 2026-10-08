@@ -3184,7 +3184,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # The click wiring and tracked inputs of surface `id` (none without
   # workflows).
-  defp surface_flows(%{flows: nil}, _id), do: %{clicks: %{}, tracked: %{}}
+  defp surface_flows(%{flows: nil}, _id), do: %{clicks: %{}, tracked: %{}, initial: MapSet.new()}
 
   defp surface_flows(%{flows: flows}, id) do
     surface = flows.surfaces[id] || %{workflows: [], inputs: %{}}
@@ -3203,7 +3203,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
          }}
       end)
 
-    %{clicks: clicks, tracked: surface.inputs}
+    %{
+      clicks: clicks,
+      tracked: surface.inputs,
+      initial: MapSet.new(Map.get(surface, :initial, []))
+    }
   end
 
   # An element's `phx-click`: its browser-run workflows as JS commands,
@@ -3286,8 +3290,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         "Bubble.state(@bubble_states, #{key_scope(k.path, ctx)}, #{literal(k.element)}, " <>
           "#{literal(k.state)})"
 
-      {:input, k} ->
-        "Bubble.input(@bubble_inputs, #{key_scope(k.path, ctx)}, #{literal(k.element)})"
+      {:input, _k} ->
+        input_source(read, ctx)
 
       {kind, _} = read when kind in [:url, :url_value] ->
         url_source(read)
@@ -3296,6 +3300,18 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         "@" <> var
     end
   end
+
+  # An input's value; one whose first value is page data (WTF-520) reads it
+  # until it changes.
+  defp input_source({:input, k}, ctx) do
+    if k.path == [] and initial?(k.element, ctx),
+      do: "Bubble.input(@bubble_inputs, @bubble_data, #{scope_var(ctx)}, #{literal(k.element)})",
+      else: "Bubble.input(@bubble_inputs, #{key_scope(k.path, ctx)}, #{literal(k.element)})"
+  end
+
+  # An input whose first value is page data (WTF-520): until it changes, it
+  # holds its initial content as the page's data computed it.
+  defp initial?(element, ctx), do: MapSet.member?(Map.get(ctx, :initial, MapSet.new()), element)
 
   # What the page keeps of its URL (`FlowSpec.url/1`).
   defp url_source({:url, name}), do: "Map.get(@bubble_url, #{literal(name)})"
@@ -3397,9 +3413,17 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # What a text input shows: the value the page keeps for it (what the
   # user typed, or a workflow set), so a re-render never puts back its
   # first value; an initial expression (`initial`) until it has one.
+  # An input whose first value is page data (WTF-520) shows that value, its
+  # conditional states applied, until it changes; its initial content's
+  # binding (`initial`) only while the page has not loaded it.
   defp kept_value(node, ctx, initial) do
-    kept = "Bubble.input(@bubble_inputs, #{scope_var(ctx)}, #{literal(bid(node))})"
-    if initial, do: "#{kept} || (#{initial})", else: kept
+    if initial?(bid(node), ctx) do
+      args = "@bubble_inputs, @bubble_data, #{scope_var(ctx)}, #{literal(bid(node))}"
+      if initial, do: "Bubble.input(#{args}, #{initial})", else: "Bubble.input(#{args})"
+    else
+      kept = "Bubble.input(@bubble_inputs, #{scope_var(ctx)}, #{literal(bid(node))})"
+      if initial, do: "#{kept} || (#{initial})", else: kept
+    end
   end
 
   # A tracked input sits in its own form: every change reaches the page
@@ -3684,10 +3708,16 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # first value}}` and `{element => [containers]}`.
   defp surface_inputs(_root, nil), do: {%{}, %{}}
 
-  defp surface_inputs(root, %{inputs: tracked}) do
+  defp surface_inputs(root, %{inputs: tracked} = surface) do
     found = input_nodes(root.children, [], tracked)
+    initial = Map.get(surface, :initial, [])
 
-    {Map.new(found, fn {id, node, _} -> {id, {tracked[id], first_value(node, tracked[id])}} end),
+    # An input whose first value is page data (WTF-520) starts as `:data`.
+    first = fn id, node ->
+      if id in initial, do: :data, else: first_value(node, tracked[id])
+    end
+
+    {Map.new(found, fn {id, node, _} -> {id, {tracked[id], first.(id, node)}} end),
      Map.new(found, fn {id, _, containers} -> {id, containers} end)}
   end
 

@@ -41,6 +41,196 @@
     }
   },
   "pages": {
+    "initial": {
+      "_comment": "WTF-520: an input whose initial content is page data (its group's project's name, or \"Dr\" while that is empty), read by a search.",
+      "id": "bInitPage",
+      "name": "initial",
+      "type": "Page",
+      "properties": {
+        "title": "Initial"
+      },
+      "workflows": {
+        "wInitReset": {
+          "id": "wInitReset",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bInitReset"
+          },
+          "actions": {
+            "0": {
+              "id": "aInitReset1",
+              "type": "ResetGroup",
+              "properties": {
+                "element_id": "bInitBox"
+              }
+            }
+          }
+        }
+      },
+      "elements": {
+        "bInitBox": {
+          "id": "bInitBox",
+          "type": "Group",
+          "properties": {
+            "group_type": "custom.project",
+            "order": 1,
+            "width": 300,
+            "height": 40,
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.project",
+                "sort_field": "name_text",
+                "descending": false
+              },
+              "next": {
+                "type": "Message",
+                "name": "first_element"
+              }
+            }
+          },
+          "elements": {
+            "bInitQuery": {
+              "id": "bInitQuery",
+              "type": "Input",
+              "properties": {
+                "content_format": "text",
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "content": {
+                  "type": "ElementParent",
+                  "next": {
+                    "type": "Message",
+                    "name": "name_text"
+                  }
+                }
+              },
+              "states": {
+                "0": {
+                  "type": "State",
+                  "condition": {
+                    "type": "ElementParent",
+                    "next": {
+                      "type": "Message",
+                      "name": "name_text",
+                      "next": {
+                        "type": "Message",
+                        "name": "is_empty"
+                      }
+                    }
+                  },
+                  "properties": {
+                    "content": "Dr"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bInitList": {
+          "id": "bInitList",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 3,
+            "order": 2,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "ignore_empty_constraints": false,
+                "sort_field": "title_text",
+                "descending": false,
+                "constraints": {
+                  "0": {
+                    "constraint_type": "text contains string",
+                    "key": "title_text",
+                    "value": {
+                      "type": "GetElement",
+                      "properties": {
+                        "element_id": "bInitQuery"
+                      },
+                      "next": {
+                        "type": "Message",
+                        "name": "get_data"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bInitCell": {
+              "id": "bInitCell",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Init: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bInitShown": {
+          "id": "bInitShown",
+          "type": "Text",
+          "properties": {
+            "order": 3,
+            "width": 300,
+            "height": 40,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Query: ",
+                "1": {
+                  "type": "GetElement",
+                  "properties": {
+                    "element_id": "bInitQuery"
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "get_data"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bInitReset": {
+          "id": "bInitReset",
+          "type": "Button",
+          "properties": {
+            "order": 4,
+            "width": 300,
+            "height": 40,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Reset initial"
+              }
+            }
+          }
+        }
+      }
+    },
     "shown": {
       "elements": {
         "bOuter": {"id": "bOuter", "type": "Group", "properties": {"_comment": "WTF-492: an outer group whose reset clears the displayed group inside it.", "order": 18, "width": 300, "height": 40}, "elements": {"bInner": {"id": "bInner", "type": "Group", "properties": {"order": 1, "width": 300, "height": 40, "group_type": "custom.task"}, "elements": {"bInnerTitle": {"id": "bInnerTitle", "type": "Text", "properties": {"order": 1, "width": 300, "height": 40, "min_height_css": "40px", "text": {"type": "TextExpression", "entries": {"0": "Inner: ", "1": {"type": "ElementParent", "next": {"type": "Message", "name": "title_text"}}}}}}}}, "bInnerSrc": {"id": "bInnerSrc", "type": "Group", "properties": {"_comment": "Replay 2026-10-07: a group inside bOuter with a data source of its own, which a reset of bOuter restores.", "order": 2, "width": 300, "height": 40, "group_type": "custom.task", "data_source": {"type": "Search", "properties": {"type_to_find": "custom.task", "sort_field": "title_text", "descending": false}, "next": {"type": "Message", "name": "first_element"}}}, "elements": {"bInnerSrcTitle": {"id": "bInnerSrcTitle", "type": "Text", "properties": {"order": 1, "width": 300, "height": 40, "min_height_css": "40px", "text": {"type": "TextExpression", "entries": {"0": "InnerSrc: ", "1": {"type": "ElementParent", "next": {"type": "Message", "name": "title_text"}}}}}}}}}},
