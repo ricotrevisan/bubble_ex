@@ -1112,6 +1112,24 @@ and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
 
+### Private fixture app (test version), 2026-10-10, clicks and input changes in cells of option lists (WTF-520)
+
+Cells of a list of options are keyed by their option and its occurrence
+(`docs/frontend-workflows.md`), no longer by position, so their clicks
+and input changes are wired per cell. Of the 41 workflows left unwired
+in lists keyed by position, the 39 in lists of options are wired now: 29
+run whole (native), 10 are refused by the runtime with the notice, for
+their own residue. The 2 in lists of texts stay residue.
+
+| | before | after |
+|-|------:|------:|
+| workflows native / wired | 850 / 577 | 879 / 606 |
+| native steps | 2,487 | 2,523 |
+| `:trigger_in_runtime_template` (residue entries, workflows) | 111 | 72 |
+| `:unavailable_input` (residue entries, workflows) | 395 | 350 |
+
+No data source moved (the page data counts are unchanged).
+
 ### Private fixture app (test version), 2026-10-09, clicks and input changes in cells (WTF-520)
 
 The page's own clicks and input changes in repeating group cells
