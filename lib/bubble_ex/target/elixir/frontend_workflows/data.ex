@@ -1022,17 +1022,43 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         for %{unless: u} <- keys, is_binary(u), do: u
 
     sound? =
-      q.sort != [:random] and keys != [] and
+      q.sort != [:random] and length(keys) in 1..3 and
         Enum.all?(keys, &(Map.get(counts, &1.var) == 1)) and
         Enum.all?(others, &yes_no?(&1, key_vars, by_var)) and
         not listed_unkeyed?(q, key_vars, varies?)
 
     if sound?,
-      do: {:ok, %{keys: keys, filter: %{filter | expr: batch_expr(filter.expr, key_vars)}}},
+      do:
+        {:ok,
+         %{
+           keys: keys,
+           void: void_pins(filter.expr, varies?),
+           filter: %{filter | expr: batch_expr(filter.expr, key_vars)}
+         }},
       else: :error
   end
 
   def cell_batch(_q, _vary), do: :error
+
+  # The yes/no pins that make the whole search match nothing (a part of
+  # its conjunction: an empty value a search does not ignore), as `{pin,
+  # :yes}` (when yes) or `{pin, :no}` (unless yes): a cell with one reads
+  # nothing.
+  defp void_pins(expr, varies?) do
+    for node <- conjuncts(expr),
+        {var, _when} = void <- [void_var(node)],
+        is_binary(var) and varies?.(var),
+        uniq: true,
+        do: void
+  end
+
+  defp void_var({:call, "is_distinct_from", [{:pin, var}, {:value, true}]}), do: {var, :yes}
+  defp void_var({:call, "is_distinct_from", [{:value, true}, {:pin, var}]}), do: {var, :yes}
+  defp void_var({:not, {:pin, var}}), do: {var, :yes}
+  defp void_var({:pin, var}), do: {var, :no}
+  defp void_var({:op, "==", {:pin, var}, {:value, true}}), do: {var, :no}
+  defp void_var({:op, "==", {:value, true}, {:pin, var}}), do: {var, :no}
+  defp void_var(_node), do: {nil, nil}
 
   # The records of a list (WTF-495): its IDs, when they differ, are a key.
   defp listed_unkeyed?(q, key_vars, varies?) do

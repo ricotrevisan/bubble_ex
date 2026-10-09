@@ -7,8 +7,12 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
   # :omit and :enforced. The customers page lists every customer; each cell
   # shows the count of that customer's orders, its first and last order,
   # its open orders' count, how many of its first two there are, the open
-  # orders its own list holds and the newest of them, and a reusable card
-  # counting its orders.
+  # orders its own list holds and the newest of them, a reusable card
+  # counting its orders, and how many of the first two of its orders its
+  # owner has (two keys: the customer and its owner; Dune has no owner,
+  # which the strict search reads as nothing and the loose one drops), and
+  # how many orders the first customer its owner owns has (a search of
+  # orders keyed on another search's first record, read a round later).
   # Each of those searches is read for every cell together: one query per
   # round of cells, never one per cell.
   use PhxCheckWeb.ConnCase, async: false
@@ -22,10 +26,16 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
   # the card's count, and the newest open order of a cell's own list: its
   # records, then those sorted): one query of orders each, whatever the
   # number of cells.
-  @order_queries 9
+  @order_queries 12
+
+  # The customers' owners (Dune has none).
+  @owners %{"Acme" => @ada, "Bolt" => @bo, "Core" => @ada, "Dune" => nil, "Echo" => @bo}
 
   setup do
-    on_exit(fn -> Application.delete_env(:phx_check, PhxCheckWeb.BubbleWorkflows) end)
+    on_exit(fn ->
+      Application.delete_env(:phx_check, PhxCheckWeb.BubbleWorkflows)
+      Application.delete_env(:phx_check, PhxCheckWeb.BubbleData)
+    end)
 
     users =
       for {id, name} <- [{@ada, "Ada"}, {@bo, "Bo"}], into: %{} do
@@ -60,10 +70,11 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
          }}
       end
 
-    # Each customer's own list of orders (not all of them: Echo's lacks Elk).
+    # Each customer's own list of orders (not all of them: Echo's lacks Elk;
+    # Bolt's holds Acme's Anvil too, which two cells' lists then share).
     lists = %{
       "Acme" => ~w(Axe Anvil Arrow),
-      "Bolt" => ~w(Bell),
+      "Bolt" => ~w(Bell Anvil),
       "Core" => [],
       "Dune" => ~w(Drum),
       "Echo" => ~w(Emu Ear)
@@ -76,6 +87,7 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
         Ash.Seed.seed!(PhxCheck.Customer, %{
           id: id,
           name: name,
+          owner_id: @owners[name],
           orders: Enum.map(list, &orders[&1].id)
         })
 
@@ -167,22 +179,28 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
       assert shown(html, "Last") == ["Axe", "", "", "Drum", "Emu"]
       assert shown(html, "Open") == ~w(2 0 0 0 2)
       assert shown(html, "Two") == ~w(2 0 0 1 2)
-      assert shown(html, "Listed") == ~w(2 0 0 0 2)
+      assert shown(html, "Listed") == ~w(2 1 0 0 2)
       assert shown(html, "Card") == ~w(2 0 0 1 2)
-      assert shown(html, "Newest") == ["Axe", "", "", "", "Emu"]
+      assert shown(html, "Newest") == ["Axe", "Anvil", "", "", "Emu"]
+      assert shown(html, "Pair") == ~w(2 0 0 0 0)
+      assert shown(html, "Loose") == ~w(2 0 0 1 0)
+      assert shown(html, "Chain") == ~w(2 0 2 0 0)
     else
       assert shown(html, "Count") == ~w(3 1 0 1 3)
       assert shown(html, "First") == ["Anvil", "Bell", "", "Drum", "Ear"]
       assert shown(html, "Last") == ["Axe", "Bell", "", "Drum", "Emu"]
       assert shown(html, "Open") == ~w(2 1 0 0 3)
       assert shown(html, "Two") == ~w(2 1 0 1 2)
-      assert shown(html, "Listed") == ~w(2 1 0 0 2)
+      assert shown(html, "Listed") == ~w(2 2 0 0 2)
       assert shown(html, "Card") == ~w(3 1 0 1 3)
       assert shown(html, "Newest") == ["Axe", "Bell", "", "", "Emu"]
+      assert shown(html, "Pair") == ~w(2 1 0 0 1)
+      assert shown(html, "Loose") == ~w(2 1 0 1 1)
+      assert shown(html, "Chain") == ~w(3 1 3 0 1)
     end
 
-    # Five cells, nine searches each: one query of orders per search, not
-    # one per cell (45).
+    # Five cells, twelve searches of orders each: one query per search, not
+    # one per cell (60).
     orders = Map.get(by_table, "order", 0)
 
     assert orders > 0 and orders <= @order_queries,
@@ -211,6 +229,8 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
     conn: conn,
     users: users
   } do
+    {_, before} = queries(fn -> customers(sign_in(conn, users["Ada"])) end)
+
     # Many orders of Acme sorted before every other customer's: the query
     # of all cells reaches its limit with Acme's alone, and the cells left
     # short are read again, together.
@@ -224,14 +244,104 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
       })
     end
 
-    {_view, html} = customers(sign_in(conn, users["Ada"]))
+    {{_view, html}, now} = queries(fn -> customers(sign_in(build_conn(), users["Ada"])) end)
 
-    if enforced?(),
-      do: assert(shown(html, "Two") == ~w(2 0 0 1 2)),
-      else: assert(shown(html, "Two") == ~w(2 1 0 1 2))
+    if enforced?() do
+      assert shown(html, "Two") == ~w(2 0 0 1 2)
+      assert shown(html, "Pair") == ~w(2 0 0 0 0)
+      assert shown(html, "Loose") == ~w(2 0 0 1 0)
+    else
+      assert shown(html, "Two") == ~w(2 1 0 1 2)
+      assert shown(html, "Pair") == ~w(2 1 0 0 1)
+      assert shown(html, "Loose") == ~w(2 1 0 1 1)
+    end
 
     assert hd(shown(html, "First")) == "Aa1"
     assert hd(shown(html, "Count")) == if(enforced?(), do: "11", else: "12")
+
+    # The cells left short are read again together: one more query for each
+    # of the three searches with a page (Two, Pair, Loose), not one per cell.
+    extra = Map.get(now, "order", 0) - Map.get(before, "order", 0)
+    assert extra <= 3, "the short cells cost #{extra} more queries of orders"
+  end
+
+  test "two keys: no record of one cell's customer and another's owner is read", %{
+    conn: conn,
+    users: users
+  } do
+    # Acme's (owner Ada) orders that Bo owns, sorted first: neither Acme's
+    # cell (Acme, Ada) nor Bolt's (Bolt, Bo) holds them. Before, reading
+    # them filled the limit of every round, and the page never loaded.
+    for n <- 1..3 do
+      Ash.Seed.seed!(PhxCheck.Order, %{
+        id: "1700000000000x60000000000000000#{n}",
+        title: "Aaa#{n}",
+        open: false,
+        customer_id: "1700000000000x200000000000000001",
+        owner_id: @bo
+      })
+    end
+
+    {{_view, html}, by_table} = queries(fn -> customers(sign_in(conn, users["Ada"])) end)
+
+    if enforced?() do
+      assert shown(html, "Pair") == ~w(2 0 0 0 0)
+    else
+      assert shown(html, "Pair") == ~w(2 1 0 0 1)
+      assert shown(html, "Count") == ~w(6 1 0 1 3)
+    end
+
+    # One more for Two: Aaa1-3 fill its first read, and the cells left
+    # short are read again together.
+    assert Map.get(by_table, "order", 0) <= @order_queries + 1
+  end
+
+  test "past :max_batched records, each cell's count is read on its own, once", %{
+    conn: conn,
+    users: users
+  } do
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleData, max_batched: 1)
+
+    {by_table, log} =
+      ExUnit.CaptureLog.with_log(fn ->
+        {{_view, html}, by_table} = queries(fn -> customers(sign_in(conn, users["Ada"])) end)
+
+        if enforced?(),
+          do: assert(shown(html, "Count") == ~w(2 0 0 1 2)),
+          else: assert(shown(html, "Count") == ~w(3 1 0 1 3))
+
+        by_table
+      end)
+
+    warnings = Regex.scan(~r/reached :max_batched/, log)
+    # One warning per count search (Count, Open, Card, Chain), never per round.
+    assert length(warnings) in 1..4
+
+    # Each count search: one batch, then each cell's own count; nothing read
+    # again in a later round.
+    assert Map.get(by_table, "order", 0) <= @order_queries + 4 * 5
+  end
+
+  test "past :max_cell_rounds, the cells left read their own queries (logged)", %{
+    conn: conn,
+    users: users
+  } do
+    # The orders of the first customer a cell's owner owns read that
+    # customer first: two rounds. With one, the second is read cell by
+    # cell.
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleData, max_cell_rounds: 1)
+
+    {html, log} =
+      ExUnit.CaptureLog.with_log(fn ->
+        {_view, html} = customers(sign_in(conn, users["Ada"]))
+        html
+      end)
+
+    assert log =~ "past 1 rounds (:max_cell_rounds) are read cell by cell"
+
+    if enforced?(),
+      do: assert(shown(html, "Chain") == ~w(2 0 2 0 0)),
+      else: assert(shown(html, "Chain") == ~w(3 1 3 0 1))
   end
 
   test "each user's cells read as that user", %{conn: conn, users: users} do
@@ -241,6 +351,7 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
       assert shown(bo, "Count") == ~w(1 1 0 0 1)
       assert shown(bo, "First") == ["Arrow", "Bell", "", "", "Elk"]
       assert shown(bo, "Listed") == ~w(0 1 0 0 0)
+      assert shown(bo, "Pair") == ~w(0 1 0 0 1)
     else
       assert shown(bo, "Count") == ~w(3 1 0 1 3)
     end

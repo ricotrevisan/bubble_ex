@@ -84,6 +84,9 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
         assert Spec.cell_reads?(data(spec, element))
       end
 
+      # A cell whose customer is empty matches nothing (not ignored): no read.
+      assert %{read: {:query, %{batch: %{void: [{"pin_2", :yes}]}}}} = data(spec, "bCount")
+
       # The count of open orders keeps its other constraint in both.
       assert %{read: {:query, %{batch: batch}}} = data(spec, "bOpen")
       assert BubbleEx.Target.Ash.Source.filter(batch.filter) =~ "open == true"
@@ -106,6 +109,21 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
                data(spec, "bNewest")
 
       assert %{batch: %{keys: [%{var: ^v, kind: :in}]}, queries: [%{batch: _}]} = q
+    end
+
+    test "two keys: the customer and its owner, each holding unless empty when dropped" do
+      %{spec: spec} = spec(app())
+
+      assert %{residue: [], read: {:value, %{queries: [%{batch: %{keys: keys}}]}}} =
+               data(spec, "bPair")
+
+      assert [%{attr: "customer_id", unless: nil}, %{attr: "owner_id", unless: nil}] = keys
+
+      assert %{residue: [], read: {:value, %{queries: [%{batch: %{keys: keys}}]}}} =
+               data(spec, "bLoose")
+
+      assert [%{attr: "customer_id", unless: u1}, %{attr: "owner_id", unless: u2}] = keys
+      assert is_binary(u1) and is_binary(u2)
     end
 
     test "a reusable element rendered per cell batches its search on its thing" do
@@ -234,6 +252,15 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
       assert :error = Data.cell_batch(query(twice, pins), %{"k" => true})
     end
 
+    test "more than three keys are not batched" do
+      keys = for a <- ~w(a_id b_id c_id d_id), do: {:op, "==", {:ref, [], a}, {:pin, a}}
+      pins = for a <- ~w(a_id b_id c_id d_id), do: pin(a, :one)
+      vary = Map.new(~w(a_id b_id c_id d_id), &{&1, true})
+
+      assert :error = Data.cell_batch(query({:and, keys}, pins), vary)
+      assert {:ok, _} = Data.cell_batch(query({:and, Enum.take(keys, 3)}, pins), vary)
+    end
+
     test "a key on a related record's field is not batched" do
       expr = {:op, "==", {:ref, ["customer"], "region_id"}, {:pin, "k"}}
       assert :error = Data.cell_batch(query(expr, [pin("k", :one)]), %{"k" => true})
@@ -279,6 +306,10 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
       runtime = files["lib/shop_web/bubble_data.ex"]
       assert runtime =~ "def cell_read(ctx, spec, query, batch)"
       assert runtime =~ "Ash.Query.distinct("
+      # Two or three keys: the cells' own combinations, never a cross product.
+      assert runtime =~ "IN (SELECT * FROM unnest(?::text[], ?::text[]))"
+      # A batch of lists' records is not sorted by its union's positions.
+      assert module =~ "BubbleData.listed_batch(q1_pin_1)"
     end
   end
 end

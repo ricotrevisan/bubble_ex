@@ -997,7 +997,13 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       "[" <>
         Enum.map_join(q.sort, ", ", fn {a, _dir} -> atom(a) end) <> "]"
 
-    ref = Base.encode16(:crypto.hash(:sha256, :erlang.term_to_binary(batch.filter)), case: :lower)
+    # The whole search: two that differ only in their sort, take or list
+    # are never one.
+    ref =
+      {q.resource, batch.filter, q.sort, q.take, Map.get(q, :listed), page_size, loads}
+      |> :erlang.term_to_binary()
+      |> then(&:crypto.hash(:sha256, &1))
+      |> Base.encode16(case: :lower)
 
     """
     BubbleData.cell_read(
@@ -1006,6 +1012,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
         ref: {__MODULE__, #{literal(binary_part(ref, 0, 12))}},
         pins: #{pins},
         keys: #{keys},
+        void: [#{Enum.map_join(Map.get(batch, :void, []), ", ", fn {v, w} -> "{:#{v}, :#{w}}" end)}],
         sort: #{sort},
         take: #{take(q.take)},
         page_size: #{inspect(page_size)},
@@ -1015,7 +1022,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
         #{query_pipeline(q, ctx)}
       end,
       fn #{pins} ->
-        #{query_pipeline(%{q | filter: batch.filter}, ctx)}
+        #{query_pipeline(%{q | filter: batch.filter}, ctx, :batch)}
       end
     )
     """
@@ -1073,7 +1080,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     end)
   end
 
-  defp query_pipeline(q, ctx) do
+  defp query_pipeline(q, ctx, mode \\ :one) do
     sort =
       case q.sort do
         [] ->
@@ -1089,6 +1096,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     # A list's own records (WTF-495): read as the user may view them.
     listed =
       case Map.get(q, :listed) do
+        var when is_binary(var) and mode == :batch -> "\n|> BubbleData.listed_batch(#{var})"
         var when is_binary(var) -> "\n|> BubbleData.listed(#{var})"
         _ -> ""
       end

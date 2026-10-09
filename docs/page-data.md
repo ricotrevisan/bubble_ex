@@ -822,18 +822,21 @@ input, a constant) are the same in every cell. A search reading another
 batched search's records (a cell's list `:filtered`, then `:sorted`) is
 batched too, read in the round after it. Anything else that differs
 from cell to cell (an ordering or a text comparison with the cell's
-value, a key under `or` or `not`, a field of a related record, Bubble's
-random sort) stays residue (`:page_data_in_cell`, `kind` `"query"`), as
+value, a key under `or` or `not`, a field of a related record, more
+than three keys, Bubble's random sort) stays residue (`:page_data_in_cell`, `kind` `"query"`), as
 before.
 
 **How it is read.** The source's entry in `__bubble__(:data)` says
 `cell_reads: true`; each batched search is printed as
 `BubbleData.cell_read/4`, with the cell's own query and the query of
-every cell at once (each key `attribute in ^values`). The loader runs the
+every cell at once (each key `attribute in ^values`; with two or three
+keys, also the cells' own combinations of their values, so no record of
+one cell's first key and another's second is read). The loader runs the
 source in every cell first, collecting each cell's search (reading
 nothing for it), reads the batches into the read pass, collects again
-while a search reading those records appears (at most four rounds),
-then runs the source again: each cell finds its records there (`once/3`), and reads its
+while a search reading those records appears (at most `:max_cell_rounds`
+rounds, default 4; past it the cells left read their own queries,
+logged), then runs the source again: each cell finds its records there (`once/3`), and reads its
 own query only if nothing collected it. Each cell gets the records whose
 attributes equal its keys, in the search's order:
 
@@ -841,10 +844,17 @@ attributes equal its keys, in the search's order:
 |---|---|
 | `:count` | the keys of the matching records (`select`), counted per cell; past `:max_batched` (default 10,000) records in all, each cell's count is read on its own (logged) |
 | `:first item` | the first record per key, in the search's order (`DISTINCT ON` the keys) |
-| a list (its page size), `:items until #n`, `item #n` | the records sorted by the search, at most the sum of the cells' needs plus one: a cell with fewer than it needs in a read that reached that limit may have lost records to the others, and is read again with the other such cells in one more query (each round settles at least one cell) |
-| the records a cell's list holds | all of every cell's at once (no more than their IDs), each cell's in its own list's order among equal sort keys |
+| a list (its page size), `:items until #n`, `item #n` | the records sorted by the search, at most the sum of the cells' needs plus one: every record read is some cell's, so a read reaching that limit settles at least one cell; a cell with fewer than it needs may have lost records to the others, and the cells left are read again together with the limit doubled, at most `:max_cell_rounds` rounds; past them, or when a round settles none, they read their own queries (logged) |
+| the records a cell's list holds | all of every cell's at once (no more than their IDs, not sorted by their position in the union), each cell's in its own list's order among equal sort keys |
 
-A per-cell limit is never a global `LIMIT`. Ties in a sort (records with
+A per-cell limit is never a global `LIMIT`. A window function
+(`row_number() OVER (PARTITION BY ...)`) would read each cell's page in
+one query, but Ash's filters cannot express it, and raw SQL around the
+read would rank records the policies hide: a heavy cell costs rounds
+instead. A batched read that fails leaves every cell of it empty
+(logged), as each cell's own read would. Every search collected is
+settled in the read pass (read together, or alone), so a later round
+never collects it again. Ties in a sort (records with
 equal sort keys) come in the database's order, as for a single search. A
 cell whose key value is empty reads its own query (cells alike share it).
 
