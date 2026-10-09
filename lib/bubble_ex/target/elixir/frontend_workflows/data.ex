@@ -757,13 +757,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     end)
   end
 
-  # Whether the page loads the list whose cells hold an instance: a list
-  # of the surface outside a cell, or a nested one (WTF-520) with its
-  # outer list.
-  defp cells_loaded?(wired, surface, rg, nil),
+  @doc """
+  Whether the page loads the list whose cells hold an element (an
+  instance, WTF-494; a click or an input, WTF-520): `rg`, a list of
+  `surface` outside a cell, or with `outer` one rendered per cell of
+  another (WTF-520), with its outer list. `wired` is `wired_index/1`'s.
+  """
+  @spec cells_loaded?(map(), String.t(), String.t(), String.t() | nil) :: boolean()
+  def cells_loaded?(wired, surface, rg, nil),
     do: match?(%{kind: :list, cell: nil, surface: ^surface}, wired.elements[rg])
 
-  defp cells_loaded?(wired, surface, rg, outer),
+  def cells_loaded?(wired, surface, rg, outer),
     do:
       match?(%{kind: :list, cell: ^outer, surface: ^surface}, wired.elements[rg]) and
         cells_loaded?(wired, surface, outer, nil)

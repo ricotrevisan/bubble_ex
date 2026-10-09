@@ -779,7 +779,8 @@ secret, in a cell too). The cells are the list's items as the user read
 them: a thing the user may not read has no cell, so no instance and no
 scope.
 
-**Events.** A page lists the cell scopes it read (`@bubble_cells`) and
+**Events.** A page lists the cell scopes it read (`@bubble_cells`; and
+for its own elements in cells, `@bubble_page_cells`, WTF-520) and
 accepts a click or an input change only in a scope it renders: the
 page's own, an instance's (`__bubble__(:instances)`) or a cell's it
 read; any other is ignored, so a browser cannot reach a cell of a thing
@@ -934,8 +935,9 @@ held). In an inner cell:
 Elements, texts and visibility conditions read these where the inner
 cell renders (`Bubble.cells/4` loops over the inner list of the outer
 cell's index); a reusable instance there is rendered per inner cell
-(WTF-494), its workflows run in its scope, and the page's own clicks in
-a cell stay unwired, as in any cell (`:trigger_in_runtime_template`).
+(WTF-494), its workflows run in its scope, and the page's own clicks and
+input changes in an inner cell run in that inner cell (WTF-520,
+`docs/frontend-workflows.md`), with the outer cell's thing and groups.
 
 **Read for every inner cell of every outer cell together.** The loader
 runs each source of the inner cells once for all of them
@@ -1106,6 +1108,34 @@ The frontend workflow metrics (`docs/frontend-workflows.md`, *native*
 and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
+
+### Private fixture app (test version), 2026-10-09, clicks and input changes in cells (WTF-520)
+
+The page's own clicks and input changes in repeating group cells
+(`docs/frontend-workflows.md`). Of the 194 workflows whose trigger was in
+a runtime template, 124 are now wired per cell (121 clicks, 3 input
+changes); 66 of them run whole (65 on the server, 1 in the browser; 62
+read or write stored data), the other 58 are refused by the runtime with
+the notice, for their own residue (uncompiled expressions 25, plugin
+actions 9, unavailable inputs 5, unresolved references 5, and others).
+The 70 left are in a list the page does not load (65, in 34 lists whose
+own source does not compile or reads what the page does not load), a
+table's row (3) or a nested list that does not load (2).
+
+| | before | after |
+|-|------:|------:|
+| workflows native / wired | 814 / 541 | 880 / 607 |
+| native steps | 2,419 | 2,525 |
+| `:trigger_in_runtime_template` (residue entries, workflows) | 194 | 70 |
+| `:unavailable_input` (residue entries, workflows) | 479 | 348 |
+| data sources wired / total | 2,752 / 3,356 | 2,774 / 3,361 |
+| read as what steps showed | 133 | 136 |
+| `:unavailable_input` (sources) | 434 | 417 |
+
+Sources: 3 groups set only by those clicks are now page data (empty
+until the click), and 2 inputs whose initial content reads one of them
+are tracked; 17 sources that read them load (13 groups outside cells,
+3 in cells, 1 list). No other workflow or source moved.
 
 ### Private fixture app (test version), 2026-10-09, nested repeating groups (WTF-520)
 

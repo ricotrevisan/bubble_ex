@@ -33,7 +33,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   | a custom event's parameter | its argument |
   | Result of step N | the step's result |
   | an element's custom state | the page's state map, per reusable-element instance |
-  | an input's value | the page's input map, per instance: the page tracks every `Input` and `MultiLineInput` of text or number, `Checkbox` and text `Dropdown` it renders (not in a runtime container's template) |
+  | an input's value | the page's input map, per instance: the page tracks every `Input` and `MultiLineInput` of text or number, `Checkbox` and text `Dropdown` it renders (not in a runtime container's template); in a repeating group's cell the page renders per cell (WTF-520), one with a static first value, per cell, read in that cell |
   | a URL parameter (`Get data from page URL`) | the page's URL query, read as its type (`Spec.url/1`); a thing by its unique ID, through Ash as the current user |
   | the URL's path (`path`, `path segments`) | the page's URL path, its first segment the page's name |
 
@@ -55,7 +55,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       `:trigger_in_runtime_template` - an element to show, hide, focus,
       reset or call into, or the element an event listens to, that the
       generated page does not render (an instance whose own data source
-      does not load, WTF-522, has no scope to call into)
+      does not load, WTF-522, has no scope to call into); a click or an
+      input change in a repeating group's cell is wired per cell when the
+      page renders that cell's template (WTF-520, `cell_members/2`), and
+      the workflow binds that cell's thing (`Spec` workflow `cell`)
     * `:backend_workflow` - scheduling an API workflow without the
       `:backend` option (the backend workflows' spec, WTF-373)
     * `:unsupported_event` (`detail.target` `"phoenix"`) - user logged in
@@ -209,6 +212,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       # cells (WTF-494), and the reusable elements each reusable element
       # nests outside its cells.
       ctx = Map.put(ctx, :nested_lists, nested_lists(frontend))
+
+      # The page's own elements in those cells (WTF-520): the ones whose
+      # clicks and input changes the page wires per cell.
+      ctx = Map.put(ctx, :cell_members, cell_members(frontend, ctx.nested_lists))
       {in_cells, nested} = cell_structure(lowered.elements, ctx)
 
       ctx =
@@ -243,6 +250,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
              workflows: Enum.map(workflows, &Map.delete(&1, :diagnostics)),
              states: Enum.filter(states, &(elements[&1.element].surface == id)),
              inputs: Map.get(inputs, id, %{}),
+             cell_inputs: Map.get(ctx.cell_inputs, id, %{}),
              initial: ctx.initial |> Enum.filter(&(elements[&1].surface == id)) |> Enum.sort(),
              data: Map.get(data, id, [])
            }}
@@ -284,6 +292,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       base
       |> Map.put(:initial, initial)
       |> Map.put(:inputs, inputs(lowered.elements, base, initial))
+      |> Map.put(:cell_inputs, cell_inputs(lowered.elements, base))
 
     ctx = Map.put(ctx, :view, %Spec{elements: ctx.elements, surfaces: surfaces_view(ctx)})
 
@@ -447,8 +456,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # click, an input change, a "do every" tick, a popup only those open or
   # close, the popup's workflow itself) is triggered, whether the runtime
   # then runs it or refuses it with a notice. Before an event the element
-  # shows nothing, as in Bubble; an event the page never triggers (a
-  # click in a repeating group's cell, not wired yet) would leave it
+  # shows nothing, as in Bubble (a click in a repeating group's cell the
+  # page wires per cell is one, WTF-520); an event the page never
+  # triggers (a click in a table's row, a third level) would leave it
   # empty where Bubble shows data, so it is not kept. No step at all:
   # empty, kept.
   defp kept?(element, %{cell: cell}, _workflows, shown) when is_binary(cell),
@@ -520,6 +530,82 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       true -> Enum.flat_map(node.children, &inner_lists(&1, outer))
     end
   end
+
+  # The page's own elements in the cells of the repeating groups it
+  # renders per cell (WTF-520): element => the repeating group whose cell
+  # holds it. A repeating group outside any runtime container, or one
+  # rendered per cell of another (`nested`, two levels); the element in
+  # its cell's template, not inside another runtime container there (a
+  # table, a plugin's, a repeating group not rendered per cell) nor inside
+  # a reusable instance (its elements are its reusable element's).
+  defp cell_members(%Normalized{} = frontend, nested) do
+    (frontend.pages ++ frontend.reusables)
+    |> Enum.flat_map(&outer_members(&1, nested))
+    |> Map.new()
+  end
+
+  defp outer_members(%Normalized.Node{} = node, nested) do
+    cond do
+      Table.table?(node) ->
+        Enum.flat_map(Table.once(node), &outer_members(&1, nested))
+
+      repeating?(node) ->
+        Enum.flat_map(node.children, &members(&1, node.source.bubble_id, nested))
+
+      runtime_container?(node) ->
+        []
+
+      true ->
+        Enum.flat_map(node.children, &outer_members(&1, nested))
+    end
+  end
+
+  defp members(%Normalized.Node{} = node, rg, nested) do
+    id = node.source && node.source.bubble_id
+
+    cond do
+      Table.table?(node) ->
+        []
+
+      repeating?(node) ->
+        if Map.get(nested, id) == rg,
+          do: Enum.flat_map(node.children, &members(&1, id, nested)),
+          else: []
+
+      runtime_container?(node) or node.kind == :reusable_instance ->
+        []
+
+      true ->
+        own = if is_binary(id), do: [{id, rg}], else: []
+        own ++ Enum.flat_map(node.children, &members(&1, rg, nested))
+    end
+  end
+
+  # The repeating group whose cell holds a click's or an input change's
+  # element when the page wires it per cell (WTF-520): one of
+  # `cell_members/2` whose list loads (and, for one rendered per cell of
+  # another, the outer list too), else nil. The page then renders the
+  # element in every cell, and its event carries that cell's scope.
+  defp cell_trigger(element, ctx) when is_binary(element) do
+    with rg when is_binary(rg) <- Map.get(Map.get(ctx, :cell_members, %{}), element),
+         %{surface: surface} <- ctx.elements[element],
+         true <- Data.cells_loaded?(ctx.data, surface, rg, Map.get(ctx.nested_lists, rg)) do
+      rg
+    else
+      _ -> nil
+    end
+  end
+
+  defp cell_trigger(_element, _ctx), do: nil
+
+  # The cell a workflow's event runs in: a click or an input change of an
+  # element the page wires per cell (WTF-520), else nil.
+  defp event_cell(%Workflow{kind: kind, element: element}, ctx)
+       when kind in [:click, :input_change] and is_binary(element) do
+    if Map.has_key?(ctx.templates, element), do: cell_trigger(element, ctx)
+  end
+
+  defp event_cell(_w, _ctx), do: nil
 
   defp repeating?(%Normalized.Node{
          kind: :placeholder,
@@ -630,6 +716,26 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     end
   end
 
+  # The inputs a page tracks per cell (WTF-520): of a tracked value type,
+  # rendered natively with a static first value, among the page's own
+  # elements of a repeating group's cell (`cell_members/2`). By surface:
+  # element => `%{type, cell}`. Each cell keeps its own value, under the
+  # cell's scope; whether the list loads is the event's to check.
+  defp cell_inputs(elements, ctx) do
+    for {id, %{kind: :element, type: type, value: value, instance_of: nil} = e} <- elements,
+        rg = Map.get(ctx.cell_members, id),
+        is_binary(rg),
+        {values, kind} <- [Map.get(@inputs, type, {[], nil})],
+        value in values,
+        MapSet.member?(ctx.present, id),
+        native_input?(ctx.nodes[id], kind),
+        reduce: %{} do
+      acc ->
+        entry = %{type: String.to_existing_atom(value), cell: rg}
+        Map.update(acc, bubble(e.surface), %{id => entry}, &Map.put(&1, id, entry))
+    end
+  end
+
   # The states with their defaults as Elixir literals (a default that is not
   # a constant, or does not fit the state's type, starts empty and is
   # diagnosed).
@@ -690,7 +796,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # --- workflows -------------------------------------------------------------------------
 
   defp workflow(%Workflow{} = w, fun, surface, ctx) do
-    bctx = Map.merge(ctx, %{workflow: w, surface: surface, subject: w.id})
+    # A click or an input change in a repeating group's cell (WTF-520)
+    # runs in that cell: "Current cell's" thing, index and groups (and an
+    # outer cell's, two levels) are the cell's the browser's event names.
+    cell = event_cell(w, ctx)
+    bctx = Map.merge(ctx, %{workflow: w, surface: surface, subject: w.id, cell: cell})
 
     {condition, cr} = compile(w.condition, w.id, bctx)
     {interval, ir} = compile(w.interval, w.id, bctx)
@@ -721,6 +831,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       surface: surface,
       kind: w.kind,
       element: w.element,
+      cell: cell,
       run_when: w.run_when,
       interval: interval,
       disabled?: w.disabled?,
@@ -845,7 +956,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       not MapSet.member?(ctx.present, element) and not ctx.elements[element].root? ->
         [Residue.entry(w.id, :trigger_not_normalized, %{element: "element:" <> element})]
 
-      Map.has_key?(ctx.templates, element) ->
+      unwired_template?(element, ctx) ->
         [
           Residue.entry(w.id, :trigger_in_runtime_template, %{
             element: "element:" <> element,
@@ -889,6 +1000,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp event_residue(_w, _ctx), do: []
 
+  # An element of a runtime container's template the page does not wire:
+  # in a repeating group's cell the page renders per cell (WTF-520) it is
+  # wired in the cell's scope; in any other template, not.
+  defp unwired_template?(element, ctx),
+    do: Map.has_key?(ctx.templates, element) and cell_trigger(element, ctx) == nil
+
   # A Popup element (not a reusable element's root) of `surface`.
   defp popup?(element, surface, ctx) when is_binary(element) do
     match?(%{type: "Popup", kind: :element}, ctx.raw_elements[element]) and
@@ -899,8 +1016,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp tracked?(element, ctx) do
     case ctx.elements[element] do
-      %{surface: surface} -> Map.has_key?(Map.get(ctx.inputs, surface, %{}), element)
-      nil -> false
+      %{surface: surface} ->
+        Map.has_key?(Map.get(ctx.inputs, surface, %{}), element) or
+          Map.has_key?(Map.get(ctx.cell_inputs, surface, %{}), element)
+
+      nil ->
+        false
     end
   end
 
@@ -1032,7 +1153,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   defp reads_data?(nil), do: false
 
   defp reads_data?(%{bindings: bindings}),
-    do: Enum.any?(bindings, &match?({kind, _} when kind in [:data, :cell, :cell_data], &1.bind))
+    do:
+      Enum.any?(
+        bindings,
+        &match?(
+          {kind, _} when kind in [:data, :cell, :cell_data, :outer_cell, :outer_cell_data],
+          &1.bind
+        )
+      )
 
   defp args(op, %{element: element}, id, ctx)
        when op in [:show, :hide, :toggle, :focus, :scroll_to] do
@@ -1949,7 +2077,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp bind({:element_state, %{"element" => e, "state" => s}} = input, ctx)
        when is_binary(e) and is_binary(s) do
-    case Spec.read(ctx.view, ctx.surface, input) do
+    case Spec.read(ctx.view, ctx.surface, input, Map.get(ctx, :cell)) do
       {kind, key} -> {:ok, {kind, key}}
       nil -> {:error, element_state_kind(s)}
     end
@@ -2023,7 +2151,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     ids = ctx.elements |> Map.values() |> Enum.map(& &1.surface) |> Enum.uniq()
 
     Map.new(ids, fn id ->
-      {id, %{states: Map.get(states, id, []), inputs: Map.get(ctx.inputs, id, %{})}}
+      {id,
+       %{
+         states: Map.get(states, id, []),
+         inputs: Map.get(ctx.inputs, id, %{}),
+         cell_inputs: Map.get(ctx.cell_inputs, id, %{})
+       }}
     end)
   end
 

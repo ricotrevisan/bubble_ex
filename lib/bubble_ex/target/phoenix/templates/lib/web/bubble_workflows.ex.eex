@@ -43,6 +43,26 @@ defmodule <%= @web %>.BubbleWorkflows do
   cells of things the user was shown. Its workflows run in that scope (its
   custom states, inputs and data are the cell's); its page-load,
   condition-true and "do every" workflows do not run in a cell.
+
+  The page's own elements in a repeating group's cell (WTF-520; one
+  rendered per cell of another too, two levels) take their clicks and
+  input changes per cell: `cell_clicks`, `cell_changes` and `cell_inputs`
+  in `__bubble__(:surface)` list them with their repeating group. The
+  browser's event names the cell's scope (`<%= @web %>.Bubble.cell_scope/4`,
+  the format instances in cells use, without the instance), which the page
+  looks up in the cells it read last (`@bubble_page_cells`,
+  `put_page_cells/2`, from `@bubble_data`, as the current user) and never
+  parses: a scope it did not read (made up, of a thing the user may not
+  read, under another outer cell, of a thing no longer in the list) or an
+  element of another repeating group is ignored. The workflow runs in its
+  surface's scope with the cell's thing, index and groups (and the outer
+  cell's) as the page read them, never anything the browser sent; the
+  cell is looked up again before each workflow of the event, after the
+  page's data is read again, so one that left the list runs nothing. An
+  input in a cell keeps its value per cell, under the cell's scope, and a
+  cell that leaves the list drops it. A paused workflow of a cell
+  continues in it only while the page still shows it.
+
   Event parameters never become atoms, never name a workflow, a module or a
   record: the page looks the element up in its own static lists and runs
   the workflows listed there, with the values it keeps (current user,
@@ -189,7 +209,10 @@ defmodule <%= @web %>.BubbleWorkflows do
     a repeating group's cells are read, the current cell's thing and
     1-based index (`cell`, `cell_index`; in a repeating group rendered per
     cell of another, WTF-520, also the outer cell's, `outer`, and the
-    scope its cells are kept in, `cell_scope`), and `batch` while the cells (or
+    scope its cells are kept in, `cell_scope`), the same, with the cell's
+    own scope (`cell_key`), while a click or an input change of an
+    element in a cell runs (WTF-520; `cells`, the cells the page read, by
+    scope), and `batch` while the cells (or
     the instances in cells, WTF-494) are read together; `data_stale` once a data step
     ran (it may have written what the page shows). `page_path` is the
     page's own path (without its thing's segment) and `takes_thing`
@@ -211,6 +234,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       :cell_index,
       :outer,
       :cell_scope,
+      :cell_key,
       :resume,
       batch: false,
       scope: "",
@@ -225,6 +249,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       segments: [],
       data: %{},
       displayed: %{},
+      cells: %{},
       first: %{},
       js: [],
       messages: [],
@@ -287,6 +312,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_data_inputs, MapSet.new())
     |> assign(:bubble_displayed, %{})
     |> assign(:bubble_cells, [])
+    |> assign(:bubble_page_cells, %{})
     |> assign(:bubble_committed, %{})
     |> assign(:bubble_thing, nil)<%= if @enforced? do %>
     |> then(&if(BubbleData.data_access?(), do: refresh_actor(&1), else: &1))<% end %>
@@ -398,10 +424,9 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc "Runs the workflows of a click or an input change the page lists."
   def handle_event(socket, page, "bubble:click", %{"scope" => scope, "element" => element})
       when is_binary(scope) and is_binary(element) do
-    with {:ok, module} <- surface(socket, page, scope),
-         [_ | _] = ids <- Map.get(module.__bubble__(:surface).clicks, element, []) do
+    with {:ok, run} <- click(socket, page, scope, element) do
       socket = assign(socket, :bubble_refused, false)
-      {:noreply, socket |> event(page, [{module, scope, ids, %{}}]) |> notice()}
+      {:noreply, socket |> event(page, [run]) |> notice()}
     else
       _ -> {:noreply, socket}
     end
@@ -412,13 +437,13 @@ defmodule <%= @web %>.BubbleWorkflows do
   # workflows run when it is committed (`bubble:commit`, on blur). Any
   # other input's change commits it.
   def handle_event(socket, page, "bubble:change", %{"bubble" => %{} = params}) do
-    with {:ok, module, scope, element, value} <- input_event(socket, page, params) do
+    with {:ok, module, scope, element, value, cell} <- input_event(socket, page, params) do
       socket = assign(socket, :bubble_refused, false) |> put_input(scope, element, value)
 
       if Map.get(params, "on") == "blur" do
         {:noreply, socket |> event(page, [], nil, :deferred) |> notice()}
       else
-        commit(socket, page, module, scope, element, value)
+        commit(socket, page, module, scope, element, value, cell)
       end
     else
       _ -> {:noreply, socket}
@@ -431,9 +456,9 @@ defmodule <%= @web %>.BubbleWorkflows do
   def handle_event(socket, page, "bubble:commit", %{} = params) do
     params = Map.put_new(params, "scope", "")
 
-    with {:ok, module, scope, element, value} <- input_event(socket, page, params) do
+    with {:ok, module, scope, element, value, cell} <- input_event(socket, page, params) do
       socket = assign(socket, :bubble_refused, false) |> put_input(scope, element, value)
-      commit(socket, page, module, scope, element, value)
+      commit(socket, page, module, scope, element, value, cell)
     else
       _ -> {:noreply, socket}
     end
@@ -473,14 +498,60 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   def handle_event(socket, _page, _event, _params), do: {:noreply, socket}
 
+  # The workflows a click runs: those an element of the page, or of an
+  # instance it renders, lists in its scope; or (WTF-520) those an element
+  # in a repeating group's cell lists, in the scope of a cell the page
+  # read (`@bubble_page_cells`), never one the browser made up: the
+  # surface's scope with the cell, which binds the cell's thing from what
+  # the page read.
+  defp click(socket, page, scope, element) do
+    case surface(socket, page, scope) do
+      {:ok, module} ->
+        case Map.get(module.__bubble__(:surface).clicks, element, []) do
+          [_ | _] = ids -> {:ok, {module, scope, ids, %{}}}
+          _ -> :error
+        end
+
+      :error ->
+        with {:ok, cell} <- page_cell(socket, scope),
+             {rg, [_ | _] = ids} <- Map.get(cell_events(cell.module, :cell_clicks), element),
+             true <- rg == cell.rg do
+          {:ok, {cell.module, cell.scope, ids, %{}, scope}}
+        else
+          _ -> :error
+        end
+    end
+  end
+
+  # An input change: of an input the page or an instance it renders
+  # tracks, in its scope; or (WTF-520) of an input tracked per cell, in
+  # the scope of a cell the page read, its value kept under that scope.
   defp input_event(socket, page, params) do
     with %{"scope" => scope, "element" => element} when is_binary(scope) and is_binary(element) <-
            params,
-         {:ok, module} <- surface(socket, page, scope),
-         %{^element => {type, _first}} <- module.__bubble__(:surface).inputs,
+         {:ok, module, type, cell} <- input_surface(socket, page, scope, element),
          {:ok, value} <- coerce(type, Map.get(params, "value")),
          false <- untouched?(socket, scope, element, type, value) do
-      {:ok, module, scope, element, value}
+      {:ok, module, scope, element, value, cell}
+    end
+  end
+
+  defp input_surface(socket, page, scope, element) do
+    case surface(socket, page, scope) do
+      {:ok, module} ->
+        case module.__bubble__(:surface).inputs do
+          %{^element => {type, _first}} -> {:ok, module, type, nil}
+          _ -> :error
+        end
+
+      :error ->
+        with {:ok, cell} <- page_cell(socket, scope),
+             {rg, {type, _first}} <- Map.get(cell_events(cell.module, :cell_inputs), element),
+             true <- rg == cell.rg do
+          {:ok, cell.module, type, cell}
+        else
+          _ -> :error
+        end
     end
   end
 
@@ -534,7 +605,10 @@ defmodule <%= @web %>.BubbleWorkflows do
     end
   end
 
-  defp commit(socket, page, module, scope, element, value) do
+  # A committed value runs the input's "An input's value is changed"
+  # workflows; one tracked per cell (WTF-520, `cell`) runs those listed
+  # for it, in its surface's scope, with the cell (its scope, `scope`).
+  defp commit(socket, page, module, scope, element, value, cell) do
     key = {scope, element}
     committed = Map.get(socket.assigns, :bubble_committed) || %{}
     before = Map.get(committed, key, Map.get(socket.assigns.bubble_first_inputs, key))
@@ -547,9 +621,21 @@ defmodule <%= @web %>.BubbleWorkflows do
     socket = assign(socket, :bubble_committed, Map.put(committed, key, value))
 
     runs =
-      case Map.get(module.__bubble__(:surface).changes, element, []) do
-        ids when ids != [] and before != value -> [{module, scope, ids, %{}}]
-        _ -> []
+      case {cell, before != value} do
+        {_, false} ->
+          []
+
+        {nil, true} ->
+          case Map.get(module.__bubble__(:surface).changes, element, []) do
+            [_ | _] = ids -> [{module, scope, ids, %{}}]
+            _ -> []
+          end
+
+        {%{} = cell, true} ->
+          case Map.get(cell_events(module, :cell_changes), element) do
+            {rg, [_ | _] = ids} when rg == cell.rg -> [{module, cell.scope, ids, %{}, scope}]
+            _ -> []
+          end
       end
 
     {:noreply, socket |> event(page, runs, nil, :deferred) |> notice()}
@@ -791,6 +877,86 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_displayed, drop_scopes(Map.get(socket.assigns, :bubble_displayed) || %{}, gone))
   end
 
+  @doc """
+  Keeps the cells of the repeating groups whose page's own elements take
+  clicks or input changes per cell (WTF-520, `cell_lists` in a surface's
+  `__bubble__(:surface)`), in every surface the page renders (the page,
+  its instances, the instances in cells it read): by the cell's scope
+  (`<%= @web %>.Bubble.cell_scope/4`, the surface's scope with the
+  repeating group and the cell's thing; in a repeating group rendered per
+  cell of another, the outer cell's scope with the inner one's), what the
+  page read for it: `%{module, scope, rg, item, index, outer, cell_scope}`.
+  Read from `@bubble_data`, the lists the page just read as the current
+  user: a thing the user may not read, or no longer in the list, has no
+  cell and no scope, and an event naming one is ignored. The inputs
+  tracked per cell start with their first values in the cells new to the
+  page (a cell the page already showed keeps its own); what the page kept
+  for a cell no longer read is dropped.
+  """
+  def put_page_cells(socket, page) do
+    data = Map.get(socket.assigns, :bubble_data) || %{}
+
+    cells =
+      for {scope, module} <- surfaces(socket, page),
+          {rg, outer} <- cell_events(module, :cell_lists),
+          entry <- list_cells(data, module, scope, rg, outer),
+          into: %{},
+          do: entry
+
+    gone =
+      socket.assigns
+      |> Map.get(:bubble_page_cells, %{})
+      |> Map.keys()
+      |> MapSet.new()
+      |> MapSet.difference(MapSet.new(Map.keys(cells)))
+
+    inputs =
+      for {key, cell} <- cells,
+          {element, {rg, {_type, first}}} <- cell_events(cell.module, :cell_inputs),
+          rg == cell.rg,
+          do: {{key, element}, first}
+
+    socket
+    |> assign(:bubble_page_cells, cells)
+    |> assign(:bubble_inputs, put_new(drop_scopes(socket.assigns.bubble_inputs, gone), inputs))
+    |> assign(:bubble_first_inputs, put_new(drop_scopes(socket.assigns.bubble_first_inputs, gone), inputs))
+    |> assign(:bubble_committed, drop_scopes(Map.get(socket.assigns, :bubble_committed) || %{}, gone))
+  end
+
+  defp list_cells(data, module, scope, rg, nil) do
+    for {item, i} <- Bubble.cells(data, scope, rg),
+        do: {Bubble.cell_scope(scope, rg, item, i), page_cell_entry(module, scope, rg, item, i, nil, nil)}
+  end
+
+  defp list_cells(data, module, scope, rg, outer) do
+    for {outer_item, oi} <- Bubble.cells(data, scope, outer),
+        outer_scope = Bubble.cell_scope(scope, outer, outer_item, oi),
+        {item, i} <- Bubble.cells(data, scope, rg, oi),
+        do:
+          {Bubble.cell_scope(outer_scope, rg, item, i),
+           page_cell_entry(module, scope, rg, item, i, {outer_item, oi}, outer_scope)}
+  end
+
+  defp page_cell_entry(module, scope, rg, item, index, outer, cell_scope),
+    do: %{module: module, scope: scope, rg: rg, item: item, index: index, outer: outer, cell_scope: cell_scope}
+
+  # The cell the page read with scope `key` (WTF-520), never parsed.
+  defp page_cell(socket, key) do
+    case Map.fetch(Map.get(socket.assigns, :bubble_page_cells) || %{}, key) do
+      {:ok, cell} -> {:ok, cell}
+      :error -> :error
+    end
+  end
+
+  # What a surface lists per cell (WTF-520): none for a module scaffolded
+  # before.
+  defp cell_events(module, key) do
+    case Map.get(module.__bubble__(:surface), key) do
+      nil -> if key == :cell_lists, do: [], else: %{}
+      value -> value
+    end
+  end
+
   # An input's first value. One that is page data (WTF-520) is `:data`, read
   # from what the page loaded; with data access off the page loads
   # nothing, so it starts empty, as every reader of it (the input, texts,
@@ -826,14 +992,24 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   defp well_formed?(_frames), do: false
 
+  # A frame in a repeating group's cell (WTF-520) needs that cell still
+  # read: a cell whose thing left the list takes no event.
   defp resumable?(socket, page, frames),
-    do: Enum.all?(frames, &(surface(socket, page, &1.scope) == {:ok, &1.module}))
+    do:
+      Enum.all?(frames, fn frame ->
+        surface(socket, page, frame.scope) == {:ok, frame.module} and
+          (frame_cell(frame) == nil or match?({:ok, %{module: m}} when m == frame.module, page_cell(socket, frame_cell(frame))))
+      end)
+
+  defp frame_cell(frame), do: Map.get(frame, :cell)
 
   defp frame?(%{module: module, scope: scope, workflow: id, at: at, args: args, steps: steps, call: call} = frame)
        when is_atom(module) and is_binary(scope) and is_binary(id) and is_integer(at) and at > 0 and
               is_map(args) and is_map(steps) and (is_nil(call) or is_binary(call)) and
-              is_map_key(frame, :returns),
-       do: true
+              is_map_key(frame, :returns) do
+    cell = Map.get(frame, :cell)
+    is_nil(cell) or is_binary(cell)
+  end
 
   defp frame?(_frame), do: false
 
@@ -941,8 +1117,8 @@ defmodule <%= @web %>.BubbleWorkflows do
               runs,
               {socket.assigns[:bubble_pending_events] || [],
                socket.assigns[:bubble_pending_keys] || MapSet.new()},
-              fn {module, scope, ids, _} = entry, {acc, keys} ->
-                key = {module, scope, ids, socket.assigns.bubble_inputs}
+              fn entry, {acc, keys} ->
+                key = {Tuple.delete_at(entry, 3), socket.assigns.bubble_inputs}
 
                 if MapSet.member?(keys, key),
                   do: {acc, keys},
@@ -998,6 +1174,14 @@ defmodule <%= @web %>.BubbleWorkflows do
       {module, scope, ids, args}, acc ->
         Enum.reduce(ids, acc, fn id, {socket, run} ->
           socket |> BubbleData.reload(page) |> run_event(module, scope, [id], args, run)
+        end)
+
+      # In a repeating group's cell (WTF-520): its cell is looked up again
+      # after each read, so a workflow runs only while the page still
+      # shows the cell, with its thing as the page read it last.
+      {module, scope, ids, args, cell}, acc ->
+        Enum.reduce(ids, acc, fn id, {socket, run} ->
+          socket |> BubbleData.reload(page) |> run_event(module, scope, [id], args, run, cell)
         end)
     end)
   end
@@ -1095,6 +1279,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       takes_thing: Map.get(socket.assigns, :bubble_takes_thing, false),
       data: Map.get(socket.assigns, :bubble_data, %{}),
       displayed: Map.get(socket.assigns, :bubble_displayed, %{}),
+      cells: Map.get(socket.assigns, :bubble_page_cells) || %{},
       thing: Map.get(socket.assigns, :bubble_thing)
     }
   end
@@ -1125,16 +1310,38 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   # Runs workflows `ids` of `module` in `scope` with what is left of the
   # event's budgets; returns the socket and the event's run, charged.
-  defp run_event(socket, module, scope, ids, args, run) do
-    {ctx, refused?} =
-      Enum.reduce(ids, {ctx(socket, module, scope, run), false}, fn id, {ctx, refused?} ->
-        {status, ctx} = run(ctx, module, id, args, scope)
-        {paused(ctx, status), refused? or refused?(status)}
-      end)
+  defp run_event(socket, module, scope, ids, args, run, cell \\ nil) do
+    case in_cell(ctx(socket, module, scope, run), socket, cell) do
+      {:ok, ctx} ->
+        {ctx, refused?} =
+          Enum.reduce(ids, {ctx, false}, fn id, {ctx, refused?} ->
+            {status, ctx} = run(ctx, module, id, args, scope)
+            {paused(ctx, status), refused? or refused?(status)}
+          end)
 
-    socket = if refused?, do: assign(socket, :bubble_refused, true), else: socket
-    finish(socket, ctx, run)
+        socket = if refused?, do: assign(socket, :bubble_refused, true), else: socket
+        finish(socket, ctx, run)
+
+      :error ->
+        Logger.debug("bubble: an event of a cell the page no longer shows was ignored")
+        {socket, run}
+    end
   end
+
+  # The context in the cell of scope `key` (WTF-520): its thing and index
+  # (and the outer cell's, with the scope the inner cells' values are kept
+  # in), as the page read them, never from the browser.
+  defp in_cell(ctx, _socket, nil), do: {:ok, ctx}
+
+  defp in_cell(%Ctx{module: module, scope: scope} = ctx, socket, key) when is_binary(key) do
+    case page_cell(socket, key) do
+      {:ok, %{module: ^module, scope: ^scope} = cell} -> {:ok, cell_ctx(ctx, key, cell)}
+      _ -> :error
+    end
+  end
+
+  defp cell_ctx(ctx, key, cell),
+    do: %{ctx | cell: cell.item, cell_index: cell.index, outer: cell.outer, cell_scope: cell.cell_scope, cell_key: key}
 
   # The rest of a paused workflow and of the custom events waiting on it
   # (WTF-451), with the start time it had, on the budgets the pause left.
@@ -1421,7 +1628,8 @@ defmodule <%= @web %>.BubbleWorkflows do
       steps: ctx.steps,
       returns: ctx.returns,
       at: at,
-      call: call
+      call: call,
+      cell: ctx.cell_key
     }
   end
 
@@ -1503,11 +1711,24 @@ defmodule <%= @web %>.BubbleWorkflows do
               resume: frame.at
           }
 
-          apply(frame.module, fun, [child])
+          apply(frame.module, fun, [frame_cell_ctx(child, frame_cell(frame))])
         end
 
       _ ->
         {{:error, {:not_resumable, frame.workflow}}, ctx}
+    end
+  end
+
+  # A paused workflow of a repeating group's cell (WTF-520) continues in
+  # that cell, as the page read it last (`resumable?/3` checked it is
+  # still there).
+  defp frame_cell_ctx(ctx, nil),
+    do: %{ctx | cell: nil, cell_index: nil, outer: nil, cell_scope: nil, cell_key: nil}
+
+  defp frame_cell_ctx(ctx, key) do
+    case Map.fetch(ctx.cells, key) do
+      {:ok, cell} -> cell_ctx(ctx, key, cell)
+      :error -> frame_cell_ctx(ctx, nil)
     end
   end
 
@@ -1542,6 +1763,13 @@ defmodule <%= @web %>.BubbleWorkflows do
       value -> value
     end
   end
+
+  @doc """
+  The value of input `element` in the workflow's repeating group cell
+  (WTF-520): each cell keeps its own, under the cell's scope.
+  """
+  def cell_input(%Ctx{cell_key: key} = ctx, element) when is_binary(key), do: Map.get(ctx.inputs, {key, element})
+  def cell_input(_ctx, _element), do: nil
 
   @doc "URL parameter `name`, as text."
   def url(ctx, name), do: Map.get(ctx.url, name)
@@ -1736,11 +1964,14 @@ defmodule <%= @web %>.BubbleWorkflows do
   """
   def display(ctx, step, path, element, cell?, resource, list?, value, page_size \\ nil) do
     scope = scope(ctx, path)
+    # In a repeating group rendered per cell of another (WTF-520), the
+    # inner cells' values are kept in the outer cell's scope.
+    cells = ctx.cell_scope || scope
 
     keys =
       cond do
         not cell? -> {:ok, {scope, element}, {scope, element}}
-        ctx.cell != nil -> {:ok, {scope, element, {:cell, Runtime.id(ctx.cell)}}, {scope, element, ctx.cell_index}}
+        ctx.cell != nil -> {:ok, {cells, element, {:cell, Runtime.id(ctx.cell)}}, {cells, element, ctx.cell_index}}
         true -> :error
       end
 
