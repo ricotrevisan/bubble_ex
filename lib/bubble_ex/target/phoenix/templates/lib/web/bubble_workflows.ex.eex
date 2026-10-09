@@ -10,9 +10,21 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   A browser can only ask the page to run what the page lists
   (`__bubble__(:surface)` of its `Workflows` module and of the reusable
-  elements it renders, `__bubble__(:instances)`): a click (`bubble:click`)
-  or an input change (`bubble:change`, `bubble:commit`) of an element the
-  page renders in a scope (reusable-element instance) it renders. Anything else is ignored.
+  elements it renders, `__bubble__(:instances)`): a click (`bubble:click`),
+  an input change (`bubble:change`, `bubble:commit`) or a Popup opened or
+  closed (`bubble:popup`, WTF-520) of an element the page renders in a
+  scope (reusable-element instance) it renders. Anything else is ignored.
+
+  A Popup's "is opened" and "is closed" workflows run when the page's hook
+  reports that it opened or closed it (`popups` in
+  `__bubble__(:surface)`): by a step (in the browser or sent by the
+  server) or Escape; opening an open Popup, or closing a
+  closed one, reports nothing. Each report is a browser event, like a
+  click (a refused workflow shows the notice), but one a server-side step
+  caused carries the chain of the run that sent the step, one link
+  further: Popups opening each other through the server stop at
+  `:max_chain`, as scheduled custom events do. A browser can report any
+  listed Popup event, as it can click any listed element.
 
   A reusable instance in a repeating group's cell (WTF-494,
   `__bubble__(:cells)`) has a scope per cell, the cell's thing's
@@ -408,6 +420,41 @@ defmodule <%= @web %>.BubbleWorkflows do
     with {:ok, module, scope, element, value} <- input_event(socket, page, params) do
       socket = assign(socket, :bubble_refused, false) |> put_input(scope, element, value)
       commit(socket, page, module, scope, element, value)
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  # A Popup the hook opened or closed (WTF-520): its "is opened" or "is
+  # closed" workflows, when the page lists them. `chain` is the chain of
+  # the run whose step opened it (0 for the user's own action).
+  def handle_event(socket, page, "bubble:popup", %{"scope" => scope, "element" => element} = params)
+      when is_binary(scope) and is_binary(element) do
+    chain =
+      case Map.get(params, "chain") do
+        n when is_integer(n) and n >= 0 -> n
+        _ -> 0
+      end
+
+    key =
+      case Map.get(params, "event") do
+        "opened" -> :opened
+        "closed" -> :closed
+        _ -> nil
+      end
+
+    with true <- key != nil,
+         {:ok, module} <- surface(socket, page, scope),
+         %{^key => [_ | _] = ids} <- Map.get(Map.get(module.__bubble__(:surface), :popups, %{}), element) do
+      if chain >= max_chain() do
+        Logger.warning("bubble: a popup event at :max_chain (#{max_chain()}) was ignored")
+        {:noreply, socket}
+      else
+        root = Runtime.root(nil, nil)
+        budget = %{jobs: root.budget, calls: root.calls, chain: chain}
+        socket = assign(socket, :bubble_refused, false)
+        {:noreply, socket |> event(page, [{module, scope, ids, %{}}], budget) |> notice()}
+      end
     else
       _ -> {:noreply, socket}
     end
@@ -1110,10 +1157,16 @@ defmodule <%= @web %>.BubbleWorkflows do
       |> assign(:bubble_displayed, ctx.displayed)
       |> assign(:bubble_committed, committed)
 
+    # A Popup these steps open or close reports the next link of the
+    # run's chain (`bubble:popup`, WTF-520).
     socket =
       if ctx.js == [],
         do: socket,
-        else: push_event(socket, "bubble:exec", %{ops: Enum.reverse(ctx.js)})
+        else:
+          push_event(socket, "bubble:exec", %{
+            ops: Enum.reverse(ctx.js),
+            chain: backend(ctx).chain + 1
+          })
 
     apply_navigation(socket, ctx.navigate)
   end

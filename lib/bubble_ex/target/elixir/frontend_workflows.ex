@@ -57,8 +57,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       generated page does not render
     * `:backend_workflow` - scheduling an API workflow without the
       `:backend` option (the backend workflows' spec, WTF-373)
-    * `:unsupported_event` (`detail.target` `"phoenix"`) - popup opened or
-      closed, user logged in or out: no wiring yet
+    * `:unsupported_event` (`detail.target` `"phoenix"`) - user logged in
+      or out: no wiring yet; popup opened or closed on an element that is
+      not a Popup of the workflow's surface (a reusable element that is
+      itself a popup included)
     * `:unresolved_reference` (`detail.target` `"ash"`) - a data type or
       field the Ash project does not map
     * `:unsupported_option` - a list change on a field that is not a list
@@ -74,7 +76,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   alias BubbleEx.{Diagnostic, Error}
   alias BubbleEx.Expression.Tree
-  alias BubbleEx.Frontend.Normalized
+  alias BubbleEx.Frontend.{Conditions, Normalized}
   alias BubbleEx.Model.Type
   alias BubbleEx.Plan.Residue
   alias BubbleEx.Target.Ash.{Naming, Project, Resource}
@@ -111,13 +113,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # know it until the input changes.
   @dynamic_slots ~w(value checked choices)
 
-  @unwired_events [:popup_opened, :popup_closed, :logged_in, :logged_out]
+  @unwired_events [:logged_in, :logged_out]
+
+  # "A popup is opened / closed" (WTF-520): the page's hook reports a
+  # Popup it opened or closed (`bubble:popup`).
+  @popup_events [:popup_opened, :popup_closed]
 
   @display_ops [:display_data, :display_list]
 
-  # Events that never fire as the page loads (WTF-520). Anything else may
-  # (a page load, a condition, a plugin's event, a popup opened or closed,
-  # a user logged in or out: the conservative reading).
+  # Events that never fire as the page loads (WTF-520). A popup opened or
+  # closed fires when a step opens or closes it, or the user closes it
+  # (`start_roots/2`). Anything else may (a page load, a condition, a
+  # plugin's event, a user logged in or out: the conservative reading).
   @event_kinds [:click, :input_change, :do_every]
 
   # Elements holding data that "Display data" or "Display list" sets.
@@ -376,16 +383,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # Whether the page keeps what display steps show in an element
   # faithfully (WTF-520). In a repeating group's cell, when a step that
   # runs sets it (WTF-492). Elsewhere, by the workflows that may start
-  # each step (`roots`, `start_roots/1`): every one that may run as the
-  # page loads (a page-load or condition-true workflow, a popup opened or
-  # closed, a plugin's or another event this target does not lower, or
-  # the callers of the custom event holding the step) runs whole and is
-  # triggered; every event-driven one (a click, an input change, a "do
-  # every" tick) is triggered, whether the runtime then runs it or
-  # refuses it with a notice. Before an event the element shows nothing,
-  # as in Bubble; an event the page never triggers (a click in a
-  # repeating group's cell, not wired yet) would leave it empty where
-  # Bubble shows data, so it is not kept. No step at all: empty, kept.
+  # each step (`roots`, `start_roots/2`): every one that may run as the
+  # page loads (a page-load or condition-true workflow, a plugin's or
+  # another event this target does not lower, a popup a page-load
+  # workflow opens or closes, or the callers of the custom event holding
+  # the step) runs whole and is triggered; every event-driven one (a
+  # click, an input change, a "do every" tick, a popup only those open or
+  # close, the popup's workflow itself) is triggered, whether the runtime
+  # then runs it or refuses it with a notice. Before an event the element
+  # shows nothing, as in Bubble; an event the page never triggers (a
+  # click in a repeating group's cell, not wired yet) would leave it
+  # empty where Bubble shows data, so it is not kept. No step at all:
+  # empty, kept.
   defp kept?(element, %{cell: cell}, _workflows, shown) when is_binary(cell),
     do: MapSet.member?(shown, element)
 
@@ -748,7 +757,41 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     end
   end
 
+  # A popup opened or closed (WTF-520): a Popup of the workflow's surface
+  # the page renders, outside a runtime container's template. Bubble lists
+  # only popups for these events; a reusable element that is itself a
+  # popup is not wired (its instance is the overlay).
+  defp event_residue(%Workflow{kind: kind, element: element} = w, ctx)
+       when kind in @popup_events do
+    cond do
+      not popup?(element, bubble(w.surface), ctx) ->
+        [Residue.entry(w.id, :unsupported_event, %{type: w.event_type, target: "phoenix"})]
+
+      not MapSet.member?(ctx.present, element) ->
+        [Residue.entry(w.id, :trigger_not_normalized, %{element: "element:" <> element})]
+
+      Map.has_key?(ctx.templates, element) ->
+        [
+          Residue.entry(w.id, :trigger_in_runtime_template, %{
+            element: "element:" <> element,
+            container: "element:" <> ctx.templates[element]
+          })
+        ]
+
+      true ->
+        []
+    end
+  end
+
   defp event_residue(_w, _ctx), do: []
+
+  # A Popup element (not a reusable element's root) of `surface`.
+  defp popup?(element, surface, ctx) when is_binary(element) do
+    match?(%{type: "Popup", kind: :element}, ctx.raw_elements[element]) and
+      match?(%{surface: ^surface, root?: false}, ctx.elements[element])
+  end
+
+  defp popup?(_element, _surface, _ctx), do: false
 
   defp tracked?(element, ctx) do
     case ctx.elements[element] do
@@ -1126,7 +1169,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # group, group focus or repeating group with a type of content and no
   # data source, outside a repeating group's cell.
   defp displayed(workflows, own, ctx) do
-    starts = start_roots(workflows)
+    starts = start_roots(workflows, ctx)
 
     steps =
       for w <- workflows,
@@ -1200,17 +1243,58 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   defp never_shown(steps, own, ctx) do
     stepped = MapSet.new(steps, &elem(&1, 0))
 
-    for {id, %{kind: :element, type: type, content: content} = raw} <- ctx.raw_elements,
-        type in @never_holders,
-        is_binary(content) and content != "",
-        not MapSet.member?(stepped, id),
-        not MapSet.member?(own, id),
-        %{surface: surface, instance_of: nil} = el <- [ctx.elements[id]],
-        cell_of(raw, ctx, 0) == nil,
-        rendered?(id, ctx),
-        op = if(type == "RepeatingGroup", do: :display_list, else: :display_data),
-        into: %{},
-        do: {id, Map.put(holder(op, id, el, raw, surface, nil, ctx), :roots, [])}
+    groups =
+      for {id, %{kind: :element, type: type, content: content} = raw} <- ctx.raw_elements,
+          type in @never_holders,
+          is_binary(content) and content != "",
+          not MapSet.member?(stepped, id),
+          not MapSet.member?(own, id),
+          %{surface: surface, instance_of: nil} = el <- [ctx.elements[id]],
+          cell_of(raw, ctx, 0) == nil,
+          rendered?(id, ctx),
+          op = if(type == "RepeatingGroup", do: :display_list, else: :display_data),
+          into: %{},
+          do: {id, Map.put(holder(op, id, el, raw, surface, nil, ctx), :roots, [])}
+
+    Map.merge(groups, never_shown_instances(stepped, own, ctx))
+  end
+
+  # Reusable-element instances no step and no data source fill (WTF-520):
+  # their reusable element's thing is nothing, as a group's no step fills,
+  # when every instance of that reusable element is one, outside a
+  # repeating group's cell, and no step inside it sets its own thing. Its
+  # reads of its own thing then read nothing in each instance. A reusable
+  # element with any other instance is left as it is: what it reads of
+  # its own thing loads only from an instance's own source.
+  defp never_shown_instances(stepped, own, ctx) do
+    ctx.raw_elements
+    |> Enum.filter(fn {_id, e} -> e.kind == :element and is_binary(e.instance_of) end)
+    |> Enum.group_by(fn {_id, e} -> e.instance_of end)
+    |> Enum.filter(fn {definition, instances} ->
+      unfilled_reusable?(definition, instances, stepped, own, ctx)
+    end)
+    |> Enum.flat_map(&elem(&1, 1))
+    |> Enum.flat_map(&unfilled_holder(&1, ctx))
+    |> Map.new()
+  end
+
+  defp unfilled_reusable?(definition, instances, stepped, own, ctx) do
+    content = Map.get(ctx.raw_elements[definition] || %{}, :content)
+
+    is_binary(content) and content != "" and not MapSet.member?(stepped, definition) and
+      Enum.all?(instances, fn {id, raw} ->
+        not MapSet.member?(stepped, id) and not MapSet.member?(own, id) and
+          cell_of(raw, ctx, 0) == nil
+      end)
+  end
+
+  defp unfilled_holder({id, raw}, ctx) do
+    with %{surface: surface} = el <- ctx.elements[id],
+         true <- rendered?(id, ctx) do
+      [{id, Map.put(holder(:display_data, id, el, raw, surface, nil, ctx), :roots, [])}]
+    else
+      _ -> []
+    end
   end
 
   # For each workflow (Bubble ID), the workflows that may start it:
@@ -1219,7 +1303,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # for a custom event, those of every workflow calling or scheduling it
   # (none when nothing does, or only itself through a cycle). Disabled
   # workflows never run.
-  defp start_roots(workflows) do
+  #
+  # A popup opened or closed (WTF-520) is started by the workflows whose
+  # steps open it (show, toggle) or close it (hide, toggle), the user's
+  # Escape included for a closed one (the workflow's own `{:event,
+  # symbol}`: the page must trigger it). Popups are closed as the page
+  # loads, so with only event-driven openers it never fires as the page
+  # loads; with a page-load opener it does, and must run whole there too
+  # (`{:load, symbol}`). A popup whose conditions set its visibility may be
+  # opened by them, which the page does not follow (an overlay's
+  # conditions are not rendered): `{:load, nil}`, never kept.
+  defp start_roots(workflows, ctx) do
     by_id = Map.new(workflows, &{&1.bubble_id, &1})
 
     callers =
@@ -1232,28 +1326,89 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         acc -> Map.update(acc, callee, [w.bubble_id], &[w.bubble_id | &1])
       end
 
-    Map.new(workflows, fn w -> {w.bubble_id, roots_of(w, by_id, callers, MapSet.new())} end)
+    toggles =
+      for w <- workflows,
+          not w.disabled?,
+          %Step{op: op, args: %{element: element}} <- w.steps,
+          op in [:show, :hide, :toggle],
+          is_binary(element),
+          kind <- toggled(op),
+          reduce: %{} do
+        acc -> Map.update(acc, {kind, element}, [w.bubble_id], &[w.bubble_id | &1])
+      end
+
+    starts = %{
+      by_id: by_id,
+      callers: callers,
+      toggles: toggles,
+      conditional: conditional_popups(workflows, ctx)
+    }
+
+    Map.new(workflows, fn w -> {w.bubble_id, roots_of(w, starts, MapSet.new())} end)
   end
 
-  defp roots_of(%{disabled?: true}, _by_id, _callers, _seen), do: []
+  defp toggled(:show), do: [:popup_opened]
+  defp toggled(:hide), do: [:popup_closed]
+  defp toggled(:toggle), do: [:popup_opened, :popup_closed]
 
-  defp roots_of(%{kind: kind, id: symbol}, _by_id, _callers, _seen) when kind in @event_kinds,
+  # The popups with popup events whose conditions set their visibility.
+  defp conditional_popups(workflows, ctx) do
+    for %{kind: kind, element: element} <- workflows,
+        kind in @popup_events,
+        is_binary(element),
+        visibility_conditions?(ctx.nodes[element]),
+        into: MapSet.new(),
+        do: element
+  end
+
+  defp visibility_conditions?(%Normalized.Node{bindings: %{"condition" => %{payload: payload}}}),
+    do: Conditions.visibility(payload) != []
+
+  defp visibility_conditions?(_node), do: false
+
+  defp roots_of(nil, _starts, _seen), do: []
+  defp roots_of(%{disabled?: true}, _starts, _seen), do: []
+
+  defp roots_of(%{kind: kind, id: symbol}, _starts, _seen) when kind in @event_kinds,
     do: [{:event, symbol}]
 
-  defp roots_of(%{kind: :custom_event, bubble_id: id}, by_id, callers, seen) do
+  defp roots_of(%{kind: :custom_event, bubble_id: id}, starts, seen) do
     if MapSet.member?(seen, id) do
       []
     else
       seen = MapSet.put(seen, id)
 
-      callers
+      starts.callers
       |> Map.get(id, [])
-      |> Enum.flat_map(&roots_of(by_id[&1], by_id, callers, seen))
+      |> Enum.flat_map(&roots_of(starts.by_id[&1], starts, seen))
       |> Enum.uniq()
     end
   end
 
-  defp roots_of(%{id: symbol}, _by_id, _callers, _seen), do: [{:load, symbol}]
+  defp roots_of(%{kind: kind, element: element, id: symbol, bubble_id: id}, starts, seen)
+       when kind in @popup_events do
+    if MapSet.member?(seen, id) do
+      []
+    else
+      seen = MapSet.put(seen, id)
+
+      from =
+        starts.toggles
+        |> Map.get({kind, element}, [])
+        |> Enum.flat_map(&roots_of(starts.by_id[&1], starts, seen))
+
+      own =
+        cond do
+          MapSet.member?(starts.conditional, element) -> [{:load, nil}]
+          Enum.any?(from, &match?({:load, _}, &1)) -> [{:event, symbol}, {:load, symbol}]
+          true -> [{:event, symbol}]
+        end
+
+      Enum.uniq(own ++ from)
+    end
+  end
+
+  defp roots_of(%{id: symbol}, _starts, _seen), do: [{:load, symbol}]
 
   # What a display step's element holds, or why the page cannot keep it:
   # a group (popup, floating group, group focus) holds a thing, a

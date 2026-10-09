@@ -1717,6 +1717,86 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert_push_event(view, "bubble:exec", %{ops: [%{op: "show"}]})
   end
 
+  # WTF-520: /shown's bPopOpen is a Popup whose "is opened" workflow shows
+  # bSrcB's thing (Eat) in bPopInner, a group with no data source inside
+  # it, and whose "is closed" workflow resets it. A button opens it in the
+  # browser (a JS command); the page's hook reports the popup opened or
+  # closed (`bubble:popup`), which LiveViewTest sends here as the hook does.
+  defp popup(view, element, event, extra \\ %{}),
+    do:
+      render_click(
+        view,
+        "bubble:popup",
+        Map.merge(%{"scope" => "", "element" => element, "event" => event}, extra)
+      )
+
+  test "a popup's \"is opened\" workflow shows data in a group inside it; \"is closed\" resets it",
+       %{conn: conn} do
+    on()
+    {:ok, view, html} = live(conn, "/shown")
+    assert shown(html, "Popup inner") == []
+
+    # The button opens the popup in the browser; the popup carries the
+    # events its hook reports.
+    assert view |> element(~s([data-bubble-id="bOpenPopOpen"])) |> render() =~ "bubble:show"
+
+    assert view
+           |> element(~s([data-bubble-id="bPopOpen"][data-bubble-events="closed opened"]))
+           |> has_element?()
+
+    html = popup(view, "bPopOpen", "opened")
+    assert shown(html, "Popup inner") == ["Eat"]
+    assert shown(html, "Popup inner project") == ["Apollo"]
+
+    html = popup(view, "bPopOpen", "closed")
+    assert shown(html, "Popup inner") == []
+    assert shown(html, "Popup inner project") == []
+  end
+
+  test "only the popup events the page lists run, in a scope it renders", %{conn: conn} do
+    on()
+    {:ok, view, _html} = live(conn, "/shown")
+
+    # bPop has no popup workflows; a made-up event or scope runs nothing.
+    for {element, event, scope} <- [
+          {"bPop", "opened", ""},
+          {"bPopOpen", "shown", ""},
+          {"bPopOpen", "opened", "bPanel1"},
+          {"bNope", "opened", ""}
+        ] do
+      html = popup(view, element, event, %{"scope" => scope})
+      assert shown(html, "Popup inner") == [], inspect({element, event, scope})
+    end
+  end
+
+  test "a popup a server-side step opens reports the run's chain; at :max_chain it runs nothing",
+       %{conn: conn} do
+    on()
+    previous = Application.get_env(:phx_check, PhxCheck.Workflows)
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:phx_check, PhxCheck.Workflows, previous),
+        else: Application.delete_env(:phx_check, PhxCheck.Workflows)
+    end)
+
+    {:ok, view, _html} = live(conn, "/shown")
+
+    # A server-side workflow's steps carry the next link of its run's chain.
+    click(view, "bOpenPop")
+    assert_push_event(view, "bubble:exec", %{ops: [%{op: "show"}], chain: 1})
+
+    Application.put_env(:phx_check, PhxCheck.Workflows, max_chain: 3)
+    assert shown(popup(view, "bPopOpen", "opened", %{"chain" => 3}), "Popup inner") == []
+    assert shown(popup(view, "bPopOpen", "opened", %{"chain" => 2}), "Popup inner") == ["Eat"]
+  end
+
+  test "with data access off, a popup's data workflow is refused with the notice", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/shown")
+    assert shown(popup(view, "bPopOpen", "opened"), "Popup inner") == []
+    assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."})
+  end
+
   test "Display list shows a list in a repeating group with no data source", %{conn: conn} do
     on()
     {:ok, view, html} = live(conn, "/shown")

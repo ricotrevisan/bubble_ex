@@ -1876,11 +1876,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     acc = mark_data(acc, node, ctx)
 
     clicks = if acc.template, do: [], else: click_attrs(bid(node), tag, ctx)
+    popups = if acc.template, do: [], else: popup_attrs(bid(node), node, ctx)
     {visibility, acc} = visibility_attrs(node, ctx, acc)
 
     {rest, acc} =
       attrs
       |> Kernel.++(overlay_attrs(node))
+      |> Kernel.++(popups)
       |> Kernel.++(visibility)
       |> Kernel.++(overlay_dismissal(node, ctx))
       |> Kernel.++(clicks)
@@ -2004,6 +2006,17 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   defp overlay_attrs(_node), do: []
+
+  # A Popup whose "is opened" / "is closed" workflows the page runs
+  # (WTF-520): the hook reports those events of it (`bubble:popup`).
+  defp popup_attrs(id, %Node{runtime: %{"overlay" => "popup"}}, ctx) do
+    case Map.get(Map.get(ctx, :popups, %{}), id) do
+      [_ | _] = events -> [{"data-bubble-events", Enum.join(events, " ")}]
+      _ -> []
+    end
+  end
+
+  defp popup_attrs(_id, _node, _ctx), do: []
 
   # Escape is `<Web>.Bubble.overlay_keys/1`'s (the topmost open overlay
   # only): the overlay carries the command it runs. An outside click is
@@ -3182,9 +3195,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # --- frontend workflows (WTF-372) ---------------------------------------------------
 
-  # The click wiring and tracked inputs of surface `id` (none without
-  # workflows).
-  defp surface_flows(%{flows: nil}, _id), do: %{clicks: %{}, tracked: %{}, initial: MapSet.new()}
+  # The click and popup wiring and tracked inputs of surface `id` (none
+  # without workflows).
+  defp surface_flows(%{flows: nil}, _id),
+    do: %{clicks: %{}, popups: %{}, tracked: %{}, initial: MapSet.new()}
 
   defp surface_flows(%{flows: flows}, id) do
     surface = flows.surfaces[id] || %{workflows: [], inputs: %{}}
@@ -3203,8 +3217,21 @@ defmodule BubbleEx.Target.Phoenix.Pages do
          }}
       end)
 
+    # The popup events the page runs (WTF-520): "opened", "closed".
+    popups =
+      for %{kind: kind, element: element} = w <- surface.workflows,
+          kind in [:popup_opened, :popup_closed],
+          is_binary(element),
+          FlowSpec.wired?(w),
+          reduce: %{} do
+        acc ->
+          event = if kind == :popup_opened, do: "opened", else: "closed"
+          Map.update(acc, element, [event], &Enum.sort(Enum.uniq([event | &1])))
+      end
+
     %{
       clicks: clicks,
+      popups: popups,
       tracked: surface.inputs,
       initial: MapSet.new(Map.get(surface, :initial, []))
     }

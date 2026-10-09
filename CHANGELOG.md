@@ -656,6 +656,32 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Popup opened / closed events run** (WTF-520). "A popup is opened"
+  and "A popup is closed" workflows were `:unsupported_event` residue.
+  The page's hook now reports a Popup it actually opened or closed (by a
+  step in the browser or sent by the server, or Escape) as `bubble:popup`
+  when the Popup lists that event (`data-bubble-events`); the page runs
+  only the workflows its `__bubble__(:surface)` lists under `popups`, in
+  a scope it renders, like a click (a refused one shows the notice). A
+  Popup a server-side step opened carries the chain of the run that sent
+  the step (`bubble:exec`'s `chain`), so Popups opening each other
+  through the server stop at `:max_chain`. Wired on a Popup of the
+  workflow's own page or reusable element the page renders, outside a
+  repeating group's cell; a reusable element that is itself a popup
+  stays residue. What a popup's workflows show is page data by what
+  opens or closes the popup: popups are closed as the page loads, so
+  with only events opening it the element is empty until then; with a
+  page-load workflow opening it, both must run whole; a popup whose
+  conditions set its visibility keeps it unloaded. Not replayed: listed
+  in `docs/frontend-workflows.md`.
+- **Reusable instances nothing fills are empty page data** (WTF-520).
+  An instance with no data source that no step sets, when every instance
+  of its reusable element is such an instance (outside a repeating
+  group's cell), holds nothing (`read: :displayed`), so what the
+  reusable element reads of its own thing loads, reading nothing, as a
+  group no step fills does. A reusable element with any other instance
+  is left as it was.
+
 - **Bubble's Table element in generated pages** (WTF-507). A Table was a
   runtime-container placeholder whose items were never set, so a dynamic
   table rendered empty. `Target.Phoenix.Pages` now renders an HTML table
