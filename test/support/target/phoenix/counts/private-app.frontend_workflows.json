@@ -3,7 +3,7 @@
     "generated": {
       "by_kind": {
         "click": {
-          "native": 510,
+          "native": 508,
           "total": 1358
         },
         "condition_true": {
@@ -49,7 +49,7 @@
       },
       "by_surface": {
         "page": {
-          "native": 276,
+          "native": 274,
           "total": 634
         },
         "reusable": {
@@ -63,9 +63,9 @@
         "auth_action": 14,
         "plugin_action": 619,
         "plugin_event": 250,
-        "target_not_rendered": 2,
+        "target_not_rendered": 6,
         "trigger_in_runtime_template": 194,
-        "unavailable_input": 475,
+        "unavailable_input": 476,
         "uncompiled_expression": 692,
         "unresolved_reference": 41,
         "unsupported_action": 67,
@@ -74,7 +74,7 @@
       },
       "step_ops": {
         "call": 539,
-        "call_reusable": 127,
+        "call_reusable": 123,
         "create": 31,
         "delete": 3,
         "display_data": 58,
@@ -100,17 +100,17 @@
         "update_list": 1
       },
       "steps": {
-        "native": 2424,
-        "residue": 1586,
+        "native": 2420,
+        "residue": 1590,
         "total": 4010
       },
       "workflows": {
         "client": 101,
-        "native": 814,
-        "native_own_body": 972,
-        "residue": 1456,
+        "native": 812,
+        "native_own_body": 969,
+        "residue": 1458,
         "total": 2270,
-        "wired": 542
+        "wired": 540
       }
     },
     "ir": {
