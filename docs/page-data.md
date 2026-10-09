@@ -592,38 +592,66 @@ each read.
 
 A reusable element is compiled once for all its instances, so its reads
 of its own thing (`Parent group's X` at its top, "Current reusable's
-thing", a group inside it whose source is that thing, a workflow reading
-it) are loaded when some instance gives it a thing: an instance whose
-own data source loads (or a step that sets it, or, when every instance
-is one, an instance nothing fills, above). An instance whose own source
-does not load (it does not compile, a conditional state of it does not,
-it reads data the page does not load, or, in a repeating group's cell,
-it cannot be read per cell) would render that component reading
-nothing: an empty text, an empty list, a workflow on an empty thing.
+thing", a group or nested instance inside it whose source is that thing,
+a workflow reading it) are loaded when some instance gives it a thing:
+an instance whose own data source loads (or a step that sets it, or,
+when every instance is one, an instance nothing fills, above). An
+instance whose own source does not load (it does not compile, a
+conditional state of it does not, it reads data the page does not load,
+or, in a repeating group's cell, it cannot be read per cell) would
+render that component reading nothing: an empty text, an empty list, a
+workflow on an empty thing.
 
 Such an instance is residue instead, per instance
-(`Data.unloaded_instances/2`, `Spec.unloaded/2`): rendered as a sized
-placeholder carrying its `TODO(bubble:<id>)` markers (`not rendered:
-its reusable element reads its own thing, which this instance's data
-source does not load`, and `its data source is not loaded (<reasons>)`),
-as an element the page cannot render, and counted in the frontend
-report's `placeholder`. Its sibling instances render and load as before.
+(`Data.unloaded_instances/3`, `Spec.unloaded/2`), when its reusable
+element reads its own thing at all: one of its expressions (a data
+source, a text or attribute, a visibility condition, a workflow, a
+nested instance's source or property) reads it, as compiled to IR
+(`BubbleEx.PageData`'s `self_reads`). An instance of a reusable element
+that never reads it renders whatever its source: nothing in it would
+read the missing thing. The instance is rendered as a sized placeholder
+carrying its `TODO(bubble:<id>)` markers (`not rendered: its data source
+does not load, and its reusable element reads the thing it gives (Parent
+group)`, and `its data source is not loaded (<reasons>)`), as an element
+the page cannot render, and counted in the frontend report's
+`placeholder`. Its sibling instances render and load as before.
+
 Its scope is not rendered: it is left out of `__bubble__(:instances)`
 (and, in a repeating group's cell, of `__bubble__(:cells)`), so the
 loader reads none of its reusable element's sources there, the page
 accepts no click or input change in it, and no page-load, condition or
-"do every" workflow of its reusable element runs in it. Nothing inside
-it can be reached from outside either: a property default read through
-it (`<instance>'s <property>`, WTF-520) is not loaded (the sources and
-workflows reading it are `:unavailable_input`, `element_state:param`,
-and the page's texts are markers), and so are its custom states read by
-its page (their defaults are not kept without the scope).
+"do every" workflow of its reusable element runs in it; nor does any of
+its nested instances. Nothing inside it can be reached from outside
+either:
+
+* a property default read through it (`<instance>'s <property>`,
+  WTF-520) is not loaded: the sources and workflows reading it are
+  `:unavailable_input` (`element_state:param`), the page's texts markers;
+* its custom states read by its page are not kept (their defaults have
+  no scope to live in): a text is a marker, a visibility condition is not
+  lowered and keeps its page-load visibility;
+* a page step calling its custom event, or a "Display data" step into
+  it, is `:target_not_rendered`. Showing data in it is not taken as
+  filling it: before the step it would still show its own source, which
+  does not load.
+
+The binding runs in passes: an instance found unloaded in one pass stays
+unloaded in the next (the page data is bound again only when a source
+reads a value kept under a newly unloaded instance, a default or a
+custom state; sources only lose, never gain, so the passes end). An
+instance may so stay unloaded after a later pass finds its reusable
+element no longer a root (its other instances lost their sources too):
+it is then residue where the marked component would have done, never
+rendered reading nothing.
 
 When no instance gives the reusable element a thing, nothing changes:
 its reads of its own thing are marked in the component itself, and
 every instance renders it with those markers. The values the instance
-sets for its properties still count for `This Reusable's <property>`
-(every value must load, WTF-493), as before.
+sets for its properties are still computed and still count for `This
+Reusable's <property>` (every value must load, WTF-493), as before; and
+an instance in a repeating group's cell still counts its reusable
+element as rendered in cells (WTF-494, `:page_data_in_cell`), since the
+cell residue can be what leaves it unloaded in the first place.
 
 ## Inputs whose initial content is page data (WTF-520)
 

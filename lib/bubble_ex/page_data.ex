@@ -70,13 +70,21 @@ defmodule BubbleEx.PageData do
   privacy rule of the searched type keeps out of searches, which Bubble
   limits per user and the generated page cannot).
 
+  ## Reusable elements reading their own thing
+
+  `self_reads`: the reusable elements one of whose expressions (a data
+  source, a text or attribute, a condition, a workflow, a nested
+  instance's source or property) reads their own thing, `Parent group` at
+  their top (WTF-522). An instance whose own source does not load is not
+  rendered only when its reusable element is one of them.
+
   ## Coverage
 
   See `coverage/1`.
   """
 
-  alias BubbleEx.{Diagnostic, Error, Model}
-  alias BubbleEx.Expression.{Env, IR, Tree}
+  alias BubbleEx.{Diagnostic, Error, Expression, Model}
+  alias BubbleEx.Expression.{Compiler, Env, IR, Sites, Tree}
   alias BubbleEx.Frontend.Conditions
   alias BubbleEx.Index.Symbol
   alias BubbleEx.Model.Type
@@ -85,9 +93,13 @@ defmodule BubbleEx.PageData do
   alias BubbleEx.Workflows.Lowering
   alias BubbleEx.Workflows.Source, as: Json
 
-  defstruct sources: [], diagnostics: []
+  defstruct sources: [], diagnostics: [], self_reads: MapSet.new()
 
-  @type t :: %__MODULE__{sources: [Source.t()], diagnostics: [Diagnostic.t()]}
+  @type t :: %__MODULE__{
+          sources: [Source.t()],
+          diagnostics: [Diagnostic.t()],
+          self_reads: MapSet.t(String.t())
+        }
 
   # Inputs whose initial content can be page data (WTF-520), and the keys
   # an input's initial content is kept under (the editor's and the compact
@@ -151,11 +163,72 @@ defmodule BubbleEx.PageData do
       |> Enum.flat_map(&diagnostics/1)
       |> Diagnostic.normalize()
 
-    {:ok, %__MODULE__{sources: sources, diagnostics: diagnostics}}
+    {:ok,
+     %__MODULE__{
+       sources: sources,
+       diagnostics: diagnostics,
+       self_reads: MapSet.union(self_reads(app, model, tree), source_self_reads(sources))
+     }}
   end
 
   def build(_app, _model, _opts),
     do: {:error, Error.new(:invalid_input, "expected app JSON, its Model and options")}
+
+  # The reusable elements (Bubble IDs) one of whose expressions reads
+  # their own thing (WTF-522): a data source, a text or attribute, a
+  # condition, a workflow or a nested instance's source or property whose
+  # IR reads the reusable element's `get_group_data` (`Parent group` where
+  # that is the reusable element, "Current reusable's thing"). What an
+  # instance's data source gives the reusable element is read only there;
+  # an expression that does not compile reads nothing.
+  defp self_reads(app, model, tree) do
+    defs =
+      for section <- ~w(element_definitions %ed),
+          defs = Map.get(app, section),
+          is_map(defs),
+          into: %{},
+          do: {section, defs}
+
+    ids =
+      for {section, entries} <- defs,
+          {key, raw} <- Json.entries(entries),
+          is_map(raw),
+          into: %{},
+          do: {[section, key], text(Json.value(raw, ~w(id %id))) || to_string(key)}
+
+    case Sites.collect(defs, model, tree) do
+      {:ok, sites} -> Enum.reduce(sites, MapSet.new(), &self_read(&1, ids, &2))
+      {:error, _} -> MapSet.new()
+    end
+  end
+
+  defp self_read(site, ids, acc) do
+    id = ids[Enum.take(site.path, 2)]
+
+    if is_nil(id) or MapSet.member?(acc, id) or not reads_thing?(site, id),
+      do: acc,
+      else: MapSet.put(acc, id)
+  end
+
+  # The data sources (and property values) of a reusable element reading
+  # its thing, as lowered here: a data source's `Parent group` is its
+  # element's parent's, which the sites' environment (the element itself)
+  # does not say.
+  defp source_self_reads(sources) do
+    for %Source{surface: surface} = s <- sources,
+        {:element_state, %{"element" => ^surface, "state" => "get_group_data"}} <- inputs(s),
+        into: MapSet.new(),
+        do: surface
+  end
+
+  defp reads_thing?(site, id) do
+    with {:ok, %{ast: ast}} <- Expression.parse(site.raw, schema: site.env.schema),
+         {:ok, %{ir: %IR{} = ir}} <- Compiler.compile(ast, site.env) do
+      {:element_state, %{"element" => id, "state" => "get_group_data"}} in input_nodes(ir)
+    else
+      _ -> false
+    end
+  end
 
   @doc "Every residue entry, sorted (for `BubbleEx.Plan.build/5`'s `residue:`)."
   @spec residue(t()) :: [Residue.t()]

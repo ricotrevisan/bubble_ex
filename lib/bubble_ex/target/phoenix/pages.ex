@@ -1416,8 +1416,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
-  @unrendered "not rendered: its reusable element reads its own thing, " <>
-                "which this instance's data source does not load"
+  @unrendered "not rendered: its data source does not load, and its reusable element " <>
+                "reads the thing it gives (Parent group)"
 
   defp instance(node, ctx, acc) do
     entry = ctx.names.reusable_by_ref[node.definition_ref]

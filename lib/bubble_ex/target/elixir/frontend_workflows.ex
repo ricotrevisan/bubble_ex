@@ -377,7 +377,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   # Binds the page data. An instance whose own data source does not load
   # while its reusable element's reads of its own thing do (WTF-522,
-  # `Data.unloaded_instances/2`) is not rendered: its scope is not read,
+  # `Data.unloaded_instances/3`) is not rendered: its scope is not read,
   # so a default of its reusable element read from outside it (WTF-520)
   # is not read either, and the sources reading one are bound again
   # without it. That can only leave more unloaded, never less, so this
@@ -391,7 +391,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
     wired = Data.wired_index(data)
     before = Map.get(ctx, :unloaded, %{})
-    new = Map.drop(Data.unloaded_instances(data, wired), Map.keys(before))
+    self_reads = if page_data, do: page_data.self_reads, else: MapSet.new()
+    new = Map.drop(Data.unloaded_instances(data, wired, self_reads), Map.keys(before))
     unloaded = Map.merge(before, new)
 
     ctx =
@@ -1583,8 +1584,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp display_place(_op, surface, _el, nil, _w, surface, _ctx), do: :ok
 
+  # An instance the page does not render (WTF-522) has no scope to keep
+  # what the step shows in: before the step it would show nothing of its
+  # own source, so it stays unrendered and the step is residue.
   defp display_place(_op, element, _el, nil, _w, _surface, ctx) do
-    if rendered?(element, ctx),
+    if rendered?(element, ctx) and not Map.has_key?(Map.get(ctx, :unloaded, %{}), element),
       do: :ok,
       else: {:error, &Residue.entry(&1, :target_not_rendered, %{element: "element:" <> element})}
   end

@@ -2267,7 +2267,7 @@ defmodule BubbleEx.PageDataUnloadedInstanceTest do
     refute page =~ ~s(data-bubble-id="bPairB"\n    class="[color:#000000] h-[40px] relative)
 
     assert page =~
-             ~r/<div data-bubble-id="bPairB"[^>]*>\s*<%!-- TODO\(bubble:bPairB\) not rendered: its reusable element reads its own thing, which this instance's data source does not load --%>/
+             ~r/<div data-bubble-id="bPairB"[^>]*>\s*<%!-- TODO\(bubble:bPairB\) not rendered: its data source does not load, and its reusable element reads the thing it gives \(Parent group\) --%>/
 
     assert page =~ "TODO(bubble:bPairB) its data source is not loaded (uncompiled_expression)"
 
@@ -2317,6 +2317,188 @@ defmodule BubbleEx.PageDataUnloadedInstanceTest do
     refute flows =~ ~s|"bCellCardBad", ShopWeb|
     assert page =~ "TODO(bubble:bCellCardBad) not rendered"
     refute page =~ "TODO(bubble:bCellCardBad) rendered once for every cell"
+  end
+
+  test "an instance of a reusable element that never reads its own thing is rendered" do
+    # The card's title is static and its click sends no data: nothing in
+    # it reads the thing an instance gives it, so bPairB renders as is.
+    app =
+      app()
+      |> put_in(
+        ["element_definitions", "card", "elements", "bCardTitle", "properties", "text"],
+        %{"type" => "TextExpression", "entries" => %{"0" => "Card"}}
+      )
+      |> update_in(
+        ["element_definitions", "card", "workflows", "wCardSelf", "actions", "0", "properties"],
+        &Map.delete(&1, "data_to_send")
+      )
+
+    {spec, %{model: model}} = spec(app)
+    {:ok, page_data} = PageData.build(app, model)
+    refute MapSet.member?(page_data.self_reads, "bCard")
+    assert spec.data_index.unloaded == %{}
+
+    {files, _report} = files(app)
+    page = files["lib/shop_web/live/pair_live.html.heex"]
+    assert page =~ ~s(<.task_card\n    data-bubble-id="bPairB")
+    refute page =~ "TODO(bubble:bPairB) not rendered"
+
+    # The fixture's card reads it (its title, its click's data).
+    {:ok, page_data} = PageData.build(app(), model)
+    assert MapSet.member?(page_data.self_reads, "bCard")
+  end
+
+  test "a Display data step into the instance is not kept" do
+    button = fn id ->
+      %{"id" => id, "type" => "Button", "properties" => %{"width" => 300, "height" => 40}}
+    end
+
+    show = fn id, button, instance ->
+      %{
+        "id" => id,
+        "type" => "ButtonClicked",
+        "properties" => %{"element_id" => button},
+        "actions" => %{
+          "0" => %{
+            "id" => id <> "1",
+            "type" => "DisplayGroupData",
+            "properties" => %{
+              "element_id" => instance,
+              "data_source" => %{
+                "type" => "GetElement",
+                "properties" => %{"element_id" => "bPairA"},
+                "next" => %{"type" => "Message", "name" => "get_group_data"}
+              }
+            }
+          }
+        }
+      }
+    end
+
+    app =
+      app()
+      |> update_in(["pages", "pair", "elements"], fn els ->
+        els |> Map.put("bShowA", button.("bShowA")) |> Map.put("bShowB", button.("bShowB"))
+      end)
+      |> put_in(["pages", "pair", "workflows"], %{
+        "wShowA" => show.("wShowA", "bShowA", "bPairA"),
+        "wShowB" => show.("wShowB", "bShowB", "bPairB")
+      })
+
+    {spec, _} = spec(app)
+    assert Spec.unloaded(spec, "bPairB") == [:uncompiled_expression]
+    assert %{steps: [%{residue: []}]} = Spec.workflow(spec, "bPairPage", "wShowA")
+
+    assert %{steps: [%{residue: [%{reason: :target_not_rendered, detail: detail}]}]} =
+             Spec.workflow(spec, "bPairPage", "wShowB")
+
+    assert detail == %{element: "element:bPairB"}
+  end
+
+  test "a nested instance below the unloaded one has no scope either" do
+    # The card nests a panel whose source is the card's own thing.
+    nested = %{
+      "id" => "bCardPanel",
+      "type" => "CustomElement",
+      "properties" => %{
+        "custom_id" => "bPanel",
+        "group_type" => "custom.task",
+        "order" => 3,
+        "width" => 300,
+        "height" => 40,
+        "data_source" => %{"type" => "ElementParent"}
+      }
+    }
+
+    app = put_in(app(), ["element_definitions", "card", "elements", "bCardPanel"], nested)
+    {spec, _} = spec(app)
+    assert Spec.unloaded(spec, "bPairB") == [:uncompiled_expression]
+    assert Spec.unloaded(spec, "bCardPanel") == nil
+
+    {files, _report} = files(app)
+    flows = files["lib/shop_web/live/pair_live/workflows.ex"]
+    [instances] = Regex.run(~r/@instances \[.*?\]\n/s, flows)
+    assert instances =~ ~s("bPairA")
+    assert instances =~ "bCardPanel"
+    refute instances =~ "bPairB"
+  end
+
+  test "an unloaded instance in a popup is residue there too" do
+    popup = %{
+      "id" => "bPairPop",
+      "type" => "Popup",
+      "properties" => %{"order" => 3, "width" => 300, "height" => 200},
+      "elements" => %{"bPairB" => app()["pages"]["pair"]["elements"]["bPairB"]}
+    }
+
+    app =
+      app()
+      |> update_in(["pages", "pair", "elements"], &Map.delete(&1, "bPairB"))
+      |> put_in(["pages", "pair", "elements", "bPairPop"], popup)
+
+    {spec, _} = spec(app)
+    assert Spec.unloaded(spec, "bPairB") == [:uncompiled_expression]
+
+    {files, _report} = files(app)
+    page = files["lib/shop_web/live/pair_live.html.heex"]
+    flows = files["lib/shop_web/live/pair_live/workflows.ex"]
+    assert page =~ "TODO(bubble:bPairB) not rendered"
+    refute page =~ ~s(<.task_card\n      data-bubble-id="bPairB")
+    refute flows =~ ~s({"bPairB", ShopWeb)
+  end
+
+  test "a page condition reading the instance's custom state is not decided" do
+    cond_on = fn instance ->
+      %{
+        "0" => %{
+          "condition" => %{
+            "type" => "GetElement",
+            "properties" => %{"element_id" => instance},
+            "next" => %{
+              "type" => "Message",
+              "name" => "custom.seen_",
+              "next" => %{
+                "type" => "Message",
+                "name" => "equals",
+                "args" => %{"type" => "TextExpression", "entries" => %{"0" => "yes"}}
+              }
+            }
+          },
+          "properties" => %{"is_visible" => false}
+        }
+      }
+    end
+
+    text = fn id, instance ->
+      %{
+        "id" => id,
+        "type" => "Text",
+        "properties" => %{
+          "width" => 300,
+          "height" => 40,
+          "text" => %{"type" => "TextExpression", "entries" => %{"0" => "Seen"}}
+        },
+        "states" => cond_on.(instance)
+      }
+    end
+
+    app =
+      app()
+      |> put_in(["element_definitions", "card", "custom_states"], %{
+        "seen_" => %{"default_val" => "no", "display" => "Seen", "value" => "text"}
+      })
+      |> update_in(["pages", "pair", "elements"], fn els ->
+        els
+        |> Map.put("bSeenA", text.("bSeenA", "bPairA"))
+        |> Map.put("bSeenB", text.("bSeenB", "bPairB"))
+      end)
+
+    {files, _report} = files(app)
+    page = files["lib/shop_web/live/pair_live.html.heex"]
+    refute page =~ "TODO(bubble:bSeenA) visibility"
+
+    assert page =~
+             ~r/TODO\(bubble:bSeenB\) visibility: 1 conditional not lowered \(it reads a value the page does not keep: element_state:custom.seen_\)/
   end
 
   test "a page's workflow calling into the instance's custom event is not run there" do

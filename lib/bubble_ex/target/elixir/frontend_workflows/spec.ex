@@ -496,7 +496,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   residue reasons of its own data source, which does not load while its
   reusable element's reads of its own thing do (they would read nothing
   in this instance), or nil when it renders. See
-  `BubbleEx.Target.Elixir.FrontendWorkflows.Data.unloaded_instances/2`.
+  `BubbleEx.Target.Elixir.FrontendWorkflows.Data.unloaded_instances/3`.
   """
   @spec unloaded(t() | nil, String.t()) :: [atom()] | nil
   def unloaded(%__MODULE__{data_index: index}, id),
