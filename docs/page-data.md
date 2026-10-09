@@ -847,7 +847,11 @@ attributes equal its keys, in the search's order:
 | a list (its page size), `:items until #n`, `item #n` | the records sorted by the search, at most the sum of the cells' needs plus one: every record read is some cell's, so a read reaching that limit settles at least one cell; a cell with fewer than it needs may have lost records to the others, and the cells left are read again together with the limit doubled, at most `:max_cell_rounds` rounds; past them, or when a round settles none, they read their own queries (logged) |
 | the records a cell's list holds | all of every cell's at once (no more than their IDs, not sorted by their position in the union), each cell's in its own list's order among equal sort keys |
 
-A per-cell limit is never a global `LIMIT`. A window function
+A per-cell limit is never a global `LIMIT`. The doubled limit never passes
+`:max_batched` (plus one), and a search whose cells have more key
+combinations than `:max_batched` in all is read cell by cell (logged).
+The arrays of values are bound as query parameters, so the SQL text is
+the same whatever the cells. A window function
 (`row_number() OVER (PARTITION BY ...)`) would read each cell's page in
 one query, but Ash's filters cannot express it, and raw SQL around the
 read would rank records the policies hide: a heavy cell costs rounds

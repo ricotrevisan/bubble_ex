@@ -270,9 +270,11 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
     users: users
   } do
     # Acme's (owner Ada) orders that Bo owns, sorted first: neither Acme's
-    # cell (Acme, Ada) nor Bolt's (Bolt, Bo) holds them. Before, reading
-    # them filled the limit of every round, and the page never loaded.
-    for n <- 1..3 do
+    # cell (Acme, Ada) nor Bolt's (Bolt, Bo) holds them. Nine fill the
+    # first read's limit (the four keyed cells' two each, plus one): with
+    # each key compared alone (not the cells' combinations), they filled
+    # every round's, and the page never loaded.
+    for n <- 1..9 do
       Ash.Seed.seed!(PhxCheck.Order, %{
         id: "1700000000000x60000000000000000#{n}",
         title: "Aaa#{n}",
@@ -288,7 +290,7 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
       assert shown(html, "Pair") == ~w(2 0 0 0 0)
     else
       assert shown(html, "Pair") == ~w(2 1 0 0 1)
-      assert shown(html, "Count") == ~w(6 1 0 1 3)
+      assert shown(html, "Count") == ~w(12 1 0 1 3)
     end
 
     # One more for Two: Aaa1-3 fill its first read, and the cells left
@@ -300,15 +302,32 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
     conn: conn,
     users: users
   } do
-    Application.put_env(:phx_check, PhxCheckWeb.BubbleData, max_batched: 1)
+    # Five cells' keys fit; their orders do not (three more of Echo's, Ada's,
+    # so that Ada too finds more than five). The doubled limits are capped
+    # too (Two needs 2 per cell, more than 5 in all).
+    for n <- 1..3 do
+      Ash.Seed.seed!(PhxCheck.Order, %{
+        id: "1700000000000x70000000000000000#{n}",
+        title: "Eel#{n}",
+        open: true,
+        customer_id: "1700000000000x200000000000000005",
+        owner_id: @ada
+      })
+    end
+
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleData, max_batched: 5)
 
     {by_table, log} =
       ExUnit.CaptureLog.with_log(fn ->
         {{_view, html}, by_table} = queries(fn -> customers(sign_in(conn, users["Ada"])) end)
 
-        if enforced?(),
-          do: assert(shown(html, "Count") == ~w(2 0 0 1 2)),
-          else: assert(shown(html, "Count") == ~w(3 1 0 1 3))
+        if enforced?() do
+          assert shown(html, "Count") == ~w(2 0 0 1 5)
+          assert shown(html, "Two") == ~w(2 0 0 1 2)
+        else
+          assert shown(html, "Count") == ~w(3 1 0 1 6)
+          assert shown(html, "Two") == ~w(2 1 0 1 2)
+        end
 
         by_table
       end)
@@ -319,7 +338,31 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
 
     # Each count search: one batch, then each cell's own count; nothing read
     # again in a later round.
-    assert Map.get(by_table, "order", 0) <= @order_queries + 4 * 5
+    # (and Two, whose capped limit may leave its short cells to read alone)
+    assert Map.get(by_table, "order", 0) <= @order_queries + 4 * 5 + 5
+  end
+
+  test "past :max_batched key combinations, the cells read their own queries, once logged", %{
+    conn: conn,
+    users: users
+  } do
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleData, max_batched: 2)
+
+    {html, log} =
+      ExUnit.CaptureLog.with_log(fn ->
+        {_view, html} = customers(sign_in(conn, users["Ada"]))
+        html
+      end)
+
+    assert log =~ "key combinations, past :max_batched (2)"
+
+    if enforced?() do
+      assert shown(html, "Count") == ~w(2 0 0 1 2)
+      assert shown(html, "Pair") == ~w(2 0 0 0 0)
+    else
+      assert shown(html, "Count") == ~w(3 1 0 1 3)
+      assert shown(html, "Pair") == ~w(2 1 0 0 1)
+    end
   end
 
   test "past :max_cell_rounds, the cells left read their own queries (logged)", %{

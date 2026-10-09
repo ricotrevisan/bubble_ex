@@ -1444,7 +1444,11 @@ defmodule <%= @web %>.BubbleData do
 
     # Equal sort keys keep the list's order: its position last.
     position =
-      Ash.Expr.calc(fragment("array_position(?::text[], CAST(? AS text))", ^ids, ^key),
+      Ash.Expr.calc(fragment(
+          "array_position(?::text[], CAST(? AS text))",
+          type(^ids, {:array, :string}),
+          ^key
+        ),
         type: :integer
       )
 
@@ -1645,9 +1649,10 @@ defmodule <%= @web %>.BubbleData do
   end
 
   @doc """
-  The most records the query of a round of cells' `count` reads
-  (`:max_batched`, default 10_000): past it, each cell's count is read on
-  its own (logged).
+  The most records the query of a round of cells reads, and the most
+  combinations of the cells' key values it compares (`:max_batched`,
+  default 10_000): past it, each cell's search is read on its own
+  (logged).
   """
   def max_batched do
     case Keyword.get(Application.get_env(:<%= @app %>, __MODULE__, []), :max_batched, 10_000) do
@@ -1762,7 +1767,27 @@ defmodule <%= @web %>.BubbleData do
         Enum.any?(active, fn {var, _, _} -> key_values(r.pins[var]) == [] end)
       end)
 
-    found = if keyed == [], do: %{}, else: batch_results(keyed, active, first, actor)
+    # Every cell's combinations of its keys' values: past `max_batched/0`,
+    # the cells read their own queries (logged once).
+    combinations = keyed |> Enum.map(&length(tuples(&1, active))) |> Enum.sum()
+
+    found =
+      cond do
+        keyed == [] ->
+          %{}
+
+        combinations > max_batched() ->
+          cells_warning(
+            "a search in repeating group cells has #{combinations} key combinations, " <>
+              "past :max_batched (#{max_batched()}); its cells are read cell by cell"
+          )
+
+          read_alone(keyed, actor)
+
+        true ->
+          batch_results(keyed, active, first, actor)
+      end
+
     found = Enum.reduce(none ++ void, found, &Map.put(&2, &1.key, none(&1.take)))
     found = Map.merge(found, read_alone(alone, actor))
 
@@ -1843,8 +1868,8 @@ defmodule <%= @web %>.BubbleData do
         "(CAST(? AS text), CAST(? AS text)) IN (SELECT * FROM unnest(?::text[], ?::text[]))",
         ^a,
         ^b,
-        ^x,
-        ^y
+        type(^x, {:array, :string}),
+        type(^y, {:array, :string})
       )
     )
   end
@@ -1857,9 +1882,9 @@ defmodule <%= @web %>.BubbleData do
         ^a,
         ^b,
         ^c,
-        ^x,
-        ^y,
-        ^z
+        type(^x, {:array, :string}),
+        type(^y, {:array, :string}),
+        type(^z, {:array, :string})
       )
     )
   end
@@ -2020,7 +2045,14 @@ defmodule <%= @web %>.BubbleData do
   defp round_results([], _active, _first, _actor, acc, _round), do: acc
 
   defp round_results(requests, active, first, actor, acc, round) do
-    limit = (requests |> Enum.map(&needed(&1, false)) |> Enum.sum()) * 2 ** (round - 1) + 1
+    # Doubled each round, never past `max_batched/0` (plus one): past it a
+    # round may settle no cell, and they read their own queries.
+    limit =
+      min(
+        (requests |> Enum.map(&needed(&1, false)) |> Enum.sum()) * 2 ** (round - 1) + 1,
+        max_batched() + 1
+      )
+
     query = requests |> batch_query(active, first) |> Ash.Query.limit(limit)
     by_key = Map.new(requests, &{&1.key, &1})
 
