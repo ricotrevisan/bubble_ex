@@ -303,6 +303,89 @@ defmodule BubbleEx.Target.Phoenix.NestedListsTest do
                data(spec, "bTucked")
     end
 
+    test "a repeating group in a table of the outer cell is a marked runtime container, not nested" do
+      inner = get_in(app(), @inner)
+
+      cell = fn id, axis, elements ->
+        %{
+          "id" => id,
+          "type" => "TableCell",
+          "properties" => %{"cell_main_axis_id" => axis, "order" => 1},
+          "elements" => elements
+        }
+      end
+
+      table = %{
+        "id" => "bTable",
+        "type" => "Table",
+        "properties" => %{"order" => 9, "width" => 300, "height" => 200},
+        "elements" => %{
+          "bTCol" => %{
+            "id" => "bTCol",
+            "type" => "TableMainAxis",
+            "properties" => %{"axis_index" => 0}
+          },
+          "bTHead" => %{
+            "id" => "bTHead",
+            "type" => "TableCrossAxis",
+            "properties" => %{"axis_index" => 0},
+            "elements" => %{
+              "bTHeadCell" =>
+                cell.("bTHeadCell", "bTCol", %{
+                  "bInTable" =>
+                    inner
+                    |> Map.put("id", "bInTable")
+                    |> Map.put("elements", %{
+                      "bInTableT" =>
+                        text("bInTableT", [
+                          "In table: ",
+                          %{
+                            "type" => "CurrentDataItem",
+                            "next" => %{"type" => "Message", "name" => "title_text"}
+                          }
+                        ])
+                    })
+                })
+            }
+          }
+        }
+      }
+
+      app = put_in(app(), @outer ++ ["elements", "bTable"], table)
+      %{spec: spec} = spec(app)
+
+      assert %{read: nil, residue: [%{reason: :page_data_in_cell, detail: %{kind: "list"}}]} =
+               data(spec, "bInTable")
+
+      refute Spec.nested_list?(spec, "bInTable")
+      assert Spec.nested_list?(spec, "bOrders")
+
+      heex = files(app)["lib/shop_web/live/customers_live.html.heex"]
+      refute heex =~ ~s|"bInTable", cell_bcustomers_i|
+      assert heex =~ "TODO(bubble:bInTable)"
+      # The two levels beside it still render.
+      assert heex =~ ~s|Bubble.cells(@bubble_data, "", "bOrders", cell_bcustomers_i)|
+    end
+
+    test "an inner list's own \"Current cell's\" is the outer cell" do
+      # Search orders where customer = Current cell's customer, in the
+      # inner list's own data source: the outer cell (its parent's
+      # context), not the inner list itself.
+      app =
+        put_in(
+          app(),
+          @inner ++ ["properties", "data_source", "properties", "constraints", "0", "value"],
+          %{"type" => "CurrentDataItem"}
+        )
+
+      %{spec: spec} = spec(app)
+
+      assert %{residue: [], read: {:query, %{batch: %{keys: [%{attr: "customer_id"}]}}}} =
+               data(spec, "bOrders")
+
+      assert {:cell, "bCustomers"} in data(spec, "bOrders").reads
+    end
+
     test "an inner cell's instance whose own source does not load is not rendered there (WTF-522)" do
       broken = %{
         "id" => "bOrderCard2",

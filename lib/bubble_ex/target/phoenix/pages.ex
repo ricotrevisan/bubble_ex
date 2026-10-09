@@ -1428,12 +1428,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # Whether the page loads a repeating group's list per cell of the
   # repeating group holding it (WTF-520): two levels, the outer one
   # outside any cell.
+  # The same rule as the page's data (`FlowSpec.nested_list?/2`, from the
+  # page's structure), in the cell of its outer repeating group.
   defp nested_list?(node, ctx) do
     with outer when is_binary(outer) <- Map.get(ctx, :cell),
          nil <- Map.get(ctx, :outer_cell),
          %{kind: :list, cell: ^outer, surface: surface} when surface == ctx.entry.id <-
            ctx.flows.data_index.elements[bid(node)] do
-      match?(%{kind: :list, cell: nil, surface: ^surface}, ctx.flows.data_index.elements[outer])
+      FlowSpec.nested_list?(ctx.flows, bid(node))
     else
       _ -> false
     end
@@ -3743,7 +3745,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
       # Rendered per cell of the repeating group holding it (WTF-520).
       %{kind: :list, cell: outer, surface: ^surface} when is_binary(outer) and outer == cell ->
-        node_loads(node.children, surface, bid(node), base)
+        if FlowSpec.nested_list?(base.flows, bid(node)),
+          do: node_loads(node.children, surface, bid(node), base),
+          else: []
 
       _ ->
         []
@@ -3850,6 +3854,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     nested =
       for inner <- Enum.flat_map(node.children, &nested_list_nodes/1),
           match?(%{kind: :list, cell: ^outer}, flows.data_index.elements[bid(inner)]),
+          FlowSpec.nested_list?(flows, bid(inner)),
           inner_entries = cell_entries(inner, by_ref, flows),
           inner_entries != [],
           do: {{outer, bid(inner)}, inner_entries}
@@ -3863,8 +3868,6 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp cell_templates_of(%Node{kind: :reusable_instance}, _by_ref, _flows), do: []
   defp cell_templates_of(node, by_ref, flows), do: cell_templates(node, by_ref, flows)
 
-  # The reusable instances of a cell's template (not in a nested
-  # container or instance).
   # The instances a repeating group renders per cell.
   defp cell_entries(node, by_ref, flows) do
     for instance <- Enum.flat_map(node.children, &cell_instance_nodes/1),
@@ -3889,6 +3892,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp nested_list_nodes(%Node{children: children}),
     do: Enum.flat_map(children, &nested_list_nodes/1)
 
+  # The reusable instances of a cell's template (not in a nested
+  # container or instance).
   defp cell_instance_nodes(%Node{kind: :reusable_instance} = node), do: [node]
 
   defp cell_instance_nodes(%Node{kind: :placeholder, runtime: %{"boundary" => "container"}}),

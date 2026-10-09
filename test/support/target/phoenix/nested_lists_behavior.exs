@@ -52,10 +52,10 @@ defmodule PhxCheckWeb.NestedListsBehaviorTest do
 
     id = fn title -> elem(@orders[title], 0) end
 
-    # Each customer's own list of orders (not all of them: Acme's lacks
-    # Anvil; Bolt's holds Acme's Anvil).
+    # Each customer's own list of orders (Acme's in its own order; Bolt's
+    # holds Acme's Anvil too, which the two outer cells' lists then share).
     for {customer, name, owner, list} <- [
-          {@acme, "Acme", @ada, ~w(Axe Arrow)},
+          {@acme, "Acme", @ada, ~w(Axe Anvil Arrow)},
           {@bolt, "Bolt", @bo, ~w(Bell Anvil)},
           {@core, "Core", @ada, []}
         ] do
@@ -114,6 +114,10 @@ defmodule PhxCheckWeb.NestedListsBehaviorTest do
   # The scope of the order card in `order`'s cell of `customer`'s cell.
   defp card(customer, order),
     do: "bCustomers~2#{customer}-bOrders~2#{elem(@orders[order], 0)}-bOrderCard"
+
+  # The scope of the card in `order`'s cell of `customer`'s own list.
+  defp listed_card(customer, order),
+    do: "bCustomers~2#{customer}-bListed~2#{elem(@orders[order], 0)}-bListCard"
 
   defp text(view, scope, id) do
     view
@@ -176,27 +180,28 @@ defmodule PhxCheckWeb.NestedListsBehaviorTest do
       assert shown(html, "At") == ~w(1 2 1)
       assert shown(html, "Of") == ~w(Acme Acme Bolt)
       assert shown(html, "Owner") == ~w(Ada Ada Bo)
-      assert shown(html, "Card") == ~w(Anvil Axe Bike)
+      assert shown(html, "Card") == ~w(Anvil Axe Axe Anvil Bike Anvil)
       assert shown(html, "Orders") == ~w(2 1 0)
       # A customer's own list, read as the user: Arrow and Bell are Bo's.
-      assert shown(html, "Listed") == ~w(Axe Anvil)
+      assert shown(html, "Listed") == ~w(Axe Anvil Anvil)
     else
       assert shown(html, "Order") == ~w(Anvil Arrow Axe Bell Bike)
       assert shown(html, "Items") == ~w(3 1 0 2 1)
       assert shown(html, "At") == ~w(1 2 3 1 2)
       assert shown(html, "Of") == ~w(Acme Acme Acme Bolt Bolt)
       assert shown(html, "Owner") == ~w(Ada Ada Ada Bo Bo)
-      assert shown(html, "Card") == ~w(Anvil Arrow Axe Bell Bike)
+      assert shown(html, "Card") == ~w(Anvil Arrow Axe Axe Anvil Arrow Bell Bike Bell Anvil)
       assert shown(html, "Orders") == ~w(3 2 0)
-      assert shown(html, "Listed") == ~w(Axe Arrow Bell Anvil)
+      assert shown(html, "Listed") == ~w(Axe Anvil Arrow Bell Anvil)
     end
 
     # One query of orders for every outer cell's inner list (and one for
-    # the customers' own lists), one of items for every inner cell, the
+    # the customers' own lists), one of items per search of every inner
+    # cell (Items, Match), the
     # customers and their group's things read again by ID once: never one
     # per cell.
     assert Map.get(by_table, "order", 0) in 1..2, inspect(by_table)
-    assert Map.get(by_table, "item", 0) == 1, inspect(by_table)
+    assert Map.get(by_table, "item", 0) == 2, inspect(by_table)
     assert Map.get(by_table, "customer", 0) in 1..2, inspect(by_table)
   end
 
@@ -285,6 +290,102 @@ defmodule PhxCheckWeb.NestedListsBehaviorTest do
     else
       assert shown(html, "Order") == ~w(Anvil Arrow Axe Bell Bike)
     end
+  end
+
+  test "one thing under two outer cells has a scope in each: a click acts on one", %{
+    conn: conn,
+    users: users
+  } do
+    {:ok, view, _html} = live(sign_in(conn, users["Ada"]), "/customers")
+
+    # Anvil is in Acme's own list and in Bolt's.
+    assert text(view, listed_card(@acme, "Anvil"), "bCardTitle") == "Card: Anvil"
+    assert text(view, listed_card(@bolt, "Anvil"), "bCardTitle") == "Card: Anvil"
+
+    render_click(view, "bubble:click", %{
+      "scope" => listed_card(@bolt, "Anvil"),
+      "element" => "bPick"
+    })
+
+    assert text(view, listed_card(@bolt, "Anvil"), "bPicked") == "Picked: Anvil"
+    assert text(view, listed_card(@acme, "Anvil"), "bPicked") == "Picked:"
+    # Nor the card of Anvil's cell in Acme's orders.
+    assert text(view, card(@acme, "Anvil"), "bPicked") == "Picked:"
+  end
+
+  test "typing into an input the inner cells read re-reads only what reads it", %{
+    conn: conn,
+    users: users
+  } do
+    {:ok, view, _html} = live(sign_in(conn, users["Ada"]), "/customers")
+    html = render(view)
+
+    if enforced?(),
+      do: assert(shown(html, "Match") == ~w(3 0 1)),
+      else: assert(shown(html, "Match") == ~w(3 1 0 2 1))
+
+    render_click(view, "bubble:click", %{"scope" => card(@acme, "Anvil"), "element" => "bPick"})
+
+    {_, by_table} =
+      queries(fn ->
+        render_change(view, "bubble:change", %{
+          "bubble" => %{"scope" => "", "element" => "bFilter", "value" => "2", "on" => "blur"}
+        })
+
+        Process.sleep(300)
+        render(view)
+      end)
+
+    html = render(view)
+
+    # Items named with a 2: Anvil2 and Bell2.
+    if enforced?(),
+      do: assert(shown(html, "Match") == ~w(1 0 0)),
+      else: assert(shown(html, "Match") == ~w(1 0 0 1 0))
+
+    # The rest is as it was: the lists are not read again, the picked
+    # card keeps its state.
+    assert shown(html, "Items") == if(enforced?(), do: ~w(3 0 1), else: ~w(3 1 0 2 1))
+    assert text(view, card(@acme, "Anvil"), "bPicked") == "Picked: Anvil"
+    assert Map.get(by_table, "customer", 0) == 0, inspect(by_table)
+    assert Map.get(by_table, "order", 0) == 0, inspect(by_table)
+    assert Map.get(by_table, "item", 0) == 1, inspect(by_table)
+  end
+
+  test "past :max_batched key combinations, the inner cells are read in chunks, not one by one",
+       %{conn: conn, users: users} do
+    # Four more customers, three orders each, no items: 12 more inner
+    # cells (all Ada's).
+    for n <- 1..4 do
+      customer = "1700000000000x40000000000000000#{n}"
+      Ash.Seed.seed!(PhxCheck.Customer, %{id: customer, name: "Zed#{n}", orders: []})
+
+      for m <- 1..3 do
+        Ash.Seed.seed!(PhxCheck.Order, %{
+          id: "1700000000000x5000000000000000#{n}#{m}",
+          title: "Z#{m}",
+          customer_id: customer,
+          owner_id: @ada
+        })
+      end
+    end
+
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleData, max_batched: 8)
+
+    {{{_view, html}, by_table}, log} =
+      ExUnit.CaptureLog.with_log(fn ->
+        queries(fn -> customers(sign_in(conn, users["Ada"])) end)
+      end)
+
+    cells = length(shown(html, "Items"))
+    assert cells == if(enforced?(), do: 15, else: 17)
+    assert Enum.take(shown(html, "Items"), 3) == if(enforced?(), do: ~w(3 0 1), else: ~w(3 1 0))
+    assert log =~ "its cells are read in chunks of at most 8"
+
+    # Two count searches (Items, Match) of items, each in ceil(cells / 8)
+    # chunks: never one query per inner cell.
+    chunks = div(cells + 7, 8)
+    assert Map.get(by_table, "item", 0) <= 2 * chunks, inspect(by_table)
   end
 
   test "with data access off, no cell reads anything and no inner scope takes a click", %{

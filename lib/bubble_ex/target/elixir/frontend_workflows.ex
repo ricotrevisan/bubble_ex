@@ -1986,6 +1986,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       index
       |> Map.put(:instances, Map.get(ctx, :once, %{}))
       |> Map.put(:unloaded, Map.get(ctx, :unloaded, %{}))
+      |> Map.put(:nested_lists, Map.get(ctx, :nested_lists, %{}))
 
     ctx |> Map.put(:data, index) |> Map.update!(:view, &%{&1 | data_index: index})
   end

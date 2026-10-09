@@ -699,8 +699,16 @@ All notable changes to this project are documented here.
   event only in a scope it read. Reads go through Ash as the current
   user; with data access off nothing is read. A third level, or a
   repeating group in a table's row or another runtime container of the
-  cell, stays residue. See `docs/page-data.md`, "Repeating groups in a
-  repeating group's cell".
+  cell, stays residue (one rule, the page's structure, read alike by the
+  loader, the bindings and the markup: such a repeating group is a marked
+  runtime container). A repeating group's own properties are evaluated
+  in its parent's context: "Current cell's" in an inner list's own data
+  source is the outer cell (it named the inner list itself). A runtime
+  read that fails shows empty, as in a cell. Searches in cells whose
+  key combinations pass `:max_batched` are now read in chunks of at most
+  that many (one query each), not cell by cell, and past
+  `:max_cell_rounds` the next round is still read together once. See
+  `docs/page-data.md`, "Repeating groups in a repeating group's cell".
 
 - **Searches in a repeating group's cells are read for every cell
   together** (WTF-520). A search a cell reads with its thing ("Search for

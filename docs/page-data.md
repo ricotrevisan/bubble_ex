@@ -835,7 +835,8 @@ one cell's first key and another's second is read). The loader runs the
 source in every cell first, collecting each cell's search (reading
 nothing for it), reads the batches into the read pass, collects again
 while a search reading those records appears (at most `:max_cell_rounds`
-rounds, default 4; past it the cells left read their own queries,
+rounds, default 4; past it, what the next round collects is still read
+together once, and what a later one would collect reads its own queries,
 logged), then runs the source again: each cell finds its records there (`once/3`), and reads its
 own query only if nothing collected it. Each cell gets the records whose
 attributes equal its keys, in the search's order:
@@ -849,7 +850,10 @@ attributes equal its keys, in the search's order:
 
 A per-cell limit is never a global `LIMIT`. The doubled limit never passes
 `:max_batched` (plus one), and a search whose cells have more key
-combinations than `:max_batched` in all is read cell by cell (logged).
+combinations than `:max_batched` in all is read in chunks of cells of at
+most `:max_batched` combinations, one query each (logged): about
+combinations / `:max_batched` queries, never one per cell (a single cell
+with more combinations than that reads its own query).
 The arrays of values are bound as query parameters, so the SQL text is
 the same whatever the cells. A window function
 (`row_number() OVER (PARTITION BY ...)`) would read each cell's page in
@@ -897,10 +901,18 @@ records it holds read by ID for every outer cell at once), and a search
 that reads nothing of the cell is read once. It is kept per outer cell
 (`{scope, inner, outer index}`), so the outer cell reads it too
 (`<inner>'s list of orders :count`, `{:cell_data, inner}`). It needs the
-outer list loaded, whatever it reads. A repeating group's own data
-source naming "Current cell's" reads that repeating group itself in the
-lowering (not the outer cell): it stays unloaded; "Parent group's" reads
-the outer cell.
+outer list loaded, whatever it reads. A repeating group's own
+properties (its data source, its conditions) are evaluated in its
+parent's context, as any element's: "Current cell's" there is the outer
+cell (`BubbleEx.Expression.Typing`; before, it named the repeating group
+itself and its source stayed unloaded), and "Parent group's" the group
+holding it.
+
+Which repeating groups are nested is one rule, the page's structure
+(`data_index.nested_lists`, `Spec.nested_list?/2`), read alike by the
+loader, the bindings (`Spec.data_read/4`) and the page's markup: a
+repeating group in a table of the cell, or in another runtime container
+there, is a marked runtime container, never an empty loop.
 
 **Its cells** have a scope of their own, the outer cell's
 (`<Web>.Bubble.cell_scope/4` of the outer list and its thing): a group in
@@ -940,10 +952,16 @@ The instances in inner cells are listed as `{{outer, inner}, [...]}` in
 `__bubble__(:cells)` and read in the same rounds as those in outer cells.
 
 **Bounds.** An inner list shows its own page (its rows times its
-columns, at most `:max_items`) in each outer cell, so at most
-`:max_items` x `:max_items` inner cells; the batched searches keep their
-`:max_batched` and `:max_cell_rounds` caps, and the instances in inner
-cells count towards `:max_cells`.
+columns, at most `:max_items`) in each outer cell, and the outer list at
+most `:max_items` cells, so a scope (the page, or each reusable instance
+rendering such lists) holds at most `:max_items` x `:max_items` inner
+cells: the cap is per scope, not per page. The batched searches keep
+their `:max_batched` (in chunks past it) and `:max_cell_rounds` caps, and
+the instances in inner cells count towards `:max_cells`.
+
+**Failures.** A batched read that fails at run time leaves every cell it
+covers empty (logged), as in *Searches in cells*: an inner list or an
+inner cell's value shows nothing, never another cell's records.
 
 **Privacy and events.** Every read goes through Ash as the current user,
 as anywhere else: an outer cell is a thing the user read, an inner cell
@@ -1099,6 +1117,17 @@ Of the 16 repeating groups in another's cell (all `:page_data_in_cell`,
 | a value read from the outer cell (a field of its group's list, another inner list of the cell, a list filtered by the cell's group, an option set's values) | 9 | 3 |
 | a search keyed on the outer cell | 4 | 2 |
 | something else (a search reading nothing of the cell, conditional sources over searches) | 3 | 2 |
+
+One source moved the other way, from `:unavailable_input` to
+`:page_data_in_cell` (`kind` `"query"`): a group of an outer cell whose
+search reads the cell's inner list (`<inner>'s list of things`), which
+did not load before. The inner list now loads, so the search is bound,
+and it cannot be batched (its key is not one of the shapes above): it
+shows the next thing blocking it. It is the only such move, compared
+source by source; the 2 `:page_data_in_cell` (`kind` `"list"`) entries
+among the inner cells' sources are third-level lists, residue before and
+after. Resolving "Current cell's" in a repeating group's own properties
+from its parent moved no count here.
 
 The 9 left: 2 are a third level (their outer list is itself in a cell),
 3 have an outer list that does not load, 2 read another list of the cell

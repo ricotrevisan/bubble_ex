@@ -539,6 +539,73 @@
                           "type": "CurrentDataItem"
                         }
                       }
+                    },
+                    "bMatch": {
+                      "id": "bMatch",
+                      "type": "Group",
+                      "properties": {
+                        "order": 7,
+                        "width": 300,
+                        "height": 40,
+                        "group_type": "number",
+                        "data_source": {
+                          "type": "Search",
+                          "properties": {
+                            "type_to_find": "custom.item",
+                            "sort_field": "name_text",
+                            "descending": false,
+                            "ignore_empty_constraints": true,
+                            "constraints": {
+                              "0": {
+                                "constraint_type": "equals",
+                                "key": "order_custom_order",
+                                "value": {
+                                  "type": "CurrentDataItem"
+                                }
+                              },
+                              "1": {
+                                "constraint_type": "text contains",
+                                "key": "name_text",
+                                "value": {
+                                  "type": "GetElement",
+                                  "properties": {
+                                    "element_id": "bFilter"
+                                  },
+                                  "next": {
+                                    "type": "Message",
+                                    "name": "get_data"
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "next": {
+                            "type": "Message",
+                            "name": "count"
+                          }
+                        }
+                      },
+                      "elements": {
+                        "bMatchN": {
+                          "id": "bMatchN",
+                          "type": "Text",
+                          "properties": {
+                            "order": 1,
+                            "width": 300,
+                            "height": 40,
+                            "min_height_css": "40px",
+                            "text": {
+                              "type": "TextExpression",
+                              "entries": {
+                                "0": "Match: ",
+                                "1": {
+                                  "type": "ElementParent"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -595,7 +662,7 @@
               "properties": {
                 "order": 4,
                 "width": 300,
-                "height": 200,
+                "height": 400,
                 "columns": 1,
                 "rows": 5,
                 "group_type": "custom.order",
@@ -630,9 +697,34 @@
                       }
                     }
                   }
+                },
+                "bListCard": {
+                  "id": "bListCard",
+                  "type": "CustomElement",
+                  "properties": {
+                    "custom_id": "bCardDef",
+                    "group_type": "custom.order",
+                    "order": 2,
+                    "width": 300,
+                    "height": 120,
+                    "data_source": {
+                      "type": "CurrentDataItem"
+                    }
+                  }
                 }
               }
             }
+          }
+        },
+        "bFilter": {
+          "id": "bFilter",
+          "type": "Input",
+          "properties": {
+            "content_format": "text",
+            "order": 0,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px"
           }
         }
       }

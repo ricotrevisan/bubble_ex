@@ -181,8 +181,11 @@ defmodule <%= @web %>.BubbleData do
   sizes (plus one), and the cells a heavier one left short are read again
   together, the limit doubled each round. A `count` reads the keys of at
   most `:max_batched` records (default 10,000), past which each cell's
-  count is read on its own. Past `:max_cell_rounds` rounds (default 4),
-  what is left is read cell by cell; both are logged. A batched read that
+  count is read on its own. Cells with more key combinations than
+  `:max_batched` in all are read in chunks of at most that many, one
+  query each. Past `:max_cell_rounds` rounds (default 4), the next
+  round is still read together once, and what is left after it cell by
+  cell; all are logged. A batched read that
   fails leaves every cell of it empty (logged), as each cell's own would.
   The query reads as the current user, like the cell's own search
   would<%= if @enforced? do %>, through the same action and policies (the search fields check
@@ -1772,8 +1775,8 @@ defmodule <%= @web %>.BubbleData do
   # for every cell together into the read pass, where each cell finds
   # its part. A search whose constraints read another one's records is
   # collected once those are read: rounds until nothing new is collected,
-  # at most `max_cell_rounds/0`; past it the cells left read their own
-  # queries (logged). Every search collected is settled in the pass, read
+  # at most `max_cell_rounds/0`; past it the next round is read together
+  # once, and the cells left after it read their own queries (logged). Every search collected is settled in the pass, read
   # together or alone, so a later round never collects it again. Nothing
   # is kept outside a read pass.
   defp collect_cells(fun, actor, round \\ 1) do
@@ -1786,11 +1789,19 @@ defmodule <%= @web %>.BubbleData do
         collected == [] ->
           :ok
 
+        # Past the rounds, what was collected in the last one is still read
+        # together (in chunks), once; what a later round would collect
+        # reads its own queries.
         round > max_cell_rounds() ->
           cells_warning(
             "searches in repeating group cells past #{max_cell_rounds()} rounds " <>
-              "(:max_cell_rounds) are read cell by cell"
+              "(:max_cell_rounds): the next round is read together, once; later ones " <>
+              "cell by cell"
           )
+
+          new
+          |> Enum.group_by(&{&1.ref, &1.take, &1.page_size, &1.loads, shared_pins(&1)})
+          |> Enum.each(fn {_shape, group} -> read_cells(group, actor) end)
 
         true ->
           new
@@ -1860,7 +1871,8 @@ defmodule <%= @web %>.BubbleData do
       end)
 
     # Every cell's combinations of its keys' values: past `max_batched/0`,
-    # the cells read their own queries (logged once).
+    # the cells are read in chunks of at most that many combinations, one
+    # query each (logged once); a cell with more alone reads its own.
     combinations = keyed |> Enum.map(&length(tuples(&1, active))) |> Enum.sum()
 
     found =
@@ -1871,10 +1883,16 @@ defmodule <%= @web %>.BubbleData do
         combinations > max_batched() ->
           cells_warning(
             "a search in repeating group cells has #{combinations} key combinations, " <>
-              "past :max_batched (#{max_batched()}); its cells are read cell by cell"
+              "past :max_batched (#{max_batched()}); its cells are read in chunks of " <>
+              "at most #{max_batched()}"
           )
 
-          read_alone(keyed, actor)
+          keyed
+          |> chunks(active, max_batched())
+          |> Enum.reduce(%{}, fn
+            {:alone, r}, acc -> Map.merge(acc, read_alone([r], actor))
+            {:chunk, rs}, acc -> Map.merge(acc, batch_results(rs, active, first, actor))
+          end)
 
         true ->
           batch_results(keyed, active, first, actor)
@@ -1892,6 +1910,24 @@ defmodule <%= @web %>.BubbleData do
         Map.put(pass, key, {actor, value})
       end)
     )
+  end
+
+  # Cells in order, grouped so each group's key combinations stay within
+  # `cap`; a cell with more than `cap` on its own is `:alone`.
+  defp chunks(requests, active, cap) do
+    {done, current, _n} =
+      Enum.reduce(requests, {[], [], 0}, fn r, {done, current, n} ->
+        k = length(tuples(r, active))
+
+        cond do
+          k > cap -> {[{:alone, r} | done], current, n}
+          n + k > cap -> {[{:chunk, Enum.reverse(current)} | done], [r], k}
+          true -> {done, [r | current], n + k}
+        end
+      end)
+
+    done = if current == [], do: done, else: [{:chunk, Enum.reverse(current)} | done]
+    Enum.reverse(done)
   end
 
   defp void?({var, :yes}, pins), do: Map.get(pins, var) == true

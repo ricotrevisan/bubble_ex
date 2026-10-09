@@ -59,7 +59,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
               defaults: MapSet.new(),
               valued: MapSet.new(),
               instances: %{},
-              unloaded: %{}
+              unloaded: %{},
+              nested_lists: %{}
             },
             cells: %{}
 
@@ -257,7 +258,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     * `{:outer_cell, rg}`, `{:outer_cell_index, rg}`, `{:outer_cell_data,
       group}` - in the cell of a repeating group rendered per cell of `rg`
       (WTF-520, two levels): the outer cell's thing and index, and a
-      group's thing (or a nested list) in that outer cell
+      group's thing (or a nested list) in that outer cell.
+      `{:outer_cell_index, rg}` is defensive: the lowering names the
+      innermost cell's index ("Current cell's index"), so only an input
+      naming the outer repeating group's index reaches it
 
   A reusable element's property (`"param_<id>"`, WTF-493) is
   `{:data, %{path: [], element: key}}` read in the reusable element (when
@@ -371,17 +375,31 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     end
   end
 
-  # Whether `list` is a repeating group in the cell of another of
-  # `surface` that is outside any cell (WTF-520): two levels, no more.
-  # Which of them the page renders per outer cell is decided where its
-  # source is bound (`Data`): a read of one it does not is not loaded.
+  # Whether `list` is a repeating group the page renders per cell of
+  # another of `surface` that is outside any cell (WTF-520): two levels,
+  # no more. One rule decides it everywhere: the page's structure
+  # (`index.nested_lists`, inner => outer, `nested_list?/2`), and the
+  # index's sources agree (both lists' sources lowered).
   defp nested?(index, surface, list) do
-    case index.elements[list] do
-      %{kind: :list, surface: ^surface, cell: outer} when is_binary(outer) ->
-        match?(%{kind: :list, surface: ^surface, cell: nil}, index.elements[outer])
+    with outer when is_binary(outer) <- Map.get(Map.get(index, :nested_lists, %{}), list),
+         %{kind: :list, surface: ^surface, cell: ^outer} <- index.elements[list] do
+      match?(%{kind: :list, surface: ^surface, cell: nil}, index.elements[outer])
+    else
+      _ -> false
+    end
+  end
 
-      _ ->
-        false
+  @doc """
+  Whether the page renders repeating group `list` per cell of the
+  repeating group holding it (WTF-520): it is one of the page's nested
+  lists (`data_index.nested_lists`, from its structure) and both lists
+  load.
+  """
+  @spec nested_list?(t(), String.t()) :: boolean()
+  def nested_list?(%__MODULE__{data_index: index}, list) do
+    case index.elements[list] do
+      %{surface: surface} -> nested?(index, surface, list)
+      _ -> false
     end
   end
 
