@@ -1041,7 +1041,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           |> Enum.flat_map(fn child -> Css.lower(child, selector: &selector/1) end)
           |> index_lowered()
 
-        inner_ctx = %{ctx | lowered: Map.merge(ctx.lowered, lowered)}
+        inner_ctx =
+          ctx
+          |> Map.put(:lowered, Map.merge(ctx.lowered, lowered))
+          |> Map.put(:cell_events, false)
+
         was = acc.template
         {children, acc} = emit_list(node.children, inner_ctx, %{acc | template: true})
 
@@ -1086,9 +1090,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     lowered = Map.merge(ctx.lowered, lowered)
 
+    # The page's own elements here take their clicks and input changes
+    # per cell (WTF-520), in the cell's scope.
     inner_ctx =
       ctx
-      |> Map.merge(%{lowered: lowered, cell: rg, cell_instances: listed})
+      |> Map.merge(%{lowered: lowered, cell: rg, cell_instances: listed, cell_events: true})
       |> Map.merge(nested)
 
     was = acc.template
@@ -1278,7 +1284,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> Enum.flat_map(fn cell -> Enum.flat_map(cell.children, &cell_instance_nodes/1) end)
       |> MapSet.new(&bid/1)
 
-    inner_ctx = Map.merge(ctx, %{cell: table, cell_instances: listed})
+    inner_ctx = Map.merge(ctx, %{cell: table, cell_instances: listed, cell_events: false})
     was = acc.template
     {html, acc} = table_row(row, "td", columns, attrs, inner_ctx, %{acc | template: true})
     {html, %{acc | template: was}}
@@ -1949,7 +1955,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     acc = track(acc, node, Keyword.get(opts, :placeholder, false))
     acc = mark_data(acc, node, ctx)
 
-    clicks = if acc.template, do: [], else: click_attrs(bid(node), tag, ctx)
+    clicks =
+      cond do
+        not acc.template -> click_attrs(bid(node), tag, ctx)
+        cell_events?(ctx) -> click_attrs(bid(node), tag, ctx, cell_scope_expr(ctx))
+        true -> []
+      end
+
     popups = if acc.template, do: [], else: popup_attrs(bid(node), node, ctx)
     {visibility, acc} = visibility_attrs(node, ctx, acc)
 
@@ -3296,7 +3308,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # The click and popup wiring and tracked inputs of surface `id` (none
   # without workflows).
   defp surface_flows(%{flows: nil}, _id),
-    do: %{clicks: %{}, popups: %{}, tracked: %{}, initial: MapSet.new()}
+    do: %{clicks: %{}, popups: %{}, tracked: %{}, cell_tracked: %{}, initial: MapSet.new()}
 
   defp surface_flows(%{flows: flows}, id) do
     surface = flows.surfaces[id] || %{workflows: [], inputs: %{}}
@@ -3331,6 +3343,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       clicks: clicks,
       popups: popups,
       tracked: surface.inputs,
+      cell_tracked: Map.get(surface, :cell_inputs, %{}),
       initial: MapSet.new(Map.get(surface, :initial, []))
     }
   end
@@ -3338,17 +3351,25 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # An element's `phx-click`: its browser-run workflows as JS commands,
   # then (for the others) the page's own click event. An element that is
   # not a control also answers Enter and is announced as a button.
-  defp click_attrs(id, tag, ctx) do
+  # In a repeating group's cell (WTF-520), `event_scope` is the cell's:
+  # the page's own event names it, and the page accepts it only for a
+  # cell it read. The browser-run workflows address the surface's
+  # elements, in the surface's scope.
+  defp click_attrs(id, tag, ctx, event_scope \\ nil) do
     case ctx.clicks[id] do
       nil ->
         []
 
       %{client: client, server?: server?} ->
         scope = scope_var(ctx)
+        event_scope = event_scope || scope
 
         calls =
           Enum.map(client, &"Workflows.#{&1}(#{scope})") ++
-            if(server?, do: ["Bubble.push(\"click\", #{scope}, #{literal(id)})"], else: [])
+            if(server?,
+              do: ["Bubble.push(\"click\", #{event_scope}, #{literal(id)})"],
+              else: []
+            )
 
         command = {:raw, "{" <> Enum.join(calls, " |> ") <> "}"}
 
@@ -3366,6 +3387,18 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp scope_var(%{surface: :page}), do: ~s("")
   defp scope_var(_ctx), do: "@scope"
+
+  # Whether the page's own elements here take their events per cell: in a
+  # repeating group's cell template (`cells/3`), not inside another
+  # runtime container there (WTF-520).
+  defp cell_events?(ctx), do: Map.get(ctx, :cell_events, false) == true
+
+  # The current cell's scope (`<Web>.Bubble.cell_scope/4`): the scope its
+  # page events carry and its inputs are kept under (WTF-520).
+  defp cell_scope_expr(ctx) do
+    {item, index} = cell_vars(ctx.cell)
+    "Bubble.cell_scope(#{cells_scope(ctx)}, #{literal(ctx.cell)}, #{item}, #{index})"
+  end
 
   # The page's state and input maps, passed down to a scoped component.
   defp flow_attrs(definition, ctx) do
@@ -3418,6 +3451,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
       {:input, _k} ->
         input_source(read, ctx)
+
+      # An input of the same cell (WTF-520): that cell's value.
+      {:cell_input, k} ->
+        "Bubble.input(@bubble_inputs, #{cell_scope_expr(ctx)}, #{literal(k.element)})"
 
       {kind, _} = read when kind in [:url, :url_value] ->
         url_source(read)
@@ -3479,8 +3516,34 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp scope_segment(id),
     do: id |> to_string() |> String.replace("~", "~0") |> String.replace("-", "~1")
 
-  defp tracked?(node, ctx, acc),
-    do: not acc.template and Map.has_key?(Map.get(ctx, :tracked, %{}), bid(node))
+  defp tracked?(node, ctx, acc) do
+    if acc.template,
+      do: cell_input?(node, ctx),
+      else: Map.has_key?(Map.get(ctx, :tracked, %{}), bid(node))
+  end
+
+  # An input the page tracks per cell (WTF-520), rendered in that cell:
+  # its value is kept under the cell's scope.
+  defp cell_input?(node, ctx) do
+    cell_events?(ctx) and
+      match?(
+        %{cell: rg} when rg == ctx.cell,
+        Map.get(Map.get(ctx, :cell_tracked, %{}), bid(node))
+      )
+  end
+
+  # The scope a tracked input's value is kept under, as an expression:
+  # its cell's in a repeating group's cell (WTF-520), else its surface's.
+  defp input_scope(node, ctx),
+    do: if(cell_input?(node, ctx), do: cell_scope_expr(ctx), else: scope_var(ctx))
+
+  # A tracked input's value type (`:text`, `:number`, `:boolean`).
+  defp tracked_type(node, ctx) do
+    case Map.get(Map.get(ctx, :cell_tracked, %{}), bid(node)) do
+      %{type: type} -> if cell_input?(node, ctx), do: type, else: ctx.tracked[bid(node)]
+      _ -> ctx.tracked[bid(node)]
+    end
+  end
 
   # A tracked input is named for its form (a checkbox sends "true"). Typing
   # (WTF-475) reaches the page 300 ms after the last keystroke, a value
@@ -3497,7 +3560,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         attrs |> put_attr("name", "bubble[value]") |> put_attr("value", "true")
 
       commits_on_blur?(node) ->
-        scope = if ctx.surface == :page, do: "", else: {:expr, "@scope"}
+        scope =
+          cond do
+            cell_input?(node, ctx) -> {:expr, cell_scope_expr(ctx)}
+            ctx.surface == :page -> ""
+            true -> {:expr, "@scope"}
+          end
 
         attrs
         |> then(
@@ -3545,12 +3613,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # A static first value the page displays formatted (a currency, a
   # percentage): shown as such until the value changes.
   defp shown_value(node, ctx, shown) do
-    first = first_value(node, ctx.tracked[bid(node)])
+    first = first_value(node, tracked_type(node, ctx))
 
     if is_nil(first) or to_string(first) == shown,
       do: kept_value(node, ctx, nil),
       else:
-        "Bubble.input_shown(@bubble_inputs, #{scope_var(ctx)}, #{literal(bid(node))}, " <>
+        "Bubble.input_shown(@bubble_inputs, #{input_scope(node, ctx)}, #{literal(bid(node))}, " <>
           "#{inspect(first)}, #{literal(shown)})"
   end
 
@@ -3565,7 +3633,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       args = "@bubble_inputs, @bubble_data, #{scope_var(ctx)}, #{literal(bid(node))}"
       if initial, do: "Bubble.input(#{args}, #{initial})", else: "Bubble.input(#{args})"
     else
-      kept = "Bubble.input(@bubble_inputs, #{scope_var(ctx)}, #{literal(bid(node))})"
+      kept = "Bubble.input(@bubble_inputs, #{input_scope(node, ctx)}, #{literal(bid(node))})"
       if initial, do: "#{kept} || (#{initial})", else: kept
     end
   end
@@ -3580,13 +3648,23 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       id = bid(node)
 
       {form_id, scope} =
-        if ctx.surface == :page,
-          do: {~s( id="#{escape_attr("bubble-input-" <> id)}"), ~s( value="")},
-          else: {~s| id={"bubble-input-\#{@scope}-" <> #{literal(id)}}|, " value={@scope}"}
+        cond do
+          # One form per cell (WTF-520), its event in the cell's scope.
+          cell_input?(node, ctx) ->
+            cell = cell_scope_expr(ctx)
+
+            {~s| id={"bubble-input-\#{#{cell}}-" <> #{literal(id)}}|, " value={#{cell}}"}
+
+          ctx.surface == :page ->
+            {~s( id="#{escape_attr("bubble-input-" <> id)}"), ~s( value="")}
+
+          true ->
+            {~s| id={"bubble-input-\#{@scope}-" <> #{literal(id)}}|, " value={@scope}"}
+        end
 
       hidden =
         cond do
-          ctx.tracked[id] == :boolean ->
+          tracked_type(node, ctx) == :boolean ->
             ~s(<input type="hidden" name="bubble[value]" value="false">)
 
           commits_on_blur?(node) ->
@@ -3636,6 +3714,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
            label: entry.label,
            path: entry.path,
            inputs: inputs,
+           cell_inputs: cell_inputs(entry.node, base.flows.surfaces[entry.id]),
            containers: containers,
            loads: loads,
            instances: instances(entry.node, "", by_ref, base.flows, MapSet.new()),
@@ -3656,6 +3735,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
            label: entry.node.name || entry.id,
            path: nil,
            inputs: inputs,
+           cell_inputs: cell_inputs(entry.node, base.flows.surfaces[entry.id]),
            containers: containers,
            loads: loads,
            instances: [],
@@ -3942,6 +4022,22 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         own ++ input_nodes(node.children, [id | containers], tracked)
     end)
   end
+
+  # The inputs of a surface tracked per cell of a repeating group
+  # (WTF-520): `{element => {repeating group, {type, first value}}}`.
+  defp cell_inputs(root, %{cell_inputs: tracked}) when map_size(tracked) > 0 do
+    for node <- descendants(root),
+        %{type: type, cell: rg} <- [Map.get(tracked, bid(node))],
+        into: %{},
+        do: {bid(node), {rg, {type, first_value(node, type)}}}
+  end
+
+  defp cell_inputs(_root, _surface), do: %{}
+
+  defp descendants(%Node{kind: :reusable_instance}), do: []
+
+  defp descendants(%Node{children: children}),
+    do: Enum.flat_map(children, &[&1 | descendants(&1)])
 
   defp first_value(node, :boolean), do: resolved(node, "checked") == true
 

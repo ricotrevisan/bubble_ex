@@ -1118,7 +1118,8 @@ defmodule BubbleEx.PageDataTest do
                app
              )
 
-      # A click in a repeating group's cell opens it: not wired yet.
+      # A click in a repeating group's cell opens it: an event the page
+      # wires per cell (WTF-520), so its "is opened" workflow is too.
       button = %{"id" => "bRowBtn", "type" => "Button", "properties" => %{"width" => 30}}
 
       app =
@@ -1128,15 +1129,22 @@ defmodule BubbleEx.PageDataTest do
           button
         )
 
-      refute kept?(
-               [
-                 opened("wD", [show_detail("aD")]),
-                 wf("wR", "ButtonClicked", %{"element_id" => "bRowBtn"}, [
-                   toggle("aR", "ShowElement")
-                 ])
-               ],
-               app
-             )
+      row_opens = [
+        opened("wD", [show_detail("aD")]),
+        wf("wR", "ButtonClicked", %{"element_id" => "bRowBtn"}, [toggle("aR", "ShowElement")])
+      ]
+
+      assert kept?(row_opens, app)
+
+      # In the cells of a list the page does not load, nothing triggers it.
+      unloaded =
+        put_in(app, ["pages", "shown", "elements", "bSrcList", "properties", "data_source"], %{
+          "type" => "GetElement",
+          "properties" => %{"element_id" => "bShowA"},
+          "next" => %{"type" => "Message", "name" => "is_visible"}
+        })
+
+      refute kept?(row_opens, unloaded)
     end
 
     test "a popup's opened and closed workflows are wired; what they set loads (WTF-520)" do
@@ -1257,7 +1265,7 @@ defmodule BubbleEx.PageDataTest do
       refute data(spec, "bPanelGroup")
     end
 
-    test "a click in a repeating group's cell, not wired yet, sets nothing here (WTF-520)" do
+    test "a click in a repeating group's cell is an event: master-detail is kept (WTF-520)" do
       button = %{"id" => "bRowBtn", "type" => "Button", "properties" => %{"width" => 30}}
 
       app =
@@ -1267,22 +1275,42 @@ defmodule BubbleEx.PageDataTest do
         show_detail("aD")
         | "properties" => %{
             "element_id" => "bDetail",
-            "data_source" => %{"type" => "CurrentCell"}
+            "data_source" => %{"type" => "CurrentDataItem"}
           }
       }
 
-      # Master-detail: the row's click is a trigger in a runtime template;
-      # the page never triggers it, so bDetail is not read as empty.
+      # Master-detail: the row's click runs in its cell (the page wires it
+      # per cell), so bDetail is page data, empty until the click.
       workflow = wf("wD", "ButtonClicked", %{"element_id" => "bRowBtn"}, [row])
-      refute kept?([workflow], app)
+      assert kept?([workflow], app)
 
       {spec, _project, _frontend, _app, _model} = spec(detail_app([workflow], app))
 
-      assert %{residue: [%{reason: :trigger_in_runtime_template} | _]} =
+      assert %{residue: [], cell: "bSrcList", steps: [step]} =
                Enum.find(spec.surfaces["bShownPage"].workflows, &(&1.workflow == "wD"))
 
-      # The same step from a click outside the cell: kept, empty until it.
-      assert kept?([%{workflow | "properties" => %{"element_id" => "bShowA"}}], app)
+      # "Current cell's" thing is the cell's, kept as an ID by the page.
+      assert %{
+               residue: [],
+               args: %{cell?: false, value: %{bindings: [%{bind: {:cell, "bSrcList"}}]}}
+             } =
+               step
+
+      # A list the page does not load has no cells: the click stays a
+      # trigger in a runtime template, and bDetail is not read as empty.
+      unloaded =
+        put_in(app, ["pages", "shown", "elements", "bSrcList", "properties", "data_source"], %{
+          "type" => "GetElement",
+          "properties" => %{"element_id" => "bShowA"},
+          "next" => %{"type" => "Message", "name" => "is_visible"}
+        })
+
+      refute kept?([workflow], unloaded)
+
+      {spec, _project, _frontend, _app, _model} = spec(detail_app([workflow], unloaded))
+
+      assert %{cell: nil, residue: [%{reason: :trigger_in_runtime_template} | _]} =
+               Enum.find(spec.surfaces["bShownPage"].workflows, &(&1.workflow == "wD"))
     end
 
     defp state(condition, element),
@@ -1466,9 +1494,9 @@ defmodule BubbleEx.PageDataTest do
 
       refute data(spec, "bCellShown")
 
-      # From a button of the same cell, the step keeps it per cell; the
-      # workflow does not run yet (a trigger in a cell's template), so the
-      # group is not loaded either.
+      # From a button of the same cell, the step keeps it per cell, and
+      # the click runs in that cell (WTF-520): the group is page data per
+      # cell, empty until the click.
       button = %{"id" => "bCellBtn", "type" => "Button", "properties" => %{"width" => 30}}
 
       app =
@@ -1484,10 +1512,10 @@ defmodule BubbleEx.PageDataTest do
       assert %{residue: [], args: %{cell?: true, key: %{element: "bCellShown"}}} =
                steps(spec, "bShownPage")["aCell1"]
 
-      assert %{residue: [%{reason: :trigger_in_runtime_template}]} =
+      assert %{residue: [], cell: "bSrcList"} =
                Enum.find(spec.surfaces["bShownPage"].workflows, &(&1.workflow == "wShowA"))
 
-      refute data(spec, "bCellShown")
+      assert %{read: :displayed, cell: "bSrcList", residue: []} = data(spec, "bCellShown")
     end
   end
 

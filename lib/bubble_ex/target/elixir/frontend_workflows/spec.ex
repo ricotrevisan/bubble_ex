@@ -6,12 +6,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
 
     * `namespace` - the root module the resource names are relative to
     * `surfaces` - by page or reusable Bubble ID: `%{kind, workflows,
-      states, inputs, initial, data}`. `workflows` (sorted by Bubble ID) are described
+      states, inputs, cell_inputs, initial, data}`. `workflows` (sorted by Bubble ID) are described
       below; `states` are the custom states of the surface's elements
       (`%{element, state, default}`, `default` a literal or nil); `inputs`
       the inputs whose value the page tracks (element => `:text`,
       `:number` or `:boolean`); `initial` those of them whose first value
-      is page data (their initial content's source, WTF-520), sorted
+      is page data (their initial content's source, WTF-520), sorted;
+      `cell_inputs` the inputs in a repeating group's cell whose value
+      the page keeps per cell (WTF-520): element => `%{type, cell}`
     * `elements` - by Bubble ID: `%{surface, instance_of, root?}` for every
       element of a surface (`root?`: the page or reusable element itself)
     * `cells` - the reusable instances in a repeating group's cell
@@ -22,9 +24,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
       `BubbleEx.Target.Elixir.FrontendWorkflows.Data`)
     * `diagnostics` - the lowering's and this binding's
 
-  A workflow: `%{workflow, symbol, name, surface, kind, element, run_when,
-  interval, disabled?, client?, params, condition, steps, residue, data?,
-  callees, blocked_by}`. `client?` is a workflow run in the browser as JS commands (a
+  A workflow: `%{workflow, symbol, name, surface, kind, element, cell,
+  run_when, interval, disabled?, client?, params, condition, steps,
+  residue, data?, callees, blocked_by}`. `cell` is the repeating group
+  whose cell holds the clicked or changed element when the page wires
+  the event per cell (WTF-520): the browser's event names the cell's
+  scope, and the workflow runs with that cell's thing; else nil. `client?` is a workflow run in the browser as JS commands (a
   click whose steps all show, hide, toggle, focus or scroll to elements,
   with no condition); `data?` one that reads or writes stored data;
   `callees` the custom events it calls or schedules (`%{surface,
@@ -40,7 +45,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   loads}` with `bind` one of `:actor`, `:now`, `{:param, id}`, `{:step,
   action}`, `{:url, name}`, `{:url_value, url}` (see `url/1`), `{:url_thing,
   url}` (`url/1`'s, with the thing's `resource`), `{:state, key}` (key `%{path, element,
-  state}`) or `{:input, key}` (key `%{path, element}`). A key's `path` is
+  state}`), `{:input, key}` (key `%{path, element}`) or `{:cell_input,
+  %{element, cell}}` (an input in the cell of repeating group `cell`, read
+  in that cell: each cell keeps its own value, WTF-520). A key's `path` is
   the reusable-element instances between the workflow's surface and the
   element (Bubble IDs), `[]` for the surface's own elements. A target
   (`%{path, element}`, `element` `:root` for an instance or the reusable
@@ -220,7 +227,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
         %__MODULE__{} = spec,
         surface,
         {:element_state, %{"element" => e, "state" => s}},
-        _cell
+        cell
       )
       when is_binary(e) and is_binary(s) do
     case {spec.elements[e], s} do
@@ -229,8 +236,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
         if state?(spec, key) and not unloaded_path?(spec, key.path), do: {:state, key}
 
       {%{surface: ^surface, instance_of: nil, root?: false}, "get_data"} ->
-        if Map.has_key?(spec.surfaces[surface].inputs, e),
-          do: {:input, %{path: [], element: e}}
+        input_read(spec.surfaces[surface], e, cell)
 
       _ ->
         nil
@@ -238,6 +244,21 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   end
 
   def read(_spec, _surface, _input, _cell), do: nil
+
+  # An input the page tracks, or (WTF-520) one in a repeating group's
+  # cell, read in that same cell: each cell keeps its own value.
+  defp input_read(surface, e, cell) do
+    cond do
+      Map.has_key?(surface.inputs, e) -> {:input, %{path: [], element: e}}
+      cell_input?(surface, e, cell) -> {:cell_input, %{element: e, cell: cell}}
+      true -> nil
+    end
+  end
+
+  defp cell_input?(surface, e, cell) when is_binary(cell),
+    do: match?(%{cell: ^cell}, Map.get(Map.get(surface, :cell_inputs, %{}), e))
+
+  defp cell_input?(_surface, _e, _cell), do: false
 
   @doc """
   How the page's data (WTF-420) supplies `input` read in `surface`,

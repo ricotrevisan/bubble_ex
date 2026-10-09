@@ -50,7 +50,10 @@
 #     test/support/target/phoenix/cell_searches_behavior.exs); for
 #     phoenix_nested_lists, repeating groups in a repeating group's cell
 #     rendered per outer cell (WTF-520,
-#     test/support/target/phoenix/nested_lists_behavior.exs)
+#     test/support/target/phoenix/nested_lists_behavior.exs); for
+#     phoenix_cell_clicks, clicks and input changes of the page's own
+#     elements in repeating group cells, run in the cell the page read
+#     (WTF-520, test/support/target/phoenix/cell_clicks_behavior.exs)
 #   * the same checks with privacy: :enforced (WTF-423) on the fixtures
 #     with privacy rules, pages and workflows (a second scratch project,
 #     <scratch>_enforced), plus the generated privacy-matrix tests against
@@ -294,6 +297,15 @@ for fixture in $fixtures; do
       rm test/nested_lists_behavior_test.exs
     fi
 
+    # Clicks and input changes of the page's own elements in repeating
+    # group cells (WTF-520): run in the cell the page read, nothing else.
+    if [[ "$fixture" == phoenix_cell_clicks ]]; then
+      cp "$root/test/support/target/phoenix/cell_clicks_behavior.exs" \
+        test/cell_clicks_behavior_test.exs
+      mix test test/cell_clicks_behavior_test.exs
+      rm test/cell_clicks_behavior_test.exs
+    fi
+
     # Page data (WTF-420): what the generated pages load, and never load.
     if [[ "$fixture" == phoenix_page_data ]]; then
       cp "$root/test/support/target/phoenix/page_data_behavior.exs" \
@@ -316,7 +328,7 @@ done
 # policies too; and test/support/target/phoenix/enforced_behavior.exs,
 # which must pass here and fail without policies (above).
 enforced_scratch="${scratch}_enforced"
-enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows phoenix_index_thing phoenix_visibility phoenix_reusable_params phoenix_list_ops phoenix_shapes phoenix_page_load phoenix_tables phoenix_url phoenix_cell_searches phoenix_nested_lists workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
+enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows phoenix_index_thing phoenix_visibility phoenix_reusable_params phoenix_list_ops phoenix_shapes phoenix_page_load phoenix_tables phoenix_url phoenix_cell_searches phoenix_nested_lists phoenix_cell_clicks workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
 mkdir -p "$enforced_scratch"
 first=1
 
@@ -362,6 +374,7 @@ for fixture in $enforced_fixtures; do
       phoenix_url) behavior=test/support/target/phoenix/url_behavior.exs ;;
       phoenix_cell_searches) behavior=test/support/target/phoenix/cell_searches_behavior.exs ;;
       phoenix_nested_lists) behavior=test/support/target/phoenix/nested_lists_behavior.exs ;;
+      phoenix_cell_clicks) behavior=test/support/target/phoenix/cell_clicks_behavior.exs ;;
     esac
 
     if [[ -n "$behavior" ]]; then

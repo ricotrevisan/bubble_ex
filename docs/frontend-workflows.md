@@ -76,14 +76,60 @@ lists for that element.
 
 | Bubble | LiveView |
 |--------|----------|
-| An element is clicked | `phx-click` (plus Enter and `role="button"` on an element that is not a control) |
-| An input's value is changed | the input in its own `<form phx-change>` (`display: contents`) |
+| An element is clicked | `phx-click` (plus Enter and `role="button"` on an element that is not a control); in a repeating group's cell, with the cell's scope (below) |
+| An input's value is changed | the input in its own `<form phx-change>` (`display: contents`); in a repeating group's cell, one per cell, its value kept per cell (below) |
 | Page is loaded | a message after the connected mount (the mount itself loads nothing) |
 | Do when condition is true | re-evaluated after every event; runs when it becomes true (`every time`), or once per page load |
 | A custom event | a function; called, or scheduled with `Process.send_after` |
 | Do every N seconds | `:timer.send_interval` (a constant interval only) |
 | A popup is opened / closed | the page's hook reports a Popup it opened or closed (`bubble:popup`, below) |
 | User logged in/out, plugin events | residue |
+
+**Clicks and input changes in a repeating group's cell (WTF-520).** The
+page's own elements in a repeating group's cell take their clicks and
+input changes per cell: in a repeating group the page renders per cell
+(outside any runtime container, or rendered per cell of another, two
+levels, `docs/page-data.md`) whose list loads and is a list of things
+(a list of texts, numbers, dates or options has cells by position only,
+which a stale page could make name another item: its events stay
+residue), the element in the cell's
+template, not inside another runtime container there (a table, a
+plugin's container, a third level) nor inside a reusable instance (its
+elements are its reusable element's). They are listed apart in
+`__bubble__(:surface)` (`cell_clicks`, `cell_changes`, `cell_inputs`:
+element => `{repeating group, ...}`; `cell_lists`, the repeating groups
+with their outer one). The element's event carries the cell's scope, the
+format a reusable instance in a cell uses without the instance
+(`<Web>.Bubble.cell_scope/4`: `<scope>-<repeating group>~2<the thing's
+unique ID>`; an inner cell's under the outer cell's scope). The page
+keeps the cells it read last, by scope, from the lists it read as the
+current user (`@bubble_page_cells`, `BubbleWorkflows.put_page_cells/2`,
+after every read of its data), and accepts the event only for one of
+them and an element listed for that cell's repeating group; the scope is
+looked up, never parsed. The workflow runs in its surface's scope (the
+page's, or the reusable instance's) with the cell's thing and index, a
+group of the cell, and in an inner cell the outer cell's thing, index and
+groups, all as the page read them: nothing the browser sends becomes the
+cell's thing. The cell is looked up again before each workflow of the
+event, after the page's data is read again (a preceding write), so a
+cell that left the list runs nothing. An input in a cell keeps its value
+per cell, under the cell's scope, starting with its static first value
+when the cell is new to the page (an input whose first value is dynamic
+is not tracked in a cell, and its change workflows are
+`:unavailable_input`); "This input's value" in a workflow of the same
+cell, and a text of the same cell, read that cell's value. A cell that
+leaves the list drops its inputs' values. A paused workflow of a cell
+resumes in it only while the page still shows it, checked again after the
+page reads its data. A click, an input's workflows or the rest of a
+paused workflow whose cell is gone are dropped silently (logged, no
+notice). "Reset relevant inputs" with no element resets the cells'
+inputs too; a reset group or popup does not reset the inputs of the
+cells inside it (only the inputs it holds directly). A click whose steps
+only show, hide, toggle, focus or scroll to the surface's elements runs
+in the browser, as anywhere. Page-load, condition-true and "do every"
+workflows have no cell. Anything else in a cell (a table's row, a third
+level, a list that does not load) stays `:trigger_in_runtime_template`
+residue.
 
 **Popup opened or closed (WTF-520).** The page's hook opens and closes
 overlays; when a Popup whose "is opened" or "is closed" workflows the
@@ -211,8 +257,14 @@ may run (WTF-520):
   runtime refuses never sets it (a click or an input change shows the
   refusal notice; a "do every" tick is refused silently, logged); what
   reads the element reads it empty, as Bubble's page does before the
-  event. An event the page never triggers (a click in a repeating
-  group's cell, `:trigger_in_runtime_template`, not wired yet) would
+  event. A click or an input change in a repeating group's cell is such
+  an event when the page wires it per cell (WTF-520, above) and the
+  runtime runs it whole: a detail group outside the list that a row's
+  click sets ("Display data in bDetail: Current cell's product",
+  master-detail) is page data, empty until the click. One the runtime
+  refuses would never set it, so the element stays unloaded, loudly (a
+  page-level click the runtime refuses still counts, as before). An event the page never triggers (a click in a
+  table's row or a third level, `:trigger_in_runtime_template`) would
   leave it empty where Bubble shows data: the element stays unloaded.
   A custom event nothing calls never runs: it sets nothing.
 * **Popups opened or closed (WTF-520).** Popups are closed as the page
@@ -248,16 +300,16 @@ may run (WTF-520):
   it is page data too (`read: :displayed`), so what reads it loads.
 
 In a repeating group's cell, only a group from a workflow of the same
-cell (per cell; such workflows are not wired yet,
-`:trigger_in_runtime_template`); a list or an instance there, or a
-cell's group from outside the cell, is `:page_data_in_cell` residue
-(`kind` `"list"`, `"instance"`, `"display"`). An element whose
+cell (per cell, kept by the cell's thing; in an inner cell, in the outer
+cell's scope, WTF-520); a list or an instance there, or a cell's group
+from outside the cell, is `:page_data_in_cell` residue (`kind`
+`"list"`, `"instance"`, `"display"`). An element whose
 conditions set a data source has that source folded over its own, or
 over the empty one when it has none (`docs/page-data.md`, WTF-521).
 
 Anything the generated page does not keep is `:unavailable_input` residue,
 never a silent empty value: data the page does not load, a cell's thing
-(workflows in a cell's template are not wired yet), a reusable element's
+outside the cell's own clicks and input changes, a reusable element's
 property some instance's value of which is not loaded, an element's built-in states (`is visible`, `is hovered`),
 other page data, the value of an input the page does not track (a
 placeholder, a date input, one whose first value is dynamic).
@@ -321,7 +373,9 @@ are refused silently (logged), as they would show it on their own.
   lists name: an element it renders (a Popup's listed opened or closed
   event, WTF-520), in a scope it renders (an
   instance in a repeating group's cell: one of the cell scopes the page
-  read as the current user, WTF-494, never one the browser made up). Parameters
+  read as the current user, WTF-494, never one the browser made up; the
+  page's own element in a cell: one of the cells it read, WTF-520, its
+  thing bound from what the page read). Parameters
   never become atoms and never name a workflow, a module or a record.
   Input values are text, numbers or yes/no, never records. Unknown events
   are ignored.

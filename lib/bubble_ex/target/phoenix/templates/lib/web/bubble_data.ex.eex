@@ -338,6 +338,7 @@ defmodule <%= @web %>.BubbleData do
       socket
       |> assign(:bubble_data, data)
       |> BubbleWorkflows.put_cells(cells)
+      |> BubbleWorkflows.put_page_cells(page)
       |> assign(:bubble_data_actor, data_actor(socket))
       |> assign(:bubble_source_topics, by_source)
       |> subscribe(all_topics(by_source))
@@ -353,6 +354,7 @@ defmodule <%= @web %>.BubbleData do
       socket
       |> assign(:bubble_data, %{})
       |> BubbleWorkflows.put_cells([])
+      |> BubbleWorkflows.put_page_cells(page)
       |> assign(:bubble_data_warned, not data_access?() and connected?(socket))
     end
   end
@@ -446,6 +448,7 @@ defmodule <%= @web %>.BubbleData do
         socket
         |> assign(:bubble_data, data)
         |> BubbleWorkflows.put_cells(cells)
+        |> BubbleWorkflows.put_page_cells(page)
         |> assign(:bubble_source_topics, by_source)
         |> subscribe(all_topics(by_source))
     end

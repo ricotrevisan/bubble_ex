@@ -113,7 +113,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp surface_module(id, s, spec, ctx) do
     surface = spec.surfaces[id] || %{kind: s.kind, workflows: [], states: [], inputs: %{}}
     workflows = surface.workflows
-    surface_map = surface_map(surface, s)
+    surface_map = surface_map(surface, s, spec)
 
     metas =
       Enum.map_join(workflows, ",\n", fn w ->
@@ -188,8 +188,15 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   end
 
   # What the page lets a browser trigger, and its first states and inputs.
-  defp surface_map(surface, s) do
-    wired = Enum.filter(surface.workflows, &Spec.wired?/1)
+  # The clicks and input changes of elements in a repeating group's cell
+  # (WTF-520) are listed apart, with the repeating group: the browser's
+  # event names the cell's scope, which the page accepts only for a cell
+  # it read (`cell_lists`, the lists whose cells it keeps scopes for).
+  defp surface_map(surface, s, spec) do
+    {in_cells, wired} =
+      surface.workflows
+      |> Enum.filter(&Spec.wired?/1)
+      |> Enum.split_with(&is_binary(Map.get(&1, :cell)))
 
     clicks =
       wired
@@ -200,6 +207,20 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       wired
       |> Enum.filter(&(&1.kind == :input_change and is_binary(&1.element)))
       |> group(& &1.element)
+
+    cell_clicks =
+      in_cells
+      |> Enum.filter(&(&1.kind == :click and not &1.client?))
+      |> cell_group()
+
+    cell_changes = in_cells |> Enum.filter(&(&1.kind == :input_change)) |> cell_group()
+    cell_inputs = Map.get(s, :cell_inputs, %{})
+
+    cell_lists =
+      (Enum.map(in_cells, & &1.cell) ++ Enum.map(Map.values(cell_inputs), &elem(&1, 0)))
+      |> Enum.uniq()
+      |> Enum.sort()
+      |> Enum.map(&{&1, Map.get(spec.data_index.nested_lists, &1)})
 
     intervals =
       for w <- wired, w.kind == :do_every, do: {w.workflow, interval_seconds(w.interval)}
@@ -217,9 +238,20 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       conditions: #{source(for w <- wired, w.kind == :condition_true, do: {w.workflow, w.run_when})},
       intervals: #{intervals_source(intervals)},
       popups: #{popups_source(popups)},
-      states: #{states_source(states)}
+      states: #{states_source(states)},
+      cell_clicks: #{cell_map_source(cell_clicks)},
+      cell_changes: #{cell_map_source(cell_changes)},
+      cell_inputs: #{cell_inputs_source(cell_inputs)},
+      cell_lists: #{cell_lists_source(cell_lists)}
     }
     """
+  end
+
+  # Element => `{repeating group, workflow IDs}`.
+  defp cell_group(workflows) do
+    workflows
+    |> Enum.group_by(&{&1.element, &1.cell}, & &1.workflow)
+    |> Map.new(fn {{element, rg}, ids} -> {element, {rg, Enum.sort(ids)}} end)
   end
 
   # A Popup opened or closed (WTF-520), by the page's hook.
@@ -633,6 +665,10 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   defp binding({:input, k}, _loads),
     do: "BubbleWorkflows.input(ctx, #{source(k.path)}, #{literal(k.element)})"
+
+  # An input in the workflow's cell (WTF-520): that cell's value.
+  defp binding({:cell_input, k}, _loads),
+    do: "BubbleWorkflows.cell_input(ctx, #{literal(k.element)})"
 
   # The page's data (WTF-420).
   defp binding({:data, k}, loads),
@@ -1195,6 +1231,28 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       Enum.map_join(Enum.sort(inputs), ", ", fn {e, {type, first}} ->
         "#{literal(e)} => {#{inspect(type)}, #{source(first)}}"
       end) <> "}"
+  end
+
+  defp cell_map_source(map) do
+    "%{" <>
+      Enum.map_join(Enum.sort(map), ", ", fn {e, {rg, ids}} ->
+        "#{literal(e)} => {#{literal(rg)}, [#{Enum.map_join(ids, ", ", &literal/1)}]}"
+      end) <> "}"
+  end
+
+  defp cell_inputs_source(inputs) do
+    "%{" <>
+      Enum.map_join(Enum.sort(inputs), ", ", fn {e, {rg, {type, first}}} ->
+        "#{literal(e)} => {#{literal(rg)}, {#{inspect(type)}, #{source(first)}}}"
+      end) <> "}"
+  end
+
+  defp cell_lists_source(lists) do
+    "[" <>
+      Enum.map_join(lists, ", ", fn
+        {rg, nil} -> "{#{literal(rg)}, nil}"
+        {rg, outer} -> "{#{literal(rg)}, #{literal(outer)}}"
+      end) <> "]"
   end
 
   defp states_source(states) do

@@ -679,6 +679,37 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Clicks and input changes in a repeating group's cell run in that
+  cell** (WTF-520, two levels). A workflow triggered by the page's own
+  element in a repeating group's cell (a row's button, a row's input) was
+  `:trigger_in_runtime_template` residue: never triggered, and what it
+  would set ("Display data in a detail group = Current cell's product",
+  master-detail) stayed unloaded. Now, in a repeating group the page
+  renders per cell (outside any runtime container, or per cell of
+  another) whose list loads, the element's event carries the cell's
+  scope, the format a reusable instance in a cell uses
+  (`Bubble.cell_scope/4`). The page keeps the cells it read last, as the
+  current user (`@bubble_page_cells`, `BubbleWorkflows.put_page_cells/2`),
+  and accepts the event only for one of them and an element listed for
+  that cell's repeating group (`cell_clicks`, `cell_changes`,
+  `cell_inputs`, `cell_lists` in `__bubble__(:surface)`): a made-up
+  scope, a cell of a thing the user may not read, an inner cell under
+  another outer cell, a made-up thing ID or a cell no longer in the list
+  is ignored, and the scope is never parsed. The workflow runs in its
+  surface's scope with the cell's thing, index and groups (and an inner
+  cell's outer cell's) bound from what the page read, never from the
+  browser; the cell is looked up again before each workflow, after the
+  page reads its data again. An input in a cell keeps its value per cell
+  under the cell's scope (`{:cell_input, ...}`, `BubbleWorkflows.cell_input/2`).
+  A group only those workflows set is page data, empty until the click
+  (`docs/frontend-workflows.md`, "Display data"). A table's row, a third
+  level, an element inside another runtime container of the cell, an
+  input whose first value is dynamic, and a list that does not load stay
+  residue. Privacy (the current user is the actor), data access, the
+  refusal notice, popup events and unrendered instances are unchanged.
+  See `docs/frontend-workflows.md`, "Clicks and input changes in a
+  repeating group's cell".
+
 - **A repeating group in another's cell is rendered per outer cell**
   (WTF-520, two levels). A repeating group in a repeating group's cell
   (customers, each listing its orders) was residue (`:page_data_in_cell`,
