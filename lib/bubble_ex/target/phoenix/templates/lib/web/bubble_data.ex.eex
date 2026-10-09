@@ -164,6 +164,30 @@ defmodule <%= @web %>.BubbleData do
   three levels of instances in cells (`max_cell_depth/0`) and `max_cells/0`
   scopes (the first ones; logged once past that).
 
+  ## Searches in cells (WTF-520)
+
+  A search a repeating group's cells read with the cell's thing ("Search
+  for orders where customer = Current cell's customer", its `count`, its
+  first item, a list of the records a cell's list holds) is read for every
+  cell together, never once per cell (`cell_read/4`): the loader runs the
+  source in every cell first, collecting each cell's search, then reads
+  one query per round of cells with each key compared with every cell's
+  values (`customer_id in ^values`; with two or three keys, the cells' own
+  combinations of them) and gives each cell the records whose keys are
+  its own, in the search's order. Cells whose other constraints differ
+  (whether a value is empty) are read in one query each way. A first item
+  is the first record per key (`DISTINCT ON`). Otherwise each cell's page
+  size is its own: the query reads at most the sum of the cells' page
+  sizes (plus one), and the cells a heavier one left short are read again
+  together, the limit doubled each round. A `count` reads the keys of at
+  most `:max_batched` records (default 10,000), past which each cell's
+  count is read on its own. Past `:max_cell_rounds` rounds (default 4),
+  what is left is read cell by cell; both are logged. A batched read that
+  fails leaves every cell of it empty (logged), as each cell's own would.
+  The query reads as the current user, like the cell's own search
+  would<%= if @enforced? do %>, through the same action and policies (the search fields check
+  sees the same constraints)<% end %>.
+
   ## Unverified Bubble behavior
 
   To confirm by replay (WTF-358): a page's thing is read from the URL path
@@ -189,6 +213,8 @@ defmodule <%= @web %>.BubbleData do
 
   @id ~r/\A[0-9]{1,20}x[0-9]{1,24}\z/
   @pass {__MODULE__, :read_pass}
+  @collect {__MODULE__, :cell_reads}
+  @unread {__MODULE__, :cell_unread}
 
   @doc "Whether pages may read stored data (the workflows' opt-in)."
   def data_access?,
@@ -797,6 +823,21 @@ defmodule <%= @web %>.BubbleData do
     displayed = Map.get(socket.assigns, :bubble_displayed) || %{}
     shared = if batch? and Map.get(source, :shared, false), do: :pending
 
+    # Its searches read with each cell's values (WTF-520): collected in
+    # every unit first, then read once per round for all of them.
+    if batch? and Map.get(source, :cell_reads, false) and source.read != :displayed do
+      collect_cells(
+        fn ->
+          for unit <- units, not Map.has_key?(displayed, unit.shown) do
+            # What a unit reads after a search not read yet may depend on it.
+            Process.delete(@unread)
+            run(module, source, unit_ctx(socket, module, unit, data, states, batch))
+          end
+        end,
+        actor
+      )
+    end
+
     {values, _shared} =
       Enum.map_reduce(units, shared, fn unit, shared ->
         ctx = unit_ctx(socket, module, unit, data, states, batch)
@@ -1403,7 +1444,11 @@ defmodule <%= @web %>.BubbleData do
 
     # Equal sort keys keep the list's order: its position last.
     position =
-      Ash.Expr.calc(fragment("array_position(?::text[], CAST(? AS text))", ^ids, ^key),
+      Ash.Expr.calc(fragment(
+          "array_position(?::text[], CAST(? AS text))",
+          type(^ids, {:array, :string}),
+          ^key
+        ),
         type: :integer
       )
 
@@ -1414,6 +1459,19 @@ defmodule <%= @web %>.BubbleData do
   end
 
   def listed(query, _ids), do: listed(query, [])
+
+  @doc """
+  `listed/2` for the records every cell's list holds at once (WTF-520):
+  marked the same, but not sorted by the position in their union (each
+  cell's own list orders its records, `cell_read/4`).
+  """
+  def listed_batch(query, ids) when is_list(ids) do
+    query
+    |> Ash.Query.new()
+    |> Ash.Query.set_context(%{bubble_listed: length(ids)})
+  end
+
+  def listed_batch(query, _ids), do: listed_batch(query, [])
 
   @doc """
   The unique IDs of the things a list holds, in its order, each once, for
@@ -1536,6 +1594,530 @@ defmodule <%= @web %>.BubbleData do
   def pin(value, :one), do: Runtime.id(value)
   def pin(value, :many), do: Runtime.ids(value)
   def pin(value, _), do: value
+
+  # --- searches in cells (WTF-520) ----------------------------------------------------
+
+  @doc """
+  A search a source reads in a repeating group's cell, read for every
+  cell together (see "Searches in cells"). `spec`: the search (`ref`),
+  its pins (`pins`, the cell's values), the keys that differ from cell to
+  cell (`keys`: `{pin, attribute, :eq | :in, unless}`, a key holding only
+  where the pin `unless` is not yes), the yes/no pins making it match
+  nothing (`void`: `{pin, :yes}` when yes, `{pin, :no}` unless yes), its sort's attributes (`sort`), how
+  much of it is taken (`take`, `page_size`, as `read/4`'s) and the
+  relationships read through its records (`loads`). `query` is the cell's
+  own query; `batch`, given every cell's values of the keys, the query of
+  all of them. The loader collects the cells' searches and reads them
+  first (`collect_cells/2`); a cell then finds its records. Outside that
+  (a cell nothing collected, a read outside a read of the page's data),
+  the cell's own query is read, as any other.
+  """
+  def cell_read(ctx, spec, query, batch) do
+    key = {:cell_read, spec.ref, spec.pins, spec.take, spec.page_size, spec.loads}
+
+    case Process.get(@collect) do
+      requests when is_list(requests) ->
+        # Collecting: a search read in an earlier round is known (a search
+        # reading its records collects its own with them).
+        case Process.get(@pass) do
+          %{^key => {actor, value}} when actor === ctx.actor ->
+            value
+
+          _ ->
+            # After a search not read yet, this one's values may be read
+            # from its placeholder: collected, but read in a later round.
+            request =
+              Map.merge(spec, %{
+                key: key,
+                query: query,
+                batch: batch,
+                later?: Process.get(@unread, false)
+              })
+
+            Process.put(@collect, [request | requests])
+            Process.put(@unread, true)
+            none(spec.take)
+        end
+
+      _ ->
+        once(key, ctx.actor, fn ->
+          query.()
+          |> read(ctx, spec.take, spec.page_size)
+          |> load_value(spec.loads, ctx)
+        end)
+    end
+  end
+
+  @doc """
+  The most records the query of a round of cells reads, and the most
+  combinations of the cells' key values it compares (`:max_batched`,
+  default 10_000): past it, each cell's search is read on its own
+  (logged).
+  """
+  def max_batched do
+    case Keyword.get(Application.get_env(:<%= @app %>, __MODULE__, []), :max_batched, 10_000) do
+      n when is_integer(n) and n > 0 -> n
+      _ -> 10_000
+    end
+  end
+
+  @doc """
+  How many rounds of cells' searches a read collects and reads together
+  (`:max_cell_rounds`, default 4): a search reading another's records is
+  collected in the round after it, and a page's sizes left short are read
+  again in a round of their own. Past it, what is left is read cell by
+  cell (logged).
+  """
+  def max_cell_rounds do
+    case Keyword.get(Application.get_env(:<%= @app %>, __MODULE__, []), :max_cell_rounds, 4) do
+      n when is_integer(n) and n > 0 -> n
+      _ -> 4
+    end
+  end
+
+  # Runs `fun` (a source in every unit) collecting the searches it reads
+  # in cells (`cell_read/4`, which reads nothing then), and reads them
+  # for every cell together into the read pass, where each cell finds
+  # its part. A search whose constraints read another one's records is
+  # collected once those are read: rounds until nothing new is collected,
+  # at most `max_cell_rounds/0`; past it the cells left read their own
+  # queries (logged). Every search collected is settled in the pass, read
+  # together or alone, so a later round never collects it again. Nothing
+  # is kept outside a read pass.
+  defp collect_cells(fun, actor, round \\ 1) do
+    if is_map(Process.get(@pass)) do
+      collected = collect(fun, actor)
+      # A search collected after one not read yet waits for a later round.
+      new = collected |> Enum.reject(& &1.later?) |> Enum.uniq_by(& &1.key)
+
+      cond do
+        collected == [] ->
+          :ok
+
+        round > max_cell_rounds() ->
+          cells_warning(
+            "searches in repeating group cells past #{max_cell_rounds()} rounds " <>
+              "(:max_cell_rounds) are read cell by cell"
+          )
+
+        true ->
+          new
+          |> Enum.group_by(&{&1.ref, &1.take, &1.page_size, &1.loads, shared_pins(&1)})
+          |> Enum.each(fn {_shape, group} -> read_cells(group, actor) end)
+
+          collect_cells(fun, actor, round + 1)
+      end
+    end
+  end
+
+  # The searches `fun` reads in cells that the pass does not hold yet.
+  defp collect(fun, actor) do
+    previous = Process.put(@collect, [])
+
+    requests =
+      try do
+        fun.()
+        Process.get(@collect)
+      after
+        if previous, do: Process.put(@collect, previous), else: Process.delete(@collect)
+        Process.delete(@unread)
+      end
+
+    requests
+    |> Enum.reverse()
+    |> Enum.reject(&read_already?(&1.key, actor))
+  end
+
+  defp read_already?(key, actor), do: match?(%{^key => {^actor, _}}, Process.get(@pass))
+
+  # Logged once per page process, not on every read.
+  defp cells_warning(message) do
+    if Process.get({:bubble_cells_warned, message}) != true do
+      Process.put({:bubble_cells_warned, message}, true)
+      Logger.warning("bubble page data: " <> message)
+    end
+  end
+
+  # The pins every cell of a group has alike: all but its keys.
+  defp shared_pins(request),
+    do: Map.drop(request.pins, for({var, _attr, _kind, _unless} <- request.keys, do: var))
+
+  # The cells of one search whose pins differ only in their keys: their
+  # keys hold or not alike (`unless` is a shared pin). A cell with a key
+  # whose value is empty reads its own query (cells alike share it); one
+  # whose list is empty finds nothing (the key is a part of the search's
+  # conjunction). What is read is kept in the pass: settled.
+  defp read_cells([first | _] = group, actor) do
+    active =
+      for {var, attr, kind, unless} <- first.keys,
+          is_nil(unless) or Map.get(first.pins, unless) != true,
+          do: {var, attr, kind}
+
+    # A cell whose empty value the search does not ignore finds nothing.
+    {void, group} =
+      Enum.split_with(group, fn r -> Enum.any?(Map.get(r, :void, []), &void?(&1, r.pins)) end)
+
+    {keyed, alone} =
+      Enum.split_with(group, fn r ->
+        active != [] and Enum.all?(active, fn {var, _, kind} -> keyed?(r.pins[var], kind) end)
+      end)
+
+    {none, keyed} =
+      Enum.split_with(keyed, fn r ->
+        Enum.any?(active, fn {var, _, _} -> key_values(r.pins[var]) == [] end)
+      end)
+
+    # Every cell's combinations of its keys' values: past `max_batched/0`,
+    # the cells read their own queries (logged once).
+    combinations = keyed |> Enum.map(&length(tuples(&1, active))) |> Enum.sum()
+
+    found =
+      cond do
+        keyed == [] ->
+          %{}
+
+        combinations > max_batched() ->
+          cells_warning(
+            "a search in repeating group cells has #{combinations} key combinations, " <>
+              "past :max_batched (#{max_batched()}); its cells are read cell by cell"
+          )
+
+          read_alone(keyed, actor)
+
+        true ->
+          batch_results(keyed, active, first, actor)
+      end
+
+    found = Enum.reduce(none ++ void, found, &Map.put(&2, &1.key, none(&1.take)))
+    found = Map.merge(found, read_alone(alone, actor))
+
+    keys = Map.keys(found)
+    values = found |> Map.values() |> load_values(first.loads, actor)
+
+    Process.put(
+      @pass,
+      Enum.reduce(Enum.zip(keys, values), Process.get(@pass), fn {key, value}, pass ->
+        Map.put(pass, key, {actor, value})
+      end)
+    )
+  end
+
+  defp void?({var, :yes}, pins), do: Map.get(pins, var) == true
+  defp void?({var, :no}, pins), do: Map.get(pins, var) != true
+
+  # Each cell's own query, as `cell_read/4` reads it alone (identical ones
+  # once).
+  defp read_alone(requests, actor) do
+    ctx = %{actor: actor}
+
+    Map.new(requests, fn r ->
+      {r.key,
+       once({:cell_alone, r.key}, actor, fn -> r.query.() |> read(ctx, r.take, r.page_size) end)}
+    end)
+  end
+
+  defp keyed?(value, :eq), do: is_binary(value)
+  defp keyed?(value, :in), do: is_list(value)
+
+  defp key_values(value) when is_binary(value), do: [value]
+  defp key_values(values) when is_list(values), do: values |> Enum.filter(&is_binary/1) |> Enum.uniq()
+  defp key_values(_value), do: []
+
+  # A cell's key tuples: each combination of its keys' values.
+  defp tuples(request, active) do
+    Enum.reduce(active, [[]], fn {var, _attr, _kind}, acc ->
+      for t <- acc, v <- key_values(request.pins[var]), do: [v | t]
+    end)
+    |> Enum.map(&(&1 |> Enum.reverse() |> List.to_tuple()))
+  end
+
+  defp row_tuple(row, active),
+    do: active |> Enum.map(fn {_var, attr, _kind} -> Map.get(row, attr) end) |> List.to_tuple()
+
+  # The query of `requests` together: each active key compared with all
+  # their values, and with two or three keys the cells' own combinations
+  # of them (no record of one cell's first key and another's second).
+  defp batch_query(requests, active, first) do
+    unions =
+      Map.new(active, fn {var, _attr, _kind} ->
+        {var, requests |> Enum.flat_map(&key_values(&1.pins[var])) |> Enum.uniq()}
+      end)
+
+    query = first.batch.(Map.merge(first.pins, unions))
+
+    case active do
+      [_] ->
+        query
+
+      _ ->
+        columns =
+          requests
+          |> Enum.flat_map(&tuples(&1, active))
+          |> Enum.uniq()
+          |> Enum.map(&Tuple.to_list/1)
+          |> Enum.zip_with(& &1)
+
+        combined(query, Enum.map(active, fn {_var, attr, _kind} -> Ash.Expr.ref(attr) end), columns)
+    end
+  end
+
+  defp combined(query, [a, b], [x, y]) do
+    Ash.Query.filter(
+      query,
+      fragment(
+        "(CAST(? AS text), CAST(? AS text)) IN (SELECT * FROM unnest(?::text[], ?::text[]))",
+        ^a,
+        ^b,
+        type(^x, {:array, :string}),
+        type(^y, {:array, :string})
+      )
+    )
+  end
+
+  defp combined(query, [a, b, c], [x, y, z]) do
+    Ash.Query.filter(
+      query,
+      fragment(
+        "(CAST(? AS text), CAST(? AS text), CAST(? AS text)) IN (SELECT * FROM unnest(?::text[], ?::text[], ?::text[]))",
+        ^a,
+        ^b,
+        ^c,
+        type(^x, {:array, :string}),
+        type(^y, {:array, :string}),
+        type(^z, {:array, :string})
+      )
+    )
+  end
+
+  # The rows of each cell, in the read's order: rows grouped once by their
+  # keys' values, each cell's tuples looked up.
+  defp by_cell(rows, requests, active) do
+    index =
+      rows
+      |> Enum.with_index()
+      |> Enum.group_by(fn {row, _i} -> row_tuple(row, active) end)
+
+    Map.new(requests, fn r ->
+      mine =
+        r
+        |> tuples(active)
+        |> Enum.flat_map(&Map.get(index, &1, []))
+        |> Enum.uniq_by(&elem(&1, 1))
+        |> Enum.sort_by(&elem(&1, 1))
+        |> Enum.map(&elem(&1, 0))
+
+      {r.key, mine}
+    end)
+  end
+
+  # `%{key => value}` for each request, as its own query would read it. A
+  # read that fails leaves every cell of it empty (logged), as each cell's
+  # own read would.
+  defp batch_results(requests, active, first, actor) do
+    query = batch_query(requests, active, first)
+
+    case query do
+      %Ash.Query{context: %{bubble_listed: n}} when is_integer(n) ->
+        listed_results(query, requests, active, first, actor)
+
+      _ when first.take == :count ->
+        count_results(query, requests, active, actor)
+
+      _ when first.take in [:first, {:item, 1}] ->
+        if Enum.all?(active, &match?({_var, _attr, :eq}, &1)),
+          do: first_results(query, requests, active, actor),
+          else: round_results(requests, active, first, actor, %{}, 1)
+
+      _ ->
+        round_results(requests, active, first, actor, %{}, 1)
+    end
+  end
+
+  # A count: the records' keys, counted per cell. Past `max_batched/0` the
+  # cells' counts are read on their own (logged once).
+  defp count_results(query, requests, active, actor) do
+    [pk | _] = Ash.Resource.Info.primary_key(query.resource)
+    attrs = Enum.uniq([pk | for({_var, attr, _kind} <- active, do: attr)])
+    cap = max_batched()
+    query = query |> Ash.Query.select(attrs) |> Ash.Query.limit(cap + 1)
+
+    case batch_read(query, actor) do
+      {:ok, rows} when length(rows) > cap ->
+        cells_warning(
+          "a count of #{inspect(query.resource)} in repeating group cells reached " <>
+            ":max_batched (#{cap}); each cell's count is read on its own"
+        )
+
+        read_alone(requests, actor)
+
+      {:ok, rows} ->
+        rows
+        |> by_cell(requests, active)
+        |> Map.new(fn {key, mine} -> {key, cell_count(length(mine), query)} end)
+
+      {:error, error} ->
+        failed(query, error)
+        Map.new(requests, &{&1.key, nil})
+    end
+  end
+
+<%= if @enforced? do %>  defp cell_count(n, query) do
+    cap = max_count()
+
+    if n > cap do
+      Logger.warning(
+        "bubble page data: a count of #{inspect(query.resource)} reached :max_count " <>
+          "(#{cap}); it shows #{cap}, the true count is larger"
+      )
+
+      cap
+    else
+      n
+    end
+  end
+<% else %>  defp cell_count(n, _query), do: n
+<% end %>
+  # A first item: the first record of each cell's keys, in the search's
+  # order (`DISTINCT ON` the keys), one per cell at most.
+  defp first_results(query, requests, active, actor) do
+    query = Ash.Query.distinct(query, for({_var, attr, _kind} <- active, do: attr))
+
+    case batch_read(query, actor) do
+      {:ok, rows} ->
+        rows |> by_cell(requests, active) |> Map.new(fn {key, mine} -> {key, List.first(mine)} end)
+
+      {:error, error} ->
+        failed(query, error)
+        Map.new(requests, &{&1.key, nil})
+    end
+  end
+
+  # The records a list holds (WTF-495): all of every cell's at once (the
+  # query reads no more than their IDs, in the search's order only:
+  # `listed_batch/2`), each cell's in its own list's order among equal
+  # sort keys.
+  defp listed_results(query, requests, active, first, actor) do
+    query = Ash.Query.limit(query, max(query.context.bubble_listed, 1))
+    [pk | _] = Ash.Resource.Info.primary_key(query.resource)
+    by_key = Map.new(requests, &{&1.key, &1})
+
+    case batch_read(query, actor) do
+      {:ok, rows} ->
+        rows
+        |> by_cell(requests, active)
+        |> Map.new(fn {key, mine} ->
+          r = by_key[key]
+          mine = list_order(mine, r, pk, active, first.sort)
+
+          if r.take == :count,
+            do: {key, cell_count(length(mine), query)},
+            else: {key, taken(mine, r, true)}
+        end)
+
+      {:error, error} ->
+        failed(query, error)
+        Map.new(requests, &{&1.key, nil})
+    end
+  end
+
+  # Among records with equal sort keys (contiguous in the read), a cell's
+  # own list's order (its `:in` key on the primary key).
+  defp list_order(rows, request, pk, active, sort) do
+    position =
+      case Enum.find(active, fn {_var, attr, kind} -> kind == :in and attr == pk end) do
+        {var, _, _} -> request.pins[var] |> key_values() |> Enum.with_index() |> Map.new()
+        nil -> %{}
+      end
+
+    rows
+    |> Enum.chunk_by(fn row -> Enum.map(sort, &Map.get(row, &1)) end)
+    |> Enum.flat_map(fn run -> Enum.sort_by(run, &Map.get(position, Map.get(&1, pk))) end)
+  end
+
+  # Records sorted by the search and cut per cell. Every record read is
+  # some cell's (the keys, and their combinations, are the cells' own), so
+  # a read past the sum of the cells' needs settles at least one cell: a
+  # cell with fewer than its need in a read that reached its limit may
+  # have lost records to others, and is read again with the other such
+  # cells, the limit doubled each round. Past `max_cell_rounds/0` rounds,
+  # or a round that settles no cell, the cells left read their own
+  # queries (logged).
+  defp round_results([], _active, _first, _actor, acc, _round), do: acc
+
+  defp round_results(requests, active, first, actor, acc, round) do
+    # Doubled each round, never past `max_batched/0` (plus one): past it a
+    # round may settle no cell, and they read their own queries.
+    limit =
+      min(
+        (requests |> Enum.map(&needed(&1, false)) |> Enum.sum()) * 2 ** (round - 1) + 1,
+        max_batched() + 1
+      )
+
+    query = requests |> batch_query(active, first) |> Ash.Query.limit(limit)
+    by_key = Map.new(requests, &{&1.key, &1})
+
+    case batch_read(query, actor) do
+      {:ok, rows} ->
+        full? = length(rows) >= limit
+
+        {acc, left} =
+          rows
+          |> by_cell(requests, active)
+          |> Enum.reduce({acc, []}, fn {key, mine}, {acc, left} ->
+            r = by_key[key]
+            mine = Enum.take(mine, needed(r, false))
+
+            if full? and length(mine) < needed(r, false),
+              do: {acc, [r | left]},
+              else: {Map.put(acc, key, taken(mine, r, false)), left}
+          end)
+
+        cond do
+          left == [] ->
+            acc
+
+          length(left) == length(requests) or round >= max_cell_rounds() ->
+            cells_warning(
+              "a search of #{inspect(query.resource)} in repeating group cells left cells " <>
+                "short after #{round} rounds; they are read cell by cell"
+            )
+
+            Map.merge(acc, read_alone(left, actor))
+
+          true ->
+            round_results(left, active, first, actor, acc, round + 1)
+        end
+
+      {:error, error} ->
+        failed(query, error)
+        Map.merge(acc, Map.new(requests, &{&1.key, nil}))
+    end
+  end
+
+  # How many of a cell's records its own read takes (`read/4`).
+  defp needed(r, listed?) do
+    case r.take do
+      :first -> 1
+      {:item, n} -> n
+      {:limit, n} -> min(cap(r.page_size), n)
+      :all when listed? and is_nil(r.page_size) -> max(r.query.().context.bubble_listed, 1)
+      :all -> cap(r.page_size)
+    end
+  end
+
+  defp taken(mine, r, listed?) do
+    mine = Enum.take(mine, needed(r, listed?))
+
+    case r.take do
+      :first -> List.first(mine)
+      {:item, n} -> Enum.at(mine, n - 1)
+      _ -> mine
+    end
+  end
+
+  defp batch_read(query, actor),
+    do:
+      Ash.read(query, <%= if @enforced? do %>action: read_action(query), <% end %>actor: actor, authorize?: true)
 
   # --- reactivity ------------------------------------------------------------------------
 

@@ -536,6 +536,22 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   def reads_query?(_bound), do: false
 
   @doc """
+  Whether a bound source reads a search batched for every cell of a
+  repeating group (WTF-520: a query with `batch`, or one it reads first).
+  """
+  @spec cell_reads?(map()) :: boolean()
+  def cell_reads?(%{read: {:query, q}}), do: batched?(q)
+  def cell_reads?(%{read: {:value, v}}), do: Enum.any?(Map.get(v, :queries, []), &batched?/1)
+
+  def cell_reads?(%{read: {:switch, sw}}),
+    do: sw |> switch_reads() |> Enum.any?(&cell_reads?(%{read: &1}))
+
+  def cell_reads?(_bound), do: false
+
+  defp batched?(q),
+    do: Map.has_key?(q, :batch) or Enum.any?(Map.get(q, :queries, []), &batched?/1)
+
+  @doc """
   Generated-code coverage of the page's data sources (WTF-420), with
   string keys: `"sources"` (`total`; `wired`: loaded by the generated
   page, with no residue, neither the lowering's nor this target's, and

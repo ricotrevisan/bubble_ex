@@ -288,8 +288,9 @@ Extended beyond what the replay measured (unverified):
 
 Not lowered yet: sorting a list of options, or any list by a field of its
 items (residue `elixir:sort`), a field of each item of a list, a list
-operator inside a repeating group's cell (`:page_data_in_cell`, `kind:
-query`), dynamic sort fields.
+operator over a search inside a repeating group's cell that cannot be
+read for every cell together (`:page_data_in_cell`, `kind: query`; see
+*Searches in cells* below), dynamic sort fields.
 
 **Display data (WTF-492).** An element a "Display data in a group /
 popup" or "Display list in a repeating group" step sets shows what the
@@ -349,11 +350,13 @@ page size, or a value; a condition is a value, its searches read first.
 The queries go through `BubbleData.read/4`, so one already read in the
 same pass (`once/3`) is not read again, and nothing is read for a branch
 that does not win. In a repeating group's cell the fold is one value,
-computed per cell, as before; a search there stays `:page_data_in_cell`.
+computed per cell, as before; a search there is read for every cell
+together (*Searches in cells*, below) or is `:page_data_in_cell`.
 In a reusable element rendered in cells (one of its instances is in a
 repeating group's cell, or it is nested in one that is), a conditional
 source with a search that reads the instance's scope would query once
-per cell: that source is `:page_data_in_cell` residue (`kind` `"query"`),
+per cell: unless it is read for every cell together (*Searches in
+cells*, below), that source is `:page_data_in_cell` residue (`kind` `"query"`),
 and so is what reads it, but its instances are still rendered per cell
 (WTF-494). A search that reads nothing of the scope is the same query in
 every cell, read once. A value over searches read first (WTF-495) in
@@ -514,8 +517,10 @@ inside it, WTF-492), not its properties: they stay the values computed in
 the parent's scope.
 
 A group inside a repeating group's cell holds a value per cell. A
-repeating group or a search inside a cell is residue
-(`:page_data_in_cell`): the page would query once per cell.
+repeating group inside a cell is residue (`:page_data_in_cell`, `kind`
+`"list"`); a search inside a cell is read for every cell together
+(*Searches in cells*, below) or is residue (`kind` `"query"`): the page
+never queries once per cell.
 
 ### Across instance boundaries (WTF-520)
 
@@ -739,9 +744,10 @@ each source for all the cells at once (`<Web>.BubbleData`):
 * a search that reads nothing of the instance or the cell (only the
   current user, the time or the URL, `shared: true`) runs once and is
   shared by every cell;
-* a search that reads the instance would run once per cell: a reusable
-  element with one (or nesting one, outside its own cells) is not
-  rendered per cell. Its instances in cells keep one fixed scope and are
+* a search that reads the instance is read for every cell together
+  (*Searches in cells*, below); one that cannot be would run once per
+  cell: a reusable element with one (or nesting one, outside its own
+  cells) is not rendered per cell. Its instances in cells keep one fixed scope and are
   marked, with their sources (`:page_data_in_cell`, `kind` `"query"`):
   `TODO(bubble:<id>) rendered once for every cell, not per cell`. When
   another instance gives the reusable element its thing, such an
@@ -784,6 +790,91 @@ boundaries (WTF-520, above); a source that
 reads one that is not loaded is not loaded either (`:unavailable_input`,
 `inputs: ["data_source"]`), and sources reading each other in a cycle
 are `:unresolved_reference`.
+
+## Searches in cells (WTF-520)
+
+A search a repeating group's cells read with the cell's thing ("Search
+for orders where customer = Current cell's customer", its `:count`, its
+first item, `:items until #n`, a cell's own list `:filtered`), whether in
+a group of the cell, a reusable instance's property or source there, or
+inside a reusable element rendered per cell (reading its own thing), is
+read for every cell together: **one query per round of cells, never one
+per cell.**
+
+**Which searches.** `BubbleEx.Target.Elixir.FrontendWorkflows.Data`
+binds the search as anywhere else, then batches it (`cell_batch/2`) when
+its constraints are a conjunction whose parts that differ from cell to
+cell are:
+
+* a **key**: the searched record's own attribute equal to a thing's
+  unique ID read from the cell (`customer = Current cell's customer`, a
+  group's thing in the cell, the instance's thing or property), or its
+  unique ID in a list the cell holds (the records of `Current cell's
+  customer's orders :filtered`, WTF-495);
+* such a key under a constraint dropped when its value is empty
+  (`ignore_empty_constraints`): it holds only in the cells whose value is
+  not empty;
+* anything else reading only yes/no values (whether a value is empty):
+  the cells are grouped by them, one query per group.
+
+Constraints that read nothing of the cell (the current user, a page
+input, a constant) are the same in every cell. A search reading another
+batched search's records (a cell's list `:filtered`, then `:sorted`) is
+batched too, read in the round after it. Anything else that differs
+from cell to cell (an ordering or a text comparison with the cell's
+value, a key under `or` or `not`, a field of a related record, more
+than three keys, Bubble's random sort) stays residue (`:page_data_in_cell`, `kind` `"query"`), as
+before.
+
+**How it is read.** The source's entry in `__bubble__(:data)` says
+`cell_reads: true`; each batched search is printed as
+`BubbleData.cell_read/4`, with the cell's own query and the query of
+every cell at once (each key `attribute in ^values`; with two or three
+keys, also the cells' own combinations of their values, so no record of
+one cell's first key and another's second is read). The loader runs the
+source in every cell first, collecting each cell's search (reading
+nothing for it), reads the batches into the read pass, collects again
+while a search reading those records appears (at most `:max_cell_rounds`
+rounds, default 4; past it the cells left read their own queries,
+logged), then runs the source again: each cell finds its records there (`once/3`), and reads its
+own query only if nothing collected it. Each cell gets the records whose
+attributes equal its keys, in the search's order:
+
+| what the cell takes | the batched read |
+|---|---|
+| `:count` | the keys of the matching records (`select`), counted per cell; past `:max_batched` (default 10,000) records in all, each cell's count is read on its own (logged) |
+| `:first item` | the first record per key, in the search's order (`DISTINCT ON` the keys) |
+| a list (its page size), `:items until #n`, `item #n` | the records sorted by the search, at most the sum of the cells' needs plus one: every record read is some cell's, so a read reaching that limit settles at least one cell; a cell with fewer than it needs may have lost records to the others, and the cells left are read again together with the limit doubled, at most `:max_cell_rounds` rounds; past them, or when a round settles none, they read their own queries (logged) |
+| the records a cell's list holds | all of every cell's at once (no more than their IDs, not sorted by their position in the union), each cell's in its own list's order among equal sort keys |
+
+A per-cell limit is never a global `LIMIT`. The doubled limit never passes
+`:max_batched` (plus one), and a search whose cells have more key
+combinations than `:max_batched` in all is read cell by cell (logged).
+The arrays of values are bound as query parameters, so the SQL text is
+the same whatever the cells. A window function
+(`row_number() OVER (PARTITION BY ...)`) would read each cell's page in
+one query, but Ash's filters cannot express it, and raw SQL around the
+read would rank records the policies hide: a heavy cell costs rounds
+instead. A batched read that fails leaves every cell of it empty
+(logged), as each cell's own read would. Every search collected is
+settled in the read pass (read together, or alone), so a later round
+never collects it again. Ties in a sort (records with
+equal sort keys) come in the database's order, as for a single search. A
+cell whose key value is empty reads its own query (cells alike share it).
+
+**Privacy.** The batched query is the same search, with the same
+constraints and sort, read once as the current user through Ash: the
+same action (`:search`, or `:read` for a list's records), the same
+policies and, with enforced privacy, the same `<App>.Privacy.SearchFields`
+check (it sees the keys' fields in the filter). A field hidden from
+searches (`:search_field_restricted`, WTF-457) or hidden along a path
+(`:search_field_hidden`) stays refused, as for any search. With data
+access off nothing is read.
+
+**Not yet:** a key on a value other than a unique ID (a text or a number
+read from the cell), a repeating group inside a cell (WTF-520's nested
+lists: its list would be such a search, but the page does not render a
+list per cell yet).
 
 ## What is generated
 
@@ -916,6 +1007,40 @@ The frontend workflow metrics (`docs/frontend-workflows.md`, *native*
 and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
+
+### Private fixture app (test version), 2026-10-09, searches in cells (WTF-520)
+
+Of 67 sources that were `:page_data_in_cell` residue because a search
+read the cell (or a reusable element's scope rendered per cell), 51 now
+load, 13 now show what else they read that is not loaded (an input or a
+group's thing set at run time, a list not loaded, a field of a merged
+list), and 3 stay: a comparison other than equality with the cell, or a
+search the batch cannot key. Six reusable instances in cells that were
+rendered once for every cell are now rendered per cell; 6 sources reading
+those load with them. One of those reusable elements has a property one
+of whose values (in a cell) does not load: `This Reusable's <property>`
+loads only when every value does (WTF-493), so 2 sources and 5 workflows
+reading it no longer load (fail closed).
+
+| | before | after |
+|-|------:|------:|
+| data sources, wired | 2,674 | 2,729 |
+| groups wired | 1,323 | 1,351 |
+| instance sources wired | 165 | 170 |
+| lists wired | 165 | 166 |
+| property values wired | 989 | 1,010 |
+| read as a query / a switch / a value | 155 / 71 / 2,313 | 170 / 78 / 2,346 |
+| `:page_data_in_cell` residue entries (sources) | 84 | 20 |
+| `:unavailable_input` residue entries (sources) | 439 | 447 |
+| `:uncompiled_expression` residue entries (sources) | 166 | 167 |
+| workflows, native / wired | 812 / 540 | 814 / 541 |
+| steps, native | 2,420 | 2,419 |
+
+The repeating group's own `cell_thing` readers (49 sources) are all a
+cascade of their list not loading: 14 lists are repeating groups in a
+cell (`:page_data_in_cell`, `kind` `"list"`), the others' sources do not
+compile (a plugin element's state, a regular expression, a dynamic sort
+field, an unknown source).
 
 ### Private fixture app (test version), 2026-10-09, instances whose own source does not load (WTF-522)
 

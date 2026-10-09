@@ -1,0 +1,901 @@
+{
+  "_comment": "WTF-520: searches in a repeating group's cells, read for every cell together (one query per cell round, never one per cell; two keys: the customer and its owner). Customers and their orders, all data invented; test/support/target/phoenix/cell_searches_behavior.exs counts the queries.",
+  "_id": "cell-searches-fixture",
+  "user_types": {
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        },
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": [
+              "email",
+              "name_text"
+            ]
+          }
+        }
+      }
+    },
+    "customer": {
+      "display": "Customer",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        },
+        "orders_list_custom_order": {
+          "display": "Orders",
+          "value": "list.custom.order"
+        },
+        "owner_user": {
+          "display": "Owner",
+          "value": "user"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
+        }
+      }
+    },
+    "order": {
+      "display": "Order",
+      "fields": {
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        },
+        "open_boolean": {
+          "display": "Open",
+          "value": "boolean"
+        },
+        "customer_custom_customer": {
+          "display": "Customer",
+          "value": "custom.customer"
+        },
+        "owner_user": {
+          "display": "Owner",
+          "value": "user"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": []
+          }
+        },
+        "owner_": {
+          "display": "Owner",
+          "condition": {
+            "type": "InjectedValue",
+            "next": {
+              "type": "Message",
+              "name": "owner_user",
+              "next": {
+                "type": "Message",
+                "name": "equals",
+                "args": {
+                  "type": "CurrentUser"
+                }
+              }
+            }
+          },
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
+        }
+      }
+    }
+  },
+  "element_definitions": {
+    "bCard": {
+      "id": "bCard",
+      "name": "Customer card",
+      "type": "CustomDefinition",
+      "properties": {
+        "group_type": "custom.customer",
+        "width": 300,
+        "height": 40
+      },
+      "elements": {
+        "bCardCount": {
+          "id": "bCardCount",
+          "type": "Group",
+          "properties": {
+            "order": 1,
+            "width": 300,
+            "height": 40,
+            "group_type": "number",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.order",
+                "sort_field": "title_text",
+                "descending": false,
+                "ignore_empty_constraints": false,
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "customer_custom_customer",
+                    "value": {
+                      "type": "ElementParent"
+                    }
+                  }
+                }
+              },
+              "next": {
+                "type": "Message",
+                "name": "count"
+              }
+            }
+          },
+          "elements": {
+            "bCardCountN": {
+              "id": "bCardCountN",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Card: ",
+                    "1": {
+                      "type": "ElementParent"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "pages": {
+    "index": {
+      "id": "bIndex",
+      "name": "index",
+      "type": "Page",
+      "properties": {
+        "title": "Home"
+      },
+      "elements": {
+        "bHello": {
+          "id": "bHello",
+          "type": "Text",
+          "properties": {
+            "order": 1,
+            "width": 300,
+            "height": 40,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Hello"
+              }
+            }
+          }
+        }
+      }
+    },
+    "customers": {
+      "id": "bCustomersPage",
+      "name": "customers",
+      "type": "Page",
+      "properties": {
+        "title": "Customers"
+      },
+      "elements": {
+        "bCustomers": {
+          "id": "bCustomers",
+          "type": "RepeatingGroup",
+          "properties": {
+            "order": 1,
+            "width": 300,
+            "height": 40,
+            "columns": 1,
+            "rows": 10,
+            "group_type": "custom.customer",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.customer",
+                "sort_field": "name_text",
+                "descending": false,
+                "ignore_empty_constraints": false
+              }
+            }
+          },
+          "elements": {
+            "bName": {
+              "id": "bName",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Customer: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "name_text"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bCount": {
+              "id": "bCount",
+              "type": "Group",
+              "properties": {
+                "order": 2,
+                "width": 300,
+                "height": 40,
+                "group_type": "number",
+                "data_source": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.order",
+                    "sort_field": "title_text",
+                    "descending": false,
+                    "ignore_empty_constraints": false,
+                    "constraints": {
+                      "0": {
+                        "constraint_type": "equals",
+                        "key": "customer_custom_customer",
+                        "value": {
+                          "type": "CurrentDataItem"
+                        }
+                      }
+                    }
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "count"
+                  }
+                }
+              },
+              "elements": {
+                "bCountN": {
+                  "id": "bCountN",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Count: ",
+                        "1": {
+                          "type": "ElementParent"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bFirst": {
+              "id": "bFirst",
+              "type": "Group",
+              "properties": {
+                "order": 3,
+                "width": 300,
+                "height": 40,
+                "group_type": "custom.order",
+                "data_source": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.order",
+                    "sort_field": "title_text",
+                    "descending": false,
+                    "ignore_empty_constraints": false,
+                    "constraints": {
+                      "0": {
+                        "constraint_type": "equals",
+                        "key": "customer_custom_customer",
+                        "value": {
+                          "type": "CurrentDataItem"
+                        }
+                      }
+                    }
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "first_element"
+                  }
+                }
+              },
+              "elements": {
+                "bFirstTitle": {
+                  "id": "bFirstTitle",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "First: ",
+                        "1": {
+                          "type": "ElementParent",
+                          "next": {
+                            "type": "Message",
+                            "name": "title_text"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bOpen": {
+              "id": "bOpen",
+              "type": "Group",
+              "properties": {
+                "order": 4,
+                "width": 300,
+                "height": 40,
+                "group_type": "number",
+                "data_source": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.order",
+                    "sort_field": "title_text",
+                    "descending": false,
+                    "ignore_empty_constraints": false,
+                    "constraints": {
+                      "0": {
+                        "constraint_type": "equals",
+                        "key": "customer_custom_customer",
+                        "value": {
+                          "type": "CurrentDataItem"
+                        }
+                      },
+                      "1": {
+                        "constraint_type": "equals",
+                        "key": "open_boolean",
+                        "value": true
+                      }
+                    }
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "count"
+                  }
+                }
+              },
+              "elements": {
+                "bOpenN": {
+                  "id": "bOpenN",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Open: ",
+                        "1": {
+                          "type": "ElementParent"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bLast": {
+              "id": "bLast",
+              "type": "Group",
+              "properties": {
+                "order": 5,
+                "width": 300,
+                "height": 40,
+                "group_type": "custom.order",
+                "data_source": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.order",
+                    "sort_field": "title_text",
+                    "descending": true,
+                    "ignore_empty_constraints": false,
+                    "constraints": {
+                      "0": {
+                        "constraint_type": "equals",
+                        "key": "customer_custom_customer",
+                        "value": {
+                          "type": "CurrentDataItem"
+                        }
+                      }
+                    }
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "first_element"
+                  }
+                }
+              },
+              "elements": {
+                "bLastTitle": {
+                  "id": "bLastTitle",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Last: ",
+                        "1": {
+                          "type": "ElementParent",
+                          "next": {
+                            "type": "Message",
+                            "name": "title_text"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bTwo": {
+              "id": "bTwo",
+              "type": "Group",
+              "properties": {
+                "order": 6,
+                "width": 300,
+                "height": 40,
+                "group_type": "number",
+                "data_source": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.order",
+                    "sort_field": "title_text",
+                    "descending": false,
+                    "ignore_empty_constraints": false,
+                    "constraints": {
+                      "0": {
+                        "constraint_type": "equals",
+                        "key": "customer_custom_customer",
+                        "value": {
+                          "type": "CurrentDataItem"
+                        }
+                      }
+                    }
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "limit_to",
+                    "args": 2,
+                    "next": {
+                      "type": "Message",
+                      "name": "count"
+                    }
+                  }
+                }
+              },
+              "elements": {
+                "bTwoN": {
+                  "id": "bTwoN",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Two: ",
+                        "1": {
+                          "type": "ElementParent"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bListed": {
+              "id": "bListed",
+              "type": "Group",
+              "properties": {
+                "order": 7,
+                "width": 300,
+                "height": 40,
+                "group_type": "number",
+                "data_source": {
+                  "type": "CurrentDataItem",
+                  "next": {
+                    "type": "Message",
+                    "name": "orders_list_custom_order",
+                    "next": {
+                      "type": "Message",
+                      "name": "filtered",
+                      "properties": {
+                        "constraints": {
+                          "0": {
+                            "constraint_type": "equals",
+                            "key": "open_boolean",
+                            "value": true
+                          }
+                        }
+                      },
+                      "next": {
+                        "type": "Message",
+                        "name": "count"
+                      }
+                    }
+                  }
+                }
+              },
+              "elements": {
+                "bListedN": {
+                  "id": "bListedN",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Listed: ",
+                        "1": {
+                          "type": "ElementParent"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bNewest": {
+              "id": "bNewest",
+              "type": "Group",
+              "properties": {
+                "order": 8,
+                "width": 300,
+                "height": 40,
+                "group_type": "custom.order",
+                "data_source": {
+                  "type": "CurrentDataItem",
+                  "next": {
+                    "type": "Message",
+                    "name": "orders_list_custom_order",
+                    "next": {
+                      "type": "Message",
+                      "name": "filtered",
+                      "properties": {
+                        "constraints": {
+                          "0": {
+                            "constraint_type": "equals",
+                            "key": "open_boolean",
+                            "value": true
+                          }
+                        }
+                      },
+                      "next": {
+                        "type": "Message",
+                        "name": "sorted",
+                        "properties": {
+                          "sort_field": "title_text",
+                          "descending": true
+                        },
+                        "next": {
+                          "type": "Message",
+                          "name": "first_element"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "elements": {
+                "bNewestTitle": {
+                  "id": "bNewestTitle",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Newest: ",
+                        "1": {
+                          "type": "ElementParent",
+                          "next": {
+                            "type": "Message",
+                            "name": "title_text"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bCard1": {
+              "id": "bCard1",
+              "type": "CustomElement",
+              "properties": {
+                "custom_id": "bCard",
+                "group_type": "custom.customer",
+                "order": 9,
+                "width": 300,
+                "height": 40,
+                "data_source": {
+                  "type": "CurrentDataItem"
+                }
+              }
+            },
+            "bPair": {
+              "id": "bPair",
+              "type": "Group",
+              "properties": {
+                "order": 10,
+                "width": 300,
+                "height": 40,
+                "group_type": "number",
+                "data_source": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.order",
+                    "sort_field": "title_text",
+                    "descending": false,
+                    "ignore_empty_constraints": false,
+                    "constraints": {
+                      "0": {
+                        "constraint_type": "equals",
+                        "key": "customer_custom_customer",
+                        "value": {
+                          "type": "CurrentDataItem"
+                        }
+                      },
+                      "1": {
+                        "constraint_type": "equals",
+                        "key": "owner_user",
+                        "value": {
+                          "type": "CurrentDataItem",
+                          "next": {
+                            "type": "Message",
+                            "name": "owner_user"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "limit_to",
+                    "args": 2,
+                    "next": {
+                      "type": "Message",
+                      "name": "count"
+                    }
+                  }
+                }
+              },
+              "elements": {
+                "bPairN": {
+                  "id": "bPairN",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Pair: ",
+                        "1": {
+                          "type": "ElementParent"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bLoose": {
+              "id": "bLoose",
+              "type": "Group",
+              "properties": {
+                "order": 11,
+                "width": 300,
+                "height": 40,
+                "group_type": "number",
+                "data_source": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.order",
+                    "sort_field": "title_text",
+                    "descending": false,
+                    "ignore_empty_constraints": true,
+                    "constraints": {
+                      "0": {
+                        "constraint_type": "equals",
+                        "key": "customer_custom_customer",
+                        "value": {
+                          "type": "CurrentDataItem"
+                        }
+                      },
+                      "1": {
+                        "constraint_type": "equals",
+                        "key": "owner_user",
+                        "value": {
+                          "type": "CurrentDataItem",
+                          "next": {
+                            "type": "Message",
+                            "name": "owner_user"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "limit_to",
+                    "args": 2,
+                    "next": {
+                      "type": "Message",
+                      "name": "count"
+                    }
+                  }
+                }
+              },
+              "elements": {
+                "bLooseN": {
+                  "id": "bLooseN",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Loose: ",
+                        "1": {
+                          "type": "ElementParent"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bChain": {
+              "id": "bChain",
+              "type": "Group",
+              "properties": {
+                "order": 12,
+                "width": 300,
+                "height": 40,
+                "group_type": "number",
+                "data_source": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.order",
+                    "sort_field": "title_text",
+                    "descending": false,
+                    "ignore_empty_constraints": false,
+                    "constraints": {
+                      "0": {
+                        "constraint_type": "equals",
+                        "key": "customer_custom_customer",
+                        "value": {
+                          "type": "Search",
+                          "properties": {
+                            "type_to_find": "custom.customer",
+                            "sort_field": "name_text",
+                            "descending": false,
+                            "ignore_empty_constraints": false,
+                            "constraints": {
+                              "0": {
+                                "constraint_type": "equals",
+                                "key": "owner_user",
+                                "value": {
+                                  "type": "CurrentDataItem",
+                                  "next": {
+                                    "type": "Message",
+                                    "name": "owner_user"
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "next": {
+                            "type": "Message",
+                            "name": "first_element"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "count"
+                  }
+                }
+              },
+              "elements": {
+                "bChainN": {
+                  "id": "bChainN",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Chain: ",
+                        "1": {
+                          "type": "ElementParent"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

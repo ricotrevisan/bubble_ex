@@ -679,6 +679,29 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Searches in a repeating group's cells are read for every cell
+  together** (WTF-520). A search a cell reads with its thing ("Search for
+  orders where customer = Current cell's customer", its count, first
+  item, `:items until #`, a cell's own list `:filtered` or `:sorted`), in
+  a group or reusable instance of the cell or in a reusable element
+  rendered per cell, was residue (`:page_data_in_cell`): it would have
+  queried once per cell. It is now one query per round of cells: each
+  key that differs per cell (the searched record's own attribute equal
+  to a thing's unique ID, or its ID in a cell's list) is compared with
+  every cell's values (`attribute in ^values`), and each cell gets the
+  records whose keys are its own, in the search's order
+  (`Data.cell_batch/2`, `BubbleData.cell_read/4`). A first item is one
+  record per key (`DISTINCT ON`); a page size or `:items until #` is per
+  cell (the query reads at most the cells' needs plus one, and a cell
+  left short is read again with the other such cells); a count reads the
+  records' keys, at most `:max_batched` (10,000), past which each cell's
+  count is read on its own (logged). The query is the same search read
+  once as the current user, through the same action, policies and search
+  fields check; fields hidden from searches stay refused. Shapes that
+  cannot be batched faithfully (a comparison other than equality with the
+  cell, a key under `or` or `not`, Bubble's random sort) stay residue.
+  See `docs/page-data.md`, "Searches in cells".
+
 - **Popup opened / closed events run** (WTF-520). "A popup is opened"
   and "A popup is closed" workflows were `:unsupported_event` residue.
   The page's hook now reports a Popup it actually opened or closed (by a
