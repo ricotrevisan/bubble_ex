@@ -75,18 +75,22 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   its reusable element's sources run in each cell's scope. The runtime
   reads a source for every cell together (`shared?`: one that reads
   nothing of its scope, only the current user, the time or the URL, is
-  read once), so a search there must be shared: a reusable element (or
-  one it nests) with a search that reads its instance would query once
-  per cell, and its instances in cells are not rendered per cell
-  (`cell_instances/4`), nor is one whose own data source is a search.
+  read once). A search that reads the cell or the instance is read for
+  every cell together (WTF-520, `cell_batch/2`: one query per round of
+  cells, each cell's records found by its keys; the query gets `batch`,
+  printed through `BubbleData.cell_read/4`); one that cannot be would
+  query once per cell: a reusable element (or one it nests) with such a
+  search is not rendered per cell (`cell_instances/4`), and such a
+  search in a cell is residue.
 
   ## Residue added here
 
     * `:page_data_in_cell` - a repeating group in a repeating group's
-      cell, or a search there: the page would read once per cell
-      (`detail.kind` `"list"` or `"query"`); a reusable instance in a cell
-      whose reusable element has a search reading its instance
-      (`"query"`, on the instance's sources)
+      cell, or a search there that cannot be read for every cell
+      together: the page would read once per cell (`detail.kind` `"list"`
+      or `"query"`); a reusable instance in a cell whose reusable element
+      has such a search reading its instance (`"query"`, on the
+      instance's sources)
     * `:uncompiled_expression` - constructs prefixed `ash:` (a search the
       Ash filter compiler rejects) or `elixir:`
     * `:unavailable_input` - an input the page does not provide, or
@@ -315,6 +319,15 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     displayed = Map.get(ctx, :displayed, %{})
     sources = if page_data, do: page_data.sources, else: []
     own = own_elements(sources)
+
+    # The reusable elements whose sources run once per cell (WTF-494): what
+    # their sources read of their scope differs from cell to cell.
+    ctx =
+      Map.put(
+        ctx,
+        :per_cell,
+        in_cell_reusables(Map.get(ctx, :in_cells, %{}), Map.get(ctx, :nested, %{}))
+      )
 
     # A "Display data" step sets an element's own thing, never a property
     # of an instance (WTF-493: those stay the parent's values).
@@ -547,7 +560,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # still rendered per cell.
   defp per_cell(bound, ctx) do
     nested = Map.get(ctx, :nested, %{})
-    bound = queries_in_cells(bound, in_cell_reusables(Map.get(ctx, :in_cells, %{}), nested))
+    bound = queries_in_cells(bound, Map.get(ctx, :per_cell, MapSet.new()))
     blocked = not_per_cell(bound, nested)
 
     if MapSet.size(blocked) == 0,
@@ -564,19 +577,31 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   defp block_in_cell(b, _blocked), do: b
 
+  # In a reusable element rendered per cell, a source whose searches read
+  # its scope is read for every cell together (WTF-520): its queries are
+  # batched. A value or conditional source whose searches cannot be is
+  # residue; a search source that cannot be keeps its instances from
+  # being rendered per cell (`per_cell_blocked/2`).
   defp queries_in_cells(bound, reusables) do
     marked =
       Enum.map(bound, fn
-        %{residue: [], cell: nil, read: {kind, _} = read} = b when kind in [:switch, :value] ->
-          if MapSet.member?(reusables, b.surface) and per_cell_query?(read, b),
-            do: %{b | read: nil, residue: [in_cell_entry(b.symbol, :query)]},
-            else: b
+        %{residue: [], cell: nil, read: {kind, _}} = b
+        when kind in [:switch, :value, :query] ->
+          if MapSet.member?(reusables, b.surface), do: batch_in_reusable(b), else: b
 
         b ->
           b
       end)
 
     if marked == bound, do: bound, else: prune(marked)
+  end
+
+  defp batch_in_reusable(%{read: {kind, _} = read} = b) do
+    case batch_read(read, true) do
+      {:ok, read} -> %{b | read: read}
+      :error when kind == :query -> b
+      :error -> %{b | read: nil, residue: [in_cell_entry(b.symbol, :query)]}
+    end
   end
 
   # The reusable elements whose sources run once per cell: those with an
@@ -626,26 +651,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   end
 
   # A search that would read once per cell: one whose filter reads the
-  # scope. A value's searches read first (WTF-495) and a conditional
-  # source's (WTF-521) are checked the same way: the values themselves are
-  # computed per cell, and a search that reads nothing of the scope is the
-  # same query in every cell, read once in the pass (`once/3`).
-  defp per_cell_query?({:query, _}, b), do: not shared?(b)
+  # scope, unless it is read for every cell together (WTF-520). A value's
+  # searches and a conditional source's are batched or residue
+  # (`queries_in_cells/2`).
+  defp per_cell_query?({:query, q}, b), do: not shared?(b) and not batched?(q)
 
-  defp per_cell_query?({:value, %{queries: [_ | _]}} = read, _b), do: scoped_query?([read])
-
-  defp per_cell_query?({:switch, sw}, _b), do: sw |> Spec.switch_reads() |> scoped_query?()
-
-  defp per_cell_query?(_read, _b), do: false
-
-  defp scoped_query?(reads) do
-    reads
-    |> Enum.flat_map(&queries_of/1)
-    |> Enum.any?(fn q -> not Enum.all?(bindings_of({:query, q}), &unscoped?/1) end)
-  end
-
-  defp queries_of({:query, q}), do: [q | Map.get(q, :queries, [])]
-  defp queries_of({:value, v}), do: Map.get(v, :queries, [])
+  # Read for every cell together (WTF-520): the query, or one it reads first.
+  defp batched?(q),
+    do: Map.has_key?(q, :batch) or Enum.any?(Map.get(q, :queries, []), &batched?/1)
 
   defp blocked?(r, direct, nested, seen) do
     cond do
@@ -835,17 +848,296 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       {:query, search, take} when s.cell == nil ->
         search_source(s, base, search, take, bctx, fns)
 
-      {:query, _search, _take} ->
-        in_cell(base, :query)
+      # A search in a repeating group's cell (WTF-520): read for every cell
+      # together, one query per cell round, or residue.
+      {:query, search, take} ->
+        s |> search_source(base, search, take, bctx, fns) |> in_cell_batch(bctx)
 
       :value ->
         cond do
-          s.cell != nil and queries?(ir) -> in_cell(base, :query)
-          s.cell == nil and fold?(s, ir) -> switch_source(s, ir, base, bctx, fns)
-          true -> value_source(s, %{s.value | ir: ir}, base, bctx, fns)
+          s.cell != nil and queries?(ir) ->
+            s |> value_source(%{s.value | ir: ir}, base, bctx, fns) |> in_cell_batch(bctx)
+
+          s.cell == nil and fold?(s, ir) ->
+            switch_source(s, ir, base, bctx, fns)
+
+          true ->
+            value_source(s, %{s.value | ir: ir}, base, bctx, fns)
         end
     end
   end
+
+  # --- searches read for every cell together (WTF-520) -------------------------------------
+
+  # A source in a repeating group's cell whose searches read the cell (or
+  # the scope of a reusable element rendered per cell) is read for every
+  # cell together: each such query is batched (`cell_batch/2`), else the
+  # source is residue (`:page_data_in_cell`, `kind` `"query"`), as before.
+  defp in_cell_batch(%{residue: []} = b, ctx) do
+    case batch_read(b.read, per_scope?(b.surface, ctx)) do
+      {:ok, read} -> %{b | read: read}
+      :error -> %{b | read: nil, reads: [], residue: [in_cell_entry(b.symbol, :query)]}
+    end
+  end
+
+  defp in_cell_batch(b, _ctx), do: b
+
+  # Whether what a source reads of its scope differs from unit to unit: in
+  # a reusable element rendered per cell, each cell has its own scope.
+  defp per_scope?(surface, ctx),
+    do: MapSet.member?(Map.get(ctx, :per_cell, MapSet.new()), surface)
+
+  @doc false
+  # `read` with each query that differs from unit to unit (a cell's, or a
+  # per-cell scope's: `per_scope?`) given its batch (`cell_batch/2`), or
+  # `:error` when one cannot be batched. A query that reads nothing that
+  # differs is the same in every unit: read once (`once/3`).
+  @spec batch_read(term(), boolean()) :: {:ok, term()} | :error
+  def batch_read({:query, q}, per_scope?) do
+    with {:ok, q} <- batch_part(q, per_scope?), do: {:ok, {:query, q}}
+  end
+
+  def batch_read({:value, v}, per_scope?) do
+    with {:ok, v} <- batch_part(v, per_scope?), do: {:ok, {:value, v}}
+  end
+
+  def batch_read({:switch, sw}, per_scope?) do
+    with {:ok, cases} <- batch_cases(sw.cases, per_scope?),
+         {:ok, otherwise} <- batch_read(sw.else, per_scope?),
+         do: {:ok, {:switch, %{sw | cases: cases, else: otherwise}}}
+  end
+
+  def batch_read(read, _per_scope?), do: {:ok, read}
+
+  defp batch_cases(cases, per_scope?) do
+    Enum.reduce_while(cases, {:ok, []}, fn c, {:ok, acc} ->
+      with {:ok, w} <- batch_read(c.when, per_scope?),
+           {:ok, t} <- batch_read(c.then, per_scope?) do
+        {:cont, {:ok, acc ++ [%{c | when: w, then: t}]}}
+      else
+        :error -> {:halt, :error}
+      end
+    end)
+  end
+
+  # One read (a query or a value) and the queries it reads first, in their
+  # order (`query_<n>` reads the ones before it).
+  defp batch_part(part, per_scope?) do
+    with {:ok, queries, varying} <- batch_queries(Map.get(part, :queries, []), per_scope?) do
+      part = if queries == [], do: part, else: Map.put(part, :queries, queries)
+      batch_own(part, per_scope?, varying)
+    end
+  end
+
+  # A query's own filter; a value is computed per unit, only its queries
+  # need the batch.
+  defp batch_own(%{filter: _} = q, per_scope?, varying) do
+    with {:ok, q, _v?} <- batch_query(q, per_scope?, varying), do: {:ok, q}
+  end
+
+  defp batch_own(value, _per_scope?, _varying), do: {:ok, value}
+
+  # The queries a read reads first, in order, and the numbers of those
+  # that differ from unit to unit.
+  defp batch_queries(queries, per_scope?) do
+    Enum.reduce_while(queries, {:ok, [], MapSet.new()}, fn q, {:ok, done, varying} ->
+      case batch_query(q, per_scope?, varying) do
+        {:ok, q, true} -> {:cont, {:ok, done ++ [q], MapSet.put(varying, Integer.to_string(q.n))}}
+        {:ok, q, false} -> {:cont, {:ok, done ++ [q], varying}}
+        :error -> {:halt, :error}
+      end
+    end)
+  end
+
+  # A query whose pins differ from unit to unit is batched, one reading
+  # another batched query's records too: the loader reads the batches in
+  # rounds, the query read first before the one reading it.
+  defp batch_query(q, per_scope?, varying) do
+    vary = Map.new(q.pins, &{&1.var, pin_varies?(&1, per_scope?, varying)})
+
+    if Enum.any?(Map.values(vary)) do
+      case cell_batch(q, vary) do
+        {:ok, batch} -> {:ok, Map.put(q, :batch, batch), true}
+        :error -> :error
+      end
+    else
+      {:ok, q, false}
+    end
+  end
+
+  # Whether a pin's value differs from unit to unit: it reads the cell, the
+  # scope of a reusable element rendered per cell, or a query that does.
+  defp pin_varies?(%{value: %{bindings: bindings}}, per_scope?, varying),
+    do: Enum.any?(bindings, &binding_varies?(&1.bind, per_scope?, varying))
+
+  defp pin_varies?(_pin, _per_scope?, _varying), do: false
+
+  defp binding_varies?({kind, _}, _per_scope?, _varying)
+       when kind in [:url, :url_value, :url_thing],
+       do: false
+
+  defp binding_varies?(bind, _per_scope?, _varying) when bind in [:actor, :now], do: false
+
+  defp binding_varies?({kind, _}, _per_scope?, _varying)
+       when kind in [:cell, :cell_index, :cell_data],
+       do: true
+
+  defp binding_varies?({:query, n}, _per_scope?, varying), do: MapSet.member?(varying, n)
+  defp binding_varies?(_bind, per_scope?, _varying), do: per_scope?
+
+  @doc false
+  # The batch of a query read per cell (WTF-520): `vary` names the pins
+  # that differ from cell to cell. Its filter must be a conjunction whose
+  # parts are either the same in every cell, or one of:
+  #
+  #   * a key: `attribute == ^pin` / `is_not_distinct_from(attribute,
+  #     ^pin)` on a thing's unique ID (`:eq`), or `attribute in ^pin` on
+  #     unique IDs (`:in`, the records a list holds), the attribute of the
+  #     searched resource itself;
+  #   * a key under an empty constraint dropped (`^empty == true or key`:
+  #     the key holds only where the value is not empty, `unless`);
+  #   * anything else reading only yes/no pins (whether a value is empty):
+  #     cells are grouped by them, at most three groups per pin.
+  #
+  # One query reads every cell's records at once (`batch.filter`: each key
+  # `attribute in ^values`, the cells' values), and each cell's are those
+  # whose attributes equal its keys: a key is a part of the conjunction,
+  # so a record matches a cell's search exactly when it matches the
+  # batched one and the cell's keys. Anything else (an ordering or a text
+  # comparison with the cell, a cell's value under `or`, Bubble's random
+  # sort) is `:error`: the source stays residue.
+  @spec cell_batch(map(), %{String.t() => boolean()}) :: {:ok, map()} | :error
+  def cell_batch(%{filter: %Expr{} = filter} = q, vary) do
+    by_var = Map.new(q.pins, &{&1.var, &1})
+    varies? = &Map.get(vary, &1, false)
+
+    parts = Enum.map(conjuncts(filter.expr), &batch_conjunct(&1, by_var, varies?))
+    keys = for {:key, key} <- parts, do: key
+    key_vars = MapSet.new(keys, & &1.var)
+    counts = filter.expr |> pins_in() |> Enum.frequencies()
+
+    # What else differs from cell to cell: yes/no values only, never a key.
+    others =
+      for({:other, vars} <- parts, v <- vars, varies?.(v), do: v) ++
+        for %{unless: u} <- keys, is_binary(u), do: u
+
+    sound? =
+      q.sort != [:random] and keys != [] and
+        Enum.all?(keys, &(Map.get(counts, &1.var) == 1)) and
+        Enum.all?(others, &yes_no?(&1, key_vars, by_var)) and
+        not listed_unkeyed?(q, key_vars, varies?)
+
+    if sound?,
+      do: {:ok, %{keys: keys, filter: %{filter | expr: batch_expr(filter.expr, key_vars)}}},
+      else: :error
+  end
+
+  def cell_batch(_q, _vary), do: :error
+
+  # The records of a list (WTF-495): its IDs, when they differ, are a key.
+  defp listed_unkeyed?(q, key_vars, varies?) do
+    case Map.get(q, :listed) do
+      var when is_binary(var) -> varies?.(var) and not MapSet.member?(key_vars, var)
+      _ -> false
+    end
+  end
+
+  defp yes_no?(var, key_vars, by_var),
+    do: not MapSet.member?(key_vars, var) and match?(%{type: "boolean"}, by_var[var])
+
+  defp conjuncts({:and, nodes}), do: Enum.flat_map(nodes, &conjuncts/1)
+  defp conjuncts(node), do: [node]
+
+  defp batch_conjunct(node, by_var, varies?) do
+    vars = pins_in(node)
+
+    cond do
+      not Enum.any?(vars, varies?) ->
+        {:other, vars}
+
+      key = key_atom(node, by_var, varies?) ->
+        {:key, Map.put(key, :unless, nil)}
+
+      match?({:or, [_, _]}, node) ->
+        {:or, [a, b]} = node
+        guarded_key(a, b, by_var, varies?) || guarded_key(b, a, by_var, varies?) || other(vars)
+
+      true ->
+        other(vars)
+    end
+  end
+
+  defp other(vars), do: {:other, vars}
+
+  # `^empty == true or key`: the key holds where the value is not empty.
+  defp guarded_key(guard, node, by_var, varies?) do
+    with var when is_binary(var) <- guard_var(guard),
+         true <- varies?.(var),
+         %{} = key <- key_atom(node, by_var, varies?) do
+      {:key, Map.put(key, :unless, var)}
+    else
+      _ -> nil
+    end
+  end
+
+  defp guard_var({:pin, var}), do: var
+  defp guard_var({:op, "==", {:pin, var}, {:value, true}}), do: var
+  defp guard_var({:op, "==", {:value, true}, {:pin, var}}), do: var
+  defp guard_var({:call, "is_not_distinct_from", [{:pin, var}, {:value, true}]}), do: var
+  defp guard_var({:call, "is_not_distinct_from", [{:value, true}, {:pin, var}]}), do: var
+  defp guard_var(_node), do: nil
+
+  # A key: the searched record's own attribute equal to a thing's unique
+  # ID, or in a list of unique IDs, that differs from cell to cell.
+  defp key_atom({:op, "==", a, b}, by_var, varies?), do: eq_key(a, b, by_var, varies?)
+
+  defp key_atom({:call, "is_not_distinct_from", [a, b]}, by_var, varies?),
+    do: eq_key(a, b, by_var, varies?)
+
+  defp key_atom({:op, "in", {:ref, [], attr}, {:pin, var}}, by_var, varies?) do
+    if varies?.(var) and by_var[var].ref in [:many, :listed],
+      do: %{var: var, attr: attr, kind: :in}
+  end
+
+  defp key_atom(_node, _by_var, _varies?), do: nil
+
+  defp eq_key({:ref, [], attr}, {:pin, var}, by_var, varies?) do
+    if varies?.(var) and by_var[var].ref == :one, do: %{var: var, attr: attr, kind: :eq}
+  end
+
+  defp eq_key({:pin, _} = pin, {:ref, [], _} = ref, by_var, varies?),
+    do: eq_key(ref, pin, by_var, varies?)
+
+  defp eq_key(_a, _b, _by_var, _varies?), do: nil
+
+  # The batched filter: each `:eq` key compares with the cells' values.
+  defp batch_expr({:op, "==", a, b} = node, keys), do: batch_eq(node, a, b, keys)
+
+  defp batch_expr({:call, "is_not_distinct_from", [a, b]} = node, keys),
+    do: batch_eq(node, a, b, keys)
+
+  defp batch_expr({op, nodes}, keys) when op in [:and, :or],
+    do: {op, Enum.map(nodes, &batch_expr(&1, keys))}
+
+  defp batch_expr(node, _keys), do: node
+
+  defp batch_eq(node, {:ref, [], attr}, {:pin, var}, keys) do
+    if MapSet.member?(keys, var), do: {:op, "in", {:ref, [], attr}, {:pin, var}}, else: node
+  end
+
+  defp batch_eq(node, {:pin, var}, {:ref, [], attr}, keys) do
+    if MapSet.member?(keys, var), do: {:op, "in", {:ref, [], attr}, {:pin, var}}, else: node
+  end
+
+  defp batch_eq(node, _a, _b, _keys), do: node
+
+  defp pins_in({:pin, var}), do: [var]
+  defp pins_in({:op, _op, l, r}), do: pins_in(l) ++ pins_in(r)
+  defp pins_in({:call, _name, args}), do: Enum.flat_map(args, &pins_in/1)
+  defp pins_in({op, nodes}) when op in [:and, :or], do: Enum.flat_map(nodes, &pins_in/1)
+  defp pins_in({:not, node}), do: pins_in(node)
+  defp pins_in(list) when is_list(list), do: Enum.flat_map(list, &pins_in/1)
+  defp pins_in(_node), do: []
 
   # --- conditional data sources (WTF-521) ------------------------------------------------
 
@@ -1245,8 +1537,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
         case pin_value(arg, hoisted, s, ctx, fns, acc) do
           {:ok, value, acc} ->
-            {[{arg.name, %{var: var, value: value, ref: pin_ref(arg, hoisted)}} | args], residue,
-             acc}
+            pin = %{var: var, value: value, ref: pin_ref(arg, hoisted), type: arg.type}
+            {[{arg.name, pin} | args], residue, acc}
 
           {:error, r} ->
             {args, residue ++ r, acc}

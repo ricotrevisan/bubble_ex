@@ -674,8 +674,17 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       "inputs: #{source(data_inputs(d.read))}, reads: #{source(data_reads(d))}, " <>
       "deps: #{source(data_deps(d))}, " <>
       "blocked: #{source(Enum.uniq(Enum.map(d.residue, & &1.subject)))}" <>
-      "#{display_meta(d)}#{data_default(d)}#{batch_meta(d, s)}#{query_topics(d)}}"
+      "#{display_meta(d)}#{data_default(d)}#{batch_meta(d, s)}#{query_topics(d)}" <>
+      "#{cell_reads_meta(d)}}"
   end
+
+  # A source whose searches read the cell are read for every cell together
+  # (WTF-520): the loader collects each cell's search first, then reads
+  # them in one query per round (`BubbleData.cell_read/4`).
+  defp cell_reads_meta(%{residue: []} = d),
+    do: if(Spec.cell_reads?(d), do: ", cell_reads: true", else: "")
+
+  defp cell_reads_meta(_d), do: ""
 
   # The resources the queries a value reads first search (WTF-495): their
   # changes read it again, whatever its own type.
@@ -958,8 +967,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   defp query_source(%{queries: [_ | _] = queries} = q, d, ctx) do
     """
-    #{queries_source(queries, [], ctx, q)}#{query_pipeline(q, ctx)}
-    |> BubbleData.read(ctx, #{take(q.take)}, #{inspect(d.page_size)})
+    #{queries_source(queries, [], ctx, q)}#{query_read(q, d.page_size, [], ctx)}
     """
   end
 
@@ -967,9 +975,61 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     values = for %{value: %{bindings: _} = v} <- q.pins, do: v
 
     """
-    #{prelude(values, false, true)}#{pins_source(q)}#{query_pipeline(q, ctx)}
-    |> BubbleData.read(ctx, #{take(q.take)}, #{inspect(d.page_size)})
+    #{prelude(values, false, true)}#{pins_source(q)}#{query_read(q, d.page_size, [], ctx)}
     """
+  end
+
+  # A query read: through `BubbleData.read/4`, or, read for every cell
+  # together (WTF-520), through `BubbleData.cell_read/4`: in each cell the
+  # query of that cell, and the query of every cell at once (its keys
+  # compared with every cell's values), which the loader reads first.
+  defp query_read(%{batch: batch} = q, page_size, loads, ctx) do
+    vars = Enum.map(q.pins, & &1.var)
+    pins = "%{" <> Enum.map_join(vars, ", ", &"#{&1}: #{&1}") <> "}"
+
+    keys =
+      "[" <>
+        Enum.map_join(batch.keys, ", ", fn k ->
+          "{:#{k.var}, #{atom(k.attr)}, #{inspect(k.kind)}, #{if k.unless, do: ":" <> k.unless, else: "nil"}}"
+        end) <> "]"
+
+    sort =
+      "[" <>
+        Enum.map_join(q.sort, ", ", fn {a, _dir} -> atom(a) end) <> "]"
+
+    ref = Base.encode16(:crypto.hash(:sha256, :erlang.term_to_binary(batch.filter)), case: :lower)
+
+    """
+    BubbleData.cell_read(
+      ctx,
+      %{
+        ref: {__MODULE__, #{literal(binary_part(ref, 0, 12))}},
+        pins: #{pins},
+        keys: #{keys},
+        sort: #{sort},
+        take: #{take(q.take)},
+        page_size: #{inspect(page_size)},
+        loads: #{loads_source(loads)}
+      },
+      fn ->
+        #{query_pipeline(q, ctx)}
+      end,
+      fn #{pins} ->
+        #{query_pipeline(%{q | filter: batch.filter}, ctx)}
+      end
+    )
+    """
+    |> String.trim_trailing()
+  end
+
+  defp query_read(q, page_size, loads, ctx) do
+    read =
+      "#{query_pipeline(q, ctx)}\n|> BubbleData.read(ctx, #{take(q.take)}, #{inspect(page_size)})"
+
+    case loads do
+      [] -> read
+      l -> "BubbleData.load_value(#{read}, #{loads_source(l)}, ctx)"
+    end
   end
 
   # The queries a source reads first (WTF-495: searches under list
@@ -992,14 +1052,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     reads =
       Enum.map_join(queries, "", fn x ->
         n = Integer.to_string(x.n)
-        read = "#{query_pipeline(x, ctx)}\n|> BubbleData.read(ctx, #{take(x.take)}, nil)"
-
-        read =
-          case Map.get(loads, n, []) do
-            [] -> read
-            l -> "BubbleData.load_value(#{read}, #{loads_source(Enum.sort(l))}, ctx)"
-          end
-
+        read = query_read(x, nil, Enum.sort(Map.get(loads, n, [])), ctx)
         "#{pins_source(x)}query_#{n} = #{read}\n"
       end)
 
