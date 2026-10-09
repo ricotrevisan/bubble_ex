@@ -188,6 +188,21 @@ defmodule <%= @web %>.BubbleData do
   would<%= if @enforced? do %>, through the same action and policies (the search fields check
   sees the same constraints)<% end %>.
 
+  ## Repeating groups in a repeating group's cell (WTF-520)
+
+  A repeating group in another's cell (two levels) is read per outer
+  cell: its list is a value per outer cell (`{scope, inner, outer
+  index}`), its search read for every outer cell together. Its cells'
+  sources (`outer` in `__bubble__(:data)`) run for every inner cell of
+  every outer cell together, never once per outer cell: their values are
+  kept in the outer cell's scope (`<%= @web %>.Bubble.cell_scope/4`),
+  what they read through the inner and outer cells' things is loaded for
+  all of them first (`cell_loads`, `outer_loads`, `preloads`), and their
+  searches are batched across all of them. The reusable instances in
+  inner cells (`{{outer, inner}, ...}` in `__bubble__(:cells)`) get a
+  scope per inner cell, by the inner cell's thing in the outer cell's
+  scope; the page accepts events only in the scopes it read.
+
   ## Unverified Bubble behavior
 
   To confirm by replay (WTF-358): a page's thing is read from the URL path
@@ -495,12 +510,14 @@ defmodule <%= @web %>.BubbleData do
     if MapSet.size(next) == MapSet.size(affected), do: affected, else: spread(sources, next)
   end
 
-  # The repeating groups whose cells hold reusable instances (WTF-494).
+  # The repeating groups whose cells hold reusable instances (WTF-494),
+  # with the outer one of a nested repeating group (WTF-520).
   defp cell_lists(socket, page) do
     for {_scope, m} <- socket |> BubbleWorkflows.surfaces(page) |> Enum.uniq_by(&elem(&1, 1)),
         {rg, _entries} <- BubbleWorkflows.cells(m),
+        list <- if(is_tuple(rg), do: Tuple.to_list(rg), else: [rg]),
         uniq: true,
-        do: rg
+        do: list
   end
 
   # What reads an instance's thing names the instance as well as its holder.
@@ -761,19 +778,37 @@ defmodule <%= @web %>.BubbleData do
   # that cell, WTF-494): read for every cell together.
   defp load_source(socket, group, source, scopes, {data, _by_source} = acc) do
     units =
-      for scope <- scopes, {item, i} <- cell_items(data, scope, source.cell) do
-        cell_unit(scope, source, item, i)
+      case Map.get(source, :outer) do
+        nil ->
+          for scope <- scopes, {item, i} <- cell_items(data, scope, source.cell) do
+            cell_unit(scope, source, item, i)
+          end
+
+        # In a repeating group rendered per cell of another (WTF-520):
+        # every inner cell of every outer cell, read together.
+        outer ->
+          for scope <- scopes,
+              {outer_item, oi} <- cell_items(data, scope, outer),
+              outer_scope = Bubble.cell_scope(scope, outer, outer_item, oi),
+              {item, i} <- nested_items(data, scope, source.cell, oi) do
+            outer_scope
+            |> cell_unit(source, item, i)
+            |> Map.merge(%{scope: scope, nested: {{outer_item, oi}, outer_scope}})
+          end
       end
 
-    # The relationships the source reads through the cell's thing, for
-    # every cell at once, read as the current user.
+    # The relationships the source reads through the cell's thing (and,
+    # in a nested repeating group's cell, the outer cell's), for every
+    # cell at once, read as the current user.
     items =
       units
       |> Enum.map(fn %{cell: {item, _}} -> item end)
       |> load_values(source.cell_loads, data_actor(socket))
 
     units =
-      Enum.zip_with(units, items, fn %{cell: {_, i}} = unit, item -> %{unit | cell: {item, i}} end)
+      units
+      |> Enum.zip_with(items, fn %{cell: {_, i}} = unit, item -> %{unit | cell: {item, i}} end)
+      |> load_outer(Map.get(source, :outer_loads, []), data_actor(socket))
 
     read_source(socket, group.module, source, units, acc, group.id, true)
   end
@@ -786,19 +821,44 @@ defmodule <%= @web %>.BubbleData do
     end
   end
 
+  # The outer cells' things of nested units (WTF-520) with `loads`, each
+  # outer cell's loaded once for all its inner cells.
+  defp load_outer(units, [], _actor), do: units
+
+  defp load_outer(units, loads, actor) do
+    outer = units |> Enum.map(fn %{nested: {{item, _}, _}} -> item end) |> Enum.uniq()
+    loaded = Map.new(Enum.zip(outer, load_values(outer, loads, actor)))
+
+    Enum.map(units, fn %{nested: {{item, oi}, cell_scope}} = unit ->
+      %{unit | nested: {{Map.fetch!(loaded, item), oi}, cell_scope}}
+    end)
+  end
+
+  # The items of a repeating group rendered per cell of another (WTF-520),
+  # in the outer cell `index`: its list there, a value per outer cell.
+  defp nested_items(data, scope, rg, index) do
+    case Map.get(data, {scope, rg, index}) do
+      list when is_list(list) -> Enum.with_index(list, 1)
+      _ -> []
+    end
+  end
+
   # A cell's value: a group's by the cell's index (what "Display data"
   # showed in it by the cell's thing, WTF-492, so a re-sorted list keeps
   # what each thing's cell showed); an instance's (WTF-494) under its scope
   # in the cell, the cell's thing's.
+  # In a nested repeating group's cell (WTF-520), `scope` is the outer
+  # cell's: the inner cells' values are kept there.
   defp cell_unit(scope, %{instance: instance} = source, item, i) when is_binary(instance) do
     key = {Bubble.nest(Bubble.cell_scope(scope, source.cell, item, i), instance), source.element}
-    %{scope: scope, cell: {item, i}, key: key, shown: key}
+    %{scope: scope, cell: {item, i}, nested: nil, key: key, shown: key}
   end
 
   defp cell_unit(scope, source, item, i),
     do: %{
       scope: scope,
       cell: {item, i},
+      nested: nil,
       key: {scope, source.element, i},
       shown: {scope, source.element, {:cell, Runtime.id(item)}}
     }
@@ -881,7 +941,9 @@ defmodule <%= @web %>.BubbleData do
   # In a batch, the context carries what `preload/5` read (`batch`); the
   # actor stays the one the policies authorize.
   defp unit_ctx(socket, module, unit, data, states, batch) do
-    ctx = BubbleWorkflows.data_ctx(socket, module, unit.scope, data, unit.cell)
+    ctx =
+      BubbleWorkflows.data_ctx(socket, module, unit.scope, data, unit.cell, Map.get(unit, :nested))
+
     if batch, do: %{ctx | batch: batch, states: states}, else: ctx
   end
 
@@ -922,7 +984,14 @@ defmodule <%= @web %>.BubbleData do
           {data, states, batch}
 
         {:cell_data, group, loads}, {data, states, batch} ->
-          keys = Enum.uniq(for %{cell: {_, i}} = u <- units, do: {u.scope, group, i})
+          keys = Enum.uniq(for %{cell: {_, i}} = u <- units, do: {cells_scope(u), group, i})
+          {data, batch} = load_keys(data, keys, loads, actor, batch)
+          {data, states, batch}
+
+        # In a nested repeating group's cell (WTF-520): what a group of the
+        # outer cell holds there.
+        {:outer_cell_data, group, loads}, {data, states, batch} ->
+          keys = Enum.uniq(for %{nested: {{_, oi}, _}} = u <- units, do: {u.scope, group, oi})
           {data, batch} = load_keys(data, keys, loads, actor, batch)
           {data, states, batch}
       end)
@@ -933,12 +1002,21 @@ defmodule <%= @web %>.BubbleData do
 
   defp nest_path(scope, path), do: Enum.reduce(path, scope, &Bubble.nest(&2, &1))
 
+  # Where a unit's cells keep their values: the outer cell's scope in a
+  # nested repeating group's cell (WTF-520), else the unit's.
+  defp cells_scope(%{nested: {_outer, cell_scope}}), do: cell_scope
+  defp cells_scope(unit), do: unit.scope
+
   # The values under `keys` read again with `loads`; each record read is
   # kept in the batch with the paths read through it.
   defp load_keys(map, keys, loads, actor, batch) do
     present = Enum.filter(keys, &Map.has_key?(map, &1))
     loaded = load_values(Enum.map(present, &Map.fetch!(map, &1)), loads, actor)
+    {Map.merge(map, Map.new(Enum.zip(present, loaded))), keep_loaded(batch, loaded, loads)}
+  end
 
+  # Each record of `loaded` kept in the batch with the paths read through it.
+  defp keep_loaded(batch, loaded, loads) do
     read =
       loaded
       |> Enum.flat_map(&records_in/1)
@@ -953,7 +1031,7 @@ defmodule <%= @web %>.BubbleData do
         end
       end)
 
-    {Map.merge(map, Map.new(Enum.zip(present, loaded))), %{batch | loaded: read}}
+    %{batch | loaded: read}
   end
 
   defp record_key(%{__struct__: module, id: id}) when not is_nil(id), do: {module, id}
@@ -1106,8 +1184,8 @@ defmodule <%= @web %>.BubbleData do
       for({scope, module} <- outer,
           {rg, entries} <- BubbleWorkflows.cells(module),
           {{rel, inner}, n} <- Enum.with_index(entries),
-          {item, i} <- cell_items(data, scope, rg),
-          do: {{rg, n, rel, inner}, Bubble.cell_scope(scope, rg, item, i) <> "-" <> rel})
+          cell <- cell_scopes(data, scope, rg),
+          do: {{rg, n, rel, inner}, cell <> "-" <> rel})
       |> Enum.uniq_by(&elem(&1, 1))
       |> Enum.sort_by(fn {{rg, n, rel, _}, _} -> {n, rg, rel} end)
 
@@ -1138,6 +1216,20 @@ defmodule <%= @web %>.BubbleData do
       cell_rounds(socket, new, acc, only, cells ++ new, depth + 1)
     end
   end
+
+  # The scopes of a repeating group's cells, by their things (WTF-494); of
+  # a repeating group rendered per cell of another (`{outer, inner}`,
+  # WTF-520), every inner cell of every outer cell, in the outer cell's
+  # scope.
+  defp cell_scopes(data, scope, {outer, rg}) do
+    for {outer_item, oi} <- cell_items(data, scope, outer),
+        outer_scope = Bubble.cell_scope(scope, outer, outer_item, oi),
+        {item, i} <- nested_items(data, scope, rg, oi),
+        do: Bubble.cell_scope(outer_scope, rg, item, i)
+  end
+
+  defp cell_scopes(data, scope, rg),
+    do: for({item, i} <- cell_items(data, scope, rg), do: Bubble.cell_scope(scope, rg, item, i))
 
   # Logged once per page process, not on every read (a keystroke reads).
   defp warn_capped do

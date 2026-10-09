@@ -83,12 +83,23 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   search is not rendered per cell (`cell_instances/4`), and such a
   search in a cell is residue.
 
+  A repeating group in another's cell (WTF-520, two levels:
+  `ctx.nested_lists`, inner => outer, from the page's structure) is read
+  per outer cell, as a group there: its list is a value per outer cell
+  (its search batched). The sources of its cells (`outer` set: the outer
+  repeating group) read the inner cell as `{:cell, inner}` and the outer
+  one as `{:outer_cell, outer}`, `{:outer_cell_index, outer}` and
+  `{:outer_cell_data, group}`; they are read for every inner cell of
+  every outer cell together, and need their list loaded.
+
   ## Residue added here
 
     * `:page_data_in_cell` - a repeating group in a repeating group's
-      cell, or a search there that cannot be read for every cell
-      together: the page would read once per cell (`detail.kind` `"list"`
-      or `"query"`); a reusable instance in a cell whose reusable element
+      cell that is not rendered per outer cell (`ctx.nested_lists`: a
+      third level, or one in a table's row or another runtime container),
+      or a search there that cannot be read for every cell together: the
+      page would read once per cell (`detail.kind` `"list"` or
+      `"query"`); a reusable instance in a cell whose reusable element
       has such a search reading its instance (`"query"`, on the
       instance's sources)
     * `:uncompiled_expression` - constructs prefixed `ash:` (a search the
@@ -541,7 +552,15 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         {:data, %{element: e}} ->
           at.(scope, surface, e)
 
-        {kind, e} when kind in [:cell, :cell_index, :cell_data] ->
+        {kind, e}
+        when kind in [
+               :cell,
+               :cell_index,
+               :cell_data,
+               :outer_cell,
+               :outer_cell_index,
+               :outer_cell_data
+             ] ->
           at.(scope, surface, e)
 
         _ ->
@@ -724,7 +743,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
       residue =
         cond do
-          not match?(%{kind: :list, cell: nil, surface: ^surface}, wired.elements[rg]) ->
+          not cells_loaded?(wired, surface, rg, Map.get(s, :outer)) ->
             [Residue.entry(symbol, :unavailable_input, %{inputs: ["data_source"]})]
 
           MapSet.member?(blocked, instance) or MapSet.member?(holders, holder) ->
@@ -738,6 +757,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     end)
   end
 
+  # Whether the page loads the list whose cells hold an instance: a list
+  # of the surface outside a cell, or a nested one (WTF-520) with its
+  # outer list.
+  defp cells_loaded?(wired, surface, rg, nil),
+    do: match?(%{kind: :list, cell: nil, surface: ^surface}, wired.elements[rg])
+
+  defp cells_loaded?(wired, surface, rg, outer),
+    do:
+      match?(%{kind: :list, cell: ^outer, surface: ^surface}, wired.elements[rg]) and
+        cells_loaded?(wired, surface, outer, nil)
+
   # --- one source ---------------------------------------------------------------------
 
   defp source(%Source{} = s, ctx, fns) do
@@ -747,6 +777,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       kind: s.kind,
       surface: s.surface,
       cell: s.cell,
+      outer: outer(s.cell, ctx),
       holder: s.holder,
       param: s.param,
       key: key(s),
@@ -763,9 +794,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       s.residue != [] ->
         base
 
-      # A repeating group in a cell would read once per cell; a group, an
-      # instance (WTF-494) and its properties there are read per cell.
-      s.cell != nil and s.kind == :list ->
+      # A repeating group in a cell is read per cell, as a group there is,
+      # when the page renders it per outer cell (WTF-520, two levels); any
+      # other would read once per cell. A group, an instance (WTF-494) and
+      # its properties there are read per cell.
+      s.cell != nil and s.kind == :list and not nested_list?(s, ctx) ->
         in_cell(base, s.kind)
 
       s.kind == :page_thing ->
@@ -775,9 +808,37 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         end
 
       true ->
-        value(s, base, ctx, fns)
+        s |> value(base, ctx, fns) |> nested_cell(s, ctx)
     end
   end
+
+  # --- repeating groups in a repeating group's cell (WTF-520) ------------------------------
+
+  # A repeating group the page renders once per cell of another
+  # (`ctx.nested_lists`, inner => outer, from the page's structure): its
+  # list is a value per outer cell, read for every outer cell together as
+  # a group's there (its search batched, `cell_batch/2`), and its cells'
+  # sources are read for every inner cell of every outer cell together.
+  defp nested_list?(%Source{kind: :list, element: e, cell: cell}, ctx),
+    do: is_binary(cell) and Map.get(Map.get(ctx, :nested_lists, %{}), e) == cell
+
+  defp nested_list?(_source, _ctx), do: false
+
+  # The outer repeating group of a source in a nested repeating group's
+  # cell (`cell` is the inner one), else nil.
+  defp outer(cell, ctx) when is_binary(cell), do: Map.get(Map.get(ctx, :nested_lists, %{}), cell)
+  defp outer(_cell, _ctx), do: nil
+
+  # A nested list, and a source in its cells, need what holds their cells
+  # loaded (the outer list, the inner list per outer cell), whatever their
+  # values read: the loader reads them after it.
+  defp nested_cell(%{residue: []} = b, s, ctx) do
+    if b.outer != nil or nested_list?(s, ctx),
+      do: %{b | reads: Enum.uniq(b.reads ++ [{:cell, s.cell}])},
+      else: b
+  end
+
+  defp nested_cell(b, _s, _ctx), do: b
 
   # A list's value, or a property holding a list.
   defp list?(%Source{kind: :list}), do: true
@@ -797,6 +858,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       kind: holder.kind,
       surface: holder.surface,
       cell: holder.cell,
+      outer: outer(holder.cell, ctx),
       holder: holder.holder,
       param: nil,
       key:
@@ -979,7 +1041,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp binding_varies?(bind, _per_scope?, _varying) when bind in [:actor, :now], do: false
 
   defp binding_varies?({kind, _}, _per_scope?, _varying)
-       when kind in [:cell, :cell_index, :cell_data],
+       when kind in [
+              :cell,
+              :cell_index,
+              :cell_data,
+              :outer_cell,
+              :outer_cell_index,
+              :outer_cell_data
+            ],
        do: true
 
   defp binding_varies?({:query, n}, _per_scope?, varying), do: MapSet.member?(varying, n)
@@ -1767,8 +1836,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         do: read
   end
 
-  defp data_read({kind, _} = bind, _initial) when kind in [:data, :cell, :cell_index, :cell_data],
-    do: [bind]
+  defp data_read({kind, _} = bind, _initial)
+       when kind in [
+              :data,
+              :cell,
+              :cell_index,
+              :cell_data,
+              :outer_cell,
+              :outer_cell_index,
+              :outer_cell_data
+            ],
+       do: [bind]
 
   defp data_read({:input, %{path: [], element: e}}, initial) do
     if MapSet.member?(initial, e), do: [{:data, %{path: [], element: e}}], else: []
@@ -1847,10 +1925,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   defp read_wired?({:data, %{element: e}}, _b, _maps, wired), do: MapSet.member?(wired, e)
 
-  defp read_wired?({kind, rg}, _b, _by, wired) when kind in [:cell, :cell_index],
-    do: MapSet.member?(wired, rg)
-
-  defp read_wired?({:cell_data, g}, _b, _by, wired), do: MapSet.member?(wired, g)
+  defp read_wired?({kind, e}, _b, _by, wired)
+       when kind in [
+              :cell,
+              :cell_index,
+              :cell_data,
+              :outer_cell,
+              :outer_cell_index,
+              :outer_cell_data
+            ],
+       do: MapSet.member?(wired, e)
 
   # A property read from outside an instance that sets none: its default
   # is one of its values, and every value loads.
@@ -1926,8 +2010,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   defp dep_element({:data, %{path: [instance]}}), do: [instance]
   defp dep_element({:data, %{element: e}}), do: [e]
-  defp dep_element({kind, rg}) when kind in [:cell, :cell_index], do: [rg]
-  defp dep_element({:cell_data, g}), do: [g]
+
+  defp dep_element({kind, e})
+       when kind in [
+              :cell,
+              :cell_index,
+              :cell_data,
+              :outer_cell,
+              :outer_cell_index,
+              :outer_cell_data
+            ],
+       do: [e]
 
   # --- helpers ---------------------------------------------------------------------------
 

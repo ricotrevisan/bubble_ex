@@ -1,0 +1,641 @@
+{
+  "_comment": "WTF-520: repeating groups in a repeating group's cell, rendered per outer cell (two levels). Customers, their orders (an inner list fed by a search keyed on the outer cell) and each order's item count; a customer's own list of orders (an inner list fed by the outer cell's list field); a reusable card per order whose click picks its order. All data invented; test/support/target/phoenix/nested_lists_behavior.exs counts the queries.",
+  "_id": "nested-lists-fixture",
+  "user_types": {
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        },
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": [
+              "email",
+              "name_text"
+            ]
+          }
+        }
+      }
+    },
+    "customer": {
+      "display": "Customer",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        },
+        "orders_list_custom_order": {
+          "display": "Orders",
+          "value": "list.custom.order"
+        },
+        "owner_user": {
+          "display": "Owner",
+          "value": "user"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
+        }
+      }
+    },
+    "order": {
+      "display": "Order",
+      "fields": {
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        },
+        "customer_custom_customer": {
+          "display": "Customer",
+          "value": "custom.customer"
+        },
+        "owner_user": {
+          "display": "Owner",
+          "value": "user"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": false,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": []
+          }
+        },
+        "owner_": {
+          "display": "Owner",
+          "condition": {
+            "type": "InjectedValue",
+            "next": {
+              "type": "Message",
+              "name": "owner_user",
+              "next": {
+                "type": "Message",
+                "name": "equals",
+                "args": {
+                  "type": "CurrentUser"
+                }
+              }
+            }
+          },
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
+        }
+      }
+    },
+    "item": {
+      "display": "Item",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        },
+        "order_custom_order": {
+          "display": "Order",
+          "value": "custom.order"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
+        }
+      }
+    }
+  },
+  "element_definitions": {
+    "bCardDef": {
+      "id": "bCardDef",
+      "name": "Order card",
+      "type": "CustomDefinition",
+      "custom_states": {
+        "picked_": {
+          "display": "Picked",
+          "value": "text"
+        }
+      },
+      "properties": {
+        "group_type": "custom.order",
+        "width": 300,
+        "height": 120
+      },
+      "elements": {
+        "bCardTitle": {
+          "id": "bCardTitle",
+          "type": "Text",
+          "properties": {
+            "order": 1,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Card: ",
+                "1": {
+                  "type": "ElementParent",
+                  "next": {
+                    "type": "Message",
+                    "name": "title_text"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bPick": {
+          "id": "bPick",
+          "type": "Button",
+          "properties": {
+            "order": 2,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Pick"
+              }
+            }
+          }
+        },
+        "bPicked": {
+          "id": "bPicked",
+          "type": "Text",
+          "properties": {
+            "order": 3,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Picked: ",
+                "1": {
+                  "type": "GetElement",
+                  "properties": {
+                    "element_id": "bCardDef"
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "custom.picked_"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "workflows": {
+        "wPick": {
+          "id": "wPick",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bPick"
+          },
+          "actions": {
+            "0": {
+              "id": "aPick1",
+              "type": "SetCustomState",
+              "properties": {
+                "element_id": "bCardDef",
+                "custom_state": "custom.picked_",
+                "value": {
+                  "type": "ElementParent",
+                  "next": {
+                    "type": "Message",
+                    "name": "title_text"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "pages": {
+    "index": {
+      "id": "bIndex",
+      "name": "index",
+      "type": "Page",
+      "properties": {
+        "title": "Home"
+      },
+      "elements": {
+        "bHello": {
+          "id": "bHello",
+          "type": "Text",
+          "properties": {
+            "order": 1,
+            "width": 300,
+            "height": 40,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Hello"
+              }
+            }
+          }
+        }
+      }
+    },
+    "customers": {
+      "id": "bCustomersPage",
+      "name": "customers",
+      "type": "Page",
+      "properties": {
+        "title": "Customers"
+      },
+      "elements": {
+        "bCustomers": {
+          "id": "bCustomers",
+          "type": "RepeatingGroup",
+          "properties": {
+            "order": 1,
+            "width": 300,
+            "height": 600,
+            "columns": 1,
+            "rows": 10,
+            "group_type": "custom.customer",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.customer",
+                "sort_field": "name_text",
+                "descending": false,
+                "ignore_empty_constraints": false
+              }
+            }
+          },
+          "elements": {
+            "bName": {
+              "id": "bName",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Customer: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "name_text"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bCustBox": {
+              "id": "bCustBox",
+              "type": "Group",
+              "properties": {
+                "order": 2,
+                "width": 300,
+                "height": 300,
+                "group_type": "custom.customer",
+                "data_source": {
+                  "type": "CurrentDataItem"
+                }
+              },
+              "elements": {
+                "bOrders": {
+                  "id": "bOrders",
+                  "type": "RepeatingGroup",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 200,
+                    "columns": 1,
+                    "rows": 10,
+                    "group_type": "custom.order",
+                    "data_source": {
+                      "type": "Search",
+                      "properties": {
+                        "type_to_find": "custom.order",
+                        "sort_field": "title_text",
+                        "descending": false,
+                        "ignore_empty_constraints": false,
+                        "constraints": {
+                          "0": {
+                            "constraint_type": "equals",
+                            "key": "customer_custom_customer",
+                            "value": {
+                              "type": "ElementParent"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "elements": {
+                    "bOrderTitle": {
+                      "id": "bOrderTitle",
+                      "type": "Text",
+                      "properties": {
+                        "order": 1,
+                        "width": 300,
+                        "height": 40,
+                        "min_height_css": "40px",
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Order: ",
+                            "1": {
+                              "type": "CurrentDataItem",
+                              "next": {
+                                "type": "Message",
+                                "name": "title_text"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "bItems": {
+                      "id": "bItems",
+                      "type": "Group",
+                      "properties": {
+                        "order": 2,
+                        "width": 300,
+                        "height": 40,
+                        "group_type": "number",
+                        "data_source": {
+                          "type": "Search",
+                          "properties": {
+                            "type_to_find": "custom.item",
+                            "sort_field": "name_text",
+                            "descending": false,
+                            "ignore_empty_constraints": false,
+                            "constraints": {
+                              "0": {
+                                "constraint_type": "equals",
+                                "key": "order_custom_order",
+                                "value": {
+                                  "type": "CurrentDataItem"
+                                }
+                              }
+                            }
+                          },
+                          "next": {
+                            "type": "Message",
+                            "name": "count"
+                          }
+                        }
+                      },
+                      "elements": {
+                        "bItemsN": {
+                          "id": "bItemsN",
+                          "type": "Text",
+                          "properties": {
+                            "order": 1,
+                            "width": 300,
+                            "height": 40,
+                            "min_height_css": "40px",
+                            "text": {
+                              "type": "TextExpression",
+                              "entries": {
+                                "0": "Items: ",
+                                "1": {
+                                  "type": "ElementParent"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "bOf": {
+                      "id": "bOf",
+                      "type": "Text",
+                      "properties": {
+                        "order": 3,
+                        "width": 300,
+                        "height": 40,
+                        "min_height_css": "40px",
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Of: ",
+                            "1": {
+                              "type": "GetElement",
+                              "properties": {
+                                "element_id": "bCustBox"
+                              },
+                              "next": {
+                                "type": "Message",
+                                "name": "get_group_data",
+                                "next": {
+                                  "type": "Message",
+                                  "name": "name_text"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "bOwner": {
+                      "id": "bOwner",
+                      "type": "Text",
+                      "properties": {
+                        "order": 4,
+                        "width": 300,
+                        "height": 40,
+                        "min_height_css": "40px",
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Owner: ",
+                            "1": {
+                              "type": "GetElement",
+                              "properties": {
+                                "element_id": "bCustBox"
+                              },
+                              "next": {
+                                "type": "Message",
+                                "name": "get_group_data",
+                                "next": {
+                                  "type": "Message",
+                                  "name": "owner_user",
+                                  "next": {
+                                    "type": "Message",
+                                    "name": "name_text"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "bAt": {
+                      "id": "bAt",
+                      "type": "Text",
+                      "properties": {
+                        "order": 5,
+                        "width": 300,
+                        "height": 40,
+                        "min_height_css": "40px",
+                        "text": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "At: ",
+                            "1": {
+                              "type": "CurrentCellsIndex"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "bOrderCard": {
+                      "id": "bOrderCard",
+                      "type": "CustomElement",
+                      "properties": {
+                        "custom_id": "bCardDef",
+                        "group_type": "custom.order",
+                        "order": 6,
+                        "width": 300,
+                        "height": 120,
+                        "data_source": {
+                          "type": "CurrentDataItem"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bOrderCount": {
+              "id": "bOrderCount",
+              "type": "Group",
+              "properties": {
+                "order": 3,
+                "width": 300,
+                "height": 40,
+                "group_type": "number",
+                "data_source": {
+                  "type": "GetElement",
+                  "properties": {
+                    "element_id": "bOrders"
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "get_list_data",
+                    "next": {
+                      "type": "Message",
+                      "name": "count"
+                    }
+                  }
+                }
+              },
+              "elements": {
+                "bOrderCountN": {
+                  "id": "bOrderCountN",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Orders: ",
+                        "1": {
+                          "type": "ElementParent"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bListed": {
+              "id": "bListed",
+              "type": "RepeatingGroup",
+              "properties": {
+                "order": 4,
+                "width": 300,
+                "height": 200,
+                "columns": 1,
+                "rows": 5,
+                "group_type": "custom.order",
+                "data_source": {
+                  "type": "ElementParent",
+                  "next": {
+                    "type": "Message",
+                    "name": "orders_list_custom_order"
+                  }
+                }
+              },
+              "elements": {
+                "bListedTitle": {
+                  "id": "bListedTitle",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Listed: ",
+                        "1": {
+                          "type": "CurrentDataItem",
+                          "next": {
+                            "type": "Message",
+                            "name": "title_text"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

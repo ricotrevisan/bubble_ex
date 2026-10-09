@@ -187,7 +187,9 @@ defmodule <%= @web %>.BubbleWorkflows do
     The page's data (WTF-420, `<%= @web %>.BubbleData`): what it loaded
     (`data`), the unique ID of its thing from the URL (`thing`) and, while
     a repeating group's cells are read, the current cell's thing and
-    1-based index (`cell`, `cell_index`), and `batch` while the cells (or
+    1-based index (`cell`, `cell_index`; in a repeating group rendered per
+    cell of another, WTF-520, also the outer cell's, `outer`, and the
+    scope its cells are kept in, `cell_scope`), and `batch` while the cells (or
     the instances in cells, WTF-494) are read together; `data_stale` once a data step
     ran (it may have written what the page shows). `page_path` is the
     page's own path (without its thing's segment) and `takes_thing`
@@ -207,6 +209,8 @@ defmodule <%= @web %>.BubbleWorkflows do
       :thing,
       :cell,
       :cell_index,
+      :outer,
+      :cell_scope,
       :resume,
       batch: false,
       scope: "",
@@ -728,7 +732,9 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc """
   The reusable instances a surface module renders once per cell of a
   repeating group (WTF-494): `{repeating group, [{scope relative to the
-  cell's, module}]}`; none for a module scaffolded before it.
+  cell's, module}]}`, the repeating group `{outer, inner}` for one
+  rendered per cell of another (WTF-520); none for a module scaffolded
+  before it.
   """
   def cells(module) do
     module.__bubble__(:cells)
@@ -1096,14 +1102,23 @@ defmodule <%= @web %>.BubbleWorkflows do
   @doc """
   The context a page's data source runs with (`<%= @web %>.BubbleData`):
   the page's state, what it loaded so far (`data`) and, in a repeating
-  group's cell, `{thing, index}`.
+  group's cell, `{thing, index}`. In the cell of a repeating group
+  rendered per cell of another (WTF-520), `nested` is `{outer, cell_scope}`:
+  the outer cell's `{thing, index}` and the scope the inner cells' values
+  are kept in (the outer cell's, `<%= @web %>.Bubble.cell_scope/4`).
   """
-  def data_ctx(socket, module, scope, data, cell \\ nil) do
+  def data_ctx(socket, module, scope, data, cell \\ nil, nested \\ nil) do
     ctx = ctx(socket, module, scope, start(socket, nil))
     ctx = %{ctx | data: data}
 
-    case cell do
-      {item, index} -> %{ctx | cell: item, cell_index: index}
+    ctx =
+      case cell do
+        {item, index} -> %{ctx | cell: item, cell_index: index}
+        nil -> ctx
+      end
+
+    case nested do
+      {outer, cell_scope} -> %{ctx | outer: outer, cell_scope: cell_scope}
       nil -> ctx
     end
   end
@@ -1563,7 +1578,24 @@ defmodule <%= @web %>.BubbleWorkflows do
   def data(ctx, path, element), do: Map.get(ctx.data, {scope(ctx, path), element})
 
   @doc "What group `element` holds in the current cell of a repeating group."
-  def cell_data(ctx, element), do: Map.get(ctx.data, {ctx.scope, element, ctx.cell_index})
+  def cell_data(ctx, element),
+    do: Map.get(ctx.data, {ctx.cell_scope || ctx.scope, element, ctx.cell_index})
+
+  @doc """
+  In the cell of a repeating group rendered per cell of another (WTF-520):
+  the outer cell's thing, its 1-based index, and the value group (or
+  nested list) `element` holds in it.
+  """
+  def outer_cell(%{outer: {item, _index}}), do: item
+  def outer_cell(_ctx), do: nil
+
+  def outer_cell_index(%{outer: {_item, index}}), do: index
+  def outer_cell_index(_ctx), do: nil
+
+  def outer_cell_data(%{outer: {_item, index}} = ctx, element),
+    do: Map.get(ctx.data, {ctx.scope, element, index})
+
+  def outer_cell_data(_ctx, _element), do: nil
 
   @doc "A custom event's parameter."
   def param(ctx, id, loads), do: ctx.args |> Map.get(id) |> load(loads, ctx)

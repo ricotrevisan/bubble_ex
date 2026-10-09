@@ -115,7 +115,7 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
     assert BubbleEx.Target.Ash.Source.filter(filter) =~ "is_distinct_from(^pin_2, true)"
   end
 
-  test "a list operator over a search in a repeating group's cell is residue" do
+  test "a list operator over searches in a nested repeating group's cell reads them once (WTF-520)" do
     app = app()
     merged = get_in(app, ["pages", "index", "elements", "bMerged", "properties", "data_source"])
 
@@ -133,10 +133,11 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
 
     %{spec: spec} = render(app)
 
-    assert [%{reason: :page_data_in_cell, detail: %{kind: kind}}] =
-             data(spec, "bInner").residue
-
-    assert kind in ["list", "query"]
+    # A list rendered per cell of the outer one: its searches read nothing
+    # of the cell, so they are the same in every cell (read once, not
+    # batched).
+    assert %{residue: [], read: {:value, %{queries: [_ | _] = queries}}} = data(spec, "bInner")
+    refute Enum.any?(queries, &Map.has_key?(&1, :batch))
   end
 
   # M1: a search read as a query stops at :max_items; counting it, taking

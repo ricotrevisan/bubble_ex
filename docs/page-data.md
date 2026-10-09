@@ -167,7 +167,7 @@ element (not a mobile view):
 |--------|--------|----------------|
 | a page's "Type of content" | `:page_thing` | the record whose unique ID is the URL path segment after the page name (`/<page>/<id>`, a second route; for `index` it is `/index/<id>` (WTF-454), since a root catch-all would capture owned routes); the segment must look like a Bubble ID (`<digits>x<digits>`), else nothing is read; query parameters cannot select a thing |
 | a Group's, Popup's, Floating Group's or Group Focus's data source | `:group` | a search (below), or an Elixir value (`BubbleEx.Target.Elixir`); a thing given as a Bubble ID is read by ID |
-| a Repeating Group's data source | `:list` | a search, or a list value (IDs are read by ID); its cells render its template once per item |
+| a Repeating Group's data source | `:list` | a search, or a list value (IDs are read by ID); its cells render its template once per item; in another's cell, per outer cell (WTF-520, two levels, below) |
 | a reusable-element instance's data source | `:instance` | the reusable element's thing for that instance (`Parent group` inside it); in a repeating group's cell, per cell (WTF-494, below); an instance whose source does not load is not rendered (WTF-522, below) |
 | a property a reusable-element instance sets (WTF-493) | `:param` | its value, computed where the instance is, kept under the instance (`This Reusable's <property>` inside it) |
 | a reusable element property's default value | `:param` | computed inside the reusable element, for an instance that sets no value |
@@ -872,9 +872,90 @@ searches (`:search_field_restricted`, WTF-457) or hidden along a path
 access off nothing is read.
 
 **Not yet:** a key on a value other than a unique ID (a text or a number
-read from the cell), a repeating group inside a cell (WTF-520's nested
-lists: its list would be such a search, but the page does not render a
-list per cell yet).
+read from the cell). A repeating group inside a cell is read per outer
+cell (below), its list batched like any other search in a cell.
+
+## Repeating groups in a repeating group's cell (WTF-520)
+
+A repeating group in another's cell (customers, each with a list of its
+orders) is rendered once per outer cell, **two levels deep**: the outer
+repeating group outside any cell of its page or reusable element, the
+inner one in its cell's template (in a group there, not inside another
+runtime container such as a table or a plugin's). Which repeating groups
+qualify is decided from the page's structure
+(`FrontendWorkflows`' `nested_lists`, inner => outer); any other
+repeating group in a cell (a third level, one in a table's row) is
+residue as before (`:page_data_in_cell`, `kind` `"list"`), and so is
+what its cells read.
+
+**Its list** is a value per outer cell, as a group's there: "Search for
+orders where customer = Parent group's customer" is a search keyed on
+the outer cell (batched, *Searches in cells* above: one query per round
+of outer cells, each outer cell's page of records), "Parent group's
+customer's orders" a value read from the outer cell's thing (the
+records it holds read by ID for every outer cell at once), and a search
+that reads nothing of the cell is read once. It is kept per outer cell
+(`{scope, inner, outer index}`), so the outer cell reads it too
+(`<inner>'s list of orders :count`, `{:cell_data, inner}`). It needs the
+outer list loaded, whatever it reads. A repeating group's own data
+source naming "Current cell's" reads that repeating group itself in the
+lowering (not the outer cell): it stays unloaded; "Parent group's" reads
+the outer cell.
+
+**Its cells** have a scope of their own, the outer cell's
+(`<Web>.Bubble.cell_scope/4` of the outer list and its thing): a group in
+an inner cell is kept under `{outer cell's scope, group, inner index}`,
+a reusable instance in it under `<outer cell's scope>-<inner>~2<thing>-<instance>`
+(by the things' unique IDs, so a re-sorted list keeps what each cell
+held). In an inner cell:
+
+* `Current cell's X` is the inner cell's thing (`{:cell, inner}`), its
+  index the inner index;
+* a group of the inner cell (`Parent group's X` there) is that inner
+  cell's (`{:cell_data, group}`);
+* the outer cell's thing and index, and a group (or another inner list)
+  of the outer cell, are the outer cell's (`{:outer_cell, outer}`,
+  `{:outer_cell_index, outer}`, `{:outer_cell_data, group}`);
+* the page's own data, custom states and inputs are the page's, as
+  anywhere in a cell.
+
+Elements, texts and visibility conditions read these where the inner
+cell renders (`Bubble.cells/4` loops over the inner list of the outer
+cell's index); a reusable instance there is rendered per inner cell
+(WTF-494), its workflows run in its scope, and the page's own clicks in
+a cell stay unwired, as in any cell (`:trigger_in_runtime_template`).
+
+**Read for every inner cell of every outer cell together.** The loader
+runs each source of the inner cells once for all of them
+(`<Web>.BubbleData`, a source's `outer` in `__bubble__(:data)`): what a
+value reads through the inner cell's thing (`cell_loads`), the outer
+cell's (`outer_loads`) or a group of either (`preloads`) is loaded for
+all of them first, and a search reading the inner cell is batched across
+every inner cell of every outer cell: **one query per round, never one
+per outer cell nor per inner cell.** A page of customers and their orders
+with each order's item count reads the customers once, the orders once
+and the items once, whatever the number of customers and orders
+(`nested_lists_behavior.exs` counts the queries, in both privacy modes).
+The instances in inner cells are listed as `{{outer, inner}, [...]}` in
+`__bubble__(:cells)` and read in the same rounds as those in outer cells.
+
+**Bounds.** An inner list shows its own page (its rows times its
+columns, at most `:max_items`) in each outer cell, so at most
+`:max_items` x `:max_items` inner cells; the batched searches keep their
+`:max_batched` and `:max_cell_rounds` caps, and the instances in inner
+cells count towards `:max_cells`.
+
+**Privacy and events.** Every read goes through Ash as the current user,
+as anywhere else: an outer cell is a thing the user read, an inner cell
+one of its inner list the user read, so a thing the user may not read
+has no cell and no scope. The page lists the scopes it read
+(`@bubble_cells`, `put_cells/2`) and accepts an event only in one of
+them (`BubbleWorkflows.surface/3`): a scope naming an order under
+another customer's cell, a made-up order, or an order the user may not
+read is ignored. The scope is never parsed. A reusable instance in an
+inner cell whose own source does not load while its reusable element
+reads its thing is not rendered there, per instance (WTF-522). With
+data access off, nothing is read and no inner cell exists.
 
 ## What is generated
 
@@ -1007,6 +1088,35 @@ The frontend workflow metrics (`docs/frontend-workflows.md`, *native*
 and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
+
+### Private fixture app (test version), 2026-10-09, nested repeating groups (WTF-520)
+
+Of the 16 repeating groups in another's cell (all `:page_data_in_cell`,
+`kind` `"list"`, before), by their list's source:
+
+| inner list's source | roots | load now |
+|---|--:|--:|
+| a value read from the outer cell (a field of its group's list, another inner list of the cell, a list filtered by the cell's group, an option set's values) | 9 | 3 |
+| a search keyed on the outer cell | 4 | 2 |
+| something else (a search reading nothing of the cell, conditional sources over searches) | 3 | 2 |
+
+The 9 left: 2 are a third level (their outer list is itself in a cell),
+3 have an outer list that does not load, 2 read another list of the cell
+that does not load, and 2 now show the Elixir value they do not compile
+(a path through a list, a field of an intersection). The sources in the
+inner lists' cells (46) were all a cascade of their list: 14 now load
+(6 groups, 3 reusable instances, 5 of their properties), and 2 groups of
+outer cells reading an inner list load with it.
+
+| | before | after |
+|-|------:|------:|
+| data sources, wired | 2,729 | 2,752 |
+| groups / instances / lists / properties wired | 1,351 / 170 / 166 / 1,010 | 1,359 / 173 / 173 / 1,015 |
+| read as a query / a value | 170 / 2,346 | 174 / 2,365 |
+| `:page_data_in_cell` residue entries (sources) | 20 | 8 |
+| `:unavailable_input` residue entries (sources) | 447 | 434 |
+| `:uncompiled_expression` residue entries (sources) | 167 | 169 |
+| workflows, native / wired | 814 / 541 | 814 / 541 |
 
 ### Private fixture app (test version), 2026-10-09, searches in cells (WTF-520)
 

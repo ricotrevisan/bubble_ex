@@ -15,9 +15,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     * `elements` - by Bubble ID: `%{surface, instance_of, root?}` for every
       element of a surface (`root?`: the page or reusable element itself)
     * `cells` - the reusable instances in a repeating group's cell
-      (WTF-494), by Bubble ID: `%{surface, cell, holder, residue}`; the
-      page renders one per cell, in a scope of its own, when `residue` is
-      empty (see `BubbleEx.Target.Elixir.FrontendWorkflows.Data`)
+      (WTF-494), by Bubble ID: `%{surface, cell, holder, outer, residue}`
+      (`outer`: the repeating group whose cell holds `cell`, when `cell`
+      is rendered per outer cell, WTF-520, else nil); the page renders one
+      per cell, in a scope of its own, when `residue` is empty (see
+      `BubbleEx.Target.Elixir.FrontendWorkflows.Data`)
     * `diagnostics` - the lowering's and this binding's
 
   A workflow: `%{workflow, symbol, name, surface, kind, element, run_when,
@@ -251,6 +253,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     * `{:cell, rg}`, `{:cell_index, rg}` - the current cell's thing and
       index, in the cell of `rg`
     * `{:cell_data, group}` - a group's thing computed in the current cell
+      (or a repeating group's list there, rendered per cell, WTF-520)
+    * `{:outer_cell, rg}`, `{:outer_cell_index, rg}`, `{:outer_cell_data,
+      group}` - in the cell of a repeating group rendered per cell of `rg`
+      (WTF-520, two levels): the outer cell's thing and index, and a
+      group's thing (or a nested list) in that outer cell
 
   A reusable element's property (`"param_<id>"`, WTF-493) is
   `{:data, %{path: [], element: key}}` read in the reusable element (when
@@ -286,8 +293,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
           do: {:ok, {:data, %{path: [], element: e}}},
           else: {:error, "element_state:" <> state}
 
-      {%{kind: :group, surface: ^surface, cell: ^cell}, "get_group_data"} when is_binary(cell) ->
-        {:ok, {:cell_data, e}}
+      {%{kind: kind, surface: ^surface, cell: in_cell}, _} when is_binary(in_cell) ->
+        in_cell_read(index, surface, cell, e, kind, in_cell, state)
 
       _ ->
         {:error, "element_state:" <> state}
@@ -324,15 +331,65 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
       %{kind: :list, surface: ^surface, cell: nil} ->
         {:ok, if(kind == :cell_thing, do: {:cell, rg}, else: {:cell_index, rg})}
 
+      # A nested repeating group's cell (WTF-520).
+      %{kind: :list, surface: ^surface} ->
+        if nested?(index, surface, rg),
+          do: {:ok, if(kind == :cell_thing, do: {:cell, rg}, else: {:cell_index, rg})},
+          else: {:error, Atom.to_string(kind)}
+
       _ ->
         {:error, Atom.to_string(kind)}
     end
+  end
+
+  # The outer cell, read in a nested repeating group's cell (WTF-520).
+  def data_read(index, surface, cell, {kind, %{"element" => rg}})
+      when kind in [:cell_thing, :cell_index] and is_binary(cell) and is_binary(rg) do
+    if rg == outer_list(index, surface, cell),
+      do: {:ok, if(kind == :cell_thing, do: {:outer_cell, rg}, else: {:outer_cell_index, rg})},
+      else: {:error, Atom.to_string(kind)}
   end
 
   def data_read(_index, _surface, _cell, {kind, _ref}) when is_atom(kind),
     do: {:error, Atom.to_string(kind)}
 
   def data_read(_index, _surface, _cell, _input), do: {:error, "unknown"}
+
+  # A group or a repeating group in a cell, read in the cell of `cell`:
+  # one of the same cell (`{:cell_data, e}`: a group, or a repeating group
+  # rendered per cell, WTF-520), or, in a nested repeating group's cell,
+  # one of the outer cell holding it (`{:outer_cell_data, e}`).
+  defp in_cell_read(index, surface, cell, e, kind, in_cell, state) do
+    own_kind? = kind == :group == (state == "get_group_data")
+    group_or_nested? = kind == :group or nested?(index, surface, e)
+
+    cond do
+      not own_kind? or not group_or_nested? or is_nil(cell) -> {:error, "element_state:" <> state}
+      in_cell == cell -> {:ok, {:cell_data, e}}
+      in_cell == outer_list(index, surface, cell) -> {:ok, {:outer_cell_data, e}}
+      true -> {:error, "element_state:" <> state}
+    end
+  end
+
+  # Whether `list` is a repeating group in the cell of another of
+  # `surface` that is outside any cell (WTF-520): two levels, no more.
+  # Which of them the page renders per outer cell is decided where its
+  # source is bound (`Data`): a read of one it does not is not loaded.
+  defp nested?(index, surface, list) do
+    case index.elements[list] do
+      %{kind: :list, surface: ^surface, cell: outer} when is_binary(outer) ->
+        match?(%{kind: :list, surface: ^surface, cell: nil}, index.elements[outer])
+
+      _ ->
+        false
+    end
+  end
+
+  # The outer repeating group of the nested one whose cell is `cell`, or
+  # nil.
+  defp outer_list(index, surface, cell) do
+    if nested?(index, surface, cell), do: index.elements[cell].cell
+  end
 
   # An instance's property read from outside it (WTF-520), where the
   # instance sets none: its default, computed in the instance's scope. Only

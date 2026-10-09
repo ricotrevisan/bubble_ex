@@ -792,6 +792,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       else: runtime_container(node, ctx, acc)
   end
 
+  # A repeating group in a repeating group's cell that the page renders per
+  # outer cell (WTF-520, two levels): its list in that cell.
+  defp emit(
+         %Node{kind: :placeholder, runtime: %{"boundary" => "container", "repeats" => true}} =
+           node,
+         %{flows: %FlowSpec{}} = ctx,
+         %{template: true} = acc
+       )
+       when node.children != [] do
+    if nested_list?(node, ctx),
+      do: cells(node, ctx, acc),
+      else: runtime_container(node, ctx, acc)
+  end
+
   defp emit(%Node{kind: :placeholder, runtime: %{"boundary" => "container"}} = node, ctx, acc),
     do: runtime_container(node, ctx, acc)
 
@@ -1042,6 +1056,25 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     rg = bid(node)
     {item, index} = cell_vars(rg)
 
+    # Nested (WTF-520): the inner list in the outer cell (its index), the
+    # inner cells' values kept in the outer cell's scope.
+    {list, cells_scope, nested} =
+      case nested_list?(node, ctx) do
+        true ->
+          outer = ctx.cell
+          {outer_item, outer_index} = cell_vars(outer)
+
+          scope =
+            "Bubble.cell_scope(#{scope_var(ctx)}, #{literal(outer)}, #{outer_item}, #{outer_index})"
+
+          {"Bubble.cells(@bubble_data, #{scope_var(ctx)}, #{literal(rg)}, #{outer_index})", scope,
+           %{outer_cell: outer, cell_scope: scope}}
+
+        false ->
+          {"Bubble.cells(@bubble_data, #{scope_var(ctx)}, #{literal(rg)})", scope_var(ctx),
+           %{outer_cell: nil, cell_scope: nil}}
+      end
+
     lowered =
       node.children
       |> Enum.flat_map(fn child -> Css.lower(child, selector: &selector/1) end)
@@ -1052,8 +1085,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     listed = node.children |> Enum.flat_map(&cell_instance_nodes/1) |> MapSet.new(&bid/1)
 
     lowered = Map.merge(ctx.lowered, lowered)
-    inner_ctx = Map.merge(ctx, %{lowered: lowered, cell: rg, cell_instances: listed})
 
+    inner_ctx =
+      ctx
+      |> Map.merge(%{lowered: lowered, cell: rg, cell_instances: listed})
+      |> Map.merge(nested)
+
+    was = acc.template
     {children, acc} = emit_list(node.children, inner_ctx, %{acc | template: true})
 
     template = [
@@ -1061,12 +1099,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       item,
       ", ",
       index,
-      "} <- Bubble.cells(@bubble_data, ",
-      scope_var(ctx),
-      ", ",
-      literal(rg),
-      ")} id={Bubble.cell_id(",
-      scope_var(ctx),
+      "} <- ",
+      list,
+      "} id={Bubble.cell_id(",
+      cells_scope,
       ", ",
       literal(rg),
       ", ",
@@ -1078,8 +1114,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       "</div>"
     ]
 
-    element("div", node, [], template, ctx, %{acc | template: false}, placeholder: true)
+    element("div", node, [], template, ctx, %{acc | template: was}, placeholder: true)
   end
+
+  # Where the current cell's values are kept: the outer cell's scope in a
+  # nested repeating group's cell (WTF-520), else the surface's.
+  defp cells_scope(ctx), do: Map.get(ctx, :cell_scope) || scope_var(ctx)
 
   # --- tables -----------------------------------------------------------------------
 
@@ -1385,6 +1425,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # The loop variables of a repeating group's cells.
   defp cell_vars(rg), do: {"cell_" <> ident(rg), "cell_" <> ident(rg) <> "_i"}
 
+  # Whether the page loads a repeating group's list per cell of the
+  # repeating group holding it (WTF-520): two levels, the outer one
+  # outside any cell.
+  defp nested_list?(node, ctx) do
+    with outer when is_binary(outer) <- Map.get(ctx, :cell),
+         nil <- Map.get(ctx, :outer_cell),
+         %{kind: :list, cell: ^outer, surface: surface} when surface == ctx.entry.id <-
+           ctx.flows.data_index.elements[bid(node)] do
+      match?(%{kind: :list, cell: nil, surface: ^surface}, ctx.flows.data_index.elements[outer])
+    else
+      _ -> false
+    end
+  end
+
   # Whether the page loads the repeating group's list (WTF-420).
   defp wired_list?(node, ctx) do
     match?(
@@ -1552,7 +1606,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # unique ID, not its position.
   defp cell_scope(node, ctx) do
     {item, index} = cell_vars(ctx.cell)
-    cell = "Bubble.cell_scope(#{scope_var(ctx)}, #{literal(ctx.cell)}, #{item}, #{index})"
+    cell = "Bubble.cell_scope(#{cells_scope(ctx)}, #{literal(ctx.cell)}, #{item}, #{index})"
     "Bubble.nest(#{cell}, #{literal(bid(node))})"
   end
 
@@ -2347,8 +2401,19 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp data_read?(%{input: input}, ctx) do
     case FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell)) do
-      {kind, _} -> kind in [:data, :cell, :cell_index, :cell_data]
-      nil -> false
+      {kind, _} ->
+        kind in [
+          :data,
+          :cell,
+          :cell_index,
+          :cell_data,
+          :outer_cell,
+          :outer_cell_index,
+          :outer_cell_data
+        ]
+
+      nil ->
+        false
     end
   end
 
@@ -3334,15 +3399,16 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       {:data, k} ->
         "Bubble.data(@bubble_data, #{key_scope(k.path, ctx)}, #{literal(k.element)})"
 
-      {:cell, rg} ->
-        rg |> cell_vars() |> elem(0)
-
-      {:cell_index, rg} ->
-        rg |> cell_vars() |> elem(1)
-
-      {:cell_data, g} ->
-        "Bubble.data(@bubble_data, #{scope_var(ctx)}, #{literal(g)}, " <>
-          "#{ctx.cell |> cell_vars() |> elem(1)})"
+      {kind, _} = read
+      when kind in [
+             :cell,
+             :cell_index,
+             :cell_data,
+             :outer_cell,
+             :outer_cell_index,
+             :outer_cell_data
+           ] ->
+        cell_source(read, ctx)
 
       {:state, k} ->
         "Bubble.state(@bubble_states, #{key_scope(k.path, ctx)}, #{literal(k.element)}, " <>
@@ -3358,6 +3424,24 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         "@" <> var
     end
   end
+
+  # A cell's thing, index or group's value, read where the cell renders;
+  # in a nested repeating group's cell (WTF-520), also the outer cell's.
+  defp cell_source({kind, rg}, _ctx) when kind in [:cell, :outer_cell],
+    do: rg |> cell_vars() |> elem(0)
+
+  defp cell_source({kind, rg}, _ctx) when kind in [:cell_index, :outer_cell_index],
+    do: rg |> cell_vars() |> elem(1)
+
+  defp cell_source({:cell_data, g}, ctx),
+    do:
+      "Bubble.data(@bubble_data, #{cells_scope(ctx)}, #{literal(g)}, " <>
+        "#{ctx.cell |> cell_vars() |> elem(1)})"
+
+  defp cell_source({:outer_cell_data, g}, ctx),
+    do:
+      "Bubble.data(@bubble_data, #{scope_var(ctx)}, #{literal(g)}, " <>
+        "#{ctx.outer_cell |> cell_vars() |> elem(1)})"
 
   # An input's value; one whose first value is page data (WTF-520) reads it
   # until it changes.
@@ -3650,22 +3734,30 @@ defmodule BubbleEx.Target.Phoenix.Pages do
          %Node{kind: :placeholder, runtime: %{"boundary" => "container", "repeats" => true}} =
            node,
          surface,
-         _cell,
+         cell,
          base
        ) do
-    if match?(
-         %{kind: :list, cell: nil, surface: ^surface},
-         base.flows.data_index.elements[bid(node)]
-       ),
-       do: node_loads(node.children, surface, bid(node), base),
-       else: []
+    case base.flows.data_index.elements[bid(node)] do
+      %{kind: :list, cell: nil, surface: ^surface} ->
+        node_loads(node.children, surface, bid(node), base)
+
+      # Rendered per cell of the repeating group holding it (WTF-520).
+      %{kind: :list, cell: outer, surface: ^surface} when is_binary(outer) and outer == cell ->
+        node_loads(node.children, surface, bid(node), base)
+
+      _ ->
+        []
+    end
   end
 
   defp inner_loads(%Node{kind: :reusable_instance}, _surface, _cell, _base), do: []
   defp inner_loads(node, surface, cell, base), do: node_loads(node.children, surface, cell, base)
 
   defp load_key({:data, %{element: e}}), do: e
-  defp load_key({kind, e}) when kind in [:cell, :cell_data], do: e
+
+  defp load_key({kind, e}) when kind in [:cell, :cell_data, :outer_cell, :outer_cell_data],
+    do: e
+
   defp load_key(_), do: nil
 
   # The reusable-element instances a page renders (not in runtime
@@ -3749,13 +3841,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
          by_ref,
          flows
        ) do
-    entries =
-      for instance <- Enum.flat_map(node.children, &cell_instance_nodes/1),
-          FlowSpec.per_cell?(flows, bid(instance)),
-          entry <- instance_scopes(instance, "", by_ref, flows, MapSet.new()),
-          do: entry
+    entries = cell_entries(node, by_ref, flows)
 
-    if entries == [], do: [], else: [{bid(node), entries}]
+    # The repeating groups rendered per cell of this one (WTF-520): their
+    # instances, by `{outer, inner}`.
+    outer = bid(node)
+
+    nested =
+      for inner <- Enum.flat_map(node.children, &nested_list_nodes/1),
+          match?(%{kind: :list, cell: ^outer}, flows.data_index.elements[bid(inner)]),
+          inner_entries = cell_entries(inner, by_ref, flows),
+          inner_entries != [],
+          do: {{outer, bid(inner)}, inner_entries}
+
+    if(entries == [], do: [], else: [{bid(node), entries}]) ++ nested
   end
 
   defp cell_templates_of(%Node{kind: :placeholder, runtime: %{"boundary" => "container"}}, _, _),
@@ -3766,6 +3865,30 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # The reusable instances of a cell's template (not in a nested
   # container or instance).
+  # The instances a repeating group renders per cell.
+  defp cell_entries(node, by_ref, flows) do
+    for instance <- Enum.flat_map(node.children, &cell_instance_nodes/1),
+        FlowSpec.per_cell?(flows, bid(instance)),
+        entry <- instance_scopes(instance, "", by_ref, flows, MapSet.new()),
+        do: entry
+  end
+
+  # The repeating groups directly in a cell's template (not inside another
+  # runtime container there).
+  defp nested_list_nodes(
+         %Node{kind: :placeholder, runtime: %{"boundary" => "container", "repeats" => true}} =
+           node
+       ),
+       do: if(Table.table?(node), do: [], else: [node])
+
+  defp nested_list_nodes(%Node{kind: :placeholder, runtime: %{"boundary" => "container"}}),
+    do: []
+
+  defp nested_list_nodes(%Node{kind: :reusable_instance}), do: []
+
+  defp nested_list_nodes(%Node{children: children}),
+    do: Enum.flat_map(children, &nested_list_nodes/1)
+
   defp cell_instance_nodes(%Node{kind: :reusable_instance} = node), do: [node]
 
   defp cell_instance_nodes(%Node{kind: :placeholder, runtime: %{"boundary" => "container"}}),

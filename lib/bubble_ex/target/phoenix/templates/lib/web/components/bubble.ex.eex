@@ -536,6 +536,18 @@ defmodule <%= @web %>.Bubble do
   end
 
   @doc """
+  The items of repeating group `element` in the cell `index` of the
+  repeating group holding it (WTF-520), with their 1-based index (none
+  when not loaded).
+  """
+  def cells(data, scope, element, index) do
+    case data(data, scope, element, index) do
+      list when is_list(list) -> Enum.with_index(list, 1)
+      _ -> []
+    end
+  end
+
+  @doc """
   A Text's dynamic content with BBCode formatting in its own text
   (WTF-450): `nodes` are texts and `{tag, nodes}` with `tag` one of `:b`,
   `:i`, `:u`, `:s` (bold, italic, underline, strikethrough), built at
