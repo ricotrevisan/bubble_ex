@@ -108,6 +108,18 @@ defmodule PhxCheckWeb.CellClicksBehaviorTest do
     render(view)
   end
 
+  defp destroy(name),
+    do:
+      PhxCheck.Product |> Ash.get!(id(name), authorize?: false) |> Ash.destroy!(authorize?: false)
+
+  defp scoped_text(view, scope, id) do
+    view
+    |> element(~s([data-bubble-scope="#{scope}"] [data-bubble-id="#{id}"]))
+    |> render()
+    |> then(&Regex.replace(~r/<[^>]*>/, &1, ""))
+    |> String.trim()
+  end
+
   defp row_text(view, name, id) do
     view
     |> element(~s(##{row_id(name)} [data-bubble-id="#{id}"]))
@@ -317,7 +329,7 @@ defmodule PhxCheckWeb.CellClicksBehaviorTest do
 
     # Pear leaves the list: deleted, and the page reads its data again on
     # the change notification.
-    PhxCheck.Product |> Ash.get!(id("Pear"), authorize?: false) |> Ash.destroy!(authorize?: false)
+    destroy("Pear")
     Process.sleep(150)
     html = render(view)
     refute "Pear" in shown(html, "Row")
@@ -339,6 +351,124 @@ defmodule PhxCheckWeb.CellClicksBehaviorTest do
     # Apple's row still works.
     render_click(view, "bubble:click", %{"scope" => row("Apple"), "element" => "bShow"})
     assert text(view, "bDetailName") == "Detail: Apple"
+  end
+
+  test "a click or an input commit whose cell leaves the list before it runs runs nothing", %{
+    conn: conn,
+    users: users
+  } do
+    view = products(conn, users["Ada"])
+    render_click(view, "bubble:click", %{"scope" => row("Apple"), "element" => "bShow"})
+    assert text(view, "bDetailName") == "Detail: Apple"
+
+    # An input commit queued behind the debounced read, then Pear leaves.
+    render_click(view, "bubble:commit", %{
+      "scope" => row("Pear"),
+      "element" => "bQty",
+      "value" => "9"
+    })
+
+    destroy("Pear")
+    settle(view)
+    refute Map.has_key?(assigns(view).bubble_page_cells, row("Pear"))
+    assert qty("Apple") == 1
+
+    # A click accepted before the page reads the change notification: the
+    # cell is looked up again after the read, and is gone.
+    destroy("Almond")
+    render_click(view, "bubble:click", %{"scope" => row("Almond"), "element" => "bShow"})
+    assert text(view, "bDetailName") == "Detail: Apple"
+
+    assert assigns(view).bubble_displayed[{"", "bDetail"}] ==
+             {PhxCheck.Product, false, id("Apple")}
+  end
+
+  test "a paused workflow resumes in its cell; whose cell left the list, its rest is dropped", %{
+    conn: conn,
+    users: users
+  } do
+    view = products(conn, users["Ada"])
+
+    render_click(view, "bubble:click", %{"scope" => row("Pear"), "element" => "bLater"})
+    assert text(view, "bDetailName") == "Detail:"
+    Process.sleep(450)
+    assert text(view, "bDetailName") == "Detail: Pear"
+
+    render_click(view, "bubble:click", %{"scope" => row("Apple"), "element" => "bShow"})
+    assert text(view, "bDetailName") == "Detail: Apple"
+
+    # Pear leaves the list during the pause.
+    render_click(view, "bubble:click", %{"scope" => row("Pear"), "element" => "bLater"})
+    destroy("Pear")
+    Process.sleep(450)
+    assert text(view, "bDetailName") == "Detail: Apple"
+
+    # The resume arrives while the change notification is not read yet:
+    # the page reads its data first, then drops the rest.
+    frame = %{
+      module: PhxCheckWeb.ProductsLive.Workflows,
+      scope: "",
+      workflow: "wLater",
+      at: 2,
+      args: %{},
+      steps: %{},
+      returns: nil,
+      call: nil,
+      cell: row("Almond")
+    }
+
+    destroy("Almond")
+
+    send(
+      view.pid,
+      {:bubble, :resume, [frame], DateTime.utc_now(), %{jobs: 5, calls: 5, chain: 1}}
+    )
+
+    Process.sleep(100)
+    assert text(view, "bDetailName") == "Detail: Apple"
+
+    assert assigns(view).bubble_displayed[{"", "bDetail"}] ==
+             {PhxCheck.Product, false, id("Apple")}
+  end
+
+  test "a reusable element's own list takes clicks per cell, on the page and in a cell", %{
+    conn: conn,
+    users: users
+  } do
+    view = products(conn, users["Ada"])
+    picker = "bPicker"
+
+    render_click(view, "bubble:click", %{
+      "scope" => "#{picker}-bPickList~2#{id("Pear")}",
+      "element" => "bPickBtn"
+    })
+
+    assert scoped_text(view, picker, "bPickedName") == "Chosen: Pear"
+
+    # Another instance's cell scope, or the page's list's, is not the picker's.
+    render_click(view, "bubble:click", %{"scope" => row("Apple"), "element" => "bPickBtn"})
+    assert scoped_text(view, picker, "bPickedName") == "Chosen: Pear"
+
+    {:ok, cats, _html} = live(sign_in(build_conn(), users["Ada"]), "/categories")
+    fruit = "bCats~2#{@fruit}-bCatPicker"
+    nuts = "bCats~2#{@nuts}-bCatPicker"
+
+    render_click(cats, "bubble:click", %{
+      "scope" => "#{fruit}-bPickList~2#{id("Apple")}",
+      "element" => "bPickBtn"
+    })
+
+    assert scoped_text(cats, fruit, "bPickedName") == "Chosen: Apple"
+    assert scoped_text(cats, nuts, "bPickedName") == "Chosen:"
+
+    # A made-up instance scope around a real product.
+    render_click(cats, "bubble:click", %{
+      "scope" => "bCats~21700000000000x299999999999999999-bCatPicker-bPickList~2#{id("Pear")}",
+      "element" => "bPickBtn"
+    })
+
+    assert scoped_text(cats, nuts, "bPickedName") == "Chosen:"
+    assert scoped_text(cats, fruit, "bPickedName") == "Chosen: Apple"
   end
 
   test "each user's rows are the products that user may read", %{conn: conn, users: users} do

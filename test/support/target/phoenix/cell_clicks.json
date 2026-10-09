@@ -1,5 +1,5 @@
 {
-  "_comment": "WTF-520: clicks and input changes of the page's own elements in repeating group cells. A list of products whose row button shows that product in a detail group outside the list (master-detail), a quantity input per row whose change writes that row's product, a row button whose workflow is not lowered (the refusal notice), and a nested list (categories, then each category's products) whose row button shows the product and its category. All data invented; test/support/target/phoenix/cell_clicks_behavior.exs runs it.",
+  "_comment": "WTF-520: clicks and input changes of the page's own elements in repeating group cells. A list of products whose row button shows that product in a detail group outside the list (master-detail), a quantity input per row whose change writes that row's product, a row button whose workflow is not lowered (the refusal notice), and a nested list (categories, then each category's products) whose row button shows the product and its category. All data invented; test/support/target/phoenix/cell_clicks_behavior.exs runs it. A reusable product picker (its own list, a row's button showing the row's product in a group of the picker) is on the products page and in each category's cell; a row's Later button pauses before it shows its product.",
   "_id": "cell-clicks-fixture",
   "user_types": {
     "user": {
@@ -107,7 +107,137 @@
       }
     }
   },
-  "element_definitions": {},
+  "element_definitions": {
+    "bPickerDef": {
+      "id": "bPickerDef",
+      "name": "Product picker",
+      "type": "CustomDefinition",
+      "properties": {
+        "width": 400,
+        "height": 300
+      },
+      "elements": {
+        "bPickList": {
+          "id": "bPickList",
+          "type": "RepeatingGroup",
+          "properties": {
+            "order": 1,
+            "width": 400,
+            "height": 200,
+            "columns": 1,
+            "rows": 10,
+            "group_type": "custom.product",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.product",
+                "sort_field": "name_text",
+                "descending": false,
+                "ignore_empty_constraints": false
+              }
+            }
+          },
+          "elements": {
+            "bPickName": {
+              "id": "bPickName",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Pickable: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "name_text"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bPickBtn": {
+              "id": "bPickBtn",
+              "type": "Button",
+              "properties": {
+                "order": 2,
+                "width": 120,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Pick"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bPicked": {
+          "id": "bPicked",
+          "type": "Group",
+          "properties": {
+            "order": 2,
+            "width": 400,
+            "height": 60,
+            "group_type": "custom.product"
+          },
+          "elements": {
+            "bPickedName": {
+              "id": "bPickedName",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Chosen: ",
+                    "1": {
+                      "type": "ElementParent",
+                      "next": {
+                        "type": "Message",
+                        "name": "name_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "workflows": {
+        "wPickBtn": {
+          "id": "wPickBtn",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bPickBtn"
+          },
+          "actions": {
+            "0": {
+              "id": "aPickBtn1",
+              "type": "DisplayGroupData",
+              "properties": {
+                "element_id": "bPicked",
+                "data_source": {
+                  "type": "CurrentDataItem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
   "pages": {
     "index": {
       "id": "bIndex",
@@ -252,6 +382,22 @@
                   }
                 }
               }
+            },
+            "bLater": {
+              "id": "bLater",
+              "type": "Button",
+              "properties": {
+                "order": 6,
+                "width": 120,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Later"
+                  }
+                }
+              }
             }
           }
         },
@@ -311,6 +457,16 @@
                 }
               }
             }
+          }
+        },
+        "bPicker": {
+          "id": "bPicker",
+          "type": "CustomElement",
+          "properties": {
+            "custom_id": "bPickerDef",
+            "order": 3,
+            "width": 400,
+            "height": 300
           }
         }
       },
@@ -379,6 +535,32 @@
               "type": "AnimateElement",
               "properties": {
                 "element_id": "bDetailName"
+              }
+            }
+          }
+        },
+        "wLater": {
+          "id": "wLater",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bLater"
+          },
+          "actions": {
+            "0": {
+              "id": "aLater1",
+              "type": "PauseWFClient",
+              "properties": {
+                "length": 300
+              }
+            },
+            "1": {
+              "id": "aLater2",
+              "type": "DisplayGroupData",
+              "properties": {
+                "element_id": "bDetail",
+                "data_source": {
+                  "type": "CurrentDataItem"
+                }
               }
             }
           }
@@ -527,6 +709,16 @@
                     }
                   }
                 }
+              }
+            },
+            "bCatPicker": {
+              "id": "bCatPicker",
+              "type": "CustomElement",
+              "properties": {
+                "custom_id": "bPickerDef",
+                "order": 3,
+                "width": 400,
+                "height": 300
               }
             }
           }

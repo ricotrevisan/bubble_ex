@@ -89,7 +89,10 @@ lists for that element.
 page's own elements in a repeating group's cell take their clicks and
 input changes per cell: in a repeating group the page renders per cell
 (outside any runtime container, or rendered per cell of another, two
-levels, `docs/page-data.md`) whose list loads, the element in the cell's
+levels, `docs/page-data.md`) whose list loads and is a list of things
+(a list of texts, numbers, dates or options has cells by position only,
+which a stale page could make name another item: its events stay
+residue), the element in the cell's
 template, not inside another runtime container there (a table, a
 plugin's container, a third level) nor inside a reusable instance (its
 elements are its reusable element's). They are listed apart in
@@ -116,7 +119,12 @@ is not tracked in a cell, and its change workflows are
 `:unavailable_input`); "This input's value" in a workflow of the same
 cell, and a text of the same cell, read that cell's value. A cell that
 leaves the list drops its inputs' values. A paused workflow of a cell
-resumes in it only while the page still shows it. A click whose steps
+resumes in it only while the page still shows it, checked again after the
+page reads its data. A click, an input's workflows or the rest of a
+paused workflow whose cell is gone are dropped silently (logged, no
+notice). "Reset relevant inputs" with no element resets the cells'
+inputs too; a reset group or popup does not reset the inputs of the
+cells inside it (only the inputs it holds directly). A click whose steps
 only show, hide, toggle, focus or scroll to the surface's elements runs
 in the browser, as anywhere. Page-load, condition-true and "do every"
 workflows have no cell. Anything else in a cell (a table's row, a third
@@ -250,10 +258,12 @@ may run (WTF-520):
   refusal notice; a "do every" tick is refused silently, logged); what
   reads the element reads it empty, as Bubble's page does before the
   event. A click or an input change in a repeating group's cell is such
-  an event when the page wires it per cell (WTF-520, above): a detail
-  group outside the list that a row's click sets ("Display data in
-  bDetail: Current cell's product", master-detail) is page data, empty
-  until the click. An event the page never triggers (a click in a
+  an event when the page wires it per cell (WTF-520, above) and the
+  runtime runs it whole: a detail group outside the list that a row's
+  click sets ("Display data in bDetail: Current cell's product",
+  master-detail) is page data, empty until the click. One the runtime
+  refuses would never set it, so the element stays unloaded, loudly (a
+  page-level click the runtime refuses still counts, as before). An event the page never triggers (a click in a
   table's row or a third level, `:trigger_in_runtime_template`) would
   leave it empty where Bubble shows data: the element stays unloaded.
   A custom event nothing calls never runs: it sets nothing.

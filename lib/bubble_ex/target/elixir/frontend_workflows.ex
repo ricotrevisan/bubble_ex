@@ -457,7 +457,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # close, the popup's workflow itself) is triggered, whether the runtime
   # then runs it or refuses it with a notice. Before an event the element
   # shows nothing, as in Bubble (a click in a repeating group's cell the
-  # page wires per cell is one, WTF-520); an event the page never
+  # page wires per cell is one, WTF-520, when it also runs whole:
+  # `event_kept?/2`); an event the page never
   # triggers (a click in a table's row, a third level) would leave it
   # empty where Bubble shows data, so it is not kept. No step at all:
   # empty, kept.
@@ -467,9 +468,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   defp kept?(_element, %{roots: roots}, %{all: all, runs: runs}, _shown) do
     Enum.all?(roots, fn
       {:load, symbol} -> wired?(runs[symbol])
-      {:event, symbol} -> wired?(all[symbol])
+      {:event, symbol} -> event_kept?(all[symbol], runs[symbol])
     end)
   end
+
+  # An event the page triggers. In a repeating group's cell (WTF-520) it
+  # must also run whole (`runs`): one the runtime refuses would leave the
+  # element empty for good where Bubble fills it on the click, so the
+  # element stays unloaded, loudly.
+  defp event_kept?(%{cell: cell}, run) when is_binary(cell), do: wired?(run)
+  defp event_kept?(w, _run), do: wired?(w)
 
   defp wired?(nil), do: false
   defp wired?(w), do: Spec.wired?(w)
@@ -589,7 +597,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   defp cell_trigger(element, ctx) when is_binary(element) do
     with rg when is_binary(rg) <- Map.get(Map.get(ctx, :cell_members, %{}), element),
          %{surface: surface} <- ctx.elements[element],
-         true <- Data.cells_loaded?(ctx.data, surface, rg, Map.get(ctx.nested_lists, rg)) do
+         outer = Map.get(ctx.nested_lists, rg),
+         true <- keyed_cells?(rg, outer, ctx),
+         true <- Data.cells_loaded?(ctx.data, surface, rg, outer) do
       rg
     else
       _ -> nil
@@ -597,6 +607,15 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   end
 
   defp cell_trigger(_element, _ctx), do: nil
+
+  # Whether the cells of `rg` (and of its outer list) are keyed by their
+  # things' unique IDs: a list of things. A list of texts, numbers, dates
+  # or options has cells by position only, which could name another item
+  # once the list changes under a stale page: its events stay unwired.
+  defp keyed_cells?(rg, outer, ctx),
+    do: Enum.all?(Enum.reject([rg, outer], &is_nil/1), &data_type?(raw_content(&1, ctx)))
+
+  defp raw_content(id, ctx), do: Map.get(ctx.raw_elements[id] || %{}, :content)
 
   # The cell a workflow's event runs in: a click or an input change of an
   # element the page wires per cell (WTF-520), else nil.
@@ -725,6 +744,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     for {id, %{kind: :element, type: type, value: value, instance_of: nil} = e} <- elements,
         rg = Map.get(ctx.cell_members, id),
         is_binary(rg),
+        keyed_cells?(rg, Map.get(ctx.nested_lists, rg), ctx),
         {values, kind} <- [Map.get(@inputs, type, {[], nil})],
         value in values,
         MapSet.member?(ctx.present, id),

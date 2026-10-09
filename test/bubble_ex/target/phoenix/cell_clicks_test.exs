@@ -254,6 +254,141 @@ defmodule BubbleEx.Target.Phoenix.CellClicksTest do
       assert squash(heex) =~ ~s|phx-click={Workflows.wf_w_peek("")}|
     end
 
+    test "a group only a refused row workflow sets stays unloaded, loudly" do
+      group = %{
+        "id" => "bDetail2",
+        "type" => "Group",
+        "properties" => %{"width" => 300, "height" => 40, "group_type" => "custom.product"},
+        "elements" => %{
+          "bDetail2Name" => %{
+            "id" => "bDetail2Name",
+            "type" => "Text",
+            "properties" => %{
+              "width" => 300,
+              "height" => 40,
+              "text" => %{
+                "type" => "TextExpression",
+                "entries" => %{
+                  "0" => %{
+                    "type" => "ElementParent",
+                    "next" => %{"type" => "Message", "name" => "name_text"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      show = %{
+        "id" => "aBoth1",
+        "type" => "DisplayGroupData",
+        "properties" => %{
+          "element_id" => "bDetail2",
+          "data_source" => %{"type" => "CurrentDataItem"}
+        }
+      }
+
+      animate = %{
+        "id" => "aBoth2",
+        "type" => "AnimateElement",
+        "properties" => %{"element_id" => "bDetail2"}
+      }
+
+      app =
+        app()
+        |> put_in(["pages", "products", "elements", "bDetail2"], group)
+        |> put_in(@products ++ ["bBoth"], button("bBoth"))
+        |> put_in(
+          ["pages", "products", "workflows", "wBoth"],
+          clicked("wBoth", "bBoth", [show, animate])
+        )
+
+      spec = spec(app)
+      w = Spec.workflow(spec, "bProductsPage", "wBoth")
+
+      # Wired (the runtime refuses it with the notice), but it never sets
+      # bDetail2: not read as empty where Bubble would fill it.
+      assert Spec.wired?(w) and not Spec.native?(w)
+      refute data(spec, "bDetail2")
+
+      # Without the action it does not lower, it runs, and bDetail2 loads.
+      app =
+        put_in(
+          app,
+          ["pages", "products", "workflows", "wBoth"],
+          clicked("wBoth", "bBoth", [show])
+        )
+
+      assert %{read: :displayed, residue: []} = data(spec(app), "bDetail2")
+    end
+
+    test "a list of texts has cells by position only: its events stay unwired" do
+      texts = %{
+        "id" => "bTags",
+        "type" => "RepeatingGroup",
+        "properties" => %{
+          "group_type" => "text",
+          "rows" => 5,
+          "width" => 300,
+          "height" => 100,
+          "data_source" => %{
+            "type" => "Search",
+            "properties" => %{
+              "type_to_find" => "custom.product",
+              "sort_field" => "name_text",
+              "descending" => false,
+              "ignore_empty_constraints" => false
+            },
+            "next" => %{"type" => "Message", "name" => "name_text"}
+          }
+        },
+        "elements" => %{
+          "bTagBtn" => button("bTagBtn"),
+          "bTagIn" => %{"id" => "bTagIn", "type" => "Input", "properties" => %{"width" => 100}}
+        }
+      }
+
+      app =
+        app()
+        |> put_in(["pages", "products", "elements", "bTags"], texts)
+        |> put_in(
+          ["pages", "products", "workflows", "wTag"],
+          clicked("wTag", "bTagBtn", [
+            %{
+              "id" => "aTag1",
+              "type" => "SetCustomState",
+              "properties" => %{
+                "element_id" => "bProductsPage",
+                "custom_state" => "custom.t_",
+                "value" => 1
+              }
+            }
+          ])
+        )
+
+      spec = spec(app)
+
+      # The list loads; its cells are keyed by position.
+      assert %{residue: []} = data(spec, "bTags")
+
+      assert %{cell: nil, residue: [%{reason: :trigger_in_runtime_template} | _]} =
+               Spec.workflow(spec, "bProductsPage", "wTag")
+
+      refute Map.has_key?(spec.surfaces["bProductsPage"].cell_inputs, "bTagIn")
+    end
+
+    test "a reusable element's own list: its row's click runs in its surface's cell" do
+      spec = spec(app())
+
+      assert %{cell: "bPickList", residue: []} = w = Spec.workflow(spec, "bPickerDef", "wPickBtn")
+      assert Spec.wired?(w) and Spec.native?(w)
+      assert %{read: :displayed, residue: []} = data(spec, "bPicked")
+
+      module = files(app())["lib/shop_web/components/reusables/product_picker/workflows.ex"]
+      assert module =~ ~s(cell_lists: [{"bPickList", nil}])
+    end
+
     test "master-detail without page data: the cell's thing is unavailable, nothing is wired" do
       app = app()
       %{project: project, frontend: frontend, model: model, index: index} = built(app)

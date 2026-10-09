@@ -61,7 +61,11 @@ defmodule <%= @web %>.BubbleWorkflows do
   page's data is read again, so one that left the list runs nothing. An
   input in a cell keeps its value per cell, under the cell's scope, and a
   cell that leaves the list drops it. A paused workflow of a cell
-  continues in it only while the page still shows it.
+  continues in it only while the page still shows it (checked again after
+  the page reads its data). A click, an input's workflows or the rest of
+  a paused workflow whose cell is gone are dropped silently: logged, no
+  notice. Only lists of things have cells here: a list of texts, numbers
+  or dates (cells by position) takes no event per cell.
 
   Event parameters never become atoms, never name a workflow, a module or a
   record: the page looks the element up in its own static lists and runs
@@ -923,19 +927,28 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_committed, drop_scopes(Map.get(socket.assigns, :bubble_committed) || %{}, gone))
   end
 
+  # Only things (an item with a unique ID): a cell keyed by its position
+  # could name another item after the list changes, so a list of texts,
+  # numbers or dates has none (the generator does not wire them either).
   defp list_cells(data, module, scope, rg, nil) do
     for {item, i} <- Bubble.cells(data, scope, rg),
+        keyed?(item),
         do: {Bubble.cell_scope(scope, rg, item, i), page_cell_entry(module, scope, rg, item, i, nil, nil)}
   end
 
   defp list_cells(data, module, scope, rg, outer) do
     for {outer_item, oi} <- Bubble.cells(data, scope, outer),
+        keyed?(outer_item),
         outer_scope = Bubble.cell_scope(scope, outer, outer_item, oi),
         {item, i} <- Bubble.cells(data, scope, rg, oi),
+        keyed?(item),
         do:
           {Bubble.cell_scope(outer_scope, rg, item, i),
            page_cell_entry(module, scope, rg, item, i, {outer_item, oi}, outer_scope)}
   end
+
+  defp keyed?(%{id: id}) when (is_binary(id) and id != "") or is_integer(id), do: true
+  defp keyed?(_item), do: false
 
   defp page_cell_entry(module, scope, rg, item, index, outer, cell_scope),
     do: %{module: module, scope: scope, rg: rg, item: item, index: index, outer: outer, cell_scope: cell_scope}
@@ -998,7 +1011,8 @@ defmodule <%= @web %>.BubbleWorkflows do
     do:
       Enum.all?(frames, fn frame ->
         surface(socket, page, frame.scope) == {:ok, frame.module} and
-          (frame_cell(frame) == nil or match?({:ok, %{module: m}} when m == frame.module, page_cell(socket, frame_cell(frame))))
+          (frame_cell(frame) == nil or
+             match?({:ok, %{module: m, scope: s}} when m == frame.module and s == frame.scope, page_cell(socket, frame_cell(frame))))
       end)
 
   defp frame_cell(frame), do: Map.get(frame, :cell)
@@ -1168,8 +1182,18 @@ defmodule <%= @web %>.BubbleWorkflows do
   # (or anything since the last read) made it stale.
   defp run_events(socket, page, runs, run) do
     Enum.reduce(runs, {socket, run}, fn
+      # The page's data may have been read again since the message was
+      # accepted: a paused workflow of a cell that left the list is
+      # dropped then (WTF-520), never resumed without its cell.
       {:resume, frames, now}, {socket, run} ->
-        socket |> BubbleData.reload(page) |> resume_event(frames, now, run)
+        socket = BubbleData.reload(socket, page)
+
+        if resumable?(socket, page, frames) do
+          resume_event(socket, frames, now, run)
+        else
+          Logger.info("bubble: a paused workflow's cell is no longer on the page; it was dropped")
+          {socket, run}
+        end
 
       {module, scope, ids, args}, acc ->
         Enum.reduce(ids, acc, fn id, {socket, run} ->
@@ -1711,7 +1735,14 @@ defmodule <%= @web %>.BubbleWorkflows do
               resume: frame.at
           }
 
-          apply(frame.module, fun, [frame_cell_ctx(child, frame_cell(frame))])
+          case frame_cell_ctx(child, frame_cell(frame)) do
+            {:ok, child} ->
+              apply(frame.module, fun, [child])
+
+            :error ->
+              Logger.info("bubble workflow #{inspect(frame.workflow)}: its cell is no longer on the page; the rest was dropped")
+              {{:error, {:cell_gone, frame.workflow}}, ctx}
+          end
         end
 
       _ ->
@@ -1720,15 +1751,15 @@ defmodule <%= @web %>.BubbleWorkflows do
   end
 
   # A paused workflow of a repeating group's cell (WTF-520) continues in
-  # that cell, as the page read it last (`resumable?/3` checked it is
-  # still there).
+  # that cell, as the page read it last, and only while the page still
+  # shows it (in the same surface and scope): never with an empty cell.
   defp frame_cell_ctx(ctx, nil),
-    do: %{ctx | cell: nil, cell_index: nil, outer: nil, cell_scope: nil, cell_key: nil}
+    do: {:ok, %{ctx | cell: nil, cell_index: nil, outer: nil, cell_scope: nil, cell_key: nil}}
 
-  defp frame_cell_ctx(ctx, key) do
+  defp frame_cell_ctx(%Ctx{module: module, scope: scope} = ctx, key) do
     case Map.fetch(ctx.cells, key) do
-      {:ok, cell} -> cell_ctx(ctx, key, cell)
-      :error -> frame_cell_ctx(ctx, nil)
+      {:ok, %{module: ^module, scope: ^scope} = cell} -> {:ok, cell_ctx(ctx, key, cell)}
+      _ -> :error
     end
   end
 

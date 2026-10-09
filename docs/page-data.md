@@ -1113,29 +1113,29 @@ group's or instance's thing or a repeating group's list is no longer
 
 The page's own clicks and input changes in repeating group cells
 (`docs/frontend-workflows.md`). Of the 194 workflows whose trigger was in
-a runtime template, 124 are now wired per cell (121 clicks, 3 input
-changes); 66 of them run whole (65 on the server, 1 in the browser; 62
-read or write stored data), the other 58 are refused by the runtime with
-the notice, for their own residue (uncompiled expressions 25, plugin
-actions 9, unavailable inputs 5, unresolved references 5, and others).
-The 70 left are in a list the page does not load (65, in 34 lists whose
-own source does not compile or reads what the page does not load), a
-table's row (3) or a nested list that does not load (2).
+a runtime template, 83 are now wired per cell; 35 of them run whole, the
+others are refused by the runtime with the notice, for their own residue
+(mostly uncompiled expressions and plugin actions). The 111 left: 65 in
+a list the page does not load (34 lists whose own source does not
+compile or reads what the page does not load), 41 in lists of options
+(39) or texts (2), whose cells are keyed by position, 3 in a table's
+row, 2 in a nested list that does not load.
 
 | | before | after |
 |-|------:|------:|
-| workflows native / wired | 814 / 541 | 880 / 607 |
-| native steps | 2,419 | 2,525 |
-| `:trigger_in_runtime_template` (residue entries, workflows) | 194 | 70 |
-| `:unavailable_input` (residue entries, workflows) | 479 | 348 |
+| workflows native / wired | 814 / 541 | 850 / 577 |
+| native steps | 2,419 | 2,487 |
+| `:trigger_in_runtime_template` (residue entries, workflows) | 194 | 111 |
+| `:unavailable_input` (residue entries, workflows) | 479 | 395 |
 | data sources wired / total | 2,752 / 3,356 | 2,774 / 3,361 |
 | read as what steps showed | 133 | 136 |
 | `:unavailable_input` (sources) | 434 | 417 |
 
-Sources: 3 groups set only by those clicks are now page data (empty
-until the click), and 2 inputs whose initial content reads one of them
-are tracked; 17 sources that read them load (13 groups outside cells,
-3 in cells, 1 list). No other workflow or source moved.
+Sources: 3 groups set only by those clicks (each by one that runs whole)
+are now page data (empty until the click), and 2 inputs whose initial
+content reads one of them are tracked; 17 sources that read them load
+(13 groups outside cells, 3 in cells, 1 list). No other workflow or
+source moved.
 
 ### Private fixture app (test version), 2026-10-09, nested repeating groups (WTF-520)
 

@@ -3,7 +3,7 @@
     "generated": {
       "by_kind": {
         "click": {
-          "native": 575,
+          "native": 545,
           "total": 1358
         },
         "condition_true": {
@@ -49,23 +49,23 @@
       },
       "by_surface": {
         "page": {
-          "native": 291,
+          "native": 282,
           "total": 634
         },
         "reusable": {
-          "native": 589,
+          "native": 568,
           "total": 1636
         }
       },
-      "data": 255,
+      "data": 225,
       "residue_reasons": {
         "api_connector_action": 30,
         "auth_action": 14,
         "plugin_action": 619,
         "plugin_event": 250,
         "target_not_rendered": 6,
-        "trigger_in_runtime_template": 70,
-        "unavailable_input": 348,
+        "trigger_in_runtime_template": 111,
+        "unavailable_input": 395,
         "uncompiled_expression": 692,
         "unresolved_reference": 41,
         "unsupported_action": 67,
@@ -73,7 +73,7 @@
         "unsupported_option": 11
       },
       "step_ops": {
-        "call": 561,
+        "call": 548,
         "call_reusable": 127,
         "create": 31,
         "delete": 3,
@@ -82,7 +82,7 @@
         "focus": 32,
         "hide": 163,
         "log_out": 4,
-        "navigate": 255,
+        "navigate": 248,
         "open_url": 16,
         "pause": 46,
         "refresh": 5,
@@ -91,26 +91,26 @@
         "schedule": 105,
         "schedule_custom": 27,
         "scroll_to": 3,
-        "set_state": 335,
+        "set_state": 330,
         "show": 118,
         "terminate": 55,
         "toggle": 202,
-        "update": 179,
+        "update": 166,
         "update_current_user": 19,
         "update_list": 2
       },
       "steps": {
-        "native": 2525,
-        "residue": 1485,
+        "native": 2487,
+        "residue": 1523,
         "total": 4010
       },
       "workflows": {
         "client": 102,
-        "native": 880,
-        "native_own_body": 1053,
-        "residue": 1390,
+        "native": 850,
+        "native_own_body": 1015,
+        "residue": 1420,
         "total": 2270,
-        "wired": 607
+        "wired": 577
       }
     },
     "ir": {
