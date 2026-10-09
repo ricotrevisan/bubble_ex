@@ -349,8 +349,14 @@ defmodule BubbleEx.Expression.Typing do
   defp group_data(node),
     do: {:element_state, %{"element" => node.id, "state" => "get_group_data"}}
 
+  # The cell "Current cell's" reads: the innermost repeating group or
+  # table row holding the host. A repeating group's own properties (its
+  # data source, its conditions) are evaluated in its parent's context,
+  # as any element's: in another's cell, that outer cell, never its own
+  # (WTF-520). A table's repeated row is its rows' cell.
   defp cell(env) do
-    Tree.node(env.tree, Tree.cell(env.tree, env.host, true))
+    self? = not match?(%Tree.Node{type: "RepeatingGroup"}, Tree.node(env.tree, env.host))
+    Tree.node(env.tree, Tree.cell(env.tree, env.host, self?))
   end
 
   defp page(env) do

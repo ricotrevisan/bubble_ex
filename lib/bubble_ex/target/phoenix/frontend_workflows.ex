@@ -103,6 +103,11 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     end
   end
 
+  # A repeating group whose cells hold instances, or `{outer, inner}` for
+  # one rendered per cell of another (WTF-520).
+  defp cells_key({outer, inner}), do: "{#{literal(outer)}, #{literal(inner)}}"
+  defp cells_key(rg), do: literal(rg)
+
   # --- a surface's module -----------------------------------------------------------------
 
   defp surface_module(id, s, spec, ctx) do
@@ -134,7 +139,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
               do: "{#{literal(scope)}, #{module}}"
             ),
           listed != [],
-          do: "{#{literal(rg)}, [#{Enum.join(listed, ", ")}]}"
+          do: "{#{cells_key(rg)}, [#{Enum.join(listed, ", ")}]}"
 
     functions = Enum.map_join(workflows, "\n", &workflow_source(&1, s, spec, ctx))
 
@@ -588,6 +593,11 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   defp prelude_binding({:cell, _}, _loads, true, _page_data?), do: "ctx.cell"
 
+  # The outer cell's thing (WTF-520): the loader loads what any part of a
+  # source reads through it for every outer cell first (`outer_loads`).
+  defp prelude_binding({:outer_cell, _}, _loads, _cell_preloaded?, true),
+    do: "BubbleWorkflows.outer_cell(ctx)"
+
   defp prelude_binding(bind, loads, _cell_preloaded?, true),
     do: page_loaded(binding(bind, []), loads)
 
@@ -638,6 +648,15 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp binding({:cell_data, g}, loads),
     do: page_loaded("BubbleWorkflows.cell_data(ctx, #{literal(g)})", loads)
 
+  # In a nested repeating group's cell (WTF-520): the outer cell's.
+  defp binding({:outer_cell, _rg}, loads),
+    do: page_loaded("BubbleWorkflows.outer_cell(ctx)", loads)
+
+  defp binding({:outer_cell_index, _rg}, _loads), do: "BubbleWorkflows.outer_cell_index(ctx)"
+
+  defp binding({:outer_cell_data, g}, loads),
+    do: page_loaded("BubbleWorkflows.outer_cell_data(ctx, #{literal(g)})", loads)
+
   # Which part of the URL a typed read reads (`Spec.url/1`).
   defp url_source(%{path: nil, name: name}), do: "{:query, #{literal(name)}}"
   defp url_source(%{path: "segments"}), do: ":segments"
@@ -670,13 +689,20 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     "%{element: #{literal(data_key_element(d))}, fun: #{fun}, read: #{data_read_kind(d.read)}, " <>
       "instance: #{data_instance(d)}, " <>
       "cell: #{if d.cell, do: literal(d.cell), else: "nil"}, " <>
-      "loads: #{source(loads)}, cell_loads: #{source(cell_loads(d.read))}, topic: #{topic}, " <>
+      "#{outer_meta(d)}" <>
+      "loads: #{source(loads)}, cell_loads: #{source(cell_loads(d.read))}, " <>
+      "#{outer_loads_meta(d)}topic: #{topic}, " <>
       "inputs: #{source(data_inputs(d.read))}, reads: #{source(data_reads(d))}, " <>
       "deps: #{source(data_deps(d))}, " <>
       "blocked: #{source(Enum.uniq(Enum.map(d.residue, & &1.subject)))}" <>
       "#{display_meta(d)}#{data_default(d)}#{batch_meta(d, s)}#{query_topics(d)}" <>
       "#{cell_reads_meta(d)}}"
   end
+
+  # A source in a nested repeating group's cell (WTF-520): the outer
+  # repeating group, whose cells hold the inner one's.
+  defp outer_meta(%{outer: outer}) when is_binary(outer), do: "outer: #{literal(outer)}, "
+  defp outer_meta(_d), do: ""
 
   # A source whose searches read the cell are read for every cell together
   # (WTF-520): the loader collects each cell's search first, then reads
@@ -732,6 +758,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
         %{bind: {:data, k}, loads: loads} -> [{[:data, k.path, k.element], loads}]
         %{bind: {:state, k}, loads: loads} -> [{[:state, k.path, k.element, k.state], loads}]
         %{bind: {:cell_data, g}, loads: loads} -> [{[:cell_data, g], loads}]
+        %{bind: {:outer_cell_data, g}, loads: loads} -> [{[:outer_cell_data, g], loads}]
         _ -> []
       end)
       |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
@@ -805,14 +832,30 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   # repeating group's list, for its cells) or `{:cell_data, group}` (a
   # group's value per cell). The loader reads a source after those that
   # keep what it reads, across surfaces.
+  #
+  # In a nested repeating group's cell (WTF-520, `outer`), the inner list
+  # is a value per outer cell (`{:cell_data, inner}`), and what the outer
+  # cell holds is the outer list's and its cells'.
   defp data_deps(d) do
+    outer = Map.get(d, :outer)
+
     d
     |> Map.get(:reads, [])
     |> Enum.flat_map(fn
-      {:data, %{path: path, element: e}} -> [{:data, path, e}]
-      {kind, rg} when kind in [:cell, :cell_index] -> [{:cell, rg}]
-      {:cell_data, g} -> [{:cell_data, g}]
-      _ -> []
+      {:data, %{path: path, element: e}} ->
+        [{:data, path, e}]
+
+      {kind, rg} when kind in [:cell, :cell_index] and is_binary(outer) ->
+        [{:cell_data, rg}]
+
+      {kind, rg} when kind in [:cell, :cell_index, :outer_cell, :outer_cell_index] ->
+        [{:cell, rg}]
+
+      {kind, g} when kind in [:cell_data, :outer_cell_data] ->
+        [{:cell_data, g}]
+
+      _ ->
+        []
     end)
     |> Enum.uniq()
     |> Enum.sort()
@@ -837,6 +880,20 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     do: for(%{bind: {:cell, _}, loads: paths} <- bindings, path <- paths, do: path) |> Enum.uniq()
 
   defp cell_loads(_), do: []
+
+  # In a nested repeating group's cell (WTF-520): the relationships read
+  # through the outer cell's thing, loaded for every outer cell at once.
+  defp outer_loads_meta(%{residue: [], read: read}) do
+    loads =
+      for %{bind: {:outer_cell, _}, loads: paths} <- read_bindings(read),
+          path <- paths,
+          uniq: true,
+          do: path
+
+    if loads == [], do: "", else: "outer_loads: #{source(Enum.sort(loads))}, "
+  end
+
+  defp outer_loads_meta(_d), do: ""
 
   # Where a source's value is kept: an instance's under its scope and
   # reusable element (see `BubbleWorkflows.data/3`), the others under

@@ -342,7 +342,7 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
     assert Map.get(by_table, "order", 0) <= @order_queries + 4 * 5 + 5
   end
 
-  test "past :max_batched key combinations, the cells read their own queries, once logged", %{
+  test "past :max_batched key combinations, the cells are read in chunks, once logged", %{
     conn: conn,
     users: users
   } do
@@ -354,7 +354,8 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
         html
       end)
 
-    assert log =~ "key combinations, past :max_batched (2)"
+    assert log =~
+             "key combinations, past :max_batched (2); its cells are read in chunks of at most 2"
 
     if enforced?() do
       assert shown(html, "Count") == ~w(2 0 0 1 2)
@@ -365,13 +366,13 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
     end
   end
 
-  test "past :max_cell_rounds, the cells left read their own queries (logged)", %{
+  test "past :max_cell_rounds, the next round is read together once (logged)", %{
     conn: conn,
     users: users
   } do
     # The orders of the first customer a cell's owner owns read that
-    # customer first: two rounds. With one, the second is read cell by
-    # cell.
+    # customer first: two rounds. With one, the second is still read
+    # together, once; a third would be read cell by cell.
     Application.put_env(:phx_check, PhxCheckWeb.BubbleData, max_cell_rounds: 1)
 
     {html, log} =
@@ -380,7 +381,12 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
         html
       end)
 
-    assert log =~ "past 1 rounds (:max_cell_rounds) are read cell by cell"
+    {{_view, _html}, by_table} =
+      queries(fn -> customers(sign_in(build_conn(), users["Ada"])) end)
+
+    assert log =~ "past 1 rounds (:max_cell_rounds): the next round is read together, once"
+    # The chain's second search is one query, not one per cell.
+    assert Map.get(by_table, "order", 0) <= @order_queries
 
     if enforced?(),
       do: assert(shown(html, "Chain") == ~w(2 0 2 0 0)),

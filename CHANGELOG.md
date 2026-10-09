@@ -679,6 +679,37 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **A repeating group in another's cell is rendered per outer cell**
+  (WTF-520, two levels). A repeating group in a repeating group's cell
+  (customers, each listing its orders) was residue (`:page_data_in_cell`,
+  `kind` `"list"`), and so was everything its cells read. Its list is now
+  a value per outer cell, read as a group's there: a search keyed on the
+  outer cell is batched (one query per round of outer cells), a field of
+  the outer cell's thing is read for every outer cell at once. Its cells
+  get the outer cell's scope: `Current cell's` is the inner cell, a group
+  of the outer cell read in an inner cell is the outer cell's
+  (`{:outer_cell_data, group}`, with `{:outer_cell, rg}` and
+  `{:outer_cell_index, rg}`), and the outer cell reads its inner list.
+  Every source of the inner cells is read for every inner cell of every
+  outer cell together: a page of customers, their orders and each order's
+  item count reads the customers, the orders and the items once each,
+  whatever their numbers. A reusable instance in an inner cell is
+  rendered per inner cell (`{{outer, inner}, ...}` in
+  `__bubble__(:cells)`), its workflows in its scope; the page accepts an
+  event only in a scope it read. Reads go through Ash as the current
+  user; with data access off nothing is read. A third level, or a
+  repeating group in a table's row or another runtime container of the
+  cell, stays residue (one rule, the page's structure, read alike by the
+  loader, the bindings and the markup: such a repeating group is a marked
+  runtime container). A repeating group's own properties are evaluated
+  in its parent's context: "Current cell's" in an inner list's own data
+  source is the outer cell (it named the inner list itself). A runtime
+  read that fails shows empty, as in a cell. Searches in cells whose
+  key combinations pass `:max_batched` are now read in chunks of at most
+  that many (one query each), not cell by cell, and past
+  `:max_cell_rounds` the next round is still read together once. See
+  `docs/page-data.md`, "Repeating groups in a repeating group's cell".
+
 - **Searches in a repeating group's cells are read for every cell
   together** (WTF-520). A search a cell reads with its thing ("Search for
   orders where customer = Current cell's customer", its count, first

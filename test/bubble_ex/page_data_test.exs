@@ -404,24 +404,30 @@ defmodule BubbleEx.PageDataTest do
       assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 38
     end
 
-    test "a repeating group in a repeating group's cell is residue" do
+    test "a repeating group in a repeating group's cell is read per outer cell; a third level is residue" do
+      source = app()["pages"]["index"]["elements"]["bList"]["properties"]["data_source"]
+
+      rg = fn id, elements ->
+        %{
+          "id" => id,
+          "type" => "RepeatingGroup",
+          "properties" => %{"group_type" => "custom.task", "data_source" => source},
+          "elements" => elements
+        }
+      end
+
       app =
         update_in(app(), ["pages", "index", "elements", "bList", "elements"], fn els ->
-          Map.put(els, "bInner", %{
-            "id" => "bInner",
-            "type" => "RepeatingGroup",
-            "properties" => %{
-              "group_type" => "custom.task",
-              "data_source" =>
-                app()["pages"]["index"]["elements"]["bList"]["properties"]["data_source"]
-            }
-          })
+          Map.put(els, "bInner", rg.("bInner", %{"bDeeper" => rg.("bDeeper", %{})}))
         end)
 
       {spec, _project, _frontend, _app, _model} = spec(app)
 
+      # Two levels (WTF-520): a value per outer cell.
+      assert %{residue: [], cell: "bList", read: {:query, _}} = data(spec, "bInner")
+
       assert %{residue: [%{reason: :page_data_in_cell, detail: %{kind: "list"}}]} =
-               data(spec, "bInner")
+               data(spec, "bDeeper")
     end
 
     test "a workflow reading the page's thing is bound to it, and reads stored data" do

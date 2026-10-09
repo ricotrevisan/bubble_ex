@@ -68,7 +68,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     * `:page_data_in_cell` (`detail.kind` `"display"`, `"list"`,
       `"instance"`) - a "Display data" step into a repeating group's cell
       from outside it, or a list or an instance there (a reusable instance
-      in a cell is otherwise rendered per cell, WTF-494: `Spec.cells`)
+      in a cell is otherwise rendered per cell, WTF-494: `Spec.cells`; a
+      repeating group in a cell, per outer cell, two levels, WTF-520)
 
   ## Coverage
 
@@ -77,7 +78,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   alias BubbleEx.{Diagnostic, Error}
   alias BubbleEx.Expression.Tree
-  alias BubbleEx.Frontend.{Conditions, Normalized}
+  alias BubbleEx.Frontend.{Conditions, Normalized, Table}
   alias BubbleEx.Model.Type
   alias BubbleEx.Plan.Residue
   alias BubbleEx.Target.Ash.{Naming, Project, Resource}
@@ -203,8 +204,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       {states, state_diags} = states(lowered.states, ctx)
       ctx = Map.put(ctx, :states, states)
 
-      # Reusable instances in repeating group cells (WTF-494), and the
-      # reusable elements each reusable element nests outside its cells.
+      # Repeating groups in another's cell, rendered per outer cell
+      # (WTF-520, depth 2), then the reusable instances in repeating group
+      # cells (WTF-494), and the reusable elements each reusable element
+      # nests outside its cells.
+      ctx = Map.put(ctx, :nested_lists, nested_lists(frontend))
       {in_cells, nested} = cell_structure(lowered.elements, ctx)
 
       ctx =
@@ -473,7 +477,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       for {id, surface, holder, rg} <- instances,
           rg != nil,
           into: %{},
-          do: {id, %{surface: surface, cell: rg, holder: holder}}
+          do:
+            {id,
+             %{surface: surface, cell: rg, holder: holder, outer: Map.get(ctx.nested_lists, rg)}}
 
     nested =
       for {_id, surface, holder, nil} <- instances,
@@ -483,6 +489,52 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
     {in_cells, Map.new(nested, fn {k, v} -> {k, Enum.sort(v)} end)}
   end
+
+  # The repeating groups the page renders once per cell of another
+  # (WTF-520): inner => outer. Two levels only: an outer repeating group
+  # outside any runtime container (a table's header and footer rows render
+  # once), and an inner one in its cell's template, not inside another
+  # runtime container there (a table, a plugin's). A repeating group in an
+  # inner one's cell, or in a table's repeated row, is not one: its list
+  # stays residue (`:page_data_in_cell`, `kind` `"list"`).
+  defp nested_lists(%Normalized{} = frontend) do
+    (frontend.pages ++ frontend.reusables)
+    |> Enum.flat_map(&outer_lists/1)
+    |> Map.new()
+  end
+
+  defp outer_lists(%Normalized.Node{} = node) do
+    cond do
+      Table.table?(node) -> Enum.flat_map(Table.once(node), &outer_lists/1)
+      repeating?(node) -> Enum.flat_map(node.children, &inner_lists(&1, node.source.bubble_id))
+      runtime_container?(node) -> []
+      true -> Enum.flat_map(node.children, &outer_lists/1)
+    end
+  end
+
+  defp inner_lists(%Normalized.Node{} = node, outer) do
+    cond do
+      Table.table?(node) -> []
+      repeating?(node) -> [{node.source.bubble_id, outer}]
+      runtime_container?(node) -> []
+      true -> Enum.flat_map(node.children, &inner_lists(&1, outer))
+    end
+  end
+
+  defp repeating?(%Normalized.Node{
+         kind: :placeholder,
+         runtime: %{"boundary" => "container", "repeats" => true},
+         source: %{bubble_id: id}
+       })
+       when is_binary(id),
+       do: true
+
+  defp repeating?(_node), do: false
+
+  defp runtime_container?(%Normalized.Node{kind: :placeholder, runtime: %{"boundary" => _}}),
+    do: true
+
+  defp runtime_container?(_node), do: false
 
   # The reusable instances each rendered once, in one scope (WTF-520): not
   # in a repeating group's cell nor another runtime template. Instance =>
@@ -1934,6 +1986,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       index
       |> Map.put(:instances, Map.get(ctx, :once, %{}))
       |> Map.put(:unloaded, Map.get(ctx, :unloaded, %{}))
+      |> Map.put(:nested_lists, Map.get(ctx, :nested_lists, %{}))
 
     ctx |> Map.put(:data, index) |> Map.update!(:view, &%{&1 | data_index: index})
   end
