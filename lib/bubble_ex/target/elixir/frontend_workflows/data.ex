@@ -275,6 +275,28 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   end
 
   @doc """
+  The reusable-element instances whose own data source does not load
+  while their reusable element's reads of its own thing do (WTF-522):
+  instance => the residue reasons of its source. `wired` is
+  `wired_index/1`'s: the reusable element is a root there because
+  another instance's source (or a step) gives it its thing, so what it
+  reads of its own thing is bound as loaded, but in this instance it
+  would read nothing. The page does not render such an instance (its
+  element is residue, `BubbleEx.Target.Phoenix`), nor its scope: none of
+  its reusable element's sources, texts or workflows run there.
+  """
+  @spec unloaded_instances(%{String.t() => [map()]}, map()) :: %{String.t() => [atom()]}
+  def unloaded_instances(bound, wired) do
+    for {_surface, list} <- bound,
+        %{kind: :instance, residue: [_ | _], holder: holder} = b <- list,
+        is_binary(holder),
+        MapSet.member?(wired.roots, holder),
+        not Map.has_key?(wired.elements, b.element),
+        into: %{},
+        do: {b.element, b.residue |> Enum.map(& &1.reason) |> Enum.uniq()}
+  end
+
+  @doc """
   Binds every source of `page_data`. `ctx` is the frontend workflows
   binding's context (with `:project`, `:data` from `index/1`, and
   `:nested`, see `cell_instances/4`); `fns` has

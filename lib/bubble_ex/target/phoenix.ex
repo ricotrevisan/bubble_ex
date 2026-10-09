@@ -536,9 +536,10 @@ defmodule BubbleEx.Target.Phoenix do
       coverage (`BubbleEx.Plan`) counts residue-free elements, so it is
       lower
     * `"placeholder"` - a sized stand-in with a marker: plugin and
-      unsupported elements, missing or recursive reusables, HTML styles
-      sized from other elements, runtime containers (dynamic Repeating
-      Groups, Tables)
+      unsupported elements, missing or recursive reusables, a reusable
+      instance whose own data source does not load while its reusable
+      element reads its own thing (WTF-522), HTML styles sized from other
+      elements, runtime containers (dynamic Repeating Groups, Tables)
     * `"in_runtime_template"` - inside a runtime container's per-item
       template, whatever its kind
 

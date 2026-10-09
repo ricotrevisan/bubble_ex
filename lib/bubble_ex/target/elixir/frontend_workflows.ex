@@ -54,7 +54,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     * `:target_not_rendered`, `:trigger_not_normalized`,
       `:trigger_in_runtime_template` - an element to show, hide, focus,
       reset or call into, or the element an event listens to, that the
-      generated page does not render
+      generated page does not render (an instance whose own data source
+      does not load, WTF-522, has no scope to call into)
     * `:backend_workflow` - scheduling an API workflow without the
       `:backend` option (the backend workflows' spec, WTF-373)
     * `:unsupported_event` (`detail.target` `"phoenix"`) - user logged in
@@ -344,13 +345,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   defp bind_data_and_workflows(displayed, lowered, page_data, ctx) do
     ctx = Map.put(ctx, :displayed, displayed)
 
-    data =
-      Data.bind(page_data, set_data(ctx, Data.index(page_data, displayed)), %{
-        compile: &compile/3,
-        bind: &bind/2
-      })
-
-    ctx = set_data(ctx, Data.wired_index(data))
+    {ctx, data} = bind_page_data(page_data, displayed, ctx)
 
     bound =
       lowered.workflows
@@ -379,6 +374,62 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       do: {ctx, data, bound},
       else: bind_data_and_workflows(kept, lowered, page_data, ctx)
   end
+
+  # Binds the page data. An instance whose own data source does not load
+  # while its reusable element's reads of its own thing do (WTF-522,
+  # `Data.unloaded_instances/2`) is not rendered: its scope is not read,
+  # so a default of its reusable element read from outside it (WTF-520)
+  # is not read either, and the sources reading one are bound again
+  # without it. That can only leave more unloaded, never less, so this
+  # ends; an instance once unloaded stays so.
+  defp bind_page_data(page_data, displayed, ctx) do
+    data =
+      Data.bind(page_data, set_data(ctx, Data.index(page_data, displayed)), %{
+        compile: &compile/3,
+        bind: &bind/2
+      })
+
+    wired = Data.wired_index(data)
+    before = Map.get(ctx, :unloaded, %{})
+    new = Map.drop(Data.unloaded_instances(data, wired), Map.keys(before))
+    unloaded = Map.merge(before, new)
+
+    ctx =
+      ctx
+      |> Map.put(:once, Map.drop(ctx.once, Map.keys(unloaded)))
+      |> Map.put(:unloaded, unloaded)
+
+    # Bound again only when a source reads under a newly unloaded instance
+    # (its default, a custom state): the rest binds the same.
+    if map_size(new) == 0 or not reads_under?(data, new),
+      do: {set_data(ctx, wired), data},
+      else: bind_page_data(page_data, displayed, ctx)
+  end
+
+  defp reads_under?(data, instances) do
+    Enum.any?(data, fn {_surface, list} ->
+      Enum.any?(list, &under?(Map.get(&1, :read), instances))
+    end)
+  end
+
+  # Whether a bound read names a key (`%{path: ...}`) below one of
+  # `instances`.
+  defp under?(%{path: path} = map, instances) when is_list(path),
+    do:
+      Enum.any?(path, &Map.has_key?(instances, &1)) or
+        Enum.any?(Map.values(map), &under?(&1, instances))
+
+  defp under?(%_{}, _instances), do: false
+
+  defp under?(map, instances) when is_map(map),
+    do: Enum.any?(Map.values(map), &under?(&1, instances))
+
+  defp under?(list, instances) when is_list(list), do: Enum.any?(list, &under?(&1, instances))
+
+  defp under?(tuple, instances) when is_tuple(tuple),
+    do: tuple |> Tuple.to_list() |> under?(instances)
+
+  defp under?(_term, _instances), do: false
 
   # Whether the page keeps what display steps show in an element
   # faithfully (WTF-520). In a repeating group's cell, when a step that
@@ -1037,12 +1088,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
     case ctx.elements[args.element] do
       %{instance_of: definition} when is_binary(definition) ->
+        # An instance the page does not render as its reusable element
+        # (its own data source does not load, WTF-522) has no scope to
+        # run the custom event in: it would read nothing of its thing.
         rendered =
-          if rendered?(args.element, ctx),
-            do: [],
-            else: [
-              Residue.entry(id, :target_not_rendered, %{element: "element:" <> args.element})
-            ]
+          if rendered?(args.element, ctx) and
+               not Map.has_key?(Map.get(ctx, :unloaded, %{}), args.element),
+             do: [],
+             else: [
+               Residue.entry(id, :target_not_rendered, %{element: "element:" <> args.element})
+             ]
 
         {%{
            instance: args.element,
@@ -1871,7 +1926,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   end
 
   defp set_data(ctx, index) do
-    index = Map.put(index, :instances, Map.get(ctx, :once, %{}))
+    index =
+      index
+      |> Map.put(:instances, Map.get(ctx, :once, %{}))
+      |> Map.put(:unloaded, Map.get(ctx, :unloaded, %{}))
+
     ctx |> Map.put(:data, index) |> Map.update!(:view, &%{&1 | data_index: index})
   end
 
