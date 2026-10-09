@@ -226,7 +226,7 @@
       "by_kind": {
         "group": {
           "total": 1659,
-          "wired": 1351
+          "wired": 1359
         },
         "input": {
           "total": 30,
@@ -234,11 +234,11 @@
         },
         "instance": {
           "total": 214,
-          "wired": 170
+          "wired": 173
         },
         "list": {
           "total": 249,
-          "wired": 166
+          "wired": 173
         },
         "page_thing": {
           "total": 2,
@@ -246,27 +246,27 @@
         },
         "param": {
           "total": 1202,
-          "wired": 1010
+          "wired": 1015
         }
       },
       "reads": {
         "displayed": 133,
-        "query": 170,
+        "query": 174,
         "switch": 78,
         "url_thing": 2,
-        "value": 2346
+        "value": 2365
       },
       "residue_reasons": {
-        "page_data_in_cell": 20,
-        "unavailable_input": 447,
-        "uncompiled_expression": 167,
+        "page_data_in_cell": 8,
+        "unavailable_input": 434,
+        "uncompiled_expression": 169,
         "unresolved_reference": 2,
         "unsupported_option": 26
       },
       "sources": {
-        "residue": 627,
+        "residue": 604,
         "total": 3356,
-        "wired": 2729
+        "wired": 2752
       }
     },
     "page_data_ir": {
