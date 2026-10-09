@@ -11,8 +11,8 @@ defmodule PhxCheckWeb.CellClicksBehaviorTest do
   # a row's "Refuse" button runs a workflow that is not lowered. The
   # categories page lists categories, each with its products (a nested
   # repeating group); a product row's "Pick" button shows the product and
-  # its category. The statuses page lists a board's statuses (options,
-  # Todo twice): a row's "Pick" button, or a change of its note input,
+  # its category. The statuses page lists a board's statuses (options, one
+  # of them twice): a row's "Pick" button, or a change of its note input,
   # shows that row's status in a detail group outside the list. The
   # browser's event names the cell's scope; the page accepts it only for a
   # cell it read as the user, and binds the cell's thing (or option) from
