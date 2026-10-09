@@ -474,7 +474,8 @@ defmodule BubbleEx.Workflows.Frontend do
       type: type_text(type),
       op: op,
       condition: condition,
-      path: Source.pointer(path)
+      path: Source.pointer(path),
+      element: text(props["element_id"])
     }
 
     if op do

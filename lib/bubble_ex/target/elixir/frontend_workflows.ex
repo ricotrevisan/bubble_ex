@@ -1189,9 +1189,85 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         end
       end)
 
+    set = Map.drop(set, MapSet.to_list(popup_races(workflows, starts_callers(workflows), ctx)))
+
     if own == nil,
       do: set,
       else: Map.merge(never_shown(steps, own, ctx), set)
+  end
+
+  # Elements whose data a popup's own workflow may undo (WTF-520): a
+  # workflow that opens a popup (or closes it), or one calling it, shows
+  # data in an element that the popup's "is opened" (or "is closed")
+  # workflow resets (the element or a group around it) or shows data in
+  # too. Which runs last is not replayed (here the popup's, after the
+  # page re-rendered): what the element shows then is not known, so it is
+  # not kept, loudly.
+  defp popup_races(workflows, callers, ctx) do
+    active = Enum.reject(workflows, & &1.disabled?)
+    by_id = Map.new(active, &{&1.bubble_id, &1})
+
+    for %{kind: kind, element: popup} = w <- active,
+        kind in @popup_events,
+        is_binary(popup),
+        resets = for(%Step{op: :reset_group, args: %{element: e}} <- w.steps, do: e),
+        own = displays(w),
+        opener <- openers(active, kind, popup, callers, by_id),
+        shown <- displays(opener),
+        shown in own or Enum.any?(resets, &within?(shown, &1, ctx)),
+        into: MapSet.new(),
+        do: shown
+  end
+
+  defp displays(w),
+    do:
+      for(%Step{op: op, args: %{element: e}} <- w.steps, op in @display_ops, is_binary(e), do: e)
+
+  # The workflows whose steps open (close) the popup, and those calling
+  # them, transitively.
+  defp openers(active, kind, popup, callers, by_id) do
+    ops = if kind == :popup_opened, do: [:show, :toggle], else: [:hide, :toggle]
+
+    direct =
+      for w <- active,
+          Enum.any?(w.steps, &(&1.op in ops and match?(%{element: ^popup}, &1.args))),
+          do: w.bubble_id
+
+    direct
+    |> callers_of(callers, MapSet.new())
+    |> Enum.flat_map(&List.wrap(by_id[&1]))
+  end
+
+  defp callers_of([], _callers, seen), do: MapSet.to_list(seen)
+
+  defp callers_of([id | rest], callers, seen) do
+    if MapSet.member?(seen, id),
+      do: callers_of(rest, callers, seen),
+      else: callers_of(Map.get(callers, id, []) ++ rest, callers, MapSet.put(seen, id))
+  end
+
+  # Whether element `id` is `group` or inside it.
+  defp within?(id, group, ctx, depth \\ 0)
+  defp within?(id, id, _ctx, _depth), do: true
+  defp within?(_id, _group, _ctx, depth) when depth > 64, do: false
+
+  defp within?(id, group, ctx, depth) do
+    case ctx.raw_elements[id] do
+      %{parent: parent} when is_binary(parent) -> within?(parent, group, ctx, depth + 1)
+      _ -> false
+    end
+  end
+
+  # Custom event => the workflows calling or scheduling it.
+  defp starts_callers(workflows) do
+    for w <- workflows,
+        not w.disabled?,
+        %Step{op: op, args: %{workflow: callee}} <- w.steps,
+        op in [:call, :call_reusable, :schedule_custom],
+        is_binary(callee),
+        reduce: %{} do
+      acc -> Map.update(acc, callee, [w.bubble_id], &[w.bubble_id | &1])
+    end
   end
 
   # The holder of an element display steps set: in a repeating group's
@@ -1312,19 +1388,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # loads; with a page-load opener it does, and must run whole there too
   # (`{:load, symbol}`). A popup whose conditions set its visibility may be
   # opened by them, which the page does not follow (an overlay's
-  # conditions are not rendered): `{:load, nil}`, never kept.
+  # conditions are not rendered), and one an action this target does not
+  # lower names may be opened or closed by it: `{:load, nil}`, never kept.
   defp start_roots(workflows, ctx) do
     by_id = Map.new(workflows, &{&1.bubble_id, &1})
-
-    callers =
-      for w <- workflows,
-          not w.disabled?,
-          %Step{op: op, args: %{workflow: callee}} <- w.steps,
-          op in [:call, :call_reusable, :schedule_custom],
-          is_binary(callee),
-          reduce: %{} do
-        acc -> Map.update(acc, callee, [w.bubble_id], &[w.bubble_id | &1])
-      end
+    callers = starts_callers(workflows)
 
     toggles =
       for w <- workflows,
@@ -1337,11 +1405,22 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         acc -> Map.update(acc, {kind, element}, [w.bubble_id], &[w.bubble_id | &1])
       end
 
+    # An action this target does not lower (an animation, a plugin's
+    # action, ...) naming a popup may open or close it, at any time:
+    # what the popup's workflows set is never kept.
+    unknown =
+      for w <- workflows,
+          not w.disabled?,
+          %Step{op: nil, element: element} <- w.steps,
+          is_binary(element),
+          into: MapSet.new(),
+          do: element
+
     starts = %{
       by_id: by_id,
       callers: callers,
       toggles: toggles,
-      conditional: conditional_popups(workflows, ctx)
+      unknown: MapSet.union(conditional_popups(workflows, ctx), unknown)
     }
 
     Map.new(workflows, fn w -> {w.bubble_id, roots_of(w, starts, MapSet.new())} end)
@@ -1399,7 +1478,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
       own =
         cond do
-          MapSet.member?(starts.conditional, element) -> [{:load, nil}]
+          MapSet.member?(starts.unknown, element) -> [{:load, nil}]
           Enum.any?(from, &match?({:load, _}, &1)) -> [{:event, symbol}, {:load, symbol}]
           true -> [{:event, symbol}]
         end

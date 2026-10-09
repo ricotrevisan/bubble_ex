@@ -663,16 +663,19 @@ All notable changes to this project are documented here.
   when the Popup lists that event (`data-bubble-events`); the page runs
   only the workflows its `__bubble__(:surface)` lists under `popups`, in
   a scope it renders, like a click (a refused one shows the notice). A
-  Popup a server-side step opened carries the chain of the run that sent
-  the step (`bubble:exec`'s `chain`), so Popups opening each other
-  through the server stop at `:max_chain`. Wired on a Popup of the
-  workflow's own page or reusable element the page renders, outside a
+  report a server-side step caused runs on that run's budgets, one link
+  further down its chain: the page expects it when it sends the step
+  and keeps its share of the budgets (the browser's report carries
+  none), so Popups opening each other through the server end. Wired on
+  a Popup of the workflow's own page or reusable element the page renders, outside a
   repeating group's cell; a reusable element that is itself a popup
   stays residue. What a popup's workflows show is page data by what
   opens or closes the popup: popups are closed as the page loads, so
   with only events opening it the element is empty until then; with a
   page-load workflow opening it, both must run whole; a popup whose
-  conditions set its visibility keeps it unloaded. Not replayed: listed
+  conditions set its visibility, or that an action this target does not
+  lower names, keeps it unloaded, and so does an element both the
+  popup's workflow and a workflow opening it set or reset. Not replayed: listed
   in `docs/frontend-workflows.md`.
 - **Reusable instances nothing fills are empty page data** (WTF-520).
   An instance with no data source that no step sets, when every instance

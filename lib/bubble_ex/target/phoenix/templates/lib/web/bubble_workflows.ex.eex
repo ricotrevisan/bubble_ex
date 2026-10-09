@@ -19,11 +19,20 @@ defmodule <%= @web %>.BubbleWorkflows do
   reports that it opened or closed it (`popups` in
   `__bubble__(:surface)`): by a step (in the browser or sent by the
   server) or Escape; opening an open Popup, or closing a
-  closed one, reports nothing. Each report is a browser event, like a
-  click (a refused workflow shows the notice), but one a server-side step
-  caused carries the chain of the run that sent the step, one link
-  further: Popups opening each other through the server stop at
-  `:max_chain`, as scheduled custom events do. A browser can report any
+  closed one, reports nothing. A report the user caused (a step in the
+  browser, Escape) is a browser event, like a click: a root run (a
+  refused workflow shows the notice). One a server-side step caused runs
+  on the budgets of the run that sent the step, one link further down its
+  chain, as a scheduled custom event does: when it sends a show, hide or
+  toggle of a Popup it lists that event for, the page expects the report
+  (`{scope, element, event}`) with an equal share of what the run left
+  (`dispatch/2`), and the report takes it. The browser's report carries
+  no budget: Popups opening each other through the server end on the
+  run's budgets and `:max_chain`. An expected report that never comes (a
+  Popup that was already open) is taken by the next report of that event,
+  which then runs on the smaller budget. A reconnect (a new LiveView
+  process) forgets what was expected, and the browser keeps its open
+  Popups open without reporting them again. A browser can report any
   listed Popup event, as it can click any listed element.
 
   A reusable instance in a repeating group's cell (WTF-494,
@@ -267,6 +276,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_takes_thing, false)
     |> assign(:bubble_refused, false)
     |> assign(:bubble_pending_messages, 0)
+    |> assign(:bubble_popups_expected, %{})
     |> assign(:bubble_conditions, %{})
     |> assign(:bubble_data, %{})
     |> assign(:bubble_data_stale, false)
@@ -426,16 +436,11 @@ defmodule <%= @web %>.BubbleWorkflows do
   end
 
   # A Popup the hook opened or closed (WTF-520): its "is opened" or "is
-  # closed" workflows, when the page lists them. `chain` is the chain of
-  # the run whose step opened it (0 for the user's own action).
+  # closed" workflows, when the page lists them. A report a server-side
+  # step caused runs on the budgets the page kept for it; any other is a
+  # root run, as a click.
   def handle_event(socket, page, "bubble:popup", %{"scope" => scope, "element" => element} = params)
       when is_binary(scope) and is_binary(element) do
-    chain =
-      case Map.get(params, "chain") do
-        n when is_integer(n) and n >= 0 -> n
-        _ -> 0
-      end
-
     key =
       case Map.get(params, "event") do
         "opened" -> :opened
@@ -446,12 +451,14 @@ defmodule <%= @web %>.BubbleWorkflows do
     with true <- key != nil,
          {:ok, module} <- surface(socket, page, scope),
          %{^key => [_ | _] = ids} <- Map.get(Map.get(module.__bubble__(:surface), :popups, %{}), element) do
-      if chain >= max_chain() do
-        Logger.warning("bubble: a popup event at :max_chain (#{max_chain()}) was ignored")
+      expected = Map.get(socket.assigns, :bubble_popups_expected, %{})
+      {budget, expected} = Map.pop(expected, {scope, element, key})
+      socket = assign(socket, :bubble_popups_expected, expected)
+
+      if budget != nil and budget.chain >= max_chain() do
+        Logger.debug("bubble: a popup event at :max_chain (#{max_chain()}) was ignored")
         {:noreply, socket}
       else
-        root = Runtime.root(nil, nil)
-        budget = %{jobs: root.budget, calls: root.calls, chain: chain}
         socket = assign(socket, :bubble_refused, false)
         {:noreply, socket |> event(page, [{module, scope, ids, %{}}], budget) |> notice()}
       end
@@ -1015,12 +1022,17 @@ defmodule <%= @web %>.BubbleWorkflows do
   defp dispatch(socket, %{messages: []}), do: socket
 
   defp dispatch(socket, run) do
+    # The Popup reports the run's steps will cause (WTF-520) share what it
+    # left, as what it scheduled does; they are kept by the page, not sent.
+    {popups, messages} = run.messages |> Enum.reverse() |> Enum.split_with(&match?({:popup, _, _, _}, &1))
+
     # At most :max_pending held by the page at once: the rest is dropped.
     pending = Map.get(socket.assigns, :bubble_pending_messages, 0)
-    {sent, dropped} = run.messages |> Enum.reverse() |> Enum.split(max(max_pending() - pending, 0))
+    {sent, dropped} = Enum.split(messages, max(max_pending() - pending, 0))
     socket = assign(socket, :bubble_pending_messages, pending + length(sent))
-    n = max(length(sent), 1)
+    n = max(length(sent) + length(popups), 1)
     budget = %{jobs: div(run.jobs, n), calls: div(run.calls, n), chain: run.chain + 1}
+    socket = expect_popups(socket, popups, budget)
 
     for message <- sent do
       case message do
@@ -1042,6 +1054,18 @@ defmodule <%= @web %>.BubbleWorkflows do
 
       push_event(socket, "bubble:notice", %{text: @refused_notice})
     end
+  end
+
+  # The Popup reports the page expects, with the budgets they run on.
+  defp expect_popups(socket, [], _budget), do: socket
+
+  defp expect_popups(socket, popups, budget) do
+    expected =
+      Enum.reduce(popups, Map.get(socket.assigns, :bubble_popups_expected, %{}), fn
+        {:popup, scope, element, event}, acc -> Map.put(acc, {scope, element, event}, budget)
+      end)
+
+    assign(socket, :bubble_popups_expected, expected)
   end
 
   defp ctx(socket, module, scope, run) do
@@ -1157,16 +1181,10 @@ defmodule <%= @web %>.BubbleWorkflows do
       |> assign(:bubble_displayed, ctx.displayed)
       |> assign(:bubble_committed, committed)
 
-    # A Popup these steps open or close reports the next link of the
-    # run's chain (`bubble:popup`, WTF-520).
     socket =
       if ctx.js == [],
         do: socket,
-        else:
-          push_event(socket, "bubble:exec", %{
-            ops: Enum.reverse(ctx.js),
-            chain: backend(ctx).chain + 1
-          })
+        else: push_event(socket, "bubble:exec", %{ops: Enum.reverse(ctx.js)})
 
     apply_navigation(socket, ctx.navigate)
   end
@@ -1587,8 +1605,26 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   @doc "Show / hide / toggle / focus / scroll to / reset an element (`nil`: the instance root)."
   def element(ctx, op, path, element) do
-    {:cont, %{ctx | js: [%{op: op, to: Bubble.selector(scope(ctx, path), element)} | ctx.js]}}
+    scope = scope(ctx, path)
+    ctx = %{ctx | js: [%{op: op, to: Bubble.selector(scope, element)} | ctx.js]}
+    {:cont, %{ctx | messages: expected_popups(ctx, op, path, scope, element) ++ ctx.messages}}
   end
+
+  # A show, hide or toggle of a Popup of this surface whose events the
+  # page runs (WTF-520): the report the hook will send, which runs on this
+  # run's budgets (`dispatch/2`).
+  defp expected_popups(%Ctx{module: module}, op, [], scope, element)
+       when op in ["show", "hide", "toggle"] and is_atom(module) and module != nil and
+              is_binary(element) do
+    listed = Map.get(Map.get(module.__bubble__(:surface), :popups, %{}), element, %{})
+
+    for {event, ops} <- [opened: ["show", "toggle"], closed: ["hide", "toggle"]],
+        op in ops,
+        Map.get(listed, event, []) != [],
+        do: {:popup, scope, element, event}
+  end
+
+  defp expected_popups(_ctx, _op, _path, _scope, _element), do: []
 
   @doc """
   Reset inputs back to their first values: those of element `within`

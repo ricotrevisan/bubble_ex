@@ -92,11 +92,17 @@ page runs (`data-bubble-events`, listed as `popups` in
 browser or sent by the server, or Escape, it sends
 `bubble:popup` (the instance scope, the Popup's Bubble ID, `opened` or
 `closed`). Opening an open Popup, or closing a closed one, reports
-nothing. The page runs the listed workflows like a click's: a root run,
-and a refused one shows the notice. A Popup a server-side step opened
-reports the chain of the run that sent the step plus one (`bubble:exec`
-carries it), so Popups opening each other through the server stop at
-`:max_chain`, as scheduled custom events do. Wired only on a Popup of the
+nothing. A report the user caused (a step in the browser, Escape) runs
+the listed workflows like a click's: a root run, and a refused one shows
+the notice. One a server-side step caused runs on that run's budgets,
+one link further down its chain, as a scheduled custom event: the page
+expects it when it sends the step (`{scope, element, event}`, an equal
+share of what the run left), and the browser's report carries no budget,
+so Popups opening each other through the server end on the run's
+budgets and `:max_chain`. An expected report that never comes (the
+Popup was already open) is taken by the next report of that event. A
+reconnect forgets what was expected; the browser keeps its open Popups
+open without reporting them again. Wired only on a Popup of the
 workflow's own page or reusable element that the page renders, outside a
 repeating group's cell; a reusable element that is itself a popup, or
 another element, is `:unsupported_event` residue.
@@ -218,8 +224,13 @@ may run (WTF-520):
   workflow counts as an event; when a page-load workflow (or another that
   may run as the page loads) opens it, as one that runs as the page
   loads, and it must run whole too. A popup whose conditions set its visibility
-  may be opened by them, which the page does not follow: what its
-  workflows set stays unloaded.
+  may be opened by them, which the page does not follow, and so may one
+  an action this target does not lower names (an animation, a plugin's
+  action): what its workflows set stays unloaded. When a workflow that
+  opens (closes) the popup, or one calling it, shows data in an element
+  the popup's "is opened" ("is closed") workflow resets (it or a group
+  around it, the popup included) or shows data in too, that element is
+  unloaded: which runs last is not replayed.
 * **As the page loads.** A step in a page-load or condition-true
   workflow, one whose event this target does not lower or wire (a
   plugin's event, "User is logged in / out", which may fire as the page
@@ -444,7 +455,9 @@ one, fires nothing (here it reports nothing); that a popup's conditions
 may open it (here what its workflows set then stays unloaded); and when
 the popup's workflow runs relative to the rest of the workflow whose
 step opened it (here after it, and after the page re-rendered: a later
-step of that workflow does not see what the popup's workflow set).
+step of that workflow does not see what the popup's workflow set, and
+what the popup's workflow resets or shows wins over what that workflow
+showed: such elements are not loaded until a replay says which wins).
 
 To confirm by replay (WTF-358): what "Go to page" appends when the data
 sent to a page with no type of content is a value
@@ -564,3 +577,9 @@ behavior, would not satisfy one. It formats the
 scratch project first: a freshly generated project is not formatter-clean
 (HEEx templates, router, runtime config and smoke test of WTF-369/370), so
 `lint` would fail for every task until the owner runs `mix format`.
+
+The page hook's popup reports (WTF-520) run in the pinned browser with
+the fidelity checks (`mix test --only fidelity`,
+`test/support/fidelity/popup-events.mjs`): a step, Escape, toggle,
+showing an open popup, a popup in a reusable instance and a server-side
+step.

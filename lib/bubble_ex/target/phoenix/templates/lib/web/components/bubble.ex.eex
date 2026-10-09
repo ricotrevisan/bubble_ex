@@ -74,10 +74,9 @@ defmodule <%= @web %>.Bubble do
       popover) so no element covers it, whatever its z-index (WTF-474).
       It sends `bubble:popup` (the scope, the Popup's Bubble ID, `opened`
       or `closed`) when a Popup listing that event in
-      `data-bubble-events` opens or closes; one a server-side step opened
-      or closed carries the chain of the run that sent the step, so a loop
-      of popups opening each other through the server ends at
-      `:max_chain`, as scheduled custom events do (WTF-520)
+      `data-bubble-events` opens or closes (WTF-520); the server decides
+      the budget a report runs on. After a reconnect, open Popups stay
+      open and are not reported again
   """
 
   use Phoenix.Component
@@ -667,17 +666,8 @@ defmodule <%= @web %>.Bubble do
           }
           window.addEventListener("keydown", keydown)
           this.listeners.push(["keydown", keydown])
-          // Element steps of server-side workflows, in order. A Popup they
-          // open or close reports the chain of the run that sent them.
-          this.chain = 0
-          this.handleEvent("bubble:exec", ({ ops, chain }) => {
-            this.chain = Number.isInteger(chain) && chain > 0 ? chain : 0
-            try {
-              (ops || []).forEach((op) => this.exec(op))
-            } finally {
-              this.chain = 0
-            }
-          })
+          // Element steps of server-side workflows, in order.
+          this.handleEvent("bubble:exec", ({ ops }) => (ops || []).forEach((op) => this.exec(op)))
           // A refused click or input change (WTF-453): a short notice, as text.
           this.handleEvent("bubble:notice", ({ text }) => this.notice(text))
           this.raiseNotice()
@@ -827,7 +817,7 @@ defmodule <%= @web %>.Bubble do
           if (!element || !events.includes(event)) return
           const holder = el.parentElement && el.parentElement.closest("[data-bubble-scope]")
           const scope = (holder && holder.getAttribute("data-bubble-scope")) || ""
-          this.pushEvent("bubble:popup", { scope, element, event, chain: this.chain })
+          this.pushEvent("bubble:popup", { scope, element, event })
         },
         reset(el) {
           const fields = el.matches("input, textarea, select")

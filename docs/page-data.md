@@ -870,11 +870,11 @@ The rows overlap (one source may read several groups). Only the
 reusable elements whose every instance nothing fills load here (this
 section's rule above); a popup's events set none of these groups in this
 app, but 5 of its 6 popup event workflows are now wired (the sixth is a
-reusable element that is itself a popup). The plugin event may fire
-whenever JavaScript calls it, as the page loads included (the app loads
-an external script, and one script builds the function's name from
-data), so what it sets stays unloaded; a refused condition-true
-workflow may set its group as the page loads, so that one stays too.
+reusable element that is itself a popup). Custom events called from a
+JavaScript-to-Bubble plugin event stay unloaded (it may fire whenever
+JavaScript calls it, as the page loads included); a refused
+condition-true workflow may set its group as the page loads, so that
+one stays too.
 
 | | before | after |
 |-|------:|------:|

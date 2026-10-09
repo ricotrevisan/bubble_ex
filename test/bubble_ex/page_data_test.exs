@@ -491,8 +491,11 @@ defmodule BubbleEx.PageDataTest do
       runtime = files["lib/shop_web/bubble_workflows.ex"]
       hook = files["lib/shop_web/components/bubble.ex"]
 
-      assert module =~
-               ~s|popups: %{"bPopOpen" => %{opened: ["wPopOpened"], closed: ["wPopClosed"]}}|
+      assert module =~ ~s|"bPopOpen" => %{opened: ["wPopOpened"], closed: ["wPopClosed"]}|
+      assert module =~ ~s|"bLoopA" => %{opened: ["wLoopA"], closed: []}|
+
+      panel = files["lib/shop_web/components/reusables/panel/workflows.ex"]
+      assert panel =~ ~s|popups: %{"bPanelPop" => %{opened: ["wPanelPopOpened"], closed: []}}|
 
       # The popup carries the events its hook reports; one with none, none.
       assert page =~
@@ -501,10 +504,10 @@ defmodule BubbleEx.PageDataTest do
       refute page =~ ~r/data-bubble-id="bPop"[^>]*data-bubble-events/
 
       assert hook =~
-               ~s|this.pushEvent("bubble:popup", { scope, element, event, chain: this.chain })|
+               ~s|this.pushEvent("bubble:popup", { scope, element, event })|
 
       assert runtime =~ ~r/def handle_event\(\s*socket,\s*page,\s*"bubble:popup"/
-      assert runtime =~ "chain: backend(ctx).chain + 1"
+      assert runtime =~ "expect_popups(socket, popups, budget)"
     end
 
     test "two reusable instances store data under their own nested scope", %{files: files} do
@@ -852,8 +855,8 @@ defmodule BubbleEx.PageDataTest do
       }
     }
 
-    defp detail_app(workflows, app) do
-      app = put_in(app, ["pages", "shown", "elements", "bDetail"], @detail)
+    defp detail_app(workflows, app, at \\ ["pages", "shown", "elements"]) do
+      app = put_in(app, at ++ ["bDetail"], @detail)
 
       Enum.reduce(workflows, app, fn w, acc ->
         put_in(acc, ["pages", "shown", "workflows", w["id"]], w)
@@ -891,8 +894,8 @@ defmodule BubbleEx.PageDataTest do
     defp event(id, actions), do: wf(id, "CustomEvent", %{}, actions)
     defp clicked(id, actions), do: wf(id, "ButtonClicked", %{"element_id" => "bShowA"}, actions)
 
-    defp kept?(workflows, app \\ app()) do
-      {spec, _project, _frontend, _app, _model} = spec(detail_app(workflows, app))
+    defp kept?(workflows, app \\ app(), at \\ ["pages", "shown", "elements"]) do
+      {spec, _project, _frontend, _app, _model} = spec(detail_app(workflows, app, at))
 
       case data(spec, "bDetail") do
         %{read: :displayed, residue: []} ->
@@ -1153,6 +1156,77 @@ defmodule BubbleEx.PageDataTest do
                Spec.workflow(spec, "bShownPage", "wPopOpened")
 
       refute data(spec, "bPopInner")
+    end
+
+    test "an action this target does not lower on a popup keeps its workflows' data unloaded (WTF-520)" do
+      animate = %{
+        "id" => "aAnim",
+        "type" => "AnimateElement",
+        "properties" => %{"element_id" => "bPop2", "animation" => "fadeIn"}
+      }
+
+      # It may open the popup as the page loads, or any time: never kept.
+      refute kept?([opened("wD", [show_detail("aD")]), loaded("wL", [animate])], popup_app())
+      refute kept?([opened("wD", [show_detail("aD")]), clicked("wC", [animate])], popup_app())
+      refute kept?([closed("wD", [show_detail("aD")]), clicked("wC", [animate])], popup_app())
+
+      # In a disabled workflow it never runs.
+      assert kept?(
+               [
+                 opened("wD", [show_detail("aD")]),
+                 loaded("wL", [animate]) |> put_in(["properties", "workflow_disabled"], true)
+               ],
+               popup_app()
+             )
+    end
+
+    test "what the opener shows and the popup's own workflow resets or shows is unloaded (WTF-520)" do
+      opener = clicked("wC", [show_detail("aC"), toggle("aCs", "ShowElement")])
+
+      reset = fn id, element ->
+        %{"id" => id, "type" => "ResetGroup", "properties" => %{"element_id" => element}}
+      end
+
+      # Alone, the click's step is kept.
+      assert kept?([opener], popup_app())
+
+      # The popup's "is opened" resets the element, or shows data in it
+      # too: which wins is not replayed.
+      refute kept?([opener, opened("wO", [reset.("aO", "bDetail")])], popup_app())
+      refute kept?([opener, opened("wO", [show_detail("aO")])], popup_app())
+
+      # bDetail inside the popup, which its "is opened" resets.
+      refute kept?(
+               [opener, opened("wO", [reset.("aO", "bPop2")])],
+               popup_app(%{"elements" => %{}}),
+               ["pages", "shown", "elements", "bPop2", "elements"]
+             )
+
+      # Through a custom event the click calls; and for "is closed".
+      refute kept?(
+               [
+                 clicked("wC", [show_detail("aC"), call("aCc", "wE")]),
+                 event("wE", [toggle("aE", "ShowElement")]),
+                 opened("wO", [reset.("aO", "bDetail")])
+               ],
+               popup_app()
+             )
+
+      refute kept?(
+               [
+                 clicked("wC", [show_detail("aC"), toggle("aCh", "HideElement")]),
+                 closed("wO", [reset.("aO", "bDetail")])
+               ],
+               popup_app()
+             )
+
+      # Resetting something else, or a popup the click does not open: kept.
+      assert kept?([opener, opened("wO", [reset.("aO", "bShown")])], popup_app())
+
+      assert kept?(
+               [clicked("wC", [show_detail("aC")]), opened("wO", [reset.("aO", "bDetail")])],
+               popup_app()
+             )
     end
 
     test "a reusable element's custom event the page calls as it loads (WTF-520)" do
