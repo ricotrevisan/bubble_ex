@@ -56,7 +56,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
               set: %{},
               defaults: MapSet.new(),
               valued: MapSet.new(),
-              instances: %{}
+              instances: %{},
+              unloaded: %{}
             },
             cells: %{}
 
@@ -222,7 +223,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     case {spec.elements[e], s} do
       {%{surface: ^surface} = el, "custom." <> _} ->
         key = state_key(e, el, s)
-        if state?(spec, key), do: {:state, key}
+        if state?(spec, key) and not unloaded_path?(spec, key.path), do: {:state, key}
 
       {%{surface: ^surface, instance_of: nil, root?: false}, "get_data"} ->
         if Map.has_key?(spec.surfaces[surface].inputs, e),
@@ -406,6 +407,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     with %{surface: ^surface, instance_of: reusable} when is_binary(reusable) <-
            spec.elements[instance],
          false <- Map.has_key?(spec.cells, instance),
+         nil <- unloaded(spec, instance),
          key = param_key(reusable, param),
          true <- Map.get(spec.data_index.params, key) == true do
       {:data, %{path: [instance], element: key}}
@@ -486,7 +488,25 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   repeating group holding it, in a scope of its own (WTF-494).
   """
   @spec per_cell?(t(), String.t()) :: boolean()
-  def per_cell?(%__MODULE__{cells: cells}, id), do: match?(%{residue: []}, cells[id])
+  def per_cell?(%__MODULE__{cells: cells} = spec, id),
+    do: match?(%{residue: []}, cells[id]) and unloaded(spec, id) == nil
+
+  @doc """
+  Why the page does not render reusable instance `id` (WTF-522): the
+  residue reasons of its own data source, which does not load while its
+  reusable element's reads of its own thing do (they would read nothing
+  in this instance), or nil when it renders. See
+  `BubbleEx.Target.Elixir.FrontendWorkflows.Data.unloaded_instances/3`.
+  """
+  @spec unloaded(t() | nil, String.t()) :: [atom()] | nil
+  def unloaded(%__MODULE__{data_index: index}, id),
+    do: Map.get(Map.get(index, :unloaded, %{}), id)
+
+  def unloaded(nil, _id), do: nil
+
+  # A key under an instance the page does not render (WTF-522): its scope
+  # holds nothing, its custom states not even their defaults.
+  defp unloaded_path?(spec, path), do: Enum.any?(path, &(unloaded(spec, &1) != nil))
 
   @doc "The data sources the page loads for surface `id` (WTF-420), in order."
   @spec data(t(), String.t()) :: [map()]

@@ -6,6 +6,29 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **An instance whose own data source does not load is no longer
+  rendered reading nothing** (WTF-522). A reusable element's reads of its
+  own thing (`Parent group's X` at its top, "Current reusable's thing")
+  are loaded when any instance's source loads. An instance whose own
+  source did not (it does not compile, or reads data the page does not
+  load) was still rendered with its reusable element's component, which
+  read nothing there: empty texts and lists, and its workflows ran on an
+  empty thing, with only a template comment to tell. Such an instance is
+  now residue, per instance, when its reusable element reads its own
+  thing at all (`PageData`'s `self_reads`): a sized placeholder with its
+  `TODO(bubble:<id>)` markers, as for an element the page cannot render
+  (counted in the frontend report's `placeholder`). Its scope is not
+  rendered (left out of `__bubble__(:instances)` and, in a repeating
+  group's cell, of `__bubble__(:cells)`), so no data is read, no event is
+  accepted and no workflow runs there; its sibling instances are
+  unchanged. A property default read from outside it (WTF-520) and its
+  custom states read by its page are not loaded either (markers, or
+  `:unavailable_input` on the sources and workflows reading them), and a
+  page step calling its custom event or showing data in it is
+  `:target_not_rendered`. An
+  instance of a reusable element no instance of which loads keeps
+  rendering, its reads marked as before. `Spec.unloaded/2` and
+  `Data.unloaded_instances/3` name them.
 - **Keyword searches compile** (WTF-520). A search constraint `contains
   keyword(s)` on a text field (`:text_contains_words`) left the search
   uncompiled, so a list filtered by a search box showed no rows. The

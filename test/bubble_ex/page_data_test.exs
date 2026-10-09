@@ -78,8 +78,9 @@ defmodule BubbleEx.PageDataTest do
       # two conditional sources; WTF-521: two lists' own searches with
       # conditional ones), the keywords page's two lists (WTF-520) and the
       # group reading the group a popup's "is opened" workflow sets
-      # (WTF-520).
-      assert PageData.coverage(pd)["sources"] == %{"total" => 29, "native" => 29, "residue" => 0}
+      # (WTF-520); the pair page's two instances of one reusable element,
+      # one of whose data source does not compile (WTF-522).
+      assert PageData.coverage(pd)["sources"] == %{"total" => 31, "native" => 30, "residue" => 1}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -110,7 +111,8 @@ defmodule BubbleEx.PageDataTest do
         for default <- [nil, true, false] do
           {_model, pd} = build(app, ignore_empty_constraints: default)
           assert source(pd, "bList").residue == []
-          assert pd.diagnostics == []
+          # Only the pair page's instance whose source does not compile (WTF-522).
+          assert [%{details: %{subject: "element:bPairB"}}] = pd.diagnostics
 
           assert %IR{
                    op: :and,
@@ -295,11 +297,12 @@ defmodule BubbleEx.PageDataTest do
       # groups with no source (WTF-520); the keywords page's two lists
       # (WTF-520: keyword searches); the popup a click opens, the group
       # its "is opened" workflow sets and the group reading that one
-      # (WTF-520: popup events).
+      # (WTF-520: popup events); the pair page's two instances, one of
+      # which does not load (WTF-522).
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 39,
-               "wired" => 39,
-               "residue" => 0
+               "total" => 41,
+               "wired" => 40,
+               "residue" => 1
              }
 
       # An empty constraint value: dropped in bList, matches nothing in
@@ -398,7 +401,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 37
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 38
     end
 
     test "a repeating group in a repeating group's cell is residue" do
@@ -2081,5 +2084,592 @@ defmodule BubbleEx.PageDataTest do
       assert component =~ "def input(inputs, data, scope, element, initial \\\\ nil)"
       assert files["lib/shop_web/bubble_workflows.ex"] =~ ":data -> Map.get(ctx.data, key)"
     end
+  end
+end
+
+defmodule BubbleEx.PageDataUnloadedInstanceTest do
+  # WTF-522: a reusable element's reads of its own thing load when any
+  # instance's source loads; an instance whose own source does not load
+  # is not rendered (residue), never rendered reading nothing. The
+  # generated app's behavior is in page_data_behavior.exs.
+  use ExUnit.Case, async: true
+
+  alias BubbleEx.{Index, Model, PageData}
+  alias BubbleEx.Target.Elixir.FrontendWorkflows
+  alias BubbleEx.Target.Elixir.FrontendWorkflows.Spec
+  alias BubbleEx.Target.Phoenix
+  alias BubbleEx.Workflows.Frontend
+
+  @fixture "test/support/target/phoenix/page_data.json"
+
+  defp app, do: @fixture |> File.read!() |> Jason.decode!()
+
+  defp spec(app) do
+    {:ok, model} = Model.build(app)
+    {:ok, page_data} = PageData.build(app, model)
+    {:ok, index} = Index.build(app, model: model)
+    {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
+    {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+    {:ok, lowered} = Frontend.build(app, model, index)
+
+    {:ok, spec} =
+      FrontendWorkflows.map(lowered, project,
+        namespace: "Shop",
+        frontend: frontend,
+        page_data: page_data
+      )
+
+    {spec, %{app: app, model: model, index: index, project: project, frontend: frontend}}
+  end
+
+  defp files(app) do
+    {spec, %{model: model, index: index, project: project, frontend: frontend}} = spec(app)
+
+    {:ok, compiled} =
+      BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend,
+        runtime: "Shop.Bubble.Runtime",
+        namespace: "Shop"
+      )
+
+    {:ok, backend} = BubbleEx.Workflows.Backend.build(app, model, index)
+    {:ok, workflows} = BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "Shop")
+
+    opts = [
+      name: "Shop",
+      frontend: frontend,
+      expressions: compiled,
+      workflows: workflows,
+      frontend_workflows: spec
+    ]
+
+    {:ok, files} = Phoenix.render(project, opts)
+    {:ok, report} = Phoenix.frontend_report(project, opts)
+    {files, report}
+  end
+
+  defp data(spec, element) do
+    spec.surfaces
+    |> Enum.flat_map(fn {_id, s} -> s.data end)
+    |> Enum.find(&(&1.element == element))
+  end
+
+  defp put_pair(app, id, props),
+    do: update_in(app, ["pages", "pair", "elements", id, "properties"], &Map.merge(&1, props))
+
+  @uncompiled %{"type" => "NoSuchExpression"}
+
+  @user_logged_in %{
+    "type" => "CurrentUser",
+    "next" => %{"type" => "Message", "name" => "logged_in"}
+  }
+
+  test "only the instance whose own source does not load is unloaded" do
+    {spec, _} = spec(app())
+
+    # The card's reads of its own thing load (other instances give it one).
+    assert MapSet.member?(spec.data_index.roots, "bCard")
+    assert %{kind: :instance, residue: []} = data(spec, "bPairA")
+    assert %{kind: :instance, residue: [_ | _]} = data(spec, "bPairB")
+
+    assert Spec.unloaded(spec, "bPairB") == [:uncompiled_expression]
+    assert Spec.unloaded(spec, "bPairA") == nil
+    assert Spec.unloaded(spec, "bCard1") == nil
+
+    # The card's workflow reading its own thing stays native: it runs in
+    # the instances the page renders, never in bPairB's scope.
+    w = Spec.workflow(spec, "bCard", "wCardSelf")
+    assert Spec.native?(w) and Spec.wired?(w)
+  end
+
+  test "a source reading data the page does not load, or a conditional one that does not compile" do
+    # bPairB reads a group whose own source does not compile: the target
+    # does not bind it (unavailable_input).
+    bad = %{
+      "id" => "bPairBad",
+      "type" => "Group",
+      "properties" => %{
+        "group_type" => "custom.task",
+        "width" => 300,
+        "height" => 40,
+        "data_source" => @uncompiled
+      }
+    }
+
+    app =
+      app()
+      |> put_in(["pages", "pair", "elements", "bPairBad"], bad)
+      |> put_pair("bPairB", %{
+        "data_source" => %{
+          "type" => "GetElement",
+          "properties" => %{"element_id" => "bPairBad"},
+          "next" => %{"type" => "Message", "name" => "get_group_data"}
+        }
+      })
+
+    {spec, _} = spec(app)
+    assert Spec.unloaded(spec, "bPairB") == [:unavailable_input]
+    assert Spec.unloaded(spec, "bPairA") == nil
+
+    # No source of its own, a conditional state whose source does not
+    # compile: never shown from its base (empty) alone.
+    state = %{
+      "condition" => @user_logged_in,
+      "properties" => %{"data_source" => @uncompiled}
+    }
+
+    app =
+      app()
+      |> update_in(
+        ["pages", "pair", "elements", "bPairB", "properties"],
+        &Map.delete(&1, "data_source")
+      )
+      |> put_in(["pages", "pair", "elements", "bPairB", "states"], %{"0" => state})
+
+    {spec, _} = spec(app)
+    assert [_ | _] = Spec.unloaded(spec, "bPairB")
+
+    # A conditional source that loads: rendered, as before.
+    ok = put_in(state, ["properties", "data_source"], %{"type" => "CurrentPageItem"})
+    task_page = %{"type" => "Search", "properties" => %{"type_to_find" => "custom.task"}}
+    ok = put_in(ok, ["properties", "data_source"], Map.put(task_page, "next", first()))
+    app = put_in(app, ["pages", "pair", "elements", "bPairB", "states"], %{"0" => ok})
+    {spec, _} = spec(app)
+    assert Spec.unloaded(spec, "bPairB") == nil
+    assert %{residue: [], read: {:switch, _}} = data(spec, "bPairB")
+  end
+
+  defp first, do: %{"type" => "Message", "name" => "first_element"}
+
+  test "when no instance's source loads, the reads are marked and every instance renders" do
+    app =
+      app()
+      |> put_pair("bPairA", %{"data_source" => @uncompiled})
+      |> update_in(["pages", "index", "elements"], &Map.drop(&1, ["bCard1", "bCard2"]))
+
+    {spec, _} = spec(app)
+    refute MapSet.member?(spec.data_index.roots, "bCard")
+    assert spec.data_index.unloaded == %{}
+
+    {files, _report} = files(app)
+    page = files["lib/shop_web/live/pair_live.html.heex"]
+    card = files["lib/shop_web/components/reusables/task_card.html.heex"]
+
+    assert page =~ ~s(<.task_card\n    data-bubble-id="bPairB")
+    assert card =~ "TODO(bubble:bCardTitle) text: reads page data that is not loaded"
+  end
+
+  test "printed: the instance is residue, its scope is not rendered; its sibling is" do
+    {files, report} = files(app())
+    page = files["lib/shop_web/live/pair_live.html.heex"]
+    flows = files["lib/shop_web/live/pair_live/workflows.ex"]
+
+    assert page =~ ~s(<.task_card\n    data-bubble-id="bPairA")
+    refute page =~ ~s(data-bubble-id="bPairB"\n    class="[color:#000000] h-[40px] relative)
+
+    assert page =~
+             ~r/<div data-bubble-id="bPairB"[^>]*>\s*<%!-- TODO\(bubble:bPairB\) not rendered: its data source does not load, and its reusable element reads the thing it gives \(Parent group\) --%>/
+
+    assert page =~ "TODO(bubble:bPairB) its data source is not loaded (uncompiled_expression)"
+
+    # No data, event or workflow runs in its scope.
+    assert flows =~ ~s|@instances [{"bPairA", ShopWeb.Reusables.TaskCard.Workflows}]|
+
+    assert report["counts"]["placeholder"] >= 1
+  end
+
+  test "an instance in a repeating group's cell whose own source does not load" do
+    card = fn id, source ->
+      %{
+        "id" => id,
+        "type" => "CustomElement",
+        "properties" => %{
+          "custom_id" => "bCard",
+          "group_type" => "custom.task",
+          "order" => 9,
+          "width" => 300,
+          "height" => 40,
+          "data_source" => source
+        }
+      }
+    end
+
+    app =
+      app()
+      |> put_in(
+        ["pages", "index", "elements", "bList", "elements", "bCellCardOk"],
+        card.("bCellCardOk", %{"type" => "CurrentDataItem"})
+      )
+      |> put_in(
+        ["pages", "index", "elements", "bList", "elements", "bCellCardBad"],
+        card.("bCellCardBad", @uncompiled)
+      )
+
+    {spec, _} = spec(app)
+    assert Spec.per_cell?(spec, "bCellCardOk")
+    refute Spec.per_cell?(spec, "bCellCardBad")
+    assert Spec.unloaded(spec, "bCellCardBad") == [:uncompiled_expression]
+
+    {files, _report} = files(app)
+    page = files["lib/shop_web/live/index_live.html.heex"]
+    flows = files["lib/shop_web/live/index_live/workflows.ex"]
+
+    assert flows =~ ~s|{"bList", [{"bCellCardOk", ShopWeb.Reusables.TaskCard.Workflows}]}|
+    refute flows =~ ~s|"bCellCardBad", ShopWeb|
+    assert page =~ "TODO(bubble:bCellCardBad) not rendered"
+    refute page =~ "TODO(bubble:bCellCardBad) rendered once for every cell"
+  end
+
+  test "an instance of a reusable element that never reads its own thing is rendered" do
+    # The card's title is static and its click sends no data: nothing in
+    # it reads the thing an instance gives it, so bPairB renders as is.
+    app =
+      app()
+      |> put_in(
+        ["element_definitions", "card", "elements", "bCardTitle", "properties", "text"],
+        %{"type" => "TextExpression", "entries" => %{"0" => "Card"}}
+      )
+      |> update_in(
+        ["element_definitions", "card", "workflows", "wCardSelf", "actions", "0", "properties"],
+        &Map.delete(&1, "data_to_send")
+      )
+
+    {spec, %{model: model}} = spec(app)
+    {:ok, page_data} = PageData.build(app, model)
+    refute MapSet.member?(page_data.self_reads, "bCard")
+    assert spec.data_index.unloaded == %{}
+
+    {files, _report} = files(app)
+    page = files["lib/shop_web/live/pair_live.html.heex"]
+    assert page =~ ~s(<.task_card\n    data-bubble-id="bPairB")
+    refute page =~ "TODO(bubble:bPairB) not rendered"
+
+    # The fixture's card reads it (its title, its click's data).
+    {:ok, page_data} = PageData.build(app(), model)
+    assert MapSet.member?(page_data.self_reads, "bCard")
+  end
+
+  test "a Display data step into the instance is not kept" do
+    button = fn id ->
+      %{"id" => id, "type" => "Button", "properties" => %{"width" => 300, "height" => 40}}
+    end
+
+    show = fn id, button, instance ->
+      %{
+        "id" => id,
+        "type" => "ButtonClicked",
+        "properties" => %{"element_id" => button},
+        "actions" => %{
+          "0" => %{
+            "id" => id <> "1",
+            "type" => "DisplayGroupData",
+            "properties" => %{
+              "element_id" => instance,
+              "data_source" => %{
+                "type" => "GetElement",
+                "properties" => %{"element_id" => "bPairA"},
+                "next" => %{"type" => "Message", "name" => "get_group_data"}
+              }
+            }
+          }
+        }
+      }
+    end
+
+    app =
+      app()
+      |> update_in(["pages", "pair", "elements"], fn els ->
+        els |> Map.put("bShowA", button.("bShowA")) |> Map.put("bShowB", button.("bShowB"))
+      end)
+      |> put_in(["pages", "pair", "workflows"], %{
+        "wShowA" => show.("wShowA", "bShowA", "bPairA"),
+        "wShowB" => show.("wShowB", "bShowB", "bPairB")
+      })
+
+    {spec, _} = spec(app)
+    assert Spec.unloaded(spec, "bPairB") == [:uncompiled_expression]
+    assert %{steps: [%{residue: []}]} = Spec.workflow(spec, "bPairPage", "wShowA")
+
+    assert %{steps: [%{residue: [%{reason: :target_not_rendered, detail: detail}]}]} =
+             Spec.workflow(spec, "bPairPage", "wShowB")
+
+    assert detail == %{element: "element:bPairB"}
+  end
+
+  test "a nested instance below the unloaded one has no scope either" do
+    # The card nests a panel whose source is the card's own thing.
+    nested = %{
+      "id" => "bCardPanel",
+      "type" => "CustomElement",
+      "properties" => %{
+        "custom_id" => "bPanel",
+        "group_type" => "custom.task",
+        "order" => 3,
+        "width" => 300,
+        "height" => 40,
+        "data_source" => %{"type" => "ElementParent"}
+      }
+    }
+
+    app = put_in(app(), ["element_definitions", "card", "elements", "bCardPanel"], nested)
+    {spec, _} = spec(app)
+    assert Spec.unloaded(spec, "bPairB") == [:uncompiled_expression]
+    assert Spec.unloaded(spec, "bCardPanel") == nil
+
+    {files, _report} = files(app)
+    flows = files["lib/shop_web/live/pair_live/workflows.ex"]
+    [instances] = Regex.run(~r/@instances \[.*?\]\n/s, flows)
+    assert instances =~ ~s("bPairA")
+    assert instances =~ "bCardPanel"
+    refute instances =~ "bPairB"
+  end
+
+  test "an unloaded instance in a popup is residue there too" do
+    popup = %{
+      "id" => "bPairPop",
+      "type" => "Popup",
+      "properties" => %{"order" => 3, "width" => 300, "height" => 200},
+      "elements" => %{"bPairB" => app()["pages"]["pair"]["elements"]["bPairB"]}
+    }
+
+    app =
+      app()
+      |> update_in(["pages", "pair", "elements"], &Map.delete(&1, "bPairB"))
+      |> put_in(["pages", "pair", "elements", "bPairPop"], popup)
+
+    {spec, _} = spec(app)
+    assert Spec.unloaded(spec, "bPairB") == [:uncompiled_expression]
+
+    {files, _report} = files(app)
+    page = files["lib/shop_web/live/pair_live.html.heex"]
+    flows = files["lib/shop_web/live/pair_live/workflows.ex"]
+    assert page =~ "TODO(bubble:bPairB) not rendered"
+    refute page =~ ~s(<.task_card\n      data-bubble-id="bPairB")
+    refute flows =~ ~s({"bPairB", ShopWeb)
+  end
+
+  test "a page condition reading the instance's custom state is not decided" do
+    cond_on = fn instance ->
+      %{
+        "0" => %{
+          "condition" => %{
+            "type" => "GetElement",
+            "properties" => %{"element_id" => instance},
+            "next" => %{
+              "type" => "Message",
+              "name" => "custom.seen_",
+              "next" => %{
+                "type" => "Message",
+                "name" => "equals",
+                "args" => %{"type" => "TextExpression", "entries" => %{"0" => "yes"}}
+              }
+            }
+          },
+          "properties" => %{"is_visible" => false}
+        }
+      }
+    end
+
+    text = fn id, instance ->
+      %{
+        "id" => id,
+        "type" => "Text",
+        "properties" => %{
+          "width" => 300,
+          "height" => 40,
+          "text" => %{"type" => "TextExpression", "entries" => %{"0" => "Seen"}}
+        },
+        "states" => cond_on.(instance)
+      }
+    end
+
+    app =
+      app()
+      |> put_in(["element_definitions", "card", "custom_states"], %{
+        "seen_" => %{"default_val" => "no", "display" => "Seen", "value" => "text"}
+      })
+      |> update_in(["pages", "pair", "elements"], fn els ->
+        els
+        |> Map.put("bSeenA", text.("bSeenA", "bPairA"))
+        |> Map.put("bSeenB", text.("bSeenB", "bPairB"))
+      end)
+
+    {files, _report} = files(app)
+    page = files["lib/shop_web/live/pair_live.html.heex"]
+    refute page =~ "TODO(bubble:bSeenA) visibility"
+
+    assert page =~
+             ~r/TODO\(bubble:bSeenB\) visibility: 1 conditional not lowered \(it reads a value the page does not keep: element_state:custom.seen_\)/
+  end
+
+  test "a page's workflow calling into the instance's custom event is not run there" do
+    # The card's custom event reads its own thing; the pair page calls it
+    # in each instance.
+    event = %{
+      "id" => "wCardEvt",
+      "type" => "CustomEvent",
+      "properties" => %{"event_name" => "go"},
+      "actions" => %{
+        "0" => %{
+          "id" => "aCardEvt1",
+          "type" => "ChangePage",
+          "properties" => %{
+            "element_id" => "Current page",
+            "data_to_send" => %{"type" => "ElementParent"}
+          }
+        }
+      }
+    }
+
+    button = fn id ->
+      %{"id" => id, "type" => "Button", "properties" => %{"width" => 300, "height" => 40}}
+    end
+
+    call = fn id, button, instance ->
+      %{
+        "id" => id,
+        "type" => "ButtonClicked",
+        "properties" => %{"element_id" => button},
+        "actions" => %{
+          "0" => %{
+            "id" => id <> "1",
+            "type" => "TriggerCustomEventFromReusable",
+            "properties" => %{"custom_event" => "wCardEvt", "element_id" => instance}
+          }
+        }
+      }
+    end
+
+    app =
+      app()
+      |> put_in(["element_definitions", "card", "workflows", "wCardEvt"], event)
+      |> update_in(["pages", "pair", "elements"], fn els ->
+        els |> Map.put("bCallA", button.("bCallA")) |> Map.put("bCallB", button.("bCallB"))
+      end)
+      |> put_in(["pages", "pair", "workflows"], %{
+        "wCallA" => call.("wCallA", "bCallA", "bPairA"),
+        "wCallB" => call.("wCallB", "bCallB", "bPairB")
+      })
+
+    {spec, _} = spec(app)
+    assert %{steps: [%{residue: []}]} = Spec.workflow(spec, "bPairPage", "wCallA")
+
+    assert %{steps: [%{residue: [%{reason: :target_not_rendered, detail: detail}]}]} =
+             Spec.workflow(spec, "bPairPage", "wCallB")
+
+    assert detail == %{element: "element:bPairB"}
+  end
+
+  test "a default read from outside the instance, and its custom states, fail closed" do
+    # The card gets a property whose default reads its own thing, and a
+    # custom state; the pair page reads both from each instance.
+    label = %{
+      "btype_id" => "text",
+      "editor_type" => "DynamicValue",
+      "is_list" => false,
+      "optional" => true,
+      "param_id" => "pLabel",
+      "param_name" => "Label",
+      "default_value" => %{
+        "type" => "TextExpression",
+        "entries" => %{
+          "0" => "Card ",
+          "1" => %{
+            "type" => "GetElement",
+            "properties" => %{"element_id" => "bCard"},
+            "next" => %{
+              "type" => "Message",
+              "name" => "get_group_data",
+              "next" => %{"type" => "Message", "name" => "title_text"}
+            }
+          }
+        }
+      }
+    }
+
+    reads = fn instance, name ->
+      %{
+        "type" => "GetElement",
+        "properties" => %{"element_id" => instance},
+        "next" => %{"type" => "Message", "name" => name}
+      }
+    end
+
+    list = fn id, instance ->
+      %{
+        "id" => id,
+        "type" => "RepeatingGroup",
+        "properties" => %{
+          "group_type" => "custom.task",
+          "rows" => 2,
+          "columns" => 1,
+          "width" => 300,
+          "height" => 40,
+          "data_source" => %{
+            "type" => "Search",
+            "properties" => %{
+              "type_to_find" => "custom.task",
+              "constraints" => %{
+                "0" => %{
+                  "key" => "title_text",
+                  "constraint_type" => "equals",
+                  "value" => reads.(instance, "param_pLabel")
+                }
+              }
+            }
+          }
+        }
+      }
+    end
+
+    text = fn id, instance, name ->
+      %{
+        "id" => id,
+        "type" => "Text",
+        "properties" => %{
+          "width" => 300,
+          "height" => 40,
+          "text" => %{"type" => "TextExpression", "entries" => %{"0" => reads.(instance, name)}}
+        }
+      }
+    end
+
+    app =
+      app()
+      |> put_in(["element_definitions", "card", "properties", "parameters"], %{"0" => label})
+      |> put_in(["element_definitions", "card", "custom_states"], %{
+        "seen_" => %{"default_val" => "no", "display" => "Seen", "value" => "text"}
+      })
+      |> update_in(["pages", "pair", "elements"], fn els ->
+        els
+        |> Map.put("bPairListA", list.("bPairListA", "bPairA"))
+        |> Map.put("bPairListB", list.("bPairListB", "bPairB"))
+        |> Map.put("bPairLabelA", text.("bPairLabelA", "bPairA", "param_pLabel"))
+        |> Map.put("bPairLabelB", text.("bPairLabelB", "bPairB", "param_pLabel"))
+        |> Map.put("bPairSeenA", text.("bPairSeenA", "bPairA", "custom.seen_"))
+        |> Map.put("bPairSeenB", text.("bPairSeenB", "bPairB", "custom.seen_"))
+      end)
+
+    {spec, _} = spec(app)
+
+    # A's default is read from outside; B's scope is not read, so neither
+    # is its default.
+    assert %{residue: []} = data(spec, "bPairListA")
+
+    assert %{residue: [%{reason: :unavailable_input, detail: %{inputs: ["element_state:param"]}}]} =
+             data(spec, "bPairListB")
+
+    assert Spec.instance_property(spec, "bPairPage", "bPairA", "param_pLabel")
+    refute Spec.instance_property(spec, "bPairPage", "bPairB", "param_pLabel")
+
+    state = fn e -> {:element_state, %{"element" => e, "state" => "custom.seen_"}} end
+    assert {:state, %{path: ["bPairA"]}} = Spec.read(spec, "bPairPage", state.("bPairA"))
+    assert Spec.read(spec, "bPairPage", state.("bPairB")) == nil
+
+    {files, _report} = files(app)
+    page = files["lib/shop_web/live/pair_live.html.heex"]
+    refute page =~ "TODO(bubble:bPairLabelA)"
+    assert page =~ "TODO(bubble:bPairLabelB) text: reads page data that is not loaded"
+    assert page =~ "TODO(bubble:bPairSeenB)"
+    refute page =~ "TODO(bubble:bPairSeenA)"
   end
 end

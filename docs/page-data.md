@@ -168,7 +168,7 @@ element (not a mobile view):
 | a page's "Type of content" | `:page_thing` | the record whose unique ID is the URL path segment after the page name (`/<page>/<id>`, a second route; for `index` it is `/index/<id>` (WTF-454), since a root catch-all would capture owned routes); the segment must look like a Bubble ID (`<digits>x<digits>`), else nothing is read; query parameters cannot select a thing |
 | a Group's, Popup's, Floating Group's or Group Focus's data source | `:group` | a search (below), or an Elixir value (`BubbleEx.Target.Elixir`); a thing given as a Bubble ID is read by ID |
 | a Repeating Group's data source | `:list` | a search, or a list value (IDs are read by ID); its cells render its template once per item |
-| a reusable-element instance's data source | `:instance` | the reusable element's thing for that instance (`Parent group` inside it); in a repeating group's cell, per cell (WTF-494, below) |
+| a reusable-element instance's data source | `:instance` | the reusable element's thing for that instance (`Parent group` inside it); in a repeating group's cell, per cell (WTF-494, below); an instance whose source does not load is not rendered (WTF-522, below) |
 | a property a reusable-element instance sets (WTF-493) | `:param` | its value, computed where the instance is, kept under the instance (`This Reusable's <property>` inside it) |
 | a reusable element property's default value | `:param` | computed inside the reusable element, for an instance that sets no value |
 | a group, popup, repeating group or instance with no data source that a "Display data" / "Display list" step sets (WTF-492) | its kind | what the step showed (`read: :displayed`), read again as the current user; nothing before a step |
@@ -588,6 +588,71 @@ sources and its instances' is computed once per set of modules and kept
 the instances in cells, which depends on the lists read, is computed at
 each read.
 
+### Instances whose own source does not load (WTF-522)
+
+A reusable element is compiled once for all its instances, so its reads
+of its own thing (`Parent group's X` at its top, "Current reusable's
+thing", a group or nested instance inside it whose source is that thing,
+a workflow reading it) are loaded when some instance gives it a thing:
+an instance whose own data source loads (or a step that sets it, or,
+when every instance is one, an instance nothing fills, above). An
+instance whose own source does not load (it does not compile, a
+conditional state of it does not, it reads data the page does not load,
+or, in a repeating group's cell, it cannot be read per cell) would
+render that component reading nothing: an empty text, an empty list, a
+workflow on an empty thing.
+
+Such an instance is residue instead, per instance
+(`Data.unloaded_instances/3`, `Spec.unloaded/2`), when its reusable
+element reads its own thing at all: one of its expressions (a data
+source, a text or attribute, a visibility condition, a workflow, a
+nested instance's source or property) reads it, as compiled to IR
+(`BubbleEx.PageData`'s `self_reads`). An instance of a reusable element
+that never reads it renders whatever its source: nothing in it would
+read the missing thing. The instance is rendered as a sized placeholder
+carrying its `TODO(bubble:<id>)` markers (`not rendered: its data source
+does not load, and its reusable element reads the thing it gives (Parent
+group)`, and `its data source is not loaded (<reasons>)`), as an element
+the page cannot render, and counted in the frontend report's
+`placeholder`. Its sibling instances render and load as before.
+
+Its scope is not rendered: it is left out of `__bubble__(:instances)`
+(and, in a repeating group's cell, of `__bubble__(:cells)`), so the
+loader reads none of its reusable element's sources there, the page
+accepts no click or input change in it, and no page-load, condition or
+"do every" workflow of its reusable element runs in it; nor does any of
+its nested instances. Nothing inside it can be reached from outside
+either:
+
+* a property default read through it (`<instance>'s <property>`,
+  WTF-520) is not loaded: the sources and workflows reading it are
+  `:unavailable_input` (`element_state:param`), the page's texts markers;
+* its custom states read by its page are not kept (their defaults have
+  no scope to live in): a text is a marker, a visibility condition is not
+  lowered and keeps its page-load visibility;
+* a page step calling its custom event, or a "Display data" step into
+  it, is `:target_not_rendered`. Showing data in it is not taken as
+  filling it: before the step it would still show its own source, which
+  does not load.
+
+The binding runs in passes: an instance found unloaded in one pass stays
+unloaded in the next (the page data is bound again only when a source
+reads a value kept under a newly unloaded instance, a default or a
+custom state; sources only lose, never gain, so the passes end). An
+instance may so stay unloaded after a later pass finds its reusable
+element no longer a root (its other instances lost their sources too):
+it is then residue where the marked component would have done, never
+rendered reading nothing.
+
+When no instance gives the reusable element a thing, nothing changes:
+its reads of its own thing are marked in the component itself, and
+every instance renders it with those markers. The values the instance
+sets for its properties are still computed and still count for `This
+Reusable's <property>` (every value must load, WTF-493), as before; and
+an instance in a repeating group's cell still counts its reusable
+element as rendered in cells (WTF-494, `:page_data_in_cell`), since the
+cell residue can be what leaves it unloaded in the first place.
+
 ## Inputs whose initial content is page data (WTF-520)
 
 An input's initial content may read data: a field of its group's thing,
@@ -678,7 +743,10 @@ each source for all the cells at once (`<Web>.BubbleData`):
   element with one (or nesting one, outside its own cells) is not
   rendered per cell. Its instances in cells keep one fixed scope and are
   marked, with their sources (`:page_data_in_cell`, `kind` `"query"`):
-  `TODO(bubble:<id>) rendered once for every cell, not per cell`.
+  `TODO(bubble:<id>) rendered once for every cell, not per cell`. When
+  another instance gives the reusable element its thing, such an
+  instance's own source is not loaded while the reads are: it is not
+  rendered at all (WTF-522, above).
 
 A repeating group's first page is at most `:max_items` cells, and the
 instances in cells of lists inside those instances are read the same
@@ -824,7 +892,10 @@ Nothing is dropped silently:
   as an empty value but as a `TODO(bubble:<id>) <slot>: reads page data
   that is not loaded (<kind>)` marker (counted in `bindings_marked`);
 * a workflow that reads it is `:unavailable_input` residue and refuses to
-  start, as before.
+  start, as before;
+* a reusable instance whose own source is not loaded, while its reusable
+  element's reads of its own thing are, is not rendered: a placeholder
+  with its markers, and no scope (WTF-522, above).
 
 ## Coverage metrics
 
@@ -845,6 +916,36 @@ The frontend workflow metrics (`docs/frontend-workflows.md`, *native*
 and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
+
+### Private fixture app (test version), 2026-10-09, instances whose own source does not load (WTF-522)
+
+37 instances of 13 reusable elements are no longer rendered (23 of them
+in a repeating group's cell, 14 outside): each one's own source did not
+load while another instance gave its reusable element a thing. Their
+reasons: `:unavailable_input` 34, `:uncompiled_expression` 2,
+`:unsupported_option` 2, `:page_data_in_cell` 1 (one instance may have
+several). Every one of the 13 reusable elements has data sources reading
+its own thing, so none was marked for nothing.
+
+The page data counts do not move: those instances' sources were residue
+already, and so were the sources reading them. What moves is what ran in
+them:
+
+| | before | after |
+|-|------:|------:|
+| steps calling a reusable instance's custom event, native | 127 | 123 |
+| `:target_not_rendered` residue entries (steps) | 2 | 6 |
+| `:unavailable_input` residue entries (workflows) | 475 | 476 |
+| workflows, native (generated code) | 814 | 812 |
+| workflows, wired | 542 | 540 |
+| frontend report: elements printed natively / as placeholders | 5,841 / 1,297 | 5,827 / 1,311 |
+| frontend report: markers | 2,910 | 2,946 |
+
+Four page steps called a custom event in one of those instances (it
+would have run on an empty thing) and are residue now, which leaves two
+click workflows not native; one more step read a value kept in one.
+The 14 instances outside cells are placeholders in the page now, the 23
+in cells placeholders in their cell's template.
 
 ### Private fixture app (test version), 2026-10-09, popup events and instances nothing fills (WTF-520)
 
@@ -1244,12 +1345,6 @@ and "Display data" over a group's own source.
 * Elements a plugin's event or "User is logged in / out" may set are
   taken to be set as the page loads (conservative, see
   `docs/frontend-workflows.md`).
-* **Known gap, not a Bubble question:** a reusable element's reads of
-  its own thing load when any instance's source loads; in an instance
-  whose own source does not load, they read nothing (the instance is
-  rendered with a `TODO` comment only). This predates WTF-520's
-  instances nothing fills, which apply only when every instance of the
-  reusable element is one, so they never widen it.
 * **Popup events** (WTF-520): a popup's "is opened" workflow is taken to
   run only after a step opens the closed popup (never as the page
   loads), and its "is closed" one after a step or Escape closes it; what

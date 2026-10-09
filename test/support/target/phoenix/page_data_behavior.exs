@@ -518,6 +518,45 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert html =~ "Card: Eat"
   end
 
+  # WTF-522: two instances of one reusable element on one page. bPairA's
+  # data source loads (the first task, A to Z); bPairB's does not compile.
+  # The card reads its own thing, so bPairB is residue: an empty, sized
+  # box with no card in it, never a card reading nothing.
+  test "an instance whose own source does not load is residue; its sibling shows its thing",
+       %{conn: conn} do
+    on()
+    {:ok, view, html} = live(conn, "/pair")
+
+    assert shown(html, "Card") == ["Answer"]
+    assert has_element?(view, ~s([data-bubble-id="bPairA"] [data-bubble-id="bCardTitle"]))
+    assert has_element?(view, ~s([data-bubble-id="bPairA"] [data-bubble-id="bCardSelf"]))
+
+    b = view |> element(~s([data-bubble-id="bPairB"])) |> render()
+    assert b =~ ~r{\A<div data-bubble-id="bPairB" class="[^"]*w-\[300px\][^"]*">\s*</div>\z}
+    refute has_element?(view, ~s([data-bubble-id="bPairB"] [data-bubble-id="bCardTitle"]))
+    refute has_element?(view, ~s([data-bubble-scope="bPairB"]))
+
+    # Its scope is not one the page renders: no data, no workflows.
+    assert PhxCheckWeb.PairLive.Workflows.__bubble__(:instances) == [
+             {"bPairA", PhxCheckWeb.Reusables.TaskCard.Workflows}
+           ]
+
+    # The card's click workflow reads the card's thing: it runs in
+    # bPairA's scope, and a click claiming bPairB's runs nothing.
+    render_click(view, "bubble:click", %{"scope" => "bPairB", "element" => "bCardSelf"})
+    refute_receive {_ref, {:patch, _topic, _to}}, 200
+    assert Process.alive?(view.pid)
+
+    render_click(view, "bubble:click", %{"scope" => "bPairA", "element" => "bCardSelf"})
+    assert assert_patch(view) =~ ~r{\A/pair/[0-9]+x[0-9]+\z}
+  end
+
+  test "with data access off, neither instance of the pair shows a thing", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/pair")
+    assert shown(html, "Card") == []
+    refute has_element?(view, ~s([data-bubble-id="bPairB"] [data-bubble-id="bCardTitle"]))
+  end
+
   test "go to the current page with a thing replaces the URL's thing (WTF-454)", %{conn: conn} do
     on()
     {:ok, view, html} = live(conn, "/task/#{@t1}")

@@ -833,6 +833,16 @@
       },
       "type": "Page"
     },
+    "pair": {
+      "elements": {
+        "bPairA": {"id": "bPairA", "type": "CustomElement", "properties": {"_comment": "WTF-522: an instance whose data source loads (the first task, A to Z).", "custom_id": "bCard", "group_type": "custom.task", "order": 1, "width": 300, "height": 40, "data_source": {"type": "Search", "properties": {"type_to_find": "custom.task", "sort_field": "title_text", "descending": false}, "next": {"type": "Message", "name": "first_element"}}}},
+        "bPairB": {"id": "bPairB", "type": "CustomElement", "properties": {"_comment": "WTF-522: an instance of the same reusable element whose data source does not compile.", "custom_id": "bCard", "group_type": "custom.task", "order": 2, "width": 300, "height": 40, "data_source": {"type": "NoSuchExpression"}}}
+      },
+      "id": "bPairPage",
+      "name": "pair",
+      "properties": {"title": "Pair"},
+      "type": "Page"
+    },
     "loaded": {
       "elements": {
         "bLoadPick": {"id": "bLoadPick", "type": "Input", "properties": {"order": 7, "width": 300, "height": 40, "min_height_css": "40px", "content_format": "text"}},

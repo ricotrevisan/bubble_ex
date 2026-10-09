@@ -11,7 +11,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       (`<Web>.Reusables.<Name>`, `.<name>/1` with an embedded template);
       instances are component calls that pass the instance's size and
       place as `class` and, where the instance resolves a reusable
-      parameter differently, the value as an attribute
+      parameter differently, the value as an attribute; an instance whose
+      own data source does not load while its reusable element reads its
+      own thing is a placeholder with markers instead, and its scope is
+      not rendered (WTF-522, `FlowSpec.unloaded/2`)
     * every element carries `data-bubble-id`
     * styles are Tailwind v4 (WTF-359 Q4): the app's tokens in `@theme`,
       named styles as component classes, each element's own declarations
@@ -1413,6 +1416,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
+  @unrendered "not rendered: its data source does not load, and its reusable element " <>
+                "reads the thing it gives (Parent group)"
+
   defp instance(node, ctx, acc) do
     entry = ctx.names.reusable_by_ref[node.definition_ref]
     definition = entry && entry.node
@@ -1426,10 +1432,22 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         acc = mark(acc, node, "recursive reusable element: expansion stops here")
         element("div", node, [], "", ctx, acc, placeholder: true)
 
+      unrendered?(node, ctx) ->
+        acc = mark(acc, node, @unrendered)
+        element("div", node, [], "", ctx, acc, placeholder: true)
+
       true ->
         component_call(node, entry, ctx, acc)
     end
   end
+
+  # An instance whose own data source does not load while its reusable
+  # element's reads of its own thing do (WTF-522): rendered, its reusable
+  # element would read nothing there, silently. It is residue instead, as
+  # an element the page cannot render, and its scope is not rendered
+  # (`instances/5`) nor, in a repeating group's cell, per cell
+  # (`FlowSpec.per_cell?/2`): no data, events or workflows run there.
+  defp unrendered?(node, ctx), do: unrendered_id?(bid(node), ctx)
 
   # Whether the reusable `definition` contains (transitively) the component
   # being emitted: rendering it would recurse.
@@ -1573,7 +1591,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp static_ids(%Node{kind: :reusable_instance} = node, ctx, stack) do
     case ctx.names.reusable_by_ref[node.definition_ref] do
       %{node: definition} ->
-        if MapSet.member?(stack, definition.map_key) do
+        if MapSet.member?(stack, definition.map_key) or unrendered_id?(bid(node), ctx) do
           [bid(node)]
         else
           stack = MapSet.put(stack, definition.map_key)
@@ -2144,6 +2162,15 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp data_input?({kind, _}), do: kind in [:page_thing, :cell_thing, :cell_index]
   defp data_input?(_), do: false
 
+  # A value of an instance the page does not render (WTF-522): its custom
+  # states have no value there, not even their defaults.
+  defp unrendered_input?({:element_state, %{"element" => e}}, ctx) when is_binary(e),
+    do: unrendered_id?(e, ctx)
+
+  defp unrendered_input?(_input, _ctx), do: false
+
+  defp unrendered_id?(id, ctx), do: FlowSpec.unloaded(Map.get(ctx, :flows), id) != nil
+
   # A URL parameter or the URL's path: the page keeps the URL's query and
   # path, and a component reads them from the `bubble_url` and
   # `bubble_segments` its caller passes down.
@@ -2164,6 +2191,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       end
 
     for {id, cell} <- Enum.sort(spec.cells),
+        FlowSpec.unloaded(spec, id) == nil,
         text <- cell_text(cell, surfaces),
         reduce: blocked do
       acc -> Map.update(acc, id, [text], &(&1 ++ [text]))
@@ -2295,7 +2323,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     case ctx.expressions[binding.id] do
       %{bindings: vars} = compiled when not is_nil(ctx.flows) ->
         vars
-        |> Enum.find(&(data_input?(&1.input) and not data_read?(&1, ctx)))
+        |> Enum.find(
+          &((data_input?(&1.input) or unrendered_input?(&1.input, ctx)) and
+              not data_read?(&1, ctx))
+        )
         |> unloaded_slot(node, name, compiled, ctx, acc)
 
       compiled ->
@@ -3521,7 +3552,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
            inputs: inputs,
            containers: containers,
            loads: loads,
-           instances: instances(entry.node, "", by_ref, MapSet.new()),
+           instances: instances(entry.node, "", by_ref, base.flows, MapSet.new()),
            cells: cell_templates(entry.node, by_ref, base.flows)
          }}
       end
@@ -3638,15 +3669,19 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp load_key(_), do: nil
 
   # The reusable-element instances a page renders (not in runtime
-  # templates, not recursive): `{scope, reusable Bubble ID}`.
-  defp instances(%Node{children: children}, scope, by_ref, stack),
-    do: Enum.flat_map(children, &instance_scopes(&1, scope, by_ref, stack))
+  # templates, not recursive, not one whose own data source does not load
+  # while its reusable element reads its thing, WTF-522): `{scope,
+  # reusable Bubble ID}`.
+  defp instances(%Node{children: children}, scope, by_ref, flows, stack),
+    do: Enum.flat_map(children, &instance_scopes(&1, scope, by_ref, flows, stack))
 
-  defp instance_scopes(%Node{kind: :reusable_instance} = node, scope, by_ref, stack) do
+  defp instance_scopes(%Node{kind: :reusable_instance} = node, scope, by_ref, flows, stack) do
     with %{node: definition, id: id} <- by_ref[node.definition_ref],
-         false <- MapSet.member?(stack, definition.map_key) do
+         false <- MapSet.member?(stack, definition.map_key),
+         nil <- FlowSpec.unloaded(flows, bid(node)) do
       inner = nest(scope, bid(node))
-      [{inner, id} | instances(definition, inner, by_ref, MapSet.put(stack, definition.map_key))]
+      stack = MapSet.put(stack, definition.map_key)
+      [{inner, id} | instances(definition, inner, by_ref, flows, stack)]
     else
       _ -> []
     end
@@ -3658,14 +3693,22 @@ defmodule BubbleEx.Target.Phoenix.Pages do
          %Node{kind: :placeholder, runtime: %{"type" => "Table"}} = n,
          scope,
          by_ref,
+         flows,
          stack
        ),
-       do: Enum.flat_map(Table.once(n), &instance_scopes(&1, scope, by_ref, stack))
+       do: Enum.flat_map(Table.once(n), &instance_scopes(&1, scope, by_ref, flows, stack))
 
-  defp instance_scopes(%Node{kind: :placeholder, runtime: %{"boundary" => "container"}}, _, _, _),
-    do: []
+  defp instance_scopes(
+         %Node{kind: :placeholder, runtime: %{"boundary" => "container"}},
+         _,
+         _,
+         _,
+         _
+       ),
+       do: []
 
-  defp instance_scopes(node, scope, by_ref, stack), do: instances(node, scope, by_ref, stack)
+  defp instance_scopes(node, scope, by_ref, flows, stack),
+    do: instances(node, scope, by_ref, flows, stack)
 
   # The reusable instances a surface renders once per cell of a repeating
   # group (WTF-494): `{repeating group, [{scope, reusable Bubble ID}]}`,
@@ -3688,7 +3731,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           cell <- row.children,
           instance <- Enum.flat_map(cell.children, &cell_instance_nodes/1),
           FlowSpec.per_cell?(flows, bid(instance)),
-          entry <- instance_scopes(instance, "", by_ref, MapSet.new()),
+          entry <- instance_scopes(instance, "", by_ref, flows, MapSet.new()),
           do: entry
 
     own = if entries == [], do: [], else: [{bid(node), entries}]
@@ -3709,7 +3752,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     entries =
       for instance <- Enum.flat_map(node.children, &cell_instance_nodes/1),
           FlowSpec.per_cell?(flows, bid(instance)),
-          entry <- instance_scopes(instance, "", by_ref, MapSet.new()),
+          entry <- instance_scopes(instance, "", by_ref, flows, MapSet.new()),
           do: entry
 
     if entries == [], do: [], else: [{bid(node), entries}]
