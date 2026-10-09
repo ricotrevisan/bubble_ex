@@ -47,7 +47,11 @@ defmodule <%= @web %>.Bubble do
       opening an overlay that is already open does nothing. A modal Popup
       takes the focus and gives it back to its opener when it closes; if
       the opener is hidden by then (inside a Group Focus the Popup closed),
-      the focus goes to what opened that one, else nowhere
+      the focus goes to what opened that one, else nowhere. A Popup whose
+      "is opened" or "is closed" workflows the page runs
+      (`data-bubble-events`) has the hook report each time it actually
+      opens or closes, by a step or Escape (WTF-520,
+      `bubble:popup`, below)
     * `show_overlay/2` and `hide_overlay/2` act on every element with a
       Bubble ID (the page's own overlays)
     * `dismiss_overlay/1` and `dismiss_modal/1` close the overlay they run
@@ -67,7 +71,12 @@ defmodule <%= @web %>.Bubble do
       workflow sends (`bubble:exec`) and shows, as text in a polite live
       region (`#bubble-notice`), the notice of a refused click or input
       change (`bubble:notice`, WTF-453), in the top layer (an open manual
-      popover) so no element covers it, whatever its z-index (WTF-474)
+      popover) so no element covers it, whatever its z-index (WTF-474).
+      It sends `bubble:popup` (the scope, the Popup's Bubble ID, `opened`
+      or `closed`) when a Popup listing that event in
+      `data-bubble-events` opens or closes (WTF-520); the server decides
+      the budget a report runs on. After a reconnect, open Popups stay
+      open and are not reported again
   """
 
   use Phoenix.Component
@@ -643,6 +652,9 @@ defmodule <%= @web %>.Bubble do
           on("bubble:focus", (el) => (el.matches(FOCUSABLE) ? el : focusable(el) || el).focus())
           on("bubble:scroll", (el) => el.scrollIntoView({ block: "nearest" }))
           on("bubble:reset", (el) => this.reset(el))
+          // A Popup's "is opened" / "is closed" workflows (WTF-520).
+          on("bubble:overlay-opened", (el) => this.popupEvent(el, "opened"))
+          on("bubble:overlay-closed", (el) => this.popupEvent(el, "closed"))
           const keydown = (e) => {
             if (e.key !== "Escape" || e.defaultPrevented) return
             this.stack = this.stack.filter(isOpen)
@@ -794,6 +806,18 @@ defmodule <%= @web %>.Bubble do
             if (now === "true") this.js().removeAttribute(el, "hidden")
             else if (now === "false") this.js().setAttribute(el, "hidden", "")
           })
+        },
+        // A Popup opened or closed: its "is opened" / "is closed" workflows,
+        // when the page lists the event on it. The scope is the
+        // reusable-element instance around it ("" on the page itself).
+        popupEvent(el, event) {
+          if (el.getAttribute("data-overlay") !== "popup") return
+          const events = (el.getAttribute("data-bubble-events") || "").split(" ")
+          const element = el.getAttribute("data-bubble-id")
+          if (!element || !events.includes(event)) return
+          const holder = el.parentElement && el.parentElement.closest("[data-bubble-scope]")
+          const scope = (holder && holder.getAttribute("data-bubble-scope")) || ""
+          this.pushEvent("bubble:popup", { scope, element, event })
         },
         reset(el) {
           const fields = el.matches("input, textarea, select")

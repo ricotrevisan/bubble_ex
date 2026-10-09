@@ -199,6 +199,8 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     intervals =
       for w <- wired, w.kind == :do_every, do: {w.workflow, interval_seconds(w.interval)}
 
+    popups = popups(wired)
+
     states = for st <- surface.states, into: %{}, do: {{st.element, st.state}, st.default}
 
     """
@@ -209,9 +211,24 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       loaded: #{source(for w <- wired, w.kind == :page_load, do: w.workflow)},
       conditions: #{source(for w <- wired, w.kind == :condition_true, do: {w.workflow, w.run_when})},
       intervals: #{intervals_source(intervals)},
+      popups: #{popups_source(popups)},
       states: #{states_source(states)}
     }
     """
+  end
+
+  # A Popup opened or closed (WTF-520), by the page's hook.
+  defp popups(wired) do
+    wired
+    |> Enum.filter(&(&1.kind in [:popup_opened, :popup_closed] and is_binary(&1.element)))
+    |> Enum.group_by(& &1.element)
+    |> Map.new(fn {element, ws} ->
+      {element,
+       %{
+         opened: for(w <- ws, w.kind == :popup_opened, do: w.workflow) |> Enum.sort(),
+         closed: for(w <- ws, w.kind == :popup_closed, do: w.workflow) |> Enum.sort()
+       }}
+    end)
   end
 
   # A page's Bubble name: the first of its URL's path segments (WTF-508).
@@ -1044,6 +1061,14 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     "%{" <>
       Enum.map_join(Enum.sort(map), ", ", fn {k, ids} ->
         "#{literal(k)} => [#{Enum.map_join(ids, ", ", &literal/1)}]"
+      end) <> "}"
+  end
+
+  defp popups_source(popups) do
+    "%{" <>
+      Enum.map_join(Enum.sort(popups), ", ", fn {e, %{opened: opened, closed: closed}} ->
+        "#{literal(e)} => %{opened: [#{Enum.map_join(opened, ", ", &literal/1)}], " <>
+          "closed: [#{Enum.map_join(closed, ", ", &literal/1)}]}"
       end) <> "}"
   end
 

@@ -218,6 +218,53 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsTest do
     assert Enum.any?(reasons.("wNav"), &match?({:unresolved_reference, _}, &1))
   end
 
+  test "a popup opened or closed is wired on a Popup the page renders, else residue (WTF-520)" do
+    popup_event = fn id, type, element ->
+      %{
+        "id" => id,
+        "type" => type,
+        "properties" => %{"element_id" => element},
+        "actions" => %{
+          "0" => %{
+            "id" => id <> "1",
+            "type" => "SetCustomState",
+            "properties" => %{
+              "custom_state" => "custom.loaded_",
+              "element_id" => "bHome",
+              "value" => true
+            }
+          }
+        }
+      }
+    end
+
+    spec =
+      app()
+      |> put_in(
+        ["pages", "home", "workflows", "wPopOn"],
+        popup_event.("wPopOn", "PopupOpened", "bPop")
+      )
+      |> put_in(
+        ["pages", "home", "workflows", "wPopOff"],
+        popup_event.("wPopOff", "PopupClosed", "bPop")
+      )
+      |> put_in(
+        ["pages", "home", "workflows", "wInstOn"],
+        popup_event.("wInstOn", "PopupOpened", "bInst1")
+      )
+      |> spec()
+
+    for id <- ["wPopOn", "wPopOff"] do
+      w = workflow(spec, id)
+      assert residue(w) == [] and Spec.wired?(w) and w.element == "bPop", id
+    end
+
+    # Bubble lists only popups for these events: anything else is not wired.
+    w = workflow(spec, "wInstOn")
+    assert [%{reason: :unsupported_event, detail: %{type: "PopupOpened"}}] = residue(w)
+    refute Spec.wired?(w)
+  end
+
   test "scheduling a backend workflow runs on the backend runtime; without it, it waits" do
     assert [%{args: %{backend: "wApiNote", params: [%{param: "note"}]}}] =
              app() |> spec() |> workflow("wSchedule") |> Map.fetch!(:steps)

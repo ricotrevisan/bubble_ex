@@ -76,8 +76,10 @@ defmodule BubbleEx.PageDataTest do
       # (WTF-520: a group, an input's initial content, a list) and the
       # loaded page's eight (WTF-520: a group's and three lists' searches,
       # two conditional sources; WTF-521: two lists' own searches with
-      # conditional ones) and the keywords page's two lists (WTF-520).
-      assert PageData.coverage(pd)["sources"] == %{"total" => 28, "native" => 28, "residue" => 0}
+      # conditional ones), the keywords page's two lists (WTF-520) and the
+      # group reading the group a popup's "is opened" workflow sets
+      # (WTF-520).
+      assert PageData.coverage(pd)["sources"] == %{"total" => 29, "native" => 29, "residue" => 0}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -291,10 +293,12 @@ defmodule BubbleEx.PageDataTest do
       # page's three (WTF-520); the loaded page's eight (WTF-521: two
       # lists' own searches with conditional ones included) and its two
       # groups with no source (WTF-520); the keywords page's two lists
-      # (WTF-520: keyword searches).
+      # (WTF-520: keyword searches); the popup a click opens, the group
+      # its "is opened" workflow sets and the group reading that one
+      # (WTF-520: popup events).
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 36,
-               "wired" => 36,
+               "total" => 39,
+               "wired" => 39,
                "residue" => 0
              }
 
@@ -394,7 +398,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 34
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 37
     end
 
     test "a repeating group in a repeating group's cell is residue" do
@@ -478,6 +482,32 @@ defmodule BubbleEx.PageDataTest do
         )
 
       %{files: files}
+    end
+
+    test "a popup's opened and closed workflows are listed and reported by its hook (WTF-520)",
+         %{files: files} do
+      module = files["lib/shop_web/live/shown_live/workflows.ex"]
+      page = files["lib/shop_web/live/shown_live.html.heex"]
+      runtime = files["lib/shop_web/bubble_workflows.ex"]
+      hook = files["lib/shop_web/components/bubble.ex"]
+
+      assert module =~ ~s|"bPopOpen" => %{opened: ["wPopOpened"], closed: ["wPopClosed"]}|
+      assert module =~ ~s|"bLoopA" => %{opened: ["wLoopA"], closed: []}|
+
+      panel = files["lib/shop_web/components/reusables/panel/workflows.ex"]
+      assert panel =~ ~s|popups: %{"bPanelPop" => %{opened: ["wPanelPopOpened"], closed: []}}|
+
+      # The popup carries the events its hook reports; one with none, none.
+      assert page =~
+               ~r/data-bubble-events="closed opened"[^>]*data-bubble-id="bPopOpen"|data-bubble-id="bPopOpen"[^>]*data-bubble-events="closed opened"/
+
+      refute page =~ ~r/data-bubble-id="bPop"[^>]*data-bubble-events/
+
+      assert hook =~
+               ~s|this.pushEvent("bubble:popup", { scope, element, event })|
+
+      assert runtime =~ ~r/def handle_event\(\s*socket,\s*page,\s*"bubble:popup"/
+      assert runtime =~ "expect_popups(socket, popups, budget)"
     end
 
     test "two reusable instances store data under their own nested scope", %{files: files} do
@@ -825,8 +855,8 @@ defmodule BubbleEx.PageDataTest do
       }
     }
 
-    defp detail_app(workflows, app) do
-      app = put_in(app, ["pages", "shown", "elements", "bDetail"], @detail)
+    defp detail_app(workflows, app, at \\ ["pages", "shown", "elements"]) do
+      app = put_in(app, at ++ ["bDetail"], @detail)
 
       Enum.reduce(workflows, app, fn w, acc ->
         put_in(acc, ["pages", "shown", "workflows", w["id"]], w)
@@ -864,8 +894,8 @@ defmodule BubbleEx.PageDataTest do
     defp event(id, actions), do: wf(id, "CustomEvent", %{}, actions)
     defp clicked(id, actions), do: wf(id, "ButtonClicked", %{"element_id" => "bShowA"}, actions)
 
-    defp kept?(workflows, app \\ app()) do
-      {spec, _project, _frontend, _app, _model} = spec(detail_app(workflows, app))
+    defp kept?(workflows, app \\ app(), at \\ ["pages", "shown", "elements"]) do
+      {spec, _project, _frontend, _app, _model} = spec(detail_app(workflows, app, at))
 
       case data(spec, "bDetail") do
         %{read: :displayed, residue: []} ->
@@ -900,9 +930,11 @@ defmodule BubbleEx.PageDataTest do
 
       # Events this target does not wire may fire as the page loads.
       refute kept?([wf("wD", "LoggedIn", %{}, [show_detail("aD")])])
-      refute kept?([wf("wD", "PopupOpened", %{"element_id" => "bPop"}, [show_detail("aD")])])
-      refute kept?([wf("wD", "PopupClosed", %{"element_id" => "bPop"}, [show_detail("aD")])])
       refute kept?([wf("wD", "1700000000000x100000000000000000-AAA", %{}, [show_detail("aD")])])
+
+      # A popup opened or closed: by what opens or closes it (below). The
+      # fixture's bPop only a click opens.
+      assert kept?([wf("wD", "PopupOpened", %{"element_id" => "bPop"}, [show_detail("aD")])])
 
       # A disabled workflow never runs: the element shows nothing.
       assert kept?([
@@ -948,6 +980,253 @@ defmodule BubbleEx.PageDataTest do
       assert kept?(cycle)
       assert kept?(cycle ++ [wf("wL", "PageLoaded", %{}, [call("aL", "wF")])])
       refute kept?(cycle ++ [wf("wL", "PageLoaded", %{}, [call("aL", "wF"), mail("aLm")])])
+    end
+
+    # WTF-520: a popup nothing else opens or closes, for its workflows.
+    @pop2 %{
+      "id" => "bPop2",
+      "type" => "Popup",
+      "properties" => %{"group_type" => "custom.task", "width" => 300, "height" => 200}
+    }
+
+    defp popup_app(extra \\ %{}),
+      do: put_in(app(), ["pages", "shown", "elements", "bPop2"], Map.merge(@pop2, extra))
+
+    defp opened(id, actions), do: wf(id, "PopupOpened", %{"element_id" => "bPop2"}, actions)
+    defp closed(id, actions), do: wf(id, "PopupClosed", %{"element_id" => "bPop2"}, actions)
+
+    defp toggle(id, type),
+      do: %{"id" => id, "type" => type, "properties" => %{"element_id" => "bPop2"}}
+
+    defp loaded(id, actions), do: wf(id, "PageLoaded", %{}, actions)
+
+    test "what opens or closes a popup decides for its workflows' display steps (WTF-520)" do
+      app = popup_app()
+
+      # Popups are closed as the page loads: nothing opens it, its "is
+      # opened" workflow never runs; only the user closes it (Escape),
+      # which the page reports.
+      assert kept?([opened("wD", [show_detail("aD")])], app)
+      assert kept?([closed("wD", [show_detail("aD")])], app)
+
+      # A click opens it (or a custom event a click calls): empty until then.
+      for step <- ["ShowElement", "ToggleElement"] do
+        assert kept?(
+                 [opened("wD", [show_detail("aD")]), clicked("wC", [toggle("aC", step)])],
+                 app
+               )
+      end
+
+      assert kept?(
+               [
+                 opened("wD", [show_detail("aD")]),
+                 event("wE", [toggle("aE", "ShowElement")]),
+                 clicked("wC", [call("aC", "wE")])
+               ],
+               app
+             )
+
+      # A click hides it: its "is closed" workflow is event-driven too.
+      assert kept?(
+               [closed("wD", [show_detail("aD")]), clicked("wC", [toggle("aC", "HideElement")])],
+               app
+             )
+
+      # A page-load workflow opens it: kept only when both run whole.
+      assert kept?(
+               [opened("wD", [show_detail("aD")]), loaded("wL", [toggle("aL", "ShowElement")])],
+               app
+             )
+
+      refute kept?(
+               [
+                 opened("wD", [show_detail("aD"), mail("aDm")]),
+                 loaded("wL", [toggle("aL", "ShowElement")])
+               ],
+               app
+             )
+
+      refute kept?(
+               [
+                 opened("wD", [show_detail("aD")]),
+                 loaded("wL", [toggle("aL", "ShowElement"), mail("aLm")])
+               ],
+               app
+             )
+
+      # A toggle as the page loads may close it as well.
+      refute kept?(
+               [
+                 closed("wD", [show_detail("aD")]),
+                 loaded("wL", [toggle("aL", "ToggleElement"), mail("aLm")])
+               ],
+               app
+             )
+
+      # A plugin's event opens it, through a custom event: it may fire as
+      # the page loads.
+      refute kept?(
+               [
+                 opened("wD", [show_detail("aD")]),
+                 event("wE", [toggle("aE", "ShowElement")]),
+                 wf("wP", "1700000000000x100000000000000000-AAA", %{}, [call("aP", "wE")])
+               ],
+               app
+             )
+
+      # A disabled opener never runs.
+      assert kept?(
+               [
+                 opened("wD", [show_detail("aD")]),
+                 loaded("wL", [toggle("aL", "ShowElement"), mail("aLm")])
+                 |> put_in(["properties", "workflow_disabled"], true)
+               ],
+               app
+             )
+    end
+
+    test "a popup the page cannot follow keeps what its workflows set unloaded (WTF-520)" do
+      # Its conditions set its visibility: they may open it as the page
+      # loads, and the page does not follow an overlay's conditions.
+      visible = %{
+        "states" => %{
+          "0" => %{"condition" => @user_logged_in, "properties" => %{"is_visible" => true}}
+        }
+      }
+
+      refute kept?(
+               [opened("wD", [show_detail("aD")]), clicked("wC", [toggle("aC", "ShowElement")])],
+               popup_app(visible)
+             )
+
+      # Not a popup: Bubble lists only popups for these events, so the
+      # workflow is not wired (the page never triggers it).
+      group = %{@pop2 | "type" => "Group"}
+      app = put_in(app(), ["pages", "shown", "elements", "bPop2"], group)
+
+      refute kept?(
+               [opened("wD", [show_detail("aD")]), clicked("wC", [toggle("aC", "ShowElement")])],
+               app
+             )
+
+      # A click in a repeating group's cell opens it: not wired yet.
+      button = %{"id" => "bRowBtn", "type" => "Button", "properties" => %{"width" => 30}}
+
+      app =
+        put_in(
+          popup_app(),
+          ["pages", "shown", "elements", "bSrcList", "elements", "bRowBtn"],
+          button
+        )
+
+      refute kept?(
+               [
+                 opened("wD", [show_detail("aD")]),
+                 wf("wR", "ButtonClicked", %{"element_id" => "bRowBtn"}, [
+                   toggle("aR", "ShowElement")
+                 ])
+               ],
+               app
+             )
+    end
+
+    test "a popup's opened and closed workflows are wired; what they set loads (WTF-520)" do
+      {spec, _project, _frontend, _app, _model} = spec(app())
+
+      for id <- ["wPopOpened", "wPopClosed"] do
+        w = Spec.workflow(spec, "bShownPage", id)
+        assert Spec.wired?(w) and Spec.native?(w), id
+      end
+
+      # Only the popup's "is opened" workflow sets bPopInner, and only a
+      # click opens the popup: empty until then; what reads it loads.
+      assert %{read: :displayed, residue: []} = data(spec, "bPopInner")
+      assert %{residue: [], reads: reads} = data(spec, "bPopInnerProj")
+      assert {:data, %{path: [], element: "bPopInner"}} in reads
+
+      # Not a Popup, or a reusable element that is itself one: residue.
+      app =
+        update_in(app(), ["pages", "shown", "workflows", "wPopOpened"], fn w ->
+          put_in(w, ["properties", "element_id"], "bShown")
+        end)
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+
+      assert %{residue: [%{reason: :unsupported_event, detail: %{type: "PopupOpened"}}]} =
+               Spec.workflow(spec, "bShownPage", "wPopOpened")
+
+      refute data(spec, "bPopInner")
+    end
+
+    test "an action this target does not lower on a popup keeps its workflows' data unloaded (WTF-520)" do
+      animate = %{
+        "id" => "aAnim",
+        "type" => "AnimateElement",
+        "properties" => %{"element_id" => "bPop2", "animation" => "fadeIn"}
+      }
+
+      # It may open the popup as the page loads, or any time: never kept.
+      refute kept?([opened("wD", [show_detail("aD")]), loaded("wL", [animate])], popup_app())
+      refute kept?([opened("wD", [show_detail("aD")]), clicked("wC", [animate])], popup_app())
+      refute kept?([closed("wD", [show_detail("aD")]), clicked("wC", [animate])], popup_app())
+
+      # In a disabled workflow it never runs.
+      assert kept?(
+               [
+                 opened("wD", [show_detail("aD")]),
+                 loaded("wL", [animate]) |> put_in(["properties", "workflow_disabled"], true)
+               ],
+               popup_app()
+             )
+    end
+
+    test "what the opener shows and the popup's own workflow resets or shows is unloaded (WTF-520)" do
+      opener = clicked("wC", [show_detail("aC"), toggle("aCs", "ShowElement")])
+
+      reset = fn id, element ->
+        %{"id" => id, "type" => "ResetGroup", "properties" => %{"element_id" => element}}
+      end
+
+      # Alone, the click's step is kept.
+      assert kept?([opener], popup_app())
+
+      # The popup's "is opened" resets the element, or shows data in it
+      # too: which wins is not replayed.
+      refute kept?([opener, opened("wO", [reset.("aO", "bDetail")])], popup_app())
+      refute kept?([opener, opened("wO", [show_detail("aO")])], popup_app())
+
+      # bDetail inside the popup, which its "is opened" resets.
+      refute kept?(
+               [opener, opened("wO", [reset.("aO", "bPop2")])],
+               popup_app(%{"elements" => %{}}),
+               ["pages", "shown", "elements", "bPop2", "elements"]
+             )
+
+      # Through a custom event the click calls; and for "is closed".
+      refute kept?(
+               [
+                 clicked("wC", [show_detail("aC"), call("aCc", "wE")]),
+                 event("wE", [toggle("aE", "ShowElement")]),
+                 opened("wO", [reset.("aO", "bDetail")])
+               ],
+               popup_app()
+             )
+
+      refute kept?(
+               [
+                 clicked("wC", [show_detail("aC"), toggle("aCh", "HideElement")]),
+                 closed("wO", [reset.("aO", "bDetail")])
+               ],
+               popup_app()
+             )
+
+      # Resetting something else, or a popup the click does not open: kept.
+      assert kept?([opener, opened("wO", [reset.("aO", "bShown")])], popup_app())
+
+      assert kept?(
+               [clicked("wC", [show_detail("aC")]), opened("wO", [reset.("aO", "bDetail")])],
+               popup_app()
+             )
     end
 
     test "a reusable element's custom event the page calls as it loads (WTF-520)" do
@@ -1033,6 +1312,40 @@ defmodule BubbleEx.PageDataTest do
     defp ir_inputs(%IR{op: :input, args: [kind, ref]}), do: [{kind, ref}]
     defp ir_inputs(%IR{args: args}), do: Enum.flat_map(args, &ir_inputs/1)
     defp ir_inputs(_), do: []
+
+    test "instances no step or source fills show nothing, when all of a reusable's do (WTF-520)" do
+      # bPanel1, the panel's only instance, has no data source; without the
+      # step that sets it, nothing does: the panel's own thing is nothing.
+      app = update_in(app(), ["pages", "shown", "workflows"], &Map.delete(&1, "wShowCard"))
+      {spec, _project, _frontend, _app, _model} = spec(app)
+
+      assert %{kind: :instance, read: :displayed, residue: [], key: key} = data(spec, "bPanel1")
+      assert key == %{path: ["bPanel1"], element: "bPanel"}
+      assert MapSet.member?(spec.data_index.roots, "bPanel")
+
+      # Another instance of it with a source of its own: left as it was.
+      other = %{
+        "id" => "bPanel2",
+        "type" => "CustomElement",
+        "properties" => %{
+          "custom_id" => "bPanel",
+          "group_type" => "custom.task",
+          "width" => 300,
+          "height" => 40,
+          "data_source" => %{
+            "type" => "GetElement",
+            "properties" => %{"element_id" => "bSrcA"},
+            "next" => %{"type" => "Message", "name" => "get_group_data"}
+          }
+        }
+      }
+
+      {spec, _project, _frontend, _app, _model} =
+        spec(put_in(app, ["pages", "shown", "elements", "bPanel2"], other))
+
+      refute data(spec, "bPanel1")
+      assert %{kind: :instance, residue: []} = data(spec, "bPanel2")
+    end
 
     test "a group no step sets and with no data source shows nothing (WTF-520)" do
       never = %{

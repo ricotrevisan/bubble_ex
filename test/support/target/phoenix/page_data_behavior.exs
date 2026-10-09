@@ -1717,6 +1717,132 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert_push_event(view, "bubble:exec", %{ops: [%{op: "show"}]})
   end
 
+  # WTF-520: /shown's bPopOpen is a Popup whose "is opened" workflow shows
+  # bSrcB's thing (Eat) in bPopInner, a group with no data source inside
+  # it, and whose "is closed" workflow resets it. A button opens it in the
+  # browser (a JS command); the page's hook reports the popup opened or
+  # closed (`bubble:popup`), which LiveViewTest sends here as the hook does.
+  defp popup(view, element, event, extra \\ %{}),
+    do:
+      render_click(
+        view,
+        "bubble:popup",
+        Map.merge(%{"scope" => "", "element" => element, "event" => event}, extra)
+      )
+
+  test "a popup's \"is opened\" workflow shows data in a group inside it; \"is closed\" resets it",
+       %{conn: conn} do
+    on()
+    {:ok, view, html} = live(conn, "/shown")
+    assert shown(html, "Popup inner") == []
+
+    # The button opens the popup in the browser; the popup carries the
+    # events its hook reports.
+    assert view |> element(~s([data-bubble-id="bOpenPopOpen"])) |> render() =~ "bubble:show"
+
+    assert view
+           |> element(~s([data-bubble-id="bPopOpen"][data-bubble-events="closed opened"]))
+           |> has_element?()
+
+    html = popup(view, "bPopOpen", "opened")
+    assert shown(html, "Popup inner") == ["Eat"]
+    assert shown(html, "Popup inner project") == ["Apollo"]
+
+    html = popup(view, "bPopOpen", "closed")
+    assert shown(html, "Popup inner") == []
+    assert shown(html, "Popup inner project") == []
+  end
+
+  test "only the popup events the page lists run, in a scope it renders", %{conn: conn} do
+    on()
+    {:ok, view, _html} = live(conn, "/shown")
+
+    # bPop has no popup workflows; a made-up event or scope runs nothing.
+    for {element, event, scope} <- [
+          {"bPop", "opened", ""},
+          {"bPopOpen", "shown", ""},
+          {"bPopOpen", "opened", "bPanel1"},
+          {"bNope", "opened", ""}
+        ] do
+      html = popup(view, element, event, %{"scope" => scope})
+      assert shown(html, "Popup inner") == [], inspect({element, event, scope})
+    end
+  end
+
+  # bLoopA's "is opened" hides it and shows bLoopB, whose "is opened"
+  # hides it and shows bLoopA. The browser reports what each show opened.
+  # The ops of the next `bubble:exec` push, or none within 200 ms.
+  defp exec_ops(%{proxy: {ref, _topic, _}}) do
+    receive do
+      {^ref, {:push_event, "bubble:exec", %{ops: ops}}} -> ops
+    after
+      200 -> []
+    end
+  end
+
+  defp next_open(ops) do
+    Enum.find_value(ops, fn
+      %{op: "show", to: to} -> Regex.run(~r/"(bLoop[AB])"/, to, capture: :all_but_first)
+      _ -> nil
+    end)
+  end
+
+  test "a report a server-side step caused runs on its run's budget: a popup loop ends",
+       %{conn: conn} do
+    previous = Application.get_env(:phx_check, PhxCheck.Workflows)
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:phx_check, PhxCheck.Workflows, previous),
+        else: Application.delete_env(:phx_check, PhxCheck.Workflows)
+    end)
+
+    Application.put_env(:phx_check, PhxCheck.Workflows, max_chain: 5)
+    {:ok, view, _html} = live(conn, "/shown")
+
+    # The user opens bLoopA (a root run); each report its steps cause runs
+    # one link further down the chain, whatever the browser sends.
+    runs =
+      Enum.reduce_while(1..20, {"bLoopA", 0}, fn _, {element, n} ->
+        popup(view, element, "opened", %{"chain" => 0})
+
+        case next_open(exec_ops(view)) do
+          [other] -> {:cont, {other, n + 1}}
+          nil -> {:halt, {nil, n + 1}}
+        end
+      end)
+      |> then(fn {_, n} -> n end)
+
+    # The report of the run at :max_chain's step is ignored: it ran five
+    # times, then nothing.
+    assert runs == 6
+
+    # A report nothing expected (the user's own) is a root run again.
+    popup(view, "bLoopA", "opened")
+    assert_push_event(view, "bubble:exec", %{ops: [%{op: "hide"}, %{op: "show"}]})
+  end
+
+  test "a popup in a reusable instance runs in the instance's scope", %{conn: conn} do
+    on()
+    {:ok, view, html} = live(conn, "/shown")
+    assert shown(html, "Panel") == []
+
+    # "Show card" shows bSrcB's thing (Eat) in the instance; its popup's
+    # "is opened" shows the panel's own thing in the panel's group.
+    click(view, "bShowCard")
+
+    # The page's own scope does not render it.
+    assert shown(popup(view, "bPanelPop", "opened"), "Panel") == []
+    html = popup(view, "bPanelPop", "opened", %{"scope" => "bPanel1"})
+    assert shown(html, "Panel") == ["Eat"]
+  end
+
+  test "with data access off, a popup's data workflow is refused with the notice", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/shown")
+    assert shown(popup(view, "bPopOpen", "opened"), "Popup inner") == []
+    assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."})
+  end
+
   test "Display list shows a list in a repeating group with no data source", %{conn: conn} do
     on()
     {:ok, view, html} = live(conn, "/shown")

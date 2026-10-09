@@ -173,6 +173,7 @@ element (not a mobile view):
 | a reusable element property's default value | `:param` | computed inside the reusable element, for an instance that sets no value |
 | a group, popup, repeating group or instance with no data source that a "Display data" / "Display list" step sets (WTF-492) | its kind | what the step showed (`read: :displayed`), read again as the current user; nothing before a step |
 | a group, popup, floating group, group focus or repeating group with a type of content, no data source and no step setting it, outside a repeating group's cell (WTF-520) | its kind | nothing, ever (`read: :displayed`) |
+| a reusable-element instance with no data source and no step setting it, when every instance of its reusable element (which has a type of content) is one, outside a repeating group's cell, and no step inside it sets its own thing (WTF-520) | `:instance` | nothing, ever (`read: :displayed`): the reusable element's reads of its own thing read nothing |
 | a group, popup, floating group, group focus, repeating group, table or reusable-element instance whose conditional states set a data source (WTF-520, WTF-521) | its kind | the value of the last state whose condition is yes, else its own data source, or nothing when it has none (IR `:if`), computed where the element is; outside a repeating group's cell only the winning branch is read (`read: {:switch, ...}`) |
 | an input's (Input, Multiline Input) initial content that is an expression, outside a repeating group's cell (WTF-520) | `:input` | its value, its conditional states that set the content applied, computed where the input is: the input's first value |
 
@@ -306,10 +307,14 @@ Which elements are listed depends on when their steps may run (WTF-520,
 set (clicks, input changes, "do every" ticks, the custom events they
 call) is listed when the page triggers every one of those events,
 whether or not the runtime then runs their workflows, since it shows
-nothing before the event, as in Bubble; one a step may set as the page
-loads (a page-load, condition-true, popup or plugin-event workflow, or a
-custom event one of them calls) only when every such workflow runs
-whole here; otherwise it is not listed, and what reads it is not loaded.
+nothing before the event, as in Bubble; a popup's "is opened" or "is
+closed" workflow counts as the workflows whose steps open or close the
+popup, and must be triggered itself (WTF-520: popups are closed as the
+page loads); one a step may set as the page loads (a page-load,
+condition-true or plugin-event workflow, a custom event one of them
+calls, or a popup one of them opens or closes) only when every such
+workflow runs whole here; otherwise it is not listed, and what reads it
+is not loaded.
 An element no step sets, with no data source, shows nothing and is
 listed too, so what reads it (a group inside it reading `Parent group's`
 field, a search constrained by it, a reusable property's default) loads,
@@ -841,6 +846,52 @@ and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
 
+### Private fixture app (test version), 2026-10-09, popup events and instances nothing fills (WTF-520)
+
+Groups set only at run time (`element_state:get_group_data` read by a
+source, the top cause left: 51 sources reading 31 groups, about 116
+sources unblocked if every one loaded). Grouped by what sets the group
+(sources reading it directly, then those unblocked with what reads them,
+each group alone):
+
+| what sets the group | groups | direct | with readers |
+|-|------:|------:|------:|
+| custom events a JavaScript-to-Bubble plugin event calls | 15 | 20 | 55 |
+| those, and a click in a repeating group's cell (or the icon plugin's) | 2 | 8 | 25 |
+| a click in a repeating group's cell (not wired yet) | 3 | 4 | 14 |
+| an icon plugin's "clicked" event | 1 | 5 | 6 |
+| nothing, in a repeating group's cell | 2 | 5 | 5 |
+| its own source, which does not lower (an accessor) | 4 | 4 | 4 |
+| a reusable element whose instances nothing fills | 3 | 2 | 2 |
+| a condition-true workflow the runtime refuses | 1 | 1 | 2 |
+| a popup opened or closed | 0 | 0 | 0 |
+
+The rows overlap (one source may read several groups). Only the
+reusable elements whose every instance nothing fills load here (this
+section's rule above); a popup's events set none of these groups in this
+app, but 5 of its 6 popup event workflows are now wired (the sixth is a
+reusable element that is itself a popup). Custom events called from a
+JavaScript-to-Bubble plugin event stay unloaded (it may fire whenever
+JavaScript calls it, as the page loads included); a refused
+condition-true workflow may set its group as the page loads, so that
+one stays too.
+
+| | before | after |
+|-|------:|------:|
+| data sources, total | 3,342 | 3,356 |
+| data sources, wired | 2,658 | 2,674 |
+| groups wired | 1,321 | 1,323 |
+| instance sources (total / wired) | 200 / 151 | 214 / 165 |
+| elements read as what steps showed (`read: :displayed`) | 119 | 133 |
+| `:unavailable_input` residue entries (sources) | 441 | 439 |
+| sources reading a group set only at run time | 51 | 49 |
+| workflows, native (generated code) | 809 | 814 |
+| workflows, wired | 538 | 542 |
+| `:unsupported_event` residue entries (workflows) | 16 | 11 |
+
+The total grows by the 14 instances now read as empty (all wired); the
+two groups are read through the reusable elements they feed.
+
 ### Private fixture app (test version), 2026-10-08, conditional sources over own ones (WTF-521)
 
 The 101 elements with a data source of their own (or instances with
@@ -1190,9 +1241,23 @@ and "Display data" over a group's own source.
   folded source until a reset, even when a condition later flips, as it
   does over a source of the element's own (replayed for that, not for a
   conditional one).
-* Elements a plugin's event, a popup opened or closed or "User is
-  logged in / out" may set are taken to be set as the page loads
-  (conservative, see `docs/frontend-workflows.md`).
+* Elements a plugin's event or "User is logged in / out" may set are
+  taken to be set as the page loads (conservative, see
+  `docs/frontend-workflows.md`).
+* **Known gap, not a Bubble question:** a reusable element's reads of
+  its own thing load when any instance's source loads; in an instance
+  whose own source does not load, they read nothing (the instance is
+  rendered with a `TODO` comment only). This predates WTF-520's
+  instances nothing fills, which apply only when every instance of the
+  reusable element is one, so they never widen it.
+* **Popup events** (WTF-520): a popup's "is opened" workflow is taken to
+  run only after a step opens the closed popup (never as the page
+  loads), and its "is closed" one after a step or Escape closes it; what
+  they set is empty until then. Not replayed: whether showing an open
+  popup fires it again (here it does not), whether a popup's conditions
+  open it (here what its workflows set stays unloaded), and the order of
+  the popup's workflow and the rest of the workflow that opened it (here
+  the popup's runs after it). See `docs/frontend-workflows.md`.
 * A search's dynamic sort field that is an empty text (the editor keeps
   `{"entries": {"1": ""}}` once it is cleared) is taken to name no field
   (WTF-520): next to a static sort field, that field sorts; with the sort

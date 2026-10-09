@@ -79,11 +79,25 @@ defmodule BubbleEx.Workflows.Frontend.Step do
   id>`), `type` (the Bubble action type), `op` (see
   `BubbleEx.Workflows.Frontend`; nil when the type has no lowering),
   `condition` ("Only when"), `args` (per `op`) and `residue`. A step is
-  native when `residue` is empty.
+  native when `residue` is empty. `element` is the element the action
+  names (its `element_id`), whatever its `op`, an action with no lowering
+  included: what a step may do to an element is known even when the
+  step is not lowered (WTF-520: a popup an unknown action may open).
   """
 
   @enforce_keys [:index, :bubble_id, :id]
-  defstruct [:index, :bubble_id, :id, :type, :op, :condition, :path, args: %{}, residue: []]
+  defstruct [
+    :index,
+    :bubble_id,
+    :id,
+    :type,
+    :op,
+    :condition,
+    :path,
+    :element,
+    args: %{},
+    residue: []
+  ]
 
   @type t :: %__MODULE__{
           index: pos_integer(),
@@ -94,6 +108,7 @@ defmodule BubbleEx.Workflows.Frontend.Step do
           condition: BubbleEx.Workflows.Lowering.Expr.t() | nil,
           args: map(),
           residue: [BubbleEx.Plan.Residue.t()],
-          path: String.t() | nil
+          path: String.t() | nil,
+          element: String.t() | nil
         }
 end
