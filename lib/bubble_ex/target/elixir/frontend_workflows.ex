@@ -213,6 +213,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       # nests outside its cells.
       ctx = Map.put(ctx, :nested_lists, nested_lists(frontend))
 
+      # The repeating groups whose list holds option-set values: their
+      # cells are keyed by the option's value (WTF-520).
+      ctx = Map.put(ctx, :option_lists, option_lists(frontend, ctx))
+
       # The page's own elements in those cells (WTF-520): the ones whose
       # clicks and input changes the page wires per cell.
       ctx = Map.put(ctx, :cell_members, cell_members(frontend, ctx.nested_lists))
@@ -608,14 +612,41 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp cell_trigger(_element, _ctx), do: nil
 
-  # Whether the cells of `rg` (and of its outer list) are keyed by their
-  # things' unique IDs: a list of things. A list of texts, numbers, dates
-  # or options has cells by position only, which could name another item
-  # once the list changes under a stale page: its events stay unwired.
+  # Whether the cells of `rg` (and of its outer list) are keyed by what
+  # they hold: a list of things (their unique IDs) or of options (the
+  # option's value and its occurrence, `<Web>.Bubble.cell_scope/5`). A
+  # list of texts, numbers or dates has cells by position only, which
+  # could name another item once the list changes under a stale page: its
+  # events stay unwired.
   defp keyed_cells?(rg, outer, ctx),
-    do: Enum.all?(Enum.reject([rg, outer], &is_nil/1), &data_type?(raw_content(&1, ctx)))
+    do: Enum.all?(Enum.reject([rg, outer], &is_nil/1), &keyed_list?(&1, ctx))
+
+  defp keyed_list?(rg, ctx),
+    do:
+      data_type?(raw_content(rg, ctx)) or
+        MapSet.member?(Map.get(ctx, :option_lists, MapSet.new()), rg)
 
   defp raw_content(id, ctx), do: Map.get(ctx.raw_elements[id] || %{}, :content)
+
+  # Every repeating group whose list holds option-set values (WTF-520):
+  # option values are stable and unique within their set, so a cell is
+  # keyed by its option, not its position.
+  defp option_lists(%Normalized{} = frontend, ctx) do
+    (frontend.pages ++ frontend.reusables)
+    |> Enum.flat_map(&repeating_ids/1)
+    |> Enum.filter(&option_type?(raw_content(&1, ctx)))
+    |> MapSet.new()
+  end
+
+  defp repeating_ids(%Normalized.Node{} = node) do
+    own = if repeating?(node), do: [node.source.bubble_id], else: []
+    own ++ Enum.flat_map(node.children, &repeating_ids/1)
+  end
+
+  defp option_type?(type) when is_binary(type),
+    do: match?({%Type{kind: :option, cardinality: :one}, _}, Type.classify(type))
+
+  defp option_type?(_type), do: false
 
   # The cell a workflow's event runs in: a click or an input change of an
   # element the page wires per cell (WTF-520), else nil.
@@ -2135,6 +2166,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       |> Map.put(:instances, Map.get(ctx, :once, %{}))
       |> Map.put(:unloaded, Map.get(ctx, :unloaded, %{}))
       |> Map.put(:nested_lists, Map.get(ctx, :nested_lists, %{}))
+      |> Map.put(:option_lists, Map.get(ctx, :option_lists, MapSet.new()))
 
     ctx |> Map.put(:data, index) |> Map.update!(:view, &%{&1 | data_index: index})
   end

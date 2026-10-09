@@ -704,9 +704,10 @@ Dropdown's or a Checkbox's.
 
 A reusable-element instance in a repeating group's cell is rendered once
 per cell, in a scope of its own: the cell's thing's
-(`<Web>.Bubble.cell_scope/4`: `<scope>-<repeating group>~2<the thing's
-unique ID>`, then `-<instance>`; a list of texts or numbers, which has no
-unique ID, by the cell's position). A re-sorted list keeps what each
+(`<Web>.Bubble.cell_scope/5`: `<scope>-<repeating group>~2<the thing's
+unique ID>`, then `-<instance>`; a list of options by the option's value
+and its occurrence, `~4<value>[~5<n>]`, WTF-520; a list of texts or
+numbers, which has no unique ID, by the cell's position). A re-sorted list keeps what each
 thing's cell held, as "Display data" does in cells (WTF-492). In that
 scope:
 
@@ -767,7 +768,9 @@ kept for it (custom states, inputs, what "Display data" showed) is
 dropped, and its scope takes no event, a paused or scheduled workflow
 included. A list of texts or numbers has no unique ID: its cells are
 by position, duplicates included; a list holding the same thing twice
-gives both cells one scope (they share their states).
+gives both cells one scope (they share their states). A list of options
+keys each cell by its option and its occurrence (the second of two equal
+options has a scope of its own).
 
 An instance inside a runtime container of a cell (not the cell's own
 template) keeps one scope and is marked.
@@ -916,7 +919,7 @@ repeating group in a table of the cell, or in another runtime container
 there, is a marked runtime container, never an empty loop.
 
 **Its cells** have a scope of their own, the outer cell's
-(`<Web>.Bubble.cell_scope/4` of the outer list and its thing): a group in
+(`<Web>.Bubble.cell_scope/5` of the outer list and its thing): a group in
 an inner cell is kept under `{outer cell's scope, group, inner index}`,
 a reusable instance in it under `<outer cell's scope>-<inner>~2<thing>-<instance>`
 (by the things' unique IDs, so a re-sorted list keeps what each cell

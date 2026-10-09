@@ -90,8 +90,8 @@ page's own elements in a repeating group's cell take their clicks and
 input changes per cell: in a repeating group the page renders per cell
 (outside any runtime container, or rendered per cell of another, two
 levels, `docs/page-data.md`) whose list loads and is a list of things
-(a list of texts, numbers, dates or options has cells by position only,
-which a stale page could make name another item: its events stay
+or of options (a list of texts, numbers or dates has cells by position
+only, which a stale page could make name another item: its events stay
 residue), the element in the cell's
 template, not inside another runtime container there (a table, a
 plugin's container, a third level) nor inside a reusable instance (its
@@ -100,8 +100,18 @@ elements are its reusable element's). They are listed apart in
 element => `{repeating group, ...}`; `cell_lists`, the repeating groups
 with their outer one). The element's event carries the cell's scope, the
 format a reusable instance in a cell uses without the instance
-(`<Web>.Bubble.cell_scope/4`: `<scope>-<repeating group>~2<the thing's
-unique ID>`; an inner cell's under the outer cell's scope). The page
+(`<Web>.Bubble.cell_scope/5`: `<scope>-<repeating group>~2<the thing's
+unique ID>`; an inner cell's under the outer cell's scope). A cell of a
+list of options is keyed by its option instead (option values are
+stable and unique within their set): `~4<value>`, the value escaped as
+an ID is, and for the second and later occurrences of the same option in
+one list `~4<value>~5<n>` (`n` its occurrence, counted from the list's
+start, `<Web>.Bubble.keyed_cells/3`). A list reordered under a stale page
+keeps each option's scope; an occurrence that left the list (one of two
+equal options removed) has no scope, so its event is ignored rather than
+given to another option. Two equal options are the same value: an event
+in either binds that value, only their inputs' values are kept apart (by
+occurrence). The page
 keeps the cells it read last, by scope, from the lists it read as the
 current user (`@bubble_page_cells`, `BubbleWorkflows.put_page_cells/2`,
 after every read of its data), and accepts the event only for one of
@@ -177,7 +187,7 @@ Custom states and input values are kept per reusable-element instance.
 Instances are addressed by a scope, the instances' Bubble IDs from the page
 down (`<Web>.Bubble.nest/2`); an instance's root carries
 `data-bubble-scope`. An instance in a repeating group's cell (WTF-494) has
-a scope per cell, the cell's thing's (`<Web>.Bubble.cell_scope/4`): its
+a scope per cell, the cell's thing's (`<Web>.Bubble.cell_scope/5`): its
 workflows run there, with that cell's states, inputs and data
 (`docs/page-data.md`); its page-load, condition-true and "do every"
 workflows do not run in a cell. Page bindings compiled by T5 that read a custom state

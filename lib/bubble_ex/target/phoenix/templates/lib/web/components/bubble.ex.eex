@@ -35,7 +35,7 @@ defmodule <%= @web %>.Bubble do
       kept unless the new mount changes the element's condition-derived
       visibility
     * a full page load (a reload, a navigation to another page) forgets it
-    * a repeating group's cell is the item's (`cell_id/4`), so a kept step
+    * a repeating group's cell is the item's (`cell_id/5`), so a kept step
       follows its item when the list changes order; a cell removed from
       the list takes its steps with it
 
@@ -109,19 +109,70 @@ defmodule <%= @web %>.Bubble do
   @doc """
   The scope of a cell of repeating group `element` in instance `scope`
   (WTF-494): a reusable instance in the cell is
-  `nest(cell_scope(...), instance)`. It is the cell's thing's (its unique
-  ID, not its position, as `cell_id/4`), else its 1-based `index` (a list
-  of texts or numbers). `~2` and `~3` never occur in an escaped ID, so a
-  cell's scope is never an instance's.
-  """
-  def cell_scope(scope, element, item, index) do
-    key =
-      case item do
-        %{id: id} when is_binary(id) or is_integer(id) -> segment(id)
-        _ -> "~3" <> Integer.to_string(index)
-      end
+  `nest(cell_scope(...), instance)`. It is the cell's key:
 
-    nest(scope, element) <> "~2" <> key
+    * a thing's unique ID, escaped (not its position, as `cell_id/5`)
+    * in a list of options (WTF-520), the option's value, escaped the same
+      way, after `~4`; `nth` is its occurrence among the list's equal
+      options (`keyed_cells/3`), so the second of two equal options is
+      `~4<value>~52`. Option values are unique within their set, so a
+      cell keyed this way names the same option whatever the list's order
+    * else its 1-based `index`, after `~3` (a list of texts, numbers or
+      dates: a position, which a list changing under a stale page can
+      give to another item, so no event is taken per such cell)
+
+  `~2` to `~5` never occur in an escaped ID or value, so a cell's scope is
+  never an instance's and two cells never share one.
+  """
+  def cell_scope(scope, element, item, index, nth \\ nil),
+    do: nest(scope, element) <> "~2" <> cell_key(item, index, nth)
+
+  defp cell_key(value, _index, nth) when is_binary(value) and is_integer(nth) and nth > 0,
+    do: "~4" <> segment(value) <> if(nth > 1, do: "~5" <> Integer.to_string(nth), else: "")
+
+  defp cell_key(%{id: id}, _index, _nth) when is_binary(id) or is_integer(id), do: segment(id)
+  defp cell_key(_item, index, _nth), do: "~3" <> Integer.to_string(index)
+
+  @doc """
+  Whether a cell's key names its item, not its position (`cell_scope/5`):
+  a thing with a unique ID, or an option of a list of options. The page
+  takes events per cell only in those (WTF-520).
+  """
+  def keyed_cell?(%{id: id}, _nth) when (is_binary(id) and id != "") or is_integer(id), do: true
+  def keyed_cell?(value, nth) when is_binary(value) and is_integer(nth) and nth > 0, do: true
+  def keyed_cell?(_item, _nth), do: false
+
+  # The repeating groups whose list holds option-set values (WTF-520):
+  # their cells are keyed by the option's value (`cell_scope/5`).
+  @option_lists MapSet.new(<%= @option_lists %>)
+
+  @doc """
+  A repeating group's items with their 1-based index and, in a list of
+  options, each option's occurrence among the equal ones before it (1 for
+  the first; nil for anything else, and for an empty or non-text item):
+  `{item, index, nth}` (`cell_scope/5`). With an outer `index`, the items
+  of the repeating group rendered per cell of another (`cells/4`).
+  """
+  def keyed_cells(data, scope, element), do: data |> cells(scope, element) |> occurrences(element)
+
+  def keyed_cells(data, scope, element, index),
+    do: data |> cells(scope, element, index) |> occurrences(element)
+
+  defp occurrences(cells, element) do
+    if MapSet.member?(@option_lists, element) do
+      cells
+      |> Enum.map_reduce(%{}, fn
+        {value, i}, seen when is_binary(value) and value != "" ->
+          n = Map.get(seen, value, 0) + 1
+          {{value, i, n}, Map.put(seen, value, n)}
+
+        {item, i}, seen ->
+          {{item, i, nil}, seen}
+      end)
+      |> elem(0)
+    else
+      Enum.map(cells, fn {item, i} -> {item, i, nil} end)
+    end
   end
 
   @doc "Opens element `id` of instance `scope` (an overlay, or any element)."
@@ -477,15 +528,25 @@ defmodule <%= @web %>.Bubble do
 
   @doc """
   The DOM ID of a repeating group's cell: its item's ID when it is a
-  thing, else its index. Morphdom matches cells by it, so what a workflow
-  step did to an element in a cell (shown, hidden) follows the item when
-  the list changes order (WTF-477).
+  thing, its value and occurrence in a list of options (`nth`, see
+  `keyed_cells/3`), else its index. Morphdom matches cells by it, so what
+  a workflow step did to an element in a cell (shown, hidden) follows the
+  item when the list changes order (WTF-477).
   """
-  def cell_id(scope, element, item, index) do
+  def cell_id(scope, element, item, index, nth \\ nil) do
     key =
-      case item do
-        %{id: id} when is_binary(id) or is_integer(id) -> "t-" <> segment(id)
-        _ -> "i-" <> Integer.to_string(index)
+      case {item, nth} do
+        {value, n} when is_binary(value) and is_integer(n) and n > 1 ->
+          "o-" <> segment(value) <> "-" <> Integer.to_string(n)
+
+        {value, n} when is_binary(value) and is_integer(n) and n > 0 ->
+          "o-" <> segment(value)
+
+        {%{id: id}, _} when is_binary(id) or is_integer(id) ->
+          "t-" <> segment(id)
+
+        _ ->
+          "i-" <> Integer.to_string(index)
       end
 
     Enum.join(["bubble-cell", segment(scope), segment(element), key], "-")

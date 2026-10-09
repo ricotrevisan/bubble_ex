@@ -67,7 +67,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
               valued: MapSet.new(),
               instances: %{},
               unloaded: %{},
-              nested_lists: %{}
+              nested_lists: %{},
+              option_lists: MapSet.new()
             },
             cells: %{}
 
@@ -586,6 +587,27 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   @spec per_cell?(t(), String.t()) :: boolean()
   def per_cell?(%__MODULE__{cells: cells} = spec, id),
     do: match?(%{residue: []}, cells[id]) and unloaded(spec, id) == nil
+
+  @doc """
+  Whether repeating group `id`'s list holds option-set values (WTF-520):
+  its cells are keyed by the option's value and occurrence
+  (`<Web>.Bubble.cell_scope/5`), not by position.
+  """
+  @spec option_list?(t() | nil, String.t()) :: boolean()
+  def option_list?(%__MODULE__{data_index: index}, id),
+    do: MapSet.member?(Map.get(index, :option_lists, MapSet.new()), id)
+
+  def option_list?(_spec, _id), do: false
+
+  @doc """
+  The repeating groups whose list holds option-set values, sorted
+  (`option_list?/2`).
+  """
+  @spec option_lists(t() | nil) :: [String.t()]
+  def option_lists(%__MODULE__{data_index: index}),
+    do: index |> Map.get(:option_lists, MapSet.new()) |> Enum.sort()
+
+  def option_lists(_spec), do: []
 
   @doc """
   Why the page does not render reusable instance `id` (WTF-522): the

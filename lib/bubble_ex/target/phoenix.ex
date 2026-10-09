@@ -266,6 +266,7 @@ defmodule BubbleEx.Target.Phoenix do
     Templates
   }
 
+  alias BubbleEx.Target.Phoenix.FrontendWorkflows, as: PageFlows
   alias BubbleEx.Target.Phoenix.Structural.Bypasses
   alias BubbleEx.Target.Phoenix.Workflows, as: WorkflowFiles
 
@@ -976,14 +977,18 @@ defmodule BubbleEx.Target.Phoenix do
 
   # --- page data (WTF-420) ----------------------------------------------------------
 
-  # The resources the pages' data reads (relative modules): they publish
-  # their changes so the pages reload.
+  # The resources the pages' data reads (relative modules), its own and
+  # those the queries it reads first search (`query_topics`, a list of
+  # options read from a thing's field, a count): they publish their
+  # changes so the pages reload.
   defp data_resources(%FlowSpec{surfaces: surfaces}) do
     for {_id, s} <- surfaces,
         d <- Map.get(s, :data, []),
-        d.residue == [] and is_binary(d.resource),
+        d.residue == [],
+        resource <-
+          List.wrap(if(is_binary(d.resource), do: d.resource)) ++ PageFlows.query_resources(d),
         uniq: true,
-        do: d.resource
+        do: resource
   end
 
   defp data_resources(_), do: []

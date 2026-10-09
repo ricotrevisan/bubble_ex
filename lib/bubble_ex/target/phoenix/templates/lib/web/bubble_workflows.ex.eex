@@ -37,7 +37,7 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   A reusable instance in a repeating group's cell (WTF-494,
   `__bubble__(:cells)`) has a scope per cell, the cell's thing's
-  (`<%= @web %>.Bubble.cell_scope/4`): the page lists the scopes of the
+  (`<%= @web %>.Bubble.cell_scope/5`): the page lists the scopes of the
   cells it read (`<%= @web %>.BubbleData`, as the current user), and an
   event in any other scope is ignored, so a browser can only reach the
   cells of things the user was shown. Its workflows run in that scope (its
@@ -48,7 +48,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   rendered per cell of another too, two levels) take their clicks and
   input changes per cell: `cell_clicks`, `cell_changes` and `cell_inputs`
   in `__bubble__(:surface)` list them with their repeating group. The
-  browser's event names the cell's scope (`<%= @web %>.Bubble.cell_scope/4`,
+  browser's event names the cell's scope (`<%= @web %>.Bubble.cell_scope/5`,
   the format instances in cells use, without the instance), which the page
   looks up in the cells it read last (`@bubble_page_cells`,
   `put_page_cells/2`, from `@bubble_data`, as the current user) and never
@@ -64,8 +64,10 @@ defmodule <%= @web %>.BubbleWorkflows do
   continues in it only while the page still shows it (checked again after
   the page reads its data). A click, an input's workflows or the rest of
   a paused workflow whose cell is gone are dropped silently: logged, no
-  notice. Only lists of things have cells here: a list of texts, numbers
-  or dates (cells by position) takes no event per cell.
+  notice. Only lists of things and of options have cells here (a cell of
+  a list of options is keyed by the option's value and its occurrence
+  among equal ones, `<%= @web %>.Bubble.cell_scope/5`): a list of texts,
+  numbers or dates (cells by position) takes no event per cell.
 
   Event parameters never become atoms, never name a workflow, a module or a
   record: the page looks the element up in its own static lists and runs
@@ -886,7 +888,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   clicks or input changes per cell (WTF-520, `cell_lists` in a surface's
   `__bubble__(:surface)`), in every surface the page renders (the page,
   its instances, the instances in cells it read): by the cell's scope
-  (`<%= @web %>.Bubble.cell_scope/4`, the surface's scope with the
+  (`<%= @web %>.Bubble.cell_scope/5`, the surface's scope with the
   repeating group and the cell's thing; in a repeating group rendered per
   cell of another, the outer cell's scope with the inner one's), what the
   page read for it: `%{module, scope, rg, item, index, outer, cell_scope}`.
@@ -927,28 +929,28 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_committed, drop_scopes(Map.get(socket.assigns, :bubble_committed) || %{}, gone))
   end
 
-  # Only things (an item with a unique ID): a cell keyed by its position
-  # could name another item after the list changes, so a list of texts,
-  # numbers or dates has none (the generator does not wire them either).
+  # Only cells keyed by what they hold (`Bubble.keyed_cell?/2`): a thing
+  # (its unique ID) or an option of a list of options (its value and
+  # occurrence, read here, never from the browser). A cell keyed by its
+  # position could name another item after the list changes, so a list
+  # of texts, numbers or dates has none (the generator does not wire them
+  # either).
   defp list_cells(data, module, scope, rg, nil) do
-    for {item, i} <- Bubble.cells(data, scope, rg),
-        keyed?(item),
-        do: {Bubble.cell_scope(scope, rg, item, i), page_cell_entry(module, scope, rg, item, i, nil, nil)}
+    for {item, i, n} <- Bubble.keyed_cells(data, scope, rg),
+        Bubble.keyed_cell?(item, n),
+        do: {Bubble.cell_scope(scope, rg, item, i, n), page_cell_entry(module, scope, rg, item, i, nil, nil)}
   end
 
   defp list_cells(data, module, scope, rg, outer) do
-    for {outer_item, oi} <- Bubble.cells(data, scope, outer),
-        keyed?(outer_item),
-        outer_scope = Bubble.cell_scope(scope, outer, outer_item, oi),
-        {item, i} <- Bubble.cells(data, scope, rg, oi),
-        keyed?(item),
+    for {outer_item, oi, on} <- Bubble.keyed_cells(data, scope, outer),
+        Bubble.keyed_cell?(outer_item, on),
+        outer_scope = Bubble.cell_scope(scope, outer, outer_item, oi, on),
+        {item, i, n} <- Bubble.keyed_cells(data, scope, rg, oi),
+        Bubble.keyed_cell?(item, n),
         do:
-          {Bubble.cell_scope(outer_scope, rg, item, i),
+          {Bubble.cell_scope(outer_scope, rg, item, i, n),
            page_cell_entry(module, scope, rg, item, i, {outer_item, oi}, outer_scope)}
   end
-
-  defp keyed?(%{id: id}) when (is_binary(id) and id != "") or is_integer(id), do: true
-  defp keyed?(_item), do: false
 
   defp page_cell_entry(module, scope, rg, item, index, outer, cell_scope),
     do: %{module: module, scope: scope, rg: rg, item: item, index: index, outer: outer, cell_scope: cell_scope}
@@ -1314,7 +1316,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   group's cell, `{thing, index}`. In the cell of a repeating group
   rendered per cell of another (WTF-520), `nested` is `{outer, cell_scope}`:
   the outer cell's `{thing, index}` and the scope the inner cells' values
-  are kept in (the outer cell's, `<%= @web %>.Bubble.cell_scope/4`).
+  are kept in (the outer cell's, `<%= @web %>.Bubble.cell_scope/5`).
   """
   def data_ctx(socket, module, scope, data, cell \\ nil, nested \\ nil) do
     ctx = ctx(socket, module, scope, start(socket, nil))

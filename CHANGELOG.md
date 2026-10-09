@@ -6,6 +6,13 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **A page reads its data again when a resource only its queries
+  search changes** (WTF-520). A source over queries (a thing's list of
+  options read from "Search for boards:first item", a count) subscribed
+  to the resources its queries search (`query_topics`), but a resource
+  no source reads as its own type did not publish its changes, so the
+  page never heard of them. Those resources now publish them too.
+
 - **An instance whose own data source does not load is no longer
   rendered reading nothing** (WTF-522). A reusable element's reads of its
   own thing (`Parent group's X` at its top, "Current reusable's thing")
@@ -679,6 +686,21 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Clicks and input changes in the cells of a list of options run in
+  that cell** (WTF-520). A repeating group whose list holds option-set
+  values had cells keyed by position, so its rows' clicks and input
+  changes stayed `:trigger_in_runtime_template` residue: a stale page
+  could have named another option. Its cells are now keyed by their
+  option (`Bubble.cell_scope/5`: `~4<value>`, escaped as an ID is; the
+  second and later occurrences of an option in one list add `~5<n>`,
+  `Bubble.keyed_cells/3`), so their events are wired like a list of
+  things': the scope is looked up in `@bubble_page_cells`, never parsed,
+  and the cell's option is the one the page read. A reordered list keeps
+  each option's scope; an occurrence that left it, a made-up value or a
+  position-shaped scope is ignored. Reusable instances in such cells take
+  the same scopes. Lists of texts, numbers and dates keep cells by
+  position and stay residue.
+
 - **Clicks and input changes in a repeating group's cell run in that
   cell** (WTF-520, two levels). A workflow triggered by the page's own
   element in a repeating group's cell (a row's button, a row's input) was
@@ -688,7 +710,7 @@ All notable changes to this project are documented here.
   renders per cell (outside any runtime container, or per cell of
   another) whose list loads, the element's event carries the cell's
   scope, the format a reusable instance in a cell uses
-  (`Bubble.cell_scope/4`). The page keeps the cells it read last, as the
+  (`Bubble.cell_scope/5`). The page keeps the cells it read last, as the
   current user (`@bubble_page_cells`, `BubbleWorkflows.put_page_cells/2`),
   and accepts the event only for one of them and an element listed for
   that cell's repeating group (`cell_clicks`, `cell_changes`,
