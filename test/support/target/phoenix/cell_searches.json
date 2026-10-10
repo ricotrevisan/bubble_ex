@@ -1,5 +1,5 @@
 {
-  "_comment": "WTF-520: searches in a repeating group's cells, read for every cell together (one query per cell round, never one per cell; two keys: the customer and its owner). Customers and their orders, all data invented; test/support/target/phoenix/cell_searches_behavior.exs counts the queries.",
+  "_comment": "WTF-520: searches in a repeating group's cells, read for every cell together (one query per cell round, never one per cell; two keys: the customer and its owner). A reusable tag rendered only in the cells searches with a text comparison no batch can key: that search alone is not loaded, the tag is still rendered per cell. Customers and their orders, all data invented; test/support/target/phoenix/cell_searches_behavior.exs counts the queries.",
   "_id": "cell-searches-fixture",
   "user_types": {
     "user": {
@@ -170,6 +170,98 @@
                   "type": "TextExpression",
                   "entries": {
                     "0": "Card: ",
+                    "1": {
+                      "type": "ElementParent"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "bTag": {
+      "id": "bTag",
+      "name": "Customer tag",
+      "type": "CustomDefinition",
+      "properties": {
+        "group_type": "custom.customer",
+        "width": 300,
+        "height": 80
+      },
+      "elements": {
+        "bTagName": {
+          "id": "bTagName",
+          "type": "Text",
+          "properties": {
+            "order": 1,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Tag: ",
+                "1": {
+                  "type": "ElementParent",
+                  "next": {
+                    "type": "Message",
+                    "name": "name_text"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bTagMatch": {
+          "id": "bTagMatch",
+          "type": "Group",
+          "properties": {
+            "order": 2,
+            "width": 300,
+            "height": 40,
+            "group_type": "number",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.order",
+                "sort_field": "title_text",
+                "descending": false,
+                "ignore_empty_constraints": false,
+                "constraints": {
+                  "0": {
+                    "constraint_type": "text contains string",
+                    "key": "title_text",
+                    "value": {
+                      "type": "ElementParent",
+                      "next": {
+                        "type": "Message",
+                        "name": "name_text"
+                      }
+                    }
+                  }
+                }
+              },
+              "next": {
+                "type": "Message",
+                "name": "count"
+              }
+            }
+          },
+          "elements": {
+            "bTagMatchN": {
+              "id": "bTagMatchN",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Match: ",
                     "1": {
                       "type": "ElementParent"
                     }
@@ -890,6 +982,20 @@
                       }
                     }
                   }
+                }
+              }
+            },
+            "bTag1": {
+              "id": "bTag1",
+              "type": "CustomElement",
+              "properties": {
+                "custom_id": "bTag",
+                "group_type": "custom.customer",
+                "order": 13,
+                "width": 300,
+                "height": 80,
+                "data_source": {
+                  "type": "CurrentDataItem"
                 }
               }
             }

@@ -12,7 +12,10 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
   # owner has (two keys: the customer and its owner; Dune has no owner,
   # which the strict search reads as nothing and the loose one drops), and
   # how many orders the first customer its owner owns has (a search of
-  # orders keyed on another search's first record, read a round later).
+  # orders keyed on another search's first record, read a round later),
+  # and a reusable tag rendered only in the cells: its customer's name,
+  # and a search of orders no batch can key (a text comparison with the
+  # customer), which alone is not loaded rather than read once per cell.
   # Each of those searches is read for every cell together: one query per
   # round of cells, never one per cell.
   use PhxCheckWeb.ConnCase, async: false
@@ -171,6 +174,12 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
     IO.puts("cell searches: /customers made #{inspect(by_table)}")
 
     assert shown(html, "Customer") == ~w(Acme Bolt Core Dune Echo)
+
+    # The tag is rendered per cell, with its own customer; the text reading
+    # its search that cannot be batched shows nothing in any cell (and the
+    # search queries nothing: the orders' queries below stay the same).
+    assert shown(html, "Tag") == ~w(Acme Bolt Core Dune Echo)
+    refute html =~ "Match:"
 
     if enforced?() do
       # Ada finds only her own orders: Anvil, Axe, Drum, Ear and Emu.

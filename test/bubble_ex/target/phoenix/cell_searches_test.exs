@@ -69,6 +69,24 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
     files
   end
 
+  # The card's search, with a constraint comparing text with the card's
+  # thing: no key the batch can split the cells by.
+  defp card_search_unbatchable(app) do
+    path =
+      ~w(element_definitions bCard elements bCardCount properties data_source properties constraints)
+
+    update_in(app, path, fn cs ->
+      Map.put(cs, Integer.to_string(map_size(cs)), %{
+        "constraint_type" => "text contains string",
+        "key" => "title_text",
+        "value" => %{
+          "type" => "ElementParent",
+          "next" => %{"type" => "Message", "name" => "name_text"}
+        }
+      })
+    end)
+  end
+
   describe "binding" do
     test "a search reading the cell's thing is batched on the key it compares, not residue" do
       %{spec: spec} = spec(app())
@@ -163,6 +181,45 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
 
       # The others still load.
       assert %{residue: []} = data(spec, "bFirst")
+    end
+
+    test "a reusable element only in cells: a search it cannot batch is residue, not the instance" do
+      %{spec: spec} = spec(card_search_unbatchable(app()))
+
+      # The search reads the card's thing in a way the batch cannot key:
+      # it is not loaded, alone.
+      assert %{read: nil, residue: [%{reason: :page_data_in_cell, detail: %{kind: "query"}}]} =
+               data(spec, "bCardCount")
+
+      # The card is still rendered per cell: its own thing loads.
+      assert %{"bCard1" => %{residue: []}} = spec.cells
+      assert %{residue: []} = data(spec, "bCard1")
+    end
+
+    test "a reusable element also rendered once: a search it cannot batch keeps it out of cells" do
+      app =
+        app()
+        |> card_search_unbatchable()
+        |> put_in(~w(pages customers elements bCardOnce), %{
+          "id" => "bCardOnce",
+          "type" => "CustomElement",
+          "properties" => %{
+            "custom_id" => "bCard",
+            "group_type" => "custom.customer",
+            "order" => 2,
+            "width" => 300,
+            "height" => 40
+          }
+        })
+
+      %{spec: spec} = spec(app)
+
+      # The instance rendered once reads the search; the one in the cells
+      # would read it once per cell, so it is not rendered per cell.
+      assert %{residue: []} = data(spec, "bCardCount")
+
+      assert %{"bCard1" => %{residue: [%{reason: :page_data_in_cell, detail: %{kind: "query"}}]}} =
+               spec.cells
     end
 
     test "Bubble's random sort in a cell stays residue" do
@@ -310,6 +367,26 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
       assert runtime =~ "IN (SELECT * FROM unnest(?::text[], ?::text[]))"
       # A batch of lists' records is not sorted by its union's positions.
       assert module =~ "BubbleData.listed_batch(q1_pin_1)"
+    end
+
+    test "the fixture's tag, only in cells: rendered per cell, its unbatched search marked" do
+      %{spec: spec} = spec(app())
+
+      assert %{"bTag1" => %{residue: []}} = spec.cells
+      assert %{residue: [%{reason: :page_data_in_cell}]} = data(spec, "bTagMatch")
+
+      tag = files(app())["lib/shop_web/components/reusables/customer_tag.html.heex"]
+      assert tag =~ "TODO(bubble:bTagMatch) its data source is not loaded (page_data_in_cell)"
+      refute tag =~ "TODO(bubble:bTagName) its data source"
+    end
+
+    test "a reusable element only in cells is rendered per cell around a search it cannot batch" do
+      files = files(card_search_unbatchable(app()))
+      page = files["lib/shop_web/live/customers_live.html.heex"]
+      card = files["lib/shop_web/components/reusables/customer_card.html.heex"]
+
+      refute page =~ "TODO(bubble:bCard1)"
+      assert card =~ "TODO(bubble:bCardCount) its data source is not loaded (page_data_in_cell)"
     end
   end
 end
