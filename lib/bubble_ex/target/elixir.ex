@@ -29,9 +29,14 @@ defmodule BubbleEx.Target.Elixir do
   (WTF-514; Bubble has no empty text apart from empty, inferred, not
   replayed; the generated privacy policies keep `""` and nil apart, the
   stricter reading); an empty list contains nothing; `not` of an empty yes/no
-  is true; `x is not y` between yes/no values (not conditions), one at
-  least stored, reads an empty one as no, as Bubble does (`x is not no` needs a stored yes,
-  WTF-471), while `x is y` keeps empty equal only to empty; a comparison
+  is true; `x is y` and `x is not y` between yes/no values (not
+  conditions), one at least stored, read an empty one as no, as Bubble does
+  (`x is no` holds on an empty x, WTF-529; `x is not no` needs a stored
+  yes, WTF-471; the privacy policies keep `x is y` stricter), the current
+  user's included, with no guard: `Current User's pro is no` holds when
+  pro is empty and for a logged-out visitor (Bubble's temporary user has
+  empty fields; WTF-529, the owner's decision for pages and workflows,
+  where the policies keep denying); a comparison
   with a condition is expanded into each side's polarities, and a
   condition used as any other value is strictly true or false (never nil). `BubbleEx.Target.ElixirTest` holds both backends to one
   hand-authored expectation table.
@@ -527,6 +532,12 @@ defmodule BubbleEx.Target.Elixir do
   defp condition?(%IR{op: op, type: "boolean"}), do: op not in @boolean_values and op != :literal
   defp condition?(_ir), do: false
 
+  defp yes_no_eq(%IR{op: :literal, args: [false]}, _r, _a, b), do: "(#{b} != true)"
+  defp yes_no_eq(_l, %IR{op: :literal, args: [false]}, a, _b), do: "(#{a} != true)"
+  defp yes_no_eq(%IR{op: :literal}, _r, a, b), do: "(#{a} == #{b})"
+  defp yes_no_eq(_l, %IR{op: :literal}, a, b), do: "(#{a} == #{b})"
+  defp yes_no_eq(_l, _r, a, b), do: "((#{a} == true) == (#{b} == true))"
+
   defp yes_no_neq(%IR{op: :literal, args: [false]}, _r, _a, b), do: "(#{b} == true)"
   defp yes_no_neq(_l, %IR{op: :literal, args: [false]}, a, _b), do: "(#{a} == true)"
   defp yes_no_neq(%IR{op: :literal}, _r, a, b), do: "(#{a} != #{b})"
@@ -543,8 +554,8 @@ defmodule BubbleEx.Target.Elixir do
   defp yes_no_side?(ir), do: stored_yes_no?(ir)
 
   # Two yes/no sides, one a condition: expanded so that each side keeps its
-  # own polarities and guards (a stored yes/no side is `== true` / `==
-  # false`: empty is neither). A condition's negation is not always its
+  # own polarities and guards (a stored yes/no side is `is yes` / `is
+  # no`, an empty one no, WTF-529). A condition's negation is not always its
   # complement (an empty value fails both), so comparing it as a plain
   # value could match where neither side holds (WTF-471).
   defp boolean_equality?(l, r), do: condition?(l) or condition?(r)
@@ -593,15 +604,22 @@ defmodule BubbleEx.Target.Elixir do
         do: {[a, b], st},
         else: Enum.map_reduce([{l, a}, {r, b}], st, &unhidden/2)
 
-    eq = "(#{a} == #{b})"
-
-    # WTF-471: between yes/no values with a stored side, `is not` reads an
-    # empty one as no, as Bubble does (`x is not no` needs a stored yes);
-    # `is` keeps empty equal only to empty (stricter against no).
-    neq = if yes_no_pair?(l, r), do: yes_no_neq(l, r, a, b), else: "(#{a} != #{b})"
+    # WTF-471, WTF-529: between yes/no values with a stored side, an empty
+    # one reads as no, as Bubble does, in `is` as in `is not` (`x is no`
+    # holds on an empty x; `x is not no` needs a stored yes). The privacy
+    # policies keep `is` stricter; page and workflow conditions, as page
+    # searches (`BubbleEx.Target.Ash.Expressions.search/3`), read it as
+    # Bubble.
+    {eq, neq} =
+      if yes_no_pair?(l, r),
+        do: {yes_no_eq(l, r, a, b), yes_no_neq(l, r, a, b)},
+        else: {"(#{a} == #{b})", "(#{a} != #{b})"}
 
     {pos, neg} = if op == :eq, do: {eq, neq}, else: {neq, eq}
-    {all_ok({pos, neg, [{l, a}, {r, b}]}, [a, b]), st}
+    # Between yes/no values the current user's empty one is no too, a
+    # logged-out visitor's included: no guard (WTF-529).
+    operands = if yes_no_pair?(l, r), do: [], else: [{l, a}, {r, b}]
+    {all_ok({pos, neg, operands}, [a, b]), st}
   end
 
   # Ordering: false when either side is empty, in either polarity.
@@ -648,10 +666,11 @@ defmodule BubbleEx.Target.Elixir do
     {all_ok({found, ok(found, &"not #{&1}"), Enum.zip(args, parts)}, [found]), st}
   end
 
-  # A yes/no value that may be empty: empty is not yes.
+  # A yes/no value that may be empty: empty is not yes, the current
+  # user's (or a logged-out visitor's) included: no guard (WTF-529).
   defp atom_(%IR{op: op} = ir, st) when op in @boolean_values do
     {part, st} = value(ir, st)
-    {all_ok({"(#{part} == true)", "(#{part} != true)", [{ir, part}]}, [part]), st}
+    {all_ok({"(#{part} == true)", "(#{part} != true)", []}, [part]), st}
   end
 
   defp atom_(%IR{op: op}, st), do: unsupported(st, {"#{op}", nil})

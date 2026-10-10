@@ -1,0 +1,276 @@
+# defmodule MyApp.Task do
+  calculations do
+    calculate :privacy_rule_bare, :boolean, expr(done == true),
+      public?: false,
+      description: "Bubble privacy rule \"bare\" (bare_): its condition holds"
+
+    calculate :privacy_rule_default_is_no,
+              :boolean,
+              expr(if(is_nil(done), archived, done) == false),
+              public?: false,
+              description:
+                "Bubble privacy rule \"default_is_no\" (default_is_no_): its condition holds"
+
+    calculate :privacy_rule_default_neq_yes,
+              :boolean,
+              expr(is_distinct_from(if(is_nil(done), archived, done), true)),
+              public?: false,
+              description:
+                "Bubble privacy rule \"default_neq_yes\" (default_neq_yes_): its condition holds"
+
+    calculate :privacy_rule_empty, :boolean, expr(is_nil(done)),
+      public?: false,
+      description: "Bubble privacy rule \"empty\" (empty_): its condition holds"
+
+    calculate :privacy_rule_eq_condition,
+              :boolean,
+              expr(
+                (done == true and (is_nil(title) or title == "")) or
+                  (done == false and not (is_nil(title) or title == ""))
+              ),
+              public?: false,
+              description:
+                "Bubble privacy rule \"eq_condition\" (eq_condition_): its condition holds"
+
+    calculate :privacy_rule_eq_field, :boolean, expr(is_not_distinct_from(done, archived)),
+      public?: false,
+      description: "Bubble privacy rule \"eq_field\" (eq_field_): its condition holds"
+
+    calculate :privacy_rule_eq_no, :boolean, expr(done == false),
+      public?: false,
+      description: "Bubble privacy rule \"eq_no\" (eq_no_): its condition holds"
+
+    calculate :privacy_rule_eq_parent,
+              :boolean,
+              expr(is_not_distinct_from(done, parent_for_privacy.done)),
+              public?: false,
+              description: "Bubble privacy rule \"eq_parent\" (eq_parent_): its condition holds"
+
+    calculate :privacy_rule_eq_user, :boolean, expr(done == ^actor(:admin)),
+      public?: false,
+      description: "Bubble privacy rule \"eq_user\" (eq_user_): its condition holds"
+
+    calculate :privacy_rule_eq_yes, :boolean, expr(done == true),
+      public?: false,
+      description: "Bubble privacy rule \"eq_yes\" (eq_yes_): its condition holds"
+
+    calculate :privacy_rule_is_no, :boolean, expr(done == false),
+      public?: false,
+      description: "Bubble privacy rule \"is_no\" (is_no_): its condition holds"
+
+    calculate :privacy_rule_is_no_is_no, :boolean, expr(is_not_distinct_from(done, true)),
+      public?: false,
+      description: "Bubble privacy rule \"is_no_is_no\" (is_no_is_no_): its condition holds"
+
+    calculate :privacy_rule_is_no_or_archived, :boolean, expr(done == false or archived == true),
+      public?: false,
+      description:
+        "Bubble privacy rule \"is_no_or_archived\" (is_no_or_archived_): its condition holds"
+
+    calculate :privacy_rule_is_yes, :boolean, expr(done == true),
+      public?: false,
+      description: "Bubble privacy rule \"is_yes\" (is_yes_): its condition holds"
+
+    calculate :privacy_rule_neq_field,
+              :boolean,
+              expr(is_not_distinct_from(done, true) != is_not_distinct_from(archived, true)),
+              public?: false,
+              description: "Bubble privacy rule \"neq_field\" (neq_field_): its condition holds"
+
+    calculate :privacy_rule_neq_no, :boolean, expr(is_not_distinct_from(done, true)),
+      public?: false,
+      description: "Bubble privacy rule \"neq_no\" (neq_no_): its condition holds"
+
+    calculate :privacy_rule_neq_yes, :boolean, expr(is_distinct_from(done, true)),
+      public?: false,
+      description: "Bubble privacy rule \"neq_yes\" (neq_yes_): its condition holds"
+
+    calculate :privacy_rule_not_empty, :boolean, expr(not is_nil(done)),
+      public?: false,
+      description: "Bubble privacy rule \"not_empty\" (not_empty_): its condition holds"
+
+    calculate :privacy_rule_parent_eq_no, :boolean, expr(parent_for_privacy.done == false),
+      public?: false,
+      description: "Bubble privacy rule \"parent_eq_no\" (parent_eq_no_): its condition holds"
+
+    calculate :privacy_rule_parent_is_no, :boolean, expr(parent_for_privacy.done == false),
+      public?: false,
+      description: "Bubble privacy rule \"parent_is_no\" (parent_is_no_): its condition holds"
+
+    calculate :privacy_rule_user_bare, :boolean, expr(^actor(:admin) == true),
+      public?: false,
+      description: "Bubble privacy rule \"user_bare\" (user_bare_): its condition holds"
+
+    calculate :privacy_rule_user_is_no, :boolean, expr(^actor(:admin) == false),
+      public?: false,
+      description: "Bubble privacy rule \"user_is_no\" (user_is_no_): its condition holds"
+
+    calculate :privacy_rule_user_neq_no, :boolean, expr(^actor(:admin) == true),
+      public?: false,
+      description: "Bubble privacy rule \"user_neq_no\" (user_neq_no_): its condition holds"
+  end
+# defmodule MyApp.Task do
+  policies do
+    policy action(:read) do
+      description "Direct view reaches records by primary key or through a relationship, never by listing"
+      authorize_if MyApp.Privacy.KeyedRead
+    end
+
+    policy action(:read) do
+      description "Direct view (by ID, or through a reference): the user may view some field of the record"
+      authorize_if expr(privacy_rule_bare)
+      authorize_if expr(privacy_rule_default_is_no)
+      authorize_if expr(privacy_rule_default_neq_yes)
+      authorize_if expr(privacy_rule_empty)
+      authorize_if expr(privacy_rule_eq_condition)
+      authorize_if expr(privacy_rule_eq_field)
+      authorize_if expr(privacy_rule_eq_no)
+      authorize_if expr(privacy_rule_eq_parent)
+      authorize_if expr(privacy_rule_eq_user)
+      authorize_if expr(privacy_rule_eq_yes)
+      authorize_if expr(privacy_rule_is_no)
+      authorize_if expr(privacy_rule_is_no_is_no)
+      authorize_if expr(privacy_rule_is_no_or_archived)
+      authorize_if expr(privacy_rule_is_yes)
+      authorize_if expr(privacy_rule_neq_field)
+      authorize_if expr(privacy_rule_neq_no)
+      authorize_if expr(privacy_rule_neq_yes)
+      authorize_if expr(privacy_rule_not_empty)
+      authorize_if expr(privacy_rule_parent_eq_no)
+      authorize_if expr(privacy_rule_parent_is_no)
+      authorize_if expr(privacy_rule_user_bare)
+      authorize_if expr(privacy_rule_user_is_no)
+      authorize_if expr(privacy_rule_user_neq_no)
+    end
+
+    policy action(:search) do
+      description "Searches: the user may find the record in searches"
+      authorize_if expr(privacy_rule_bare)
+      authorize_if expr(privacy_rule_default_is_no)
+      authorize_if expr(privacy_rule_default_neq_yes)
+      authorize_if expr(privacy_rule_empty)
+      authorize_if expr(privacy_rule_eq_condition)
+      authorize_if expr(privacy_rule_eq_field)
+      authorize_if expr(privacy_rule_eq_no)
+      authorize_if expr(privacy_rule_eq_parent)
+      authorize_if expr(privacy_rule_eq_user)
+      authorize_if expr(privacy_rule_eq_yes)
+      authorize_if expr(privacy_rule_is_no)
+      authorize_if expr(privacy_rule_is_no_is_no)
+      authorize_if expr(privacy_rule_is_no_or_archived)
+      authorize_if expr(privacy_rule_is_yes)
+      authorize_if expr(privacy_rule_neq_field)
+      authorize_if expr(privacy_rule_neq_no)
+      authorize_if expr(privacy_rule_neq_yes)
+      authorize_if expr(privacy_rule_not_empty)
+      authorize_if expr(privacy_rule_parent_eq_no)
+      authorize_if expr(privacy_rule_parent_is_no)
+      authorize_if expr(privacy_rule_user_bare)
+      authorize_if expr(privacy_rule_user_is_no)
+      authorize_if expr(privacy_rule_user_neq_no)
+    end
+
+    policy action(:create) do
+      description "Writes by the generated workflow runtime: the workflow's conditions guard them, as in Bubble (not checked against the privacy rules)"
+      authorize_if MyApp.Privacy.WorkflowWrite
+    end
+
+    policy action(:update) do
+      description "Writes by the generated workflow runtime: the workflow's conditions guard them, as in Bubble (not checked against the privacy rules)"
+      authorize_if MyApp.Privacy.WorkflowWrite
+    end
+
+    policy action(:destroy) do
+      description "Writes by the generated workflow runtime: the workflow's conditions guard them, as in Bubble (not checked against the privacy rules)"
+      authorize_if MyApp.Privacy.WorkflowWrite
+    end
+
+    policy action(:read) do
+      description "A filter or sort naming a field some users may not search by returns only the records where the actor may"
+      authorize_if MyApp.Privacy.SearchFields
+    end
+
+    policy action(:search) do
+      description "A filter or sort naming a field some users may not search by returns only the records where the actor may"
+      authorize_if MyApp.Privacy.SearchFields
+    end
+  end
+# defmodule MyApp.Task do
+  field_policies do
+    private_fields :hide
+
+    field_policy [
+      :created_date,
+      :modified_date,
+      :creator_id,
+      :slug,
+      :archived,
+      :done,
+      :parent_id,
+      :title
+    ] do
+      authorize_if expr(privacy_rule_bare)
+      authorize_if expr(privacy_rule_default_is_no)
+      authorize_if expr(privacy_rule_default_neq_yes)
+      authorize_if expr(privacy_rule_empty)
+      authorize_if expr(privacy_rule_eq_condition)
+      authorize_if expr(privacy_rule_eq_field)
+      authorize_if expr(privacy_rule_eq_no)
+      authorize_if expr(privacy_rule_eq_parent)
+      authorize_if expr(privacy_rule_eq_user)
+      authorize_if expr(privacy_rule_eq_yes)
+      authorize_if expr(privacy_rule_is_no)
+      authorize_if expr(privacy_rule_is_no_is_no)
+      authorize_if expr(privacy_rule_is_no_or_archived)
+      authorize_if expr(privacy_rule_is_yes)
+      authorize_if expr(privacy_rule_neq_field)
+      authorize_if expr(privacy_rule_neq_no)
+      authorize_if expr(privacy_rule_neq_yes)
+      authorize_if expr(privacy_rule_not_empty)
+      authorize_if expr(privacy_rule_parent_eq_no)
+      authorize_if expr(privacy_rule_parent_is_no)
+      authorize_if expr(privacy_rule_user_bare)
+      authorize_if expr(privacy_rule_user_is_no)
+      authorize_if expr(privacy_rule_user_neq_no)
+    end
+  end
+# defmodule MyApp.User do
+  policies do
+    policy action(:read) do
+      description "Direct view reaches records by primary key or through a relationship, never by listing"
+      authorize_if MyApp.Privacy.KeyedRead
+    end
+
+    policy action(:read) do
+      description "Direct view (by ID, or through a reference): the user may view some field of the record"
+      authorize_if always()
+    end
+
+    policy action(:search) do
+      description "Searches: the user may find the record in searches"
+      authorize_if always()
+    end
+
+    policy action(:create) do
+      description "Writes by the generated workflow runtime: the workflow's conditions guard them, as in Bubble (not checked against the privacy rules)"
+      authorize_if MyApp.Privacy.WorkflowWrite
+    end
+
+    policy action(:update) do
+      description "Writes by the generated workflow runtime: the workflow's conditions guard them, as in Bubble (not checked against the privacy rules)"
+      authorize_if MyApp.Privacy.WorkflowWrite
+    end
+
+    policy action(:destroy) do
+      description "Writes by the generated workflow runtime: the workflow's conditions guard them, as in Bubble (not checked against the privacy rules)"
+      authorize_if MyApp.Privacy.WorkflowWrite
+    end
+  end
+# defmodule MyApp.User do
+  field_policies do
+    private_fields :hide
+
+    field_policy [:created_date, :modified_date, :creator_id, :slug, :email, :admin] do
+      authorize_if always()
+    end
+  end

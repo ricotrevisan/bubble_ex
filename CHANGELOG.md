@@ -6,6 +6,42 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **A page search for "x = no" finds the records whose x is empty**
+  (WTF-529). Bubble reads an empty yes/no as no (replays of 2026-09-29
+  and 2026-10-01 on privacy rule conditions, `docs/replay-kit.md`), but
+  page searches compiled `x = no` as `x == false`, which no empty (NULL)
+  x matches, and page conditions compared it the same way. Searches
+  (`Target.Ash.Expressions.search/3`, a `:filtered` list of things
+  included) now compile `x = no` and `x != yes` to `x == false or
+  is_nil(x)` on a field, `x = yes` and `x != no` to `x == true`, and
+  `x = y` between two yes/no values reads each as yes or no;
+  `BubbleEx.Target.Elixir` (page conditions, visibility, page and
+  backend workflow `Only when`, `:filtered` on options and values) reads
+  them the same way, so a condition and a search agree. **Behavior
+  change:** a backend workflow step `Only when X is no` now also runs
+  where X is empty. By the owner's decision the current user's yes/no
+  reads the same way, unguarded: `Current User's pro is no` holds when
+  pro is empty and for a logged-out visitor (Bubble's temporary user).
+  Outside privacy rules this is inferred, not replayed (listed in
+  `docs/page-data.md`'s unverified behavior). The filter's index use is
+  a bitmap OR of its two branches; it does not serve a sorted page (an
+  index on `(x, sort)` gives no ordered scan for the OR: measured, a
+  sequential scan and a sort), which only an expression index on
+  `coalesce(x, false)` would, and the generator emits column indexes
+  only. `is empty` stays an exact test; lists of yes/no compare their
+  items as stored. **The privacy policies are unchanged** (owner
+  decision, 2026-09-29: `x is no` in a rule needs a stored no, and the
+  current user's empty value denies): `filter/3` and `privacy/2` keep
+  the stricter reading, held byte for byte by a golden recorded before
+  the change (`test/bubble_ex/target/ash/yes_no_privacy_test.exs`: the
+  rendered policy and calculation blocks, compiled rule conditions and
+  `filter/3` over every yes/no form, a related field, an input and
+  `defaulting to` included). The shared privacy expectation table gains
+  `expected_elixir` for the three cases where page conditions now select
+  more than the policies (`w_public_is_not_`, `admin_no_not_coach_no_`,
+  `zj_access_has_assignee_is_public_`). See `docs/page-data.md`, "Empty
+  yes/no values".
+
 - **A page reads its data again when a resource only its queries
   search changes** (WTF-520). A source over queries (a thing's list of
   options read from "Search for boards:first item", a count) subscribed

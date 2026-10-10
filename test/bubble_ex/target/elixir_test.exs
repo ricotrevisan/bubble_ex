@@ -244,6 +244,116 @@ defmodule BubbleEx.Target.ElixirTest do
     end
   end
 
+  # WTF-529: page and workflow conditions read an empty yes/no as no, as
+  # Bubble does (replay 2026-09-29 and 2026-10-01), as the page searches
+  # compiled by Target.Ash.Expressions.search/3 do; `is empty` stays exact.
+  # The generated policies keep the stricter `is` (Target.Ash.ExpressionsTest).
+  test "an empty yes/no is no in is / is not, the current user's too", %{project: project} do
+    this = IR.node(:this, [:rule_record], "custom.task")
+    public = IR.node(:field, [this, "task", "public_boolean"], "boolean")
+    parent = IR.node(:field, [this, "task", "parent_custom_task"], "custom.task")
+    parent_public = IR.node(:field, [parent, "task", "public_boolean"], "boolean")
+
+    admin =
+      IR.node(:field, [IR.node(:current_user, [], "user"), "user", "admin_boolean"], "boolean")
+
+    yes = IR.node(:literal, [true], "boolean")
+    no = IR.node(:literal, [false], "boolean")
+
+    compile_ir = fn ir ->
+      {:ok, result} = Target.compile(ir, project, runtime: @runtime)
+      assert result.source, inspect(result.diagnostics)
+      result
+    end
+
+    read = fn v -> v == true end
+
+    # Against a literal, as the search compiler: `x is no` and `x is not
+    # yes` hold on an empty x; `x is yes` and `x is not no` need a stored yes.
+    for {op, literal, holds} <- [
+          {:eq, no, &(not read.(&1))},
+          {:neq, yes, &(not read.(&1))},
+          {:eq, yes, read},
+          {:neq, no, read}
+        ],
+        side <- [:left, :right],
+        value <- [true, false, nil] do
+      args = if side == :left, do: [public, literal], else: [literal, public]
+      result = compile_ir.(IR.node(op, args, "boolean"))
+      [b] = literal.args
+      label = "#{inspect(value)} #{op} #{b} (#{side})"
+      assert eval(result, this: %{public: value}) == holds.(value), label
+      # `not` of it is its complement, never nil.
+      negated = compile_ir.(IR.node(:not, [IR.node(op, args, "boolean")], "boolean"))
+      assert eval(negated, this: %{public: value}) == not holds.(value), label
+    end
+
+    # Two values: each read as yes or no.
+    is = compile_ir.(IR.node(:eq, [public, parent_public], "boolean"))
+    is_not = compile_ir.(IR.node(:neq, [public, parent_public], "boolean"))
+
+    for a <- [true, false, nil], b <- [true, false, nil] do
+      this = %{public: a, parent: %{public: b}}
+      assert eval(is, this: this) == (read.(a) == read.(b)), "#{inspect(a)} is #{inspect(b)}"
+      assert eval(is_not, this: this) == (read.(a) != read.(b))
+    end
+
+    # No parent: its public is empty, so no.
+    assert eval(is, this: %{public: false, parent: nil})
+
+    # A field the user may not view is empty, so no.
+    hidden = %BubbleEx.Target.ElixirTest.Hidden{field: :public}
+    assert eval(is, this: %{public: false, parent: %{public: hidden}})
+
+    # `is empty` stays an exact test: no is not empty.
+    empty = compile_ir.(IR.node(:is_empty, [public], "boolean"))
+    assert eval(empty, this: %{public: nil})
+    refute eval(empty, this: %{public: false})
+
+    # The current user's empty yes/no is no too, a logged-out visitor's
+    # included (Bubble's temporary user has empty fields): no guard.
+    for {op, holds} <- [{:eq, &(not read.(&1))}, {:neq, read}],
+        user <- [nil, %{admin: nil}, %{admin: false}, %{admin: true}] do
+      admin_value = user && user.admin
+      user_no = compile_ir.(IR.node(op, [admin, no], "boolean"))
+      assert eval(user_no, this: %{}, current_user: user) == holds.(admin_value), inspect(user)
+      negated = compile_ir.(IR.node(:not, [IR.node(op, [admin, no], "boolean")], "boolean"))
+      assert eval(negated, this: %{}, current_user: user) == not holds.(admin_value)
+    end
+
+    bare = compile_ir.(IR.node(:not, [admin], "boolean"))
+    assert eval(bare, this: %{}, current_user: nil)
+    assert eval(bare, this: %{}, current_user: %{admin: nil})
+    refute eval(bare, this: %{}, current_user: %{admin: true})
+
+    with_user = compile_ir.(IR.node(:eq, [public, admin], "boolean"))
+    assert eval(with_user, this: %{public: nil}, current_user: nil)
+    assert eval(with_user, this: %{public: false}, current_user: %{admin: nil})
+    refute eval(with_user, this: %{public: true}, current_user: nil)
+
+    # Other comparisons with the current user keep their guard (the
+    # empty-text test below).
+  end
+
+  # Lists of yes/no compare their items as stored: an empty item is not no.
+  test "a list of yes/no values compares its items as stored", %{project: project} do
+    list = IR.node(:literal, [[true, nil]], "list.boolean")
+
+    contains = fn item ->
+      {:ok, result} =
+        Target.compile(
+          IR.node(:member, [list, IR.node(:literal, [item], "boolean")], "boolean"),
+          project,
+          runtime: @runtime
+        )
+
+      eval(result, [])
+    end
+
+    assert contains.(true)
+    refute contains.(false)
+  end
+
   # WTF-514: Bubble has no empty text apart from empty, so `is` and `is
   # not` read `""` as empty (inferred, not replayed). The generated
   # policies keep the stricter rule (Target.Ash.ExpressionsTest).

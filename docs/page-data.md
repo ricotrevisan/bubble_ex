@@ -87,9 +87,10 @@ the workflow API and private files:
   (`actor_empty_denies`, reported as intended differences). Likewise
   (WTF-467) a logged-out user is denied every comparison reading it
   (Bubble's temporary user is unequal to any record's user), `x is no`
-  needs a stored no (Bubble reads an empty yes/no as no), and the
-  `everyone` rule's grants reach only users no rule lacking them matches
-  (Bubble's reach every user).
+  in a privacy rule needs a stored no (Bubble reads an empty yes/no as
+  no; page searches and conditions do too, see "Empty yes/no values"
+  below), and the `everyone` rule's grants reach only users no rule
+  lacking them matches (Bubble's reach every user).
 * **Searches on fields some users may not view are decided per user**
   (WTF-457). In Bubble, viewing a field and constraining a search on it
   are separate permissions: a page search constrained (or sorted) on a
@@ -451,7 +452,7 @@ reusable element's component gets both from its caller (`bubble_url`,
 * **Typed** (`<Web>.Bubble.url_value/4`): a number parses `3`, `-2` or
   `3.5` (`abc` is empty); a yes/no is yes for `yes`, `true` or `1` and no
   for `no` or `false`, in any case, and empty for anything else (`0`,
-  `y`, empty); a date parses `2026-10-07`, `10/07/2026` (month first),
+  `y`, empty), which `is no` reads as no (WTF-529); a date parses `2026-10-07`, `10/07/2026` (month first),
   `Oct 7, 2026` (with an optional time, as Bubble writes dates into
   URLs), milliseconds since 1970 or ISO 8601 with a time, and one with no
   time is midnight in the app's time zone (`:bubble_time_zone`; Bubble
@@ -1646,6 +1647,71 @@ sent as a URL parameter or path segment, written by a backend workflow
 or returned by it. Before, `text/1` showed its debug output
 (`#Ash.CiString<...>`), and `is` never matched it.
 
+## Empty yes/no values (WTF-529)
+
+**An empty yes/no is no**, as in Bubble: the replays of 2026-09-29 and
+2026-10-01 (`docs/replay-kit.md`, "An empty yes/no reads as no") found
+`x is no` holding on a record whose x is empty (0 of 2, then 0 of 5
+agreeing with the stricter reading). Those replays observed **privacy
+rule conditions** on stored fields; every other place below follows them
+by inference (see "Unverified Bubble behavior"). Page searches (their
+constraints, a `:filtered` list of things, which becomes a search) and
+every condition compiled by `BubbleEx.Target.Elixir` (page conditions,
+visibility, page and backend workflow `Only when`, `:filtered` on
+options or values) read it so, wherever a stored yes/no (a field, an
+option's attribute, an input or URL parameter, a `defaulting to`, the
+current user's field) is compared with `is` or `is not`:
+
+| constraint | search (`Target.Ash.Expressions.search/3`) | in memory (`Target.Elixir`) |
+|------------|---------------------------------------------|-----------------------------|
+| `x = no`, `x != yes`, `not x` | `x == false or is_nil(x)` on a field; `is_distinct_from(x, true)` otherwise | `x != true` |
+| `x = yes`, `x != no`, `x` | `x == true` | `x == true` |
+| `x = y` (`x != y`) between two yes/no values | `is_not_distinct_from(x, true) == is_not_distinct_from(y, true)` (`!=`) | `(x == true) == (y == true)` (`!=`) |
+| `x is empty` | `is_nil(x)` (unchanged) | `empty?(x)` (unchanged) |
+
+The two agree, and a field the user may not view reads as empty, so as
+no, in memory. Before, `x = no` was `x == false`, and a record whose x
+was empty was in no search for `no`.
+
+**Indexes.** `x == false or is_nil(x)` lets an index on the field serve
+the filter (a bitmap OR of its two branches), which `IS DISTINCT FROM`
+cannot. It does not serve a sorted page: with an index on `(x, title)`,
+`WHERE (x = false OR x IS NULL) ORDER BY title LIMIT 10` is a sequential
+scan and a sort (measured on 200,000 rows), since the OR gives no
+ordered index scan. An expression index on `coalesce(x, false)` (with
+the filter written `coalesce(x, false) == false`) would serve both; the
+generator emits column indexes only (`BubbleEx.Findings.SearchIndex`
+hints columns), so the search keeps the plain form.
+
+**The current user's yes/no reads the same way** (the owner's decision,
+2026-10-10): `Current User's pro is no` holds when pro is empty, and for
+a logged-out visitor too (Bubble's temporary user, whose fields are
+empty), in page searches and in page and workflow conditions alike. No
+guard applies to it there; other comparisons with the current user
+keep theirs (an empty text, a reference).
+
+**A backend workflow's `Only when X is no`** now also runs its step on
+records (or parameters) whose X is empty, as Bubble would by this
+reading; before, it skipped them.
+
+Unchanged, and noted:
+
+* **The privacy policies keep the stricter reading** (owner decision,
+  2026-09-29): `x is no` in a privacy rule still needs a stored no
+  (`BubbleEx.Verify.Difference`, `empty_yes_no_is_no`), and the current
+  user's empty value still denies (`actor_empty_denies`). With enforced
+  policies a record whose Secret is empty is not found by a rule
+  "Secret is no", although a page search for "Secret = no" would match
+  it. `test/bubble_ex/target/ash/yes_no_privacy_test.exs` holds the
+  policies' compilation of every yes/no form (their policy and
+  calculation blocks, and `Expressions.filter/3`) to a golden recorded
+  before this change.
+* **`is empty` on a yes/no** stays the exact empty test: whether Bubble
+  counts an empty yes/no as empty (or never empty, being no) is not
+  replayed.
+* **A list of yes/no values** (`contains`, `:filtered` with `This item`)
+  compares its items as stored: an empty item is not no.
+
 ## Unverified Bubble behavior and open questions
 
 Answered by the replay of 2026-10-07 and removed from this list:
@@ -1653,6 +1719,13 @@ Answered by the replay of 2026-10-07 and removed from this list:
 server actions with an empty input (kept stricter than Bubble, above)
 and "Display data" over a group's own source.
 
+* **An empty yes/no is no outside privacy rules** (WTF-529, above): the
+  replays observed it in privacy rule conditions on stored fields only.
+  Inferred, not replayed: page searches and `:filtered`, visibility
+  conditions, page and backend workflow `Only when` conditions (a
+  backend step now runs on an empty X for `X is no`), URL and input
+  parameters, and the current user's fields (a logged-out visitor's
+  included). Also open: whether `is empty` holds on an empty yes/no.
 * **`Current page width` and the scrollbar** (WTF-520, above): the page
   reports `window.innerWidth`, which includes a vertical scrollbar.
   Whether Bubble's value includes it (and so where a threshold falls on

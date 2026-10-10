@@ -35,6 +35,15 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
   failures. A flag that differs
   without such a decision is a real difference.
 
+  These flags describe privacy rule conditions, which the calibration
+  observed. Pages and workflows take some of Bubble's readings by
+  inference (WTF-529): `empty_yes_no_is_no` (an empty yes/no is no, the
+  current user's, a logged-out visitor's included) applies, not
+  replayed there, to page searches and `:filtered`, visibility
+  conditions, page and backend workflow `Only when` conditions (a
+  backend step runs on an empty X for `X is no`), and URL and input
+  parameters (`docs/page-data.md`, "Empty yes/no values").
+
   | flag | Bubble (default) | target | the `true` reading | the `false` reading |
   |------|------------------|--------|--------------------|---------------------|
   | `actor_empty_denies` | `false` | `true` | an atomic comparison reading an empty value from the current user (or a logged-out user) is false in either polarity; `is empty` on the user's side needs a logged-in user | the user's empty values compare like any other empty value (`x is y` holds when both are empty, `x is not y` holds, `doesn't contain` on an empty list holds, a logged-out user's fields are empty) |

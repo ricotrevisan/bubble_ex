@@ -729,7 +729,8 @@ defmodule BubbleEx.Target.PhoenixTest do
          %{files: files, omit: omit} do
       page = files["lib/acme_web/live/index_live/workflows.ex"]
       refute page =~ "search_field_hidden"
-      assert page =~ "Ash.Query.filter(done == false)"
+      # An empty Done reads as no (WTF-529).
+      assert page =~ "Ash.Query.filter(done == false or is_nil(done))"
       assert page =~ "Ash.Query.filter(flagged == true)"
       refute page =~ "TODO(bubble:element:bList) not loaded"
       refute omit["lib/acme_web/live/index_live/workflows.ex"] =~ "search_field_hidden"

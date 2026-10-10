@@ -106,6 +106,48 @@ defmodule PhxCheckWeb.ListOpsBehaviorTest do
              if(enforced?(), do: ["Clean", "Bake"], else: ["Clean", "Bake", "Eat", "Fig"])
   end
 
+  # WTF-529: Bubble reads an empty yes/no as no (replay 2026-09-29 and
+  # 2026-10-01), so "done = no" finds a task whose Done is empty, in a
+  # search (SQL) and in a list filtered in the database alike.
+  test "a search and a filtered list on done = no find an empty done", %{conn: conn} do
+    clear(@t3, :done)
+    {:ok, _view, html} = live(conn, "/")
+    # Bake and Eat (no), Clean (empty), Fig (no): the search as the user.
+    assert shown(html, "Y") == found(["Bake", "Clean", "Eat", "Fig"])
+    # The project's list filtered: its own order, Clean included.
+    assert shown(html, "K") ==
+             if(enforced?(), do: ["Clean", "Bake"], else: ["Clean", "Bake", "Eat", "Fig"])
+  end
+
+  # The same reading in Elixir: options filtered by an attribute that is
+  # no, Gray's being empty.
+  test "options filtered on an attribute that is no include an empty one", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/")
+    assert shown(html, "W") == ["Blue", "Gray"]
+    # `is yes` still needs a stored yes.
+    assert shown(html, "O") == ["Red", "Amber"]
+  end
+
+  # The privacy rules keep the stricter reading (owner decision,
+  # 2026-09-29): "Secret is no" needs a stored no, so with enforced
+  # policies a task whose Secret is empty is neither found nor viewed.
+  test "the privacy rule on secret = no still needs a stored no", %{conn: conn} do
+    clear(@t1, :secret)
+    {:ok, _view, html} = live(conn, "/")
+
+    assert shown(html, "Y") ==
+             if(enforced?(), do: ["Clean"], else: ["Bake", "Clean", "Eat", "Fig"])
+  end
+
+  # Empties a yes/no attribute of a task (Bubble's empty, not no).
+  defp clear(id, attribute) do
+    PhxCheck.Task
+    |> Ash.get!(id, authorize?: false)
+    |> Ash.Seed.update!(%{attribute => nil})
+
+    assert PhxCheck.Task |> Ash.get!(id, authorize?: false) |> Map.fetch!(attribute) == nil
+  end
+
   test "a list sorted in the database keeps its order among equal keys", %{conn: conn} do
     # Bake and Clean share rank 2: the list holds Clean first.
     Ash.Seed.update!(Ash.get!(PhxCheck.Project, @p1, authorize?: false), %{tasks: [@t1, @t3]})

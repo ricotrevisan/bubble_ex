@@ -28,6 +28,11 @@
           "display": "Amber",
           "sort_factor": 3,
           "warm": true
+        },
+        "bC4": {
+          "db_value": "gray",
+          "display": "Gray",
+          "sort_factor": 4
         }
       }
     }
@@ -996,6 +1001,125 @@
                     "0": "T: ",
                     "1": {
                       "type": "ElementParent"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bUndone": {
+          "id": "bUndone",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 10,
+            "order": 16,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "constraints": {
+                  "0": {
+                    "key": "done_boolean",
+                    "constraint_type": "equals",
+                    "value": false
+                  }
+                },
+                "sort_field": "title_text",
+                "descending": false
+              }
+            }
+          },
+          "elements": {
+            "bUndoneTitle": {
+              "id": "bUndoneTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Y: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bCool": {
+          "id": "bCool",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 10,
+            "order": 17,
+            "width": 300,
+            "height": 40,
+            "group_type": "option.color",
+            "data_source": {
+              "type": "OneOptionValue",
+              "properties": {
+                "option_set": "option.color",
+                "option_value": "all values"
+              },
+              "next": {
+                "type": "Message",
+                "name": "filtered",
+                "properties": {
+                  "constraints": {
+                    "0": {
+                      "key": "_advanced_search_constraint",
+                      "constraint_type": {
+                        "type": "Empty"
+                      },
+                      "value": {
+                        "type": "InjectedValue",
+                        "next": {
+                          "type": "Message",
+                          "name": "warm",
+                          "next": {
+                            "type": "Message",
+                            "name": "is_false"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bCoolName": {
+              "id": "bCoolName",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "W: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "display"
+                      }
                     }
                   }
                 }

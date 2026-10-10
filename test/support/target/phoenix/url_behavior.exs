@@ -186,7 +186,7 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
       assert read("n=.5", "n", "number") == 0.5
     end
 
-    test "yes/no: yes, true and 1 are yes; no and false are no; anything else is empty",
+    test "yes/no: yes, true and 1 are yes; no and false are no; anything else is empty (so no)",
          %{conn: conn} do
       for raw <- ~w(yes Yes true TRUE 1) do
         {:ok, view, _html} = live(conn, "/?on=#{raw}")
@@ -202,10 +202,12 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
         assert hidden?(view, "bOnEmpty"), raw
       end
 
+      # Empty, and an empty yes/no is no in `is no` (WTF-529), as Bubble
+      # reads it; `is empty` stays exact.
       for query <- ["on=0", "on=y", "on=", ""] do
         {:ok, view, _html} = live(conn, "/?" <> query)
         assert hidden?(view, "bOn"), query
-        assert hidden?(view, "bOff"), query
+        refute hidden?(view, "bOff"), query
         refute hidden?(view, "bOnEmpty"), query
       end
     end
