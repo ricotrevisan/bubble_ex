@@ -17,7 +17,11 @@
 # every boolean negated. So every owner has, per type, a record with each
 # boolean true and one with each boolean false, and a list filtered on a
 # flag ("not archived", "not a draft") is never empty only because every
-# record of the signed-in user carries the same flags.
+# record of the signed-in user carries the same flags. A user's booleans
+# are true in odd worlds (the persona's flags); every other primary's are
+# false there, Bubble's default for a new record, so what odd worlds reach
+# through references (a role's group, a task's project) is not archived
+# or a draft either. Even worlds are the opposite.
 defmodule VerticalSlice.Synthetic do
   @moduledoc false
 
@@ -40,8 +44,9 @@ defmodule VerticalSlice.Synthetic do
   The persona the slice signs in as, from `SLICE_PERSONA`: the index of a
   synthetic user (1, the default, to `n`). Which one matters with enforced
   privacy: user `i`'s booleans are `rem(i, 2) == 1` (user 1's are true,
-  user 2's false) and its options the `i`-th of their set. Its world holds
-  records with both values of every boolean either way (the twins).
+  user 2's false) and its options the `i`-th of their set. The other
+  primary records of its world have the opposite booleans, their twins
+  the same ones.
   """
   def persona(value, n) do
     case value do
@@ -73,7 +78,8 @@ defmodule VerticalSlice.Synthetic do
 
     Map.new(types, fn type ->
       t = index[type.id]
-      {type.id, for(i <- 1..records(n), do: row(type, t, i, Map.put(ctx, :self, type.id)))}
+      ctx = Map.merge(ctx, %{self: type.id, odd_true: type.id == "user"})
+      {type.id, for(i <- 1..records(n), do: row(type, t, i, ctx))}
     end)
   end
 
@@ -96,7 +102,7 @@ defmodule VerticalSlice.Synthetic do
 
   # Record `i` of world `w`: references, options and the owner come from
   # the world, texts, numbers and dates from the record (twins are told
-  # apart), booleans from the world, negated for a twin.
+  # apart), booleans from the world and the type, negated for a twin.
   defp row(%DataType{} = type, t, i, ctx) do
     created = @base_ms + (t * 10 + i) * @day
     ctx = Map.merge(ctx, %{world: world(i, ctx.n), twin: i > ctx.n})
@@ -149,7 +155,7 @@ defmodule VerticalSlice.Synthetic do
     case base do
       :text -> "Sample #{f.name || f.id} #{i}"
       :number -> i
-      :boolean -> (rem(ctx.world, 2) == 1) != ctx.twin
+      :boolean -> (rem(ctx.world, 2) == 1 == ctx.odd_true) != ctx.twin
       :date -> @base_ms + i * @day
       _ -> nil
     end

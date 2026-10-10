@@ -106,6 +106,27 @@ defmodule BubbleEx.Scripts.VerticalSliceTest do
       end
     end
 
+    # What an odd world reaches through references (a task's project) must
+    # not be closed or archived too: its user keeps true flags, its other
+    # primaries take Bubble's default (false); even worlds the opposite.
+    test "odd worlds: true flags for the user, false for the records it reaches",
+         %{model: model} do
+      rows = Synthetic.rows(model, 3)
+
+      for {type, field} <- [
+            {"user", "admin_boolean"},
+            {"project", "closed_boolean"},
+            {"task", "done_boolean"},
+            {"note", "flagged_boolean"}
+          ],
+          world <- 1..3 do
+        odd = rem(world, 2) == 1
+        expected = if type == "user", do: odd, else: not odd
+        assert Enum.at(rows[type], world - 1)[field] == expected, "#{type} of world #{world}"
+        assert Enum.at(rows[type], world + 2)[field] == not expected, "twin of world #{world}"
+      end
+    end
+
     test "writes a primary and a twin per world, bounded and deterministic", %{model: model} do
       rows = Synthetic.rows(model, 3)
       ids = Synthetic.ids(model, 3)
