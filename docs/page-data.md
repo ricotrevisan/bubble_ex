@@ -706,7 +706,8 @@ A reusable-element instance in a repeating group's cell is rendered once
 per cell, in a scope of its own: the cell's thing's
 (`<Web>.Bubble.cell_scope/5`: `<scope>-<repeating group>~2<the thing's
 unique ID>`, then `-<instance>`; a list of options by the option's value
-and its occurrence, `~4<value>[~5<n>]`, WTF-520; a list of texts or
+and, when listed `c` times, its occurrence and count,
+`~4<value>[~5<n>~6<c>]`, WTF-520; a list of texts or
 numbers, which has no unique ID, by the cell's position). A re-sorted list keeps what each
 thing's cell held, as "Display data" does in cells (WTF-492). In that
 scope:
@@ -769,8 +770,9 @@ dropped, and its scope takes no event, a paused or scheduled workflow
 included. A list of texts or numbers has no unique ID: its cells are
 by position, duplicates included; a list holding the same thing twice
 gives both cells one scope (they share their states). A list of options
-keys each cell by its option and its occurrence (the second of two equal
-options has a scope of its own).
+keys each cell by its option, its occurrence and the option's count (the
+second of two equal options has a scope of its own); when the count
+changes, every instance in a cell of that option starts over.
 
 An instance inside a runtime container of a cell (not the cell's own
 template) keeps one scope and is marked.
@@ -1128,7 +1130,12 @@ their own residue. The 2 in lists of texts stay residue.
 | `:trigger_in_runtime_template` (residue entries, workflows) | 111 | 72 |
 | `:unavailable_input` (residue entries, workflows) | 395 | 350 |
 
-No data source moved (the page data counts are unchanged).
+No data source moved (the page data counts are unchanged). The resources
+a source's queries search now publish their changes too; in this app
+none is new (the 21 such resources are all among the 44 read as a
+source's own type), so no resource gained a notifier. Requiring the
+list's source to compute the option set too (not only its type of
+content) moved no count (47 repeating groups here are lists of options).
 
 ### Private fixture app (test version), 2026-10-09, clicks and input changes in cells (WTF-520)
 

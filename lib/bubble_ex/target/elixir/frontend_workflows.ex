@@ -79,8 +79,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   `coverage/1` (`Spec.coverage/1`) measures generated code.
   """
 
-  alias BubbleEx.{Diagnostic, Error}
-  alias BubbleEx.Expression.Tree
+  alias BubbleEx.{Diagnostic, Error, PageData}
+  alias BubbleEx.Expression.{IR, Tree}
   alias BubbleEx.Frontend.{Conditions, Normalized, Table}
   alias BubbleEx.Model.Type
   alias BubbleEx.Plan.Residue
@@ -215,7 +215,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
       # The repeating groups whose list holds option-set values: their
       # cells are keyed by the option's value (WTF-520).
-      ctx = Map.put(ctx, :option_lists, option_lists(frontend, ctx))
+      ctx =
+        Map.put(ctx, :option_lists, option_lists(frontend, Keyword.get(opts, :page_data), ctx))
 
       # The page's own elements in those cells (WTF-520): the ones whose
       # clicks and input changes the page wires per cell.
@@ -630,13 +631,28 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   # Every repeating group whose list holds option-set values (WTF-520):
   # option values are stable and unique within their set, so a cell is
-  # keyed by its option, not its position.
-  defp option_lists(%Normalized{} = frontend, ctx) do
+  # keyed by its option, not its position. Both its type of content and
+  # what its data source computes must be that option set: a source of
+  # another type (a list of texts read into an option-typed list) would
+  # put arbitrary text in the cells' scopes, so it stays keyed by
+  # position (and refused).
+  defp option_lists(%Normalized{} = frontend, %PageData{sources: sources}, ctx) do
+    computed =
+      for %{kind: :list, element: id, value: %{ir: %IR{type: type}}} <- sources,
+          is_binary(id),
+          into: %{},
+          do: {id, type}
+
     (frontend.pages ++ frontend.reusables)
     |> Enum.flat_map(&repeating_ids/1)
-    |> Enum.filter(&option_type?(raw_content(&1, ctx)))
+    |> Enum.filter(fn id ->
+      content = raw_content(id, ctx)
+      option_type?(content) and Map.get(computed, id) == "list." <> content
+    end)
     |> MapSet.new()
   end
+
+  defp option_lists(_frontend, _page_data, _ctx), do: MapSet.new()
 
   defp repeating_ids(%Normalized.Node{} = node) do
     own = if repeating?(node), do: [node.source.bubble_id], else: []

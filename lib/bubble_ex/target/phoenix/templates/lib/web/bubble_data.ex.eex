@@ -851,14 +851,24 @@ defmodule <%= @web %>.BubbleData do
     %{scope: scope, cell: {item, i}, nested: nil, key: key, shown: key}
   end
 
-  defp cell_unit(scope, source, item, i, _n),
+  defp cell_unit(scope, source, item, i, n),
     do: %{
       scope: scope,
       cell: {item, i},
       nested: nil,
       key: {scope, source.element, i},
-      shown: {scope, source.element, {:cell, Runtime.id(item)}}
+      shown: {scope, source.element, shown_cell(scope, source.cell, item, i, n)}
     }
+
+  # What "Display data" showed in a cell is kept by its thing's ID (a
+  # re-sorted list keeps it), or in a list of options by the cell's scope
+  # (WTF-520: two equal options keep their own; `BubbleWorkflows`, the
+  # same key).
+  defp shown_cell(scope, rg, item, i, n) do
+    if is_binary(item) and Bubble.keyed_cell?(item, n),
+      do: {:cell_scope, Bubble.cell_scope(scope, rg, item, i, n)},
+      else: {:cell, Runtime.id(item)}
+  end
 
   # One source in every unit (`%{scope, cell, key, shown}`): its value is
   # kept under `key`. A reusable element property's default is only for

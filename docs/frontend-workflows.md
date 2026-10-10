@@ -104,14 +104,23 @@ format a reusable instance in a cell uses without the instance
 unique ID>`; an inner cell's under the outer cell's scope). A cell of a
 list of options is keyed by its option instead (option values are
 stable and unique within their set): `~4<value>`, the value escaped as
-an ID is, and for the second and later occurrences of the same option in
-one list `~4<value>~5<n>` (`n` its occurrence, counted from the list's
-start, `<Web>.Bubble.keyed_cells/3`). A list reordered under a stale page
-keeps each option's scope; an occurrence that left the list (one of two
-equal options removed) has no scope, so its event is ignored rather than
-given to another option. Two equal options are the same value: an event
-in either binds that value, only their inputs' values are kept apart (by
-occurrence). The page
+an ID is, for an option the list holds once; for one it holds `c` times,
+`~4<value>~5<n>~6<c>` (`n` its occurrence, counted from the list's start,
+`<Web>.Bubble.keyed_cells/3`). The list is a list of options only when
+both the repeating group's type of content and what its data source
+computes are that option set: an option-typed list whose source computes
+texts keeps cells by position (and its events residue), so no user text
+reaches a scope. A list reordered under a stale page keeps each option's
+scope. When the number of equal options changes (one of two removed, a
+second added), every cell of that value gets a new scope: its inputs'
+values and what "Display data" showed in its groups are dropped (a
+reusable instance in it starts over, custom states included), and an
+event naming an old scope is ignored, never moved to the cell left. An
+event in either of two equal options binds that value; their inputs'
+values and "Display data" in their groups are each cell's own while the
+count holds. "Display data" in a group of a cell is kept by the thing's
+unique ID in a list of things (a re-sorted list keeps it) and by the
+cell's scope in a list of options. The page
 keeps the cells it read last, by scope, from the lists it read as the
 current user (`@bubble_page_cells`, `BubbleWorkflows.put_page_cells/2`,
 after every read of its data), and accepts the event only for one of

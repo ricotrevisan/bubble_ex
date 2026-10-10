@@ -11,7 +11,9 @@ All notable changes to this project are documented here.
   options read from "Search for boards:first item", a count) subscribed
   to the resources its queries search (`query_topics`), but a resource
   no source reads as its own type did not publish its changes, so the
-  page never heard of them. Those resources now publish them too.
+  page never heard of them. Those resources now publish them too. In
+  the private fixture app no resource is newly publishing (every one its
+  sources' queries search is already read as some source's own type).
 
 - **An instance whose own data source does not load is no longer
   rendered reading nothing** (WTF-522). A reusable element's reads of its
@@ -691,15 +693,21 @@ All notable changes to this project are documented here.
   values had cells keyed by position, so its rows' clicks and input
   changes stayed `:trigger_in_runtime_template` residue: a stale page
   could have named another option. Its cells are now keyed by their
-  option (`Bubble.cell_scope/5`: `~4<value>`, escaped as an ID is; the
-  second and later occurrences of an option in one list add `~5<n>`,
+  option (`Bubble.cell_scope/5`: `~4<value>`, escaped as an ID is; an
+  option listed `c` times in one list is `~4<value>~5<n>~6<c>`,
   `Bubble.keyed_cells/3`), so their events are wired like a list of
   things': the scope is looked up in `@bubble_page_cells`, never parsed,
-  and the cell's option is the one the page read. A reordered list keeps
-  each option's scope; an occurrence that left it, a made-up value or a
-  position-shaped scope is ignored. Reusable instances in such cells take
-  the same scopes. Lists of texts, numbers and dates keep cells by
-  position and stay residue.
+  and the cell's option is the one the page read. Only a repeating group
+  whose type of content and whose source's computed type are both the
+  option set counts: an option-typed list fed texts stays positional and
+  residue. A reordered list keeps each option's scope. When an option's
+  count changes, every cell of it gets a new scope: inputs, "Display
+  data" in its groups and its instances' states are dropped, and events
+  naming an old scope are ignored. A made-up value or a position-shaped
+  scope is ignored. "Display data" in a group of an option cell is kept
+  by the cell's scope (two equal options keep their own). Reusable
+  instances in such cells take the same scopes. Lists of texts, numbers
+  and dates keep cells by position and stay residue.
 
 - **Clicks and input changes in a repeating group's cell run in that
   cell** (WTF-520, two levels). A workflow triggered by the page's own

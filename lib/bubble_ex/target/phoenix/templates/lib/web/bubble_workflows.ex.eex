@@ -927,7 +927,19 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_inputs, put_new(drop_scopes(socket.assigns.bubble_inputs, gone), inputs))
     |> assign(:bubble_first_inputs, put_new(drop_scopes(socket.assigns.bubble_first_inputs, gone), inputs))
     |> assign(:bubble_committed, drop_scopes(Map.get(socket.assigns, :bubble_committed) || %{}, gone))
+    |> assign(:bubble_displayed, drop_cell_shown(Map.get(socket.assigns, :bubble_displayed) || %{}, gone))
   end
+
+  # What "Display data" showed in a cell of a list of options, kept by the
+  # cell's scope (WTF-520), without the cells gone.
+  defp drop_cell_shown(displayed, gone) do
+    if MapSet.size(gone) == 0,
+      do: displayed,
+      else: Map.reject(displayed, fn {key, _} -> cell_shown_in?(key, gone) end)
+  end
+
+  defp cell_shown_in?({_scope, _element, {:cell_scope, key}}, gone), do: MapSet.member?(gone, key)
+  defp cell_shown_in?(_key, _gone), do: false
 
   # Only cells keyed by what they hold (`Bubble.keyed_cell?/2`): a thing
   # (its unique ID) or an option of a list of options (its value and
@@ -2004,7 +2016,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     keys =
       cond do
         not cell? -> {:ok, {scope, element}, {scope, element}}
-        ctx.cell != nil -> {:ok, {cells, element, {:cell, Runtime.id(ctx.cell)}}, {cells, element, ctx.cell_index}}
+        ctx.cell != nil -> {:ok, {cells, element, shown_cell(ctx)}, {cells, element, ctx.cell_index}}
         true -> :error
       end
 
@@ -2024,6 +2036,13 @@ defmodule <%= @web %>.BubbleWorkflows do
         fail(ctx, step, :not_in_cell)
     end
   end
+
+  # Whose "Display data" a cell keeps (WTF-492): a thing's, by its ID, so
+  # a re-sorted list keeps it; an option's (WTF-520), by the cell's scope,
+  # so two equal options of one list keep their own.
+  defp shown_cell(%Ctx{cell: %{id: _} = thing}), do: {:cell, Runtime.id(thing)}
+  defp shown_cell(%Ctx{cell: value, cell_key: key}) when is_binary(value) and is_binary(key), do: {:cell_scope, key}
+  defp shown_cell(%Ctx{cell: cell}), do: {:cell, Runtime.id(cell)}
 
   defp displayed_value(nil, true, value, page_size),
     do: value |> List.wrap() |> plain() |> Enum.take(BubbleData.cap(page_size))

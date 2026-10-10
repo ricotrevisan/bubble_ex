@@ -1,5 +1,5 @@
 {
-  "_comment": "WTF-520: clicks and input changes of the page's own elements in repeating group cells. A list of products whose row button shows that product in a detail group outside the list (master-detail), a quantity input per row whose change writes that row's product, a row button whose workflow is not lowered (the refusal notice), and a nested list (categories, then each category's products) whose row button shows the product and its category. All data invented; test/support/target/phoenix/cell_clicks_behavior.exs runs it. A reusable product picker (its own list, a row's button showing the row's product in a group of the picker) is on the products page and in each category's cell; a row's Later button pauses before it shows its product. A statuses page lists a board's statuses (a list of option-set values, one of them twice): a row's Pick button, and a row's note input, show that row's status in a detail group outside the list; their cells are keyed by the option's value and its occurrence, not by position.",
+  "_comment": "WTF-520: clicks and input changes of the page's own elements in repeating group cells. A list of products whose row button shows that product in a detail group outside the list (master-detail), a quantity input per row whose change writes that row's product, a row button whose workflow is not lowered (the refusal notice), and a nested list (categories, then each category's products) whose row button shows the product and its category. All data invented; test/support/target/phoenix/cell_clicks_behavior.exs runs it. A reusable product picker (its own list, a row's button showing the row's product in a group of the picker) is on the products page and in each category's cell; a row's Later button pauses before it shows its product. A statuses page lists a board's statuses (a list of option-set values, one of them twice): a row's Pick button, and a row's note input, show that row's status in a detail group outside the list; their cells are keyed by the option's value and its occurrence, not by position. Each status row also has a Mark button that shows its status in a group of the row (kept per row, so two equal statuses keep their own), and a status chip (a reusable element given the row's status) whose button sets its own custom state.",
   "_id": "cell-clicks-fixture",
   "option_sets": {
     "status": {
@@ -281,6 +281,114 @@
                 "element_id": "bPicked",
                 "data_source": {
                   "type": "CurrentDataItem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "bChipDef": {
+      "id": "bChipDef",
+      "name": "Status chip",
+      "type": "CustomDefinition",
+      "properties": {
+        "width": 300,
+        "height": 90,
+        "group_type": "option.status"
+      },
+      "custom_states": {
+        "picked_": {
+          "display": "Picked",
+          "value": "text"
+        }
+      },
+      "elements": {
+        "bChipName": {
+          "id": "bChipName",
+          "type": "Text",
+          "properties": {
+            "order": 1,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Chip: ",
+                "1": {
+                  "type": "ElementParent",
+                  "next": {
+                    "type": "Message",
+                    "name": "display"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bChipBtn": {
+          "id": "bChipBtn",
+          "type": "Button",
+          "properties": {
+            "order": 2,
+            "width": 120,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Chip"
+              }
+            }
+          }
+        },
+        "bChipPicked": {
+          "id": "bChipPicked",
+          "type": "Text",
+          "properties": {
+            "order": 3,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "ChipPicked: ",
+                "1": {
+                  "type": "GetElement",
+                  "properties": {
+                    "element_id": "bChipDef"
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "custom.picked_"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "workflows": {
+        "wChipBtn": {
+          "id": "wChipBtn",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bChipBtn"
+          },
+          "actions": {
+            "0": {
+              "id": "aChipBtn1",
+              "type": "SetCustomState",
+              "properties": {
+                "element_id": "bChipDef",
+                "custom_state": "custom.picked_",
+                "value": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "yes"
+                  }
                 }
               }
             }
@@ -965,6 +1073,70 @@
                 "height": 40,
                 "min_height_css": "40px"
               }
+            },
+            "bStatusMark": {
+              "id": "bStatusMark",
+              "type": "Group",
+              "properties": {
+                "order": 4,
+                "width": 300,
+                "height": 40,
+                "group_type": "option.status"
+              },
+              "elements": {
+                "bStatusMarkName": {
+                  "id": "bStatusMarkName",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Marked: ",
+                        "1": {
+                          "type": "ElementParent",
+                          "next": {
+                            "type": "Message",
+                            "name": "display"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bMark": {
+              "id": "bMark",
+              "type": "Button",
+              "properties": {
+                "order": 5,
+                "width": 120,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Mark"
+                  }
+                }
+              }
+            },
+            "bStatusChip": {
+              "id": "bStatusChip",
+              "type": "CustomElement",
+              "properties": {
+                "custom_id": "bChipDef",
+                "order": 6,
+                "width": 300,
+                "height": 90,
+                "data_source": {
+                  "type": "CurrentDataItem"
+                }
+              }
             }
           }
         },
@@ -1036,6 +1208,25 @@
               "type": "DisplayGroupData",
               "properties": {
                 "element_id": "bStatusDetail",
+                "data_source": {
+                  "type": "CurrentDataItem"
+                }
+              }
+            }
+          }
+        },
+        "wMark": {
+          "id": "wMark",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bMark"
+          },
+          "actions": {
+            "0": {
+              "id": "aMark1",
+              "type": "DisplayGroupData",
+              "properties": {
+                "element_id": "bStatusMark",
                 "data_source": {
                   "type": "CurrentDataItem"
                 }
