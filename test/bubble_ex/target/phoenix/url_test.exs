@@ -128,7 +128,7 @@ defmodule BubbleEx.Target.Phoenix.UrlTest do
   end
 
   # The wide page (WTF-520): an instance's property `Current page width >
-  # 767 and compact`, as a left nav's "Compact" toggle.
+  # 767 and compact`: a side panel hidden below a width when a URL flag is set.
   test "Current page width is the width the browser reports, read again when it changes", %{
     files: files,
     spec: spec
