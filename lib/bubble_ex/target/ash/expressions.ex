@@ -28,7 +28,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   | `x is empty` | a reference with a `belongs_to`: `not exists(rel, true)` (a dangling ID is empty; there are no foreign keys), `is_nil(^actor([..., :rel]))` on the actor side; otherwise `is_nil(x)`, also `x == ""` for text and `x == []` for a list |
   | `>`, `<`, `>=`, `<=` | the operator |
   | `and`, `or`, `not` | the operator |
-  | `x is y` / `x is not y` between yes/no values in a search (`search/3`; not in privacy rules) | an empty one reads as no, as in Bubble (WTF-529): `x is no` and `x is not yes` are `x == false or is_nil(x)` on an attribute (`is_distinct_from(x, true)` on another value), `x is yes` and `x is not no` are `x == true`; between two values `is_not_distinct_from(a, true) == is_not_distinct_from(b, true)` (`!=` for `is not`) |
+  | `x is y` / `x is not y` between yes/no values in a search (`search/3`; not in privacy rules) | an empty one reads as no, as in Bubble (WTF-529): `x is no` and `x is not yes` are `x == false or is_nil(x)` on an attribute (`is_distinct_from(x, true)` on another value), `x is yes` and `x is not no` are `x == true`; between two values `is_not_distinct_from(a, true) == is_not_distinct_from(b, true)` (`!=` for `is not`). The current user's yes/no reads the same way, with no guard: empty, or a logged-out visitor's (Bubble's temporary user has empty fields), is no; the privacy rules keep the guard |
   | a yes/no value used as a condition | `x == true`; negated, `is_distinct_from(x, true)` (in a search, as `x is no`) |
   | `logged in` | `not is_nil(^actor(:id))` |
   | `list contains item` | `item in list` (lists of things are `{:array, :string}` of IDs, WTF-338) |
@@ -535,14 +535,21 @@ defmodule BubbleEx.Target.Ash.Expressions do
   defp atom_(%IR{op: op, args: [l, r]}, st) when op in [:eq, :neq] do
     {[a, b], st} = values([l, r], st)
 
-    {eq, neq} =
+    # In a search, an empty yes/no is no on the current user's side too (a
+    # logged-out visitor's included): no guard (WTF-529).
+    {eq, neq, operands} =
       cond do
-        st.empty_yes_no_is_no and yes_no_pair?(l, r) -> yes_no_read_as_no(l, r, a, b)
-        yes_no_pair?(l, r) -> {eq_node(a, b, st), yes_no_neq(l, r, a, b)}
-        true -> {eq_node(a, b, st), neq_node(a, b, st)}
+        st.empty_yes_no_is_no and yes_no_pair?(l, r) ->
+          {eq, neq} = yes_no_read_as_no(l, r, a, b)
+          {eq, neq, []}
+
+        yes_no_pair?(l, r) ->
+          {eq_node(a, b, st), yes_no_neq(l, r, a, b), [{a, l.type}, {b, r.type}]}
+
+        true ->
+          {eq_node(a, b, st), neq_node(a, b, st), [{a, l.type}, {b, r.type}]}
       end
 
-    operands = [{a, l.type}, {b, r.type}]
     {all_ok(if(op == :eq, do: {eq, neq, operands}, else: {neq, eq, operands}), [a, b]), st}
   end
 
@@ -646,17 +653,16 @@ defmodule BubbleEx.Target.Ash.Expressions do
     do: unsupported(st, {"contains keyword(s) outside a search", nil})
 
   # A yes/no value: `x == true`; negated, empty is not yes (in a search,
-  # `x == false or is_nil(x)` on an attribute, `no_or_empty/1`).
+  # `no_or_empty/1`, and the current user's empty value is no: no guard,
+  # WTF-529).
   defp atom_(%IR{op: op} = ir, st) when op in @boolean_values do
     {v, st} = value(ir, st)
     yes = {:op, "==", v, {:value, true}}
 
-    no =
-      if st.empty_yes_no_is_no,
-        do: ok(v, &no_or_empty/1),
-        else: {:call, "is_distinct_from", [v, {:value, true}]}
-
-    {all_ok({yes, no, [{v, ir.type}]}, [v]), st}
+    if st.empty_yes_no_is_no,
+      do: {all_ok({yes, ok(v, &no_or_empty/1), []}, [v]), st},
+      else:
+        {all_ok({yes, {:call, "is_distinct_from", [v, {:value, true}]}, [{v, ir.type}]}, [v]), st}
   end
 
   defp atom_(%IR{op: op}, st), do: unsupported(st, {"the condition #{inspect(op)}", nil})
@@ -943,33 +949,37 @@ defmodule BubbleEx.Target.Ash.Expressions do
   # an empty one is no, in `is` as in `is not`. Against a literal: `x is
   # no` and `x is not yes` are `no_or_empty(x)`, `x is yes` and `x is not no`
   # are `x == true`; between two values, both are read as yes or no. The
-  # privacy rules keep the stricter `is` (`BubbleEx.Verify.Difference`,
-  # `empty_yes_no_is_no`): `privacy/2` and `filter/3` do not set it.
+  # current user's value reads the same way, unguarded: empty (a
+  # logged-out visitor's too: Bubble's temporary user has empty fields) is
+  # no (the owner's decision for pages and workflows, WTF-529). The
+  # privacy rules keep the stricter `is` and the guard
+  # (`BubbleEx.Verify.Difference`, `empty_yes_no_is_no`,
+  # `actor_empty_denies`): `privacy/2` and `filter/3` do not set it.
   defp yes_no_read_as_no(%IR{op: :literal, args: [b]}, _r, _a, v), do: yes_no_literal(v, b)
   defp yes_no_read_as_no(_l, %IR{op: :literal, args: [b]}, v, _b), do: yes_no_literal(v, b)
 
   defp yes_no_read_as_no(_l, _r, a, b),
-    do: {{:op, "==", read_as_no(a), read_as_no(b)}, {:op, "!=", read_as_no(a), read_as_no(b)}}
+    do: {{:op, "==", yes_or_no(a), yes_or_no(b)}, {:op, "!=", yes_or_no(a), yes_or_no(b)}}
 
   # A side of a comparison between two yes/no values: yes or no, never
-  # NULL; an actor-side one as is (guarded non-empty: NULL when it is
-  # empty, so the comparison holds for no record).
-  defp read_as_no(v), do: if(actor?(v), do: v, else: yes(v))
+  # NULL, wherever it is read from.
+  defp yes_or_no(v), do: {:call, "is_not_distinct_from", [v, {:value, true}]}
 
   defp yes_no_literal(v, true), do: {{:op, "==", v, {:value, true}}, no_or_empty(v)}
   defp yes_no_literal(v, false), do: {no_or_empty(v), {:op, "==", v, {:value, true}}}
 
-  # `v` is no or empty. On an attribute, `v == false or is_nil(v)`, which
-  # an index on it can serve (`IS DISTINCT FROM` cannot); an actor-side
-  # `v` is guarded non-empty, so `v == false`.
+  # `v` is no or empty. On an attribute, `v == false or is_nil(v)`: a
+  # filter an index on the field can serve (a bitmap OR of its two
+  # branches), though not the order of a sorted page (an index on `(v,
+  # sort)` gives no ordered scan for the OR, so PostgreSQL sorts; an
+  # expression index on `coalesce(v, false)` would, and the generator
+  # emits none: `BubbleEx.Findings.SearchIndex` hints columns only).
+  # Anything else (the current user's, an input's) is
+  # `is_distinct_from(v, true)`.
   defp no_or_empty({:ref, _rels, _attr} = v),
     do: {:or, [{:op, "==", v, {:value, false}}, {:call, "is_nil", [v]}]}
 
-  defp no_or_empty(v) do
-    if actor?(v),
-      do: {:op, "==", v, {:value, false}},
-      else: {:call, "is_distinct_from", [v, {:value, true}]}
-  end
+  defp no_or_empty(v), do: {:call, "is_distinct_from", [v, {:value, true}]}
 
   # `v` is yes, never NULL (an actor-side `v` is guarded non-empty).
   defp yes(v) do

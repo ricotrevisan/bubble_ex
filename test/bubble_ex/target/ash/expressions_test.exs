@@ -276,10 +276,15 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
         {IR.node(:is_empty, [c.public], "boolean"), "expr(is_nil(public))"},
         {IR.node(:not, [IR.node(:is_empty, [c.public], "boolean")], "boolean"),
          "expr(not is_nil(public))"},
-        # the current user's value keeps its guard: an empty one matches nothing
-        {IR.node(:eq, [c.admin, c.no], "boolean"), "expr(^actor(:admin) == false)"},
+        # the current user's value reads the same way, unguarded: empty (a
+        # logged-out visitor's too) is no
+        {IR.node(:eq, [c.admin, c.no], "boolean"),
+         "expr(is_distinct_from(^actor(:admin), true))"},
+        {IR.node(:neq, [c.admin, c.no], "boolean"), "expr(^actor(:admin) == true)"},
+        {IR.node(:not, [c.admin], "boolean"), "expr(is_distinct_from(^actor(:admin), true))"},
+        {c.admin, "expr(^actor(:admin) == true)"},
         {IR.node(:eq, [c.public, c.admin], "boolean"),
-         "expr(is_not_distinct_from(public, true) == ^actor(:admin))"}
+         "expr(is_not_distinct_from(public, true) == is_not_distinct_from(^actor(:admin), true))"}
       ]
 
       for {pred, expected} <- cases, do: assert(searched(pred, project) == expected)
@@ -287,6 +292,10 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
 
     test "privacy rules keep the stricter reading", %{project: project} = c do
       cases = [
+        # the current user's empty value matches nothing
+        {IR.node(:eq, [c.admin, c.no], "boolean"), "expr(^actor(:admin) == false)"},
+        {IR.node(:not, [c.admin], "boolean"),
+         "expr(not is_nil(^actor(:admin)) and is_distinct_from(^actor(:admin), true))"},
         {IR.node(:eq, [c.rule_public, c.no], "boolean"), "expr(public == false)"},
         {IR.node(:neq, [c.rule_public, c.yes], "boolean"),
          "expr(is_distinct_from(public, true))"},

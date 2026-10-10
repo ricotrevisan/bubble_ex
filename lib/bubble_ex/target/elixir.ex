@@ -32,7 +32,11 @@ defmodule BubbleEx.Target.Elixir do
   is true; `x is y` and `x is not y` between yes/no values (not
   conditions), one at least stored, read an empty one as no, as Bubble does
   (`x is no` holds on an empty x, WTF-529; `x is not no` needs a stored
-  yes, WTF-471; the privacy policies keep `x is y` stricter); a comparison
+  yes, WTF-471; the privacy policies keep `x is y` stricter), the current
+  user's included, with no guard: `Current User's pro is no` holds when
+  pro is empty and for a logged-out visitor (Bubble's temporary user has
+  empty fields; WTF-529, the owner's decision for pages and workflows,
+  where the policies keep denying); a comparison
   with a condition is expanded into each side's polarities, and a
   condition used as any other value is strictly true or false (never nil). `BubbleEx.Target.ElixirTest` holds both backends to one
   hand-authored expectation table.
@@ -612,7 +616,10 @@ defmodule BubbleEx.Target.Elixir do
         else: {"(#{a} == #{b})", "(#{a} != #{b})"}
 
     {pos, neg} = if op == :eq, do: {eq, neq}, else: {neq, eq}
-    {all_ok({pos, neg, [{l, a}, {r, b}]}, [a, b]), st}
+    # Between yes/no values the current user's empty one is no too, a
+    # logged-out visitor's included: no guard (WTF-529).
+    operands = if yes_no_pair?(l, r), do: [], else: [{l, a}, {r, b}]
+    {all_ok({pos, neg, operands}, [a, b]), st}
   end
 
   # Ordering: false when either side is empty, in either polarity.
@@ -659,10 +666,11 @@ defmodule BubbleEx.Target.Elixir do
     {all_ok({found, ok(found, &"not #{&1}"), Enum.zip(args, parts)}, [found]), st}
   end
 
-  # A yes/no value that may be empty: empty is not yes.
+  # A yes/no value that may be empty: empty is not yes, the current
+  # user's (or a logged-out visitor's) included: no guard (WTF-529).
   defp atom_(%IR{op: op} = ir, st) when op in @boolean_values do
     {part, st} = value(ir, st)
-    {all_ok({"(#{part} == true)", "(#{part} != true)", [{ir, part}]}, [part]), st}
+    {all_ok({"(#{part} == true)", "(#{part} != true)", []}, [part]), st}
   end
 
   defp atom_(%IR{op: op}, st), do: unsupported(st, {"#{op}", nil})
