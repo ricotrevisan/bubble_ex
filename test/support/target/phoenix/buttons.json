@@ -1,6 +1,6 @@
 {
   "_id": "buttons-fixture",
-  "_comment": "WTF-520: buttons, all data invented. Two notes' edit buttons are not clickable unless the current user owns the note (a conditional); a star swaps its icon when logged in; a send button's workflow is refused; a button with no text is named after its icon; a button is never clickable. test/support/target/phoenix/buttons_behavior.exs",
+  "_comment": "WTF-520: buttons, all data invented. Two notes' edit buttons are not clickable unless the current user owns the note (a conditional); a star swaps its icon when logged in; a send button's workflow is refused; a button with no text is named after its icon; a button is never clickable; one is always clickable, its only state (under a condition that does not compile) setting the value it already has. test/support/target/phoenix/buttons_behavior.exs",
   "user_types": {
     "note": {
       "display": "Note",
@@ -314,6 +314,33 @@
               }
             }
           }
+        },
+        "bNever": {
+          "id": "bNever",
+          "type": "Button",
+          "properties": {
+            "order": 9,
+            "width": 120,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Never"
+              }
+            }
+          },
+          "states": {
+            "0": {
+              "type": "State",
+              "condition": {
+                "type": "NoSuchThing"
+              },
+              "properties": {
+                "button_disabled": false
+              }
+            }
+          }
         }
       },
       "workflows": {
@@ -418,6 +445,29 @@
                 }
               },
               "id": "wFixeda0"
+            }
+          }
+        },
+        "wNever": {
+          "id": "wNever",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bNever"
+          },
+          "actions": {
+            "0": {
+              "id": "wNevera0",
+              "type": "SetCustomState",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "never"
+                  }
+                }
+              }
             }
           }
         }

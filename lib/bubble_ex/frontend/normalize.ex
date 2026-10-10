@@ -2,7 +2,7 @@ defmodule BubbleEx.Frontend.Normalize do
   @moduledoc false
 
   alias BubbleEx.Error
-  alias BubbleEx.Frontend.{Naming, Payload}
+  alias BubbleEx.Frontend.{Conditions, Naming, Payload}
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.{Diagnostic, Identity, Node, Source, Style}
 
@@ -2389,7 +2389,7 @@ defmodule BubbleEx.Frontend.Normalize do
     id = Payload.bubble_id(raw)
     matches = if is_binary(id), do: Map.get(workflows, id, []), else: []
 
-    with true <- Payload.prop(raw, "disabled") != true,
+    with false <- button_disabled?(raw) or may_disable?(raw),
          [workflow] <- matches,
          false <- conditioned?(workflow),
          [action] <- workflow_actions(workflow),
@@ -2400,6 +2400,17 @@ defmodule BubbleEx.Frontend.Normalize do
     else
       _ -> :error
     end
+  end
+
+  # A button whose conditionals may make it not clickable is no plain
+  # link: its click runs through the workflow, which carries the condition
+  # (WTF-520).
+  defp may_disable?(raw) do
+    states = raw["states"] || raw["%st"] || Payload.prop(raw, "states") || raw["%s"]
+
+    states
+    |> Conditions.disabled_states(false)
+    |> Enum.any?()
   end
 
   defp click_workflows(raw) do

@@ -859,6 +859,44 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
                   }
                 }
               },
+              "bNever" => %{
+                "id" => "bNever",
+                "type" => "Button",
+                "properties" => %{"order" => 8, "width" => 120, "height" => 32, "text" => "Never"},
+                "states" => %{
+                  "0" => %{
+                    "condition" => %{"type" => "NoSuchThing"},
+                    "properties" => %{"button_disabled" => false}
+                  }
+                }
+              },
+              "bOdd" => %{
+                "id" => "bOdd",
+                "type" => "Button",
+                "properties" => %{
+                  "order" => 9,
+                  "width" => 32,
+                  "height" => 32,
+                  "button_type" => "icon",
+                  "icon" => "material outlined close",
+                  "text" => %{
+                    "type" => "TextExpression",
+                    "entries" => %{"0" => %{"type" => "NoSuchThing"}}
+                  }
+                }
+              },
+              "bSpace" => %{
+                "id" => "bSpace",
+                "type" => "Button",
+                "properties" => %{
+                  "order" => 10,
+                  "width" => 32,
+                  "height" => 32,
+                  "button_type" => "icon",
+                  "icon" => "material outlined add",
+                  "text" => "   "
+                }
+              },
               "bBare" => %{
                 "id" => "bBare",
                 "type" => "Button",
@@ -905,6 +943,21 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert hover =~ ~r/\sdisabled\s/
       assert hover =~ "TODO(bubble:bHover) isn't clickable: 1 conditional not lowered"
       assert hover =~ "Clickable conditionals not lowered: disabled"
+
+      # A state that cannot make it not clickable (it sets the value the
+      # button has) is skipped, though its condition does not compile.
+      never = button.("bNever")
+      refute never =~ "disabled"
+      refute never =~ "isn't clickable"
+
+      # A dynamic text that does not compile, or only spaces: named after
+      # the icon, marked; never a blank name.
+      odd = button.("bOdd")
+      assert odd =~ ~s(aria-label="close")
+      assert odd =~ "Icon button with no text: named after its icon"
+      space = button.("bSpace")
+      assert space =~ ~s(aria-label="add")
+      refute space =~ ~s(aria-label=" )
 
       # Never named after the editor: with no text, after its icon, marked.
       bare = button.("bBare")

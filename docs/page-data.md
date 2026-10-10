@@ -1206,10 +1206,14 @@ bind is refused. Against the counts recorded before this change
 | frontend workflows native / wired (generated code) | 885 / 611 | 881 / 607 |
 | click workflows native (generated code) | 579 | 575 |
 | workflows run in the browser | 102 | 98 |
-| `:unavailable_input` / `:uncompiled_expression` (workflows) | 341 / 692 | 368 / 716 |
+| `:unavailable_input` / `:uncompiled_expression` (workflows) | 341 / 692 | 368 / 715 |
 
-The 4 workflows no longer run in the browser carry a condition now and
-run on the server. In the structural summary, 9 more frontend
+A state that sets the value the button already has (before any that
+sets another) cannot change it and is skipped, whatever its condition:
+2 click workflows keep no condition, and one condition that did not
+compile is no longer read (`:uncompiled_expression` 716 → 715). The 4
+workflows no longer run in the browser carry a condition now and run
+on the server. In the structural summary, 9 more frontend
 workflows are residue (generated 793 → 784 of 2,940): their buttons'
 clickability does not bind. Its reasons move with them, a workflow's
 condition being read before its steps (`:unavailable_input` 363 → 400,

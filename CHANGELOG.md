@@ -30,7 +30,10 @@ All notable changes to this project are documented here.
     button carries the same condition (`Only when` and clickable), so
     the server refuses a click the button would not take. A conditional
     the page cannot decide renders the button disabled and marked; one
-    that does not lower refuses the workflow. Fail closed both ways.
+    that does not lower refuses the workflow. Fail closed both ways. A
+    state that only sets the value the button already has is skipped,
+    whatever its condition, and a Go to page button that may not be
+    clickable is a button, not a plain link.
   - A conditional icon, text or kind is not lowered: the button keeps
     its page-load value, marked in dev and listed as
     `:element_condition` residue (`detail.property`).

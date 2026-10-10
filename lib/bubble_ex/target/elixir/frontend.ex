@@ -142,7 +142,8 @@ defmodule BubbleEx.Target.Elixir.Frontend do
       for %Node{kind: :button} = node <- nodes,
           %{kind: :condition, id: id, payload: payload} <- [node.bindings["condition"]],
           %{bubble_id: bubble_id} when is_binary(bubble_id) <- [node.source],
-          {property, states} <- button_unlowered(payload, id, compiled),
+          {property, states} <-
+            button_unlowered(payload, id, compiled, node.attributes["disabled"] == true),
           do:
             Residue.entry("element:" <> bubble_id, :element_condition, %{
               states: states,
@@ -160,8 +161,8 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   @doc false
   @spec button_unlowered(term(), String.t(), map()) :: [{String.t(), pos_integer()}]
-  def button_unlowered(payload, condition_id, compiled) do
-    disabled = length(Conditions.property(payload, "button_disabled"))
+  def button_unlowered(payload, condition_id, compiled, initial \\ false) do
+    disabled = length(Conditions.disabled_states(payload, initial))
 
     disabled =
       if disabled > 0 and not Map.has_key?(compiled, Conditions.disabled_id(condition_id)),
@@ -241,11 +242,12 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   defp compile_disabled(payload, %Node{source: source} = node, env, project, opts) do
     env = %{env | host: source && source.bubble_id}
 
-    with [_ | _] = states <- Conditions.boolean_property(payload, "button_disabled"),
+    initial = node.attributes["disabled"] == true
+
+    with [_ | _] = states <- Conditions.disabled_states(payload, initial),
          {:ok, parts} <- compile_states(states, env, project, opts),
          {:ok, bindings} <- merge_bindings(parts),
          true <- Enum.all?(bindings, &page_input?(&1.input)) do
-      initial = node.attributes["disabled"] == true
       results = Enum.map(parts, &elem(&1, 2))
 
       %{

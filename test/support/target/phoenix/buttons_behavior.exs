@@ -103,6 +103,16 @@ defmodule PhxCheckWeb.ButtonsBehaviorTest do
     assert label(view) =~ "Label: start"
   end
 
+  test "a state that cannot make it not clickable changes nothing: enabled, it runs", %{
+    conn: conn,
+    users: users
+  } do
+    {:ok, view, _html} = live(sign_in(conn, users["ada"]), "/")
+    refute disabled?(view, "bNever")
+    click(view, "bNever")
+    assert label(view) =~ "Label: never"
+  end
+
   test "an icon button keeps its click; a refused workflow stays refused", %{
     conn: conn,
     users: users

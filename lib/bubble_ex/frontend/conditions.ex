@@ -98,6 +98,20 @@ defmodule BubbleEx.Frontend.Conditions do
     do: for({c, v} <- property(payload, key), do: {c, if(is_boolean(v), do: v)})
 
   @doc """
+  The states of a button's "isn't clickable" (`button_disabled`) that can
+  change it, in order, from its static value `initial` (WTF-520): those
+  before the first that sets another value set the value it already has,
+  whatever their condition, and are dropped. `[]` when no state can make
+  it differ from `initial`.
+  """
+  @spec disabled_states(term(), boolean()) :: [{term(), boolean() | nil}]
+  def disabled_states(payload, initial) do
+    payload
+    |> boolean_property("button_disabled")
+    |> Enum.drop_while(fn {_condition, value} -> value == initial end)
+  end
+
+  @doc """
   The key a target keeps a button's compiled "isn't clickable"
   conditionals under (`BubbleEx.Target.Elixir.Frontend.compile/5`'s
   result), from its `:condition` binding's ID (WTF-520).

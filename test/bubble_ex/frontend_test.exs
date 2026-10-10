@@ -959,6 +959,72 @@ defmodule BubbleEx.FrontendTest do
       assert button.bindings["workflow"].payload["type"] == "ButtonClicked"
     end
 
+    test "a Go to page button that may not be clickable stays a button, not a link" do
+      go = fn props, states ->
+        %{
+          "pages" => %{
+            "home" => %{
+              "id" => "pghome",
+              "type" => "Page",
+              "name" => "index",
+              "elements" => %{
+                "go" =>
+                  Map.merge(
+                    %{
+                      "id" => "elGo",
+                      "type" => "Button",
+                      "properties" => Map.merge(%{"text" => "About", "order" => 1}, props)
+                    },
+                    if(states, do: %{"states" => states}, else: %{})
+                  )
+              },
+              "workflows" => %{
+                "wfGo" => %{
+                  "id" => "wfGo",
+                  "type" => "ButtonClicked",
+                  "properties" => %{"element_id" => "elGo"},
+                  "actions" => %{
+                    "0" => %{
+                      "id" => "actGo",
+                      "type" => "ChangePage",
+                      "properties" => %{"page" => "about"}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      end
+
+      variant = fn payload ->
+        {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+        [button] = page.children
+        button.variant
+      end
+
+      logged_in = %{
+        "type" => "CurrentUser",
+        "next" => %{"type" => "Message", "name" => "logged_in"}
+      }
+
+      assert variant.(go.(%{}, nil)) == :navigation
+      assert variant.(go.(%{"button_disabled" => true}, nil)) == :label
+
+      assert variant.(
+               go.(%{}, %{
+                 "0" => %{"condition" => logged_in, "properties" => %{"button_disabled" => true}}
+               })
+             ) == :label
+
+      # A state that only sets the value it already has changes nothing.
+      assert variant.(
+               go.(%{}, %{
+                 "0" => %{"condition" => logged_in, "properties" => %{"button_disabled" => false}}
+               })
+             ) == :navigation
+    end
+
     test "keeps buttons as buttons when the click workflow is not a pure navigation" do
       payload =
         page_with_elements(%{

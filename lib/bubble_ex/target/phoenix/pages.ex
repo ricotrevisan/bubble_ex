@@ -2869,8 +2869,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         _ -> nil
       end
 
+    initial = node.attributes["disabled"] == true
+
     {disabled, acc} =
-      case length(Conditions.property(payload, "button_disabled")) do
+      case length(Conditions.disabled_states(payload, initial)) do
         0 -> {static, acc}
         states -> conditional_disabled(node, states, static, ctx, acc)
       end
@@ -2949,9 +2951,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         else: []
 
     unnamed =
-      if label == {:static, ""} and node.attributes["icon_named"] == true,
-        do: [{:dev_note, "Icon button with no text: named after its icon"}],
-        else: []
+      if blank_label?(label) and
+           (node.attributes["icon_named"] == true or
+              not Map.has_key?(node.attributes, "aria-label")),
+         do: [{:dev_note, "Icon button with no text: named after its icon"}],
+         else: []
 
     missing ++ unnamed
   end
@@ -2977,10 +2981,24 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     List.keystore(attrs, "aria-label", 0, {"aria-label", {:raw, "{" <> name <> "}"}})
   end
 
-  defp icon_name(attrs, %Node{variant: :icon}, {:static, text}) when text != "",
-    do: List.keystore(attrs, "aria-label", 0, {"aria-label", text})
+  defp icon_name(attrs, %Node{variant: :icon} = node, {:static, text}) do
+    cond do
+      String.trim(text) != "" ->
+        List.keystore(attrs, "aria-label", 0, {"aria-label", String.trim(text)})
+
+      # No text, or a dynamic one that did not compile: the icon's name.
+      not List.keymember?(attrs, "aria-label", 0) ->
+        [{"aria-label", icon_words(node)} | attrs]
+
+      true ->
+        attrs
+    end
+  end
 
   defp icon_name(attrs, _node, _label), do: attrs
+
+  defp blank_label?({:static, text}), do: String.trim(text) == ""
+  defp blank_label?(_label), do: false
 
   defp icon_words(node) do
     case node.attributes["asset_fragment"] do

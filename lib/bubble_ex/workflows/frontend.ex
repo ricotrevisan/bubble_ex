@@ -469,12 +469,18 @@ defmodule BubbleEx.Workflows.Frontend do
         _ -> {nil, %{}}
       end
 
+    # The states before the first that sets another value than the static
+    # one cannot change it, whatever their condition: dropped
+    # (`BubbleEx.Frontend.Conditions.disabled_states/2`).
     sets =
-      for {skey, state} <- Lowering.ordered(states),
-          is_map(state),
-          props = map(Source.value(state, ~w(properties %p))),
-          Map.has_key?(props, "button_disabled"),
-          do: {skey, Source.value(state, ~w(condition %c)), props["button_disabled"]}
+      for(
+        {skey, state} <- Lowering.ordered(states),
+        is_map(state),
+        props = map(Source.value(state, ~w(properties %p))),
+        Map.has_key?(props, "button_disabled"),
+        do: {skey, Source.value(state, ~w(condition %c)), props["button_disabled"]}
+      )
+      |> Enum.drop_while(fn {_skey, _condition, value} -> value == static end)
 
     cond do
       sets == [] and not static ->
@@ -504,6 +510,7 @@ defmodule BubbleEx.Workflows.Frontend do
          {:error, [Residue.entry("", :unsupported_option, %{options: ["button_disabled"]})]}}
     end)
     |> case do
+      {:ok, %IR{op: :literal, args: [false]}} -> {:ok, nil}
       {:ok, ir} -> {:ok, %Expr{path: Source.pointer(path), ir: ir}}
       error -> error
     end

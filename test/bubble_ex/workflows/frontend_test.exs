@@ -486,6 +486,18 @@ defmodule BubbleEx.Workflows.FrontendTest do
                app |> lower() |> workflow("wLockA")
     end
 
+    test "a state that cannot change it is skipped, whatever its condition" do
+      # Clickable by default; the only state makes it clickable, under a
+      # condition that does not lower: it is always clickable.
+      app =
+        put_in(buttons(), ~w(pages index elements bNoteA elements bLockA states 0), %{
+          "condition" => %{"type" => "NoSuchThing"},
+          "properties" => %{"button_disabled" => false}
+        })
+
+      assert %Workflow{condition: nil, residue: []} = app |> lower() |> workflow("wLockA")
+    end
+
     test "one that does not lower refuses the workflow, never runs it as if clickable" do
       path = ~w(pages index elements bNoteA elements bLockA states 0)
 
