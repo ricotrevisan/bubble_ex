@@ -1142,8 +1142,9 @@ Nothing is dropped silently:
   that is not loaded (<kind>)` marker (counted in `bindings_marked`);
   with the developer markers on, its element is outlined with a tooltip
   ("Text not migrated: reads data that is not loaded"; a binding that
-  does not compile says "expression does not compile", WTF-520). A text
-  or label keeps the literal parts of its expression;
+  does not compile says "expression does not compile", WTF-520), and a
+  Text shows the literal parts of its expression; production renders
+  exactly what it did;
 * a workflow that reads it is `:unavailable_input` residue and refuses to
   start, as before;
 * a reusable instance whose own source is not loaded, while its reusable
@@ -1188,7 +1189,8 @@ image sources 47 (35 not compiled, 6 not loaded, 6 not one image or
 file value), input values 7, button labels 8, placeholders 1, alt
 texts 1. The 35 image sources that do not compile, the 6 that are not
 one image or file value and the alt text had no `TODO` comment before.
-72 of the texts keep their literal parts ("Total: ").
+72 of the texts show their literal parts ("Total: ") with the markers
+on; production renders them empty, as before.
 
 ### Private fixture app (test version), 2026-10-10, list rows of a reusable element only in cells; buttons (WTF-520)
 

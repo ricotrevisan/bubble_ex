@@ -149,9 +149,8 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
       # `tags[]` is its own key, apart from `tags`.
       {:ok, view, _html} = live(conn, "/?tags[]=a&tags[]=b&tags=c")
       assert text(view, "bTags") == "Tags: a,b"
-      # "Is a list" was not replayed: not read (the text stays a marker
-      # and keeps its literal part, WTF-520).
-      assert text(view, "bMany") == "Many:"
+      # "Is a list" was not replayed: not read (the text stays a marker).
+      assert text(view, "bMany") == ""
 
       {:ok, view, _html} = live(conn, "/?q=")
       assert text(view, "bQ") == "Q:"
@@ -262,8 +261,8 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
       refute hidden?(view, "bNavX", "bNav")
 
       # Pages route up to /<page>/<x>: a third segment is never read (a
-      # marker: its value shown empty, its literal part kept, WTF-520).
-      assert text(view, "bSeg3") == "Seg3:"
+      # marker, shown empty).
+      assert text(view, "bSeg3") == ""
 
       {:ok, view, _html} = live(conn, "/index/a%20b")
       assert text(view, "bSeg2") == "Seg2: a%20b"

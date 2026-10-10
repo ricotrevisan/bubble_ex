@@ -24,11 +24,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       (`BubbleEx.Target.Elixir.Frontend`) is a helper in the LiveView whose
       arguments are assigns; anything else is a `TODO(bubble:<id>)` marker
       (a HEEx comment, rendering nothing, as the exporter renders an
-      unresolved slot empty; a text or label keeps the literal parts of
-      its expression). With the developer markers on, the element is
-      outlined with a tooltip naming what was left out and why ("Text not
-      migrated: reads data that is not loaded", "...: expression does not
-      compile", WTF-520); production renders neither. A Text whose
+      unresolved slot empty). With the developer markers on, the element
+      is outlined with a tooltip naming what was left out and why ("Text
+      not migrated: reads data that is not loaded", "...: expression does
+      not compile", WTF-520), and a Text shows the literal parts of its
+      expression; production renders none of it. A Text whose
       dynamic content has BBCode in its own literal text
       (`"[b]" <> title <> "[/b]"`, WTF-450) renders bold, italic,
       underline and strikethrough through
@@ -2507,15 +2507,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # `TODO(bubble:<id>)` marker, and with the developer markers on, the
   # element is outlined with a tooltip naming why (WTF-520): never a silent
   # gap. Production renders what it did: the value empty, its layout box
-  # kept. A text or label mixing literal parts with the residue keeps the
-  # literal parts (`partial_text/2`).
+  # kept. A Text mixing literal parts with the residue shows the literal
+  # parts with the markers on only (`partial_text/2`, `Bubble.dev_marker/1`):
+  # in production "Total: " with an empty total would read as real data,
+  # so it stays empty, as before.
   defp residue_slot(node, name, binding, reason, acc) do
     acc =
       acc
       |> Map.update!(:counts, &Map.update!(&1, "bindings_marked", fn n -> n + 1 end))
       |> add_binding_note(node, "#{slot_title(name)} not migrated: #{residue_why(reason)}")
 
-    {{:static, partial_text(name, binding)}, acc}
+    case partial_text(node, name, binding) do
+      "" -> {{:static, ""}, acc}
+      text -> {{:expr, "Bubble.dev_marker(" <> literal(text) <> ")"}, acc}
+    end
   end
 
   defp residue_why(:unloaded), do: "reads data that is not loaded"
@@ -2564,12 +2569,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp slot_title(name),
     do: name |> to_string() |> String.replace("_", " ") |> String.capitalize()
 
-  # The literal parts of a shown text or label (a `TextExpression`'s
-  # string entries, in order) whose dynamic parts are residue: "Total: "
-  # stays when the total cannot be read. Only whole texts: an attribute
-  # (a source, a link, an input's value or placeholder) is never assembled
-  # from a part of its expression.
-  defp partial_text(name, %{payload: payload}) when name in ["text", "label"] do
+  # The literal parts of a Text's content (a `TextExpression`'s string
+  # entries, in order) whose dynamic parts are residue, shown in dev only:
+  # "Total: " when the total cannot be read. Only a Text's own content: a
+  # label (which may name a button) or an attribute (a source, a link, an
+  # input's value or placeholder) is never assembled from a part of its
+  # expression.
+  defp partial_text(%Node{kind: :text}, "text", %{payload: payload}) do
     case text_entries(payload) do
       [_ | _] = entries ->
         text =
@@ -2585,7 +2591,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
-  defp partial_text(_name, _binding), do: ""
+  defp partial_text(_node, _name, _binding), do: ""
 
   defp text_entries(%{"type" => "TextExpression", "entries" => entries}),
     do: sorted_entries(entries)

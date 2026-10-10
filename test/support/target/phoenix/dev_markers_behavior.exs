@@ -5,9 +5,11 @@ defmodule PhxCheckWeb.DevMarkersBehaviorTest do
   # by scripts/phoenix_compile_check.sh in the generated project (copied to
   # test/dev_markers_behavior_test.exs, with a database), with privacy:
   # :omit and :enforced. A value that reads data the page does not load, or
-  # whose expression does not compile, renders empty (a text mixing literal
-  # parts keeps them), as in production; with the developer markers on the
-  # element is marked and its tooltip says why.
+  # whose expression does not compile, renders empty in production, exactly
+  # as before (a text mixing literal parts too: "Title: " with an empty
+  # title would read as real data); with the developer markers on the
+  # element is marked, its tooltip says why and a text shows its literal
+  # parts.
   use PhxCheckWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
@@ -59,13 +61,11 @@ defmodule PhxCheckWeb.DevMarkersBehaviorTest do
     |> String.trim()
   end
 
-  # What production shows: empty values, literal parts kept, no tooltip.
+  # What both modes show: empty values (no source, link or input value).
   defp assert_values(view) do
     assert text(view, "bBoxTitle") == ""
-    assert text(view, "bBoxPartial") == "Title:"
     assert text(view, "bBroken") == ""
-    assert text(view, "bBrokenPartial") == "Hello !"
-    assert text(view, "bButton") == "Open"
+    assert text(view, "bButton") == ""
     assert text(view, "bLink") == "Docs"
     assert text(view, "bPlain") == "Plain"
 
@@ -82,6 +82,15 @@ defmodule PhxCheckWeb.DevMarkersBehaviorTest do
     {:ok, view, _html} = live(conn, "/")
     assert_values(view)
 
+    # A partial text renders as it did before markers: the element with
+    # its ID and class and nothing else, empty. Byte for byte what the
+    # same element without a marker renders.
+    for id <- ~w(bBoxPartial bBrokenPartial bBoxTitle bBroken) do
+      assert html(view, id) =~ ~r/\A<p data-bubble-id="#{id}" class="[^"]*"><\/p>\z/, id
+    end
+
+    assert html(view, "bPlain") =~ ~r/\A<p data-bubble-id="bPlain" class="[^"]*">Plain<\/p>\z/
+
     for id <- ["bPlain" | Map.keys(@marked)] do
       refute tag(view, id) =~ "title=", id
       refute tag(view, id) =~ "data-bubble-dev-marker", id
@@ -95,6 +104,10 @@ defmodule PhxCheckWeb.DevMarkersBehaviorTest do
     markers(true)
     {:ok, view, _html} = live(conn, "/")
     assert_values(view)
+
+    # A text mixing literal parts shows them, marked: a developer aid.
+    assert text(view, "bBoxPartial") == "Title:"
+    assert text(view, "bBrokenPartial") == "Hello !"
 
     for {id, why} <- @marked do
       open = tag(view, id)

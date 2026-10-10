@@ -1081,17 +1081,23 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert text =~ ~r/--%><\/p>\z/
     end
 
-    test "a partial text keeps its literal parts, in order", %{template: template} do
+    test "a partial text shows its literal parts with the markers on only", %{
+      template: template
+    } do
+      # Production renders `Bubble.dev_marker/1`'s nil: the text stays
+      # empty, as before; in dev its literal parts show, in order.
       unloaded = marked(template, "bBoxPartial")
       assert unloaded =~ title("Text not migrated: reads data that is not loaded")
-      assert unloaded =~ ~r/--%>Title: <\/p>\z/
+      assert unloaded =~ ~r/--%>\{Bubble.dev_marker\("Title: "\)\}<\/p>\z/
 
       broken = marked(template, "bBrokenPartial")
       assert broken =~ title("Text not migrated: expression does not compile")
-      assert broken =~ ~r/--%>Hello !<\/p>\z/
+      assert broken =~ ~r/--%>\{Bubble.dev_marker\("Hello !"\)\}<\/p>\z/
     end
 
-    test "a button's label keeps its literal parts", %{template: template} do
+    test "a button's label is never assembled from a part: empty, marked", %{
+      template: template
+    } do
       button = marked(template, "bButton")
 
       assert_marked(
@@ -1100,7 +1106,7 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
         title("Label not migrated: expression does not compile")
       )
 
-      assert button =~ ~r/--%>Open <\/button>\z/
+      assert button =~ ~r/--%><\/button>\z/
     end
 
     test "an input's placeholder and value: one tooltip for both, never a partial value", %{

@@ -90,12 +90,8 @@ defmodule PhxCheckWeb.TablesBehaviorTest do
     cells = tags(html, "bCellNote") ++ tags(html, "bHeadNote")
     assert length(cells) == length(found(["Answer", "Bake", "Cut"])) + 1
     assert Enum.all?(cells, fn [tag] -> tag =~ ~r/\shidden[\s>="\/]/ end)
-    # "Current row's thing" in the header is not lowered: its value shows
-    # nothing, its literal part stays (WTF-520).
-    assert [[_, header]] =
-             Regex.scan(~r/<p data-bubble-id="bHeadRowRef"[^>]*>(.*?)<\/p>/s, html)
-
-    assert header == "X: "
+    # "Current row's thing" in the header is not lowered: it shows nothing.
+    refute html =~ "X: "
   end
 
   test "a static table shows its rows; a list the page does not load shows none",

@@ -176,11 +176,10 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
     assert shown(html, "Customer") == ~w(Acme Bolt Core Dune Echo)
 
     # The tag is rendered per cell, with its own customer; the text reading
-    # its search that cannot be batched shows no value in any cell, only
-    # its literal part (WTF-520), and the search queries nothing: the
-    # orders' queries below stay the same.
+    # its search that cannot be batched shows nothing in any cell (and the
+    # search queries nothing: the orders' queries below stay the same).
     assert shown(html, "Tag") == ~w(Acme Bolt Core Dune Echo)
-    assert Enum.all?(shown(html, "Match"), &(&1 == ""))
+    refute html =~ "Match:"
 
     # The second tag is also rendered once, outside the list (Acme): there
     # its search loads (no order's title contains "Acme": 0). Its instances
