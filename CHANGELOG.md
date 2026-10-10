@@ -6,6 +6,34 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **A list row built from a reusable element no longer goes blank for
+  one search it cannot batch** (WTF-520). A reusable element rendered
+  in a repeating group's cells with a search reading its own thing that
+  no batch can key (for example a list filtered by an option list of
+  that thing) was not rendered per cell at all: the instance's own data
+  and properties were not passed, so the row's title, date and tags
+  were empty. Where the reusable element is rendered only in cells,
+  that search alone is now `:page_data_in_cell` residue (with what
+  reads it) and the instances are rendered per cell. Where an instance
+  is also rendered once, the old rule stays, so the search still loads
+  there.
+- **Buttons with an icon are native whatever their conditionals and
+  workflows** (WTF-520). An icon or label-and-icon button from a drawn
+  icon set was a placeholder as soon as it had a conditional or a
+  workflow (a rule kept from the static exporter), so a row's icon
+  buttons (a star, a chevron, a labelled action) were empty boxes. They are buttons
+  now, their workflows wired and their conditionals lowered or marked
+  like any element's. An icon-only button shows its icon and never the
+  text Bubble keeps from before it was switched to "Icon" (the text
+  names it for assistive technology instead).
+- **No silent gaps in dev for elements not migrated** (WTF-520). A
+  native element the generator does not lower (an icon from a set it
+  does not draw, a video…) gets the developer markers a plugin's element
+  has: `data-bubble-placeholder="unsupported"`, outlined, hatched and
+  titled "<type> (not migrated)" in dev; an icon-only button whose icon
+  cannot be drawn is marked "Icon not available". Production still
+  shows the empty box.
+
 - **A page search for "x = no" finds the records whose x is empty**
   (WTF-529). Bubble reads an empty yes/no as no (replays of 2026-09-29
   and 2026-10-01 on privacy rule conditions, `docs/replay-kit.md`), but
