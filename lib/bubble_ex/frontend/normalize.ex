@@ -633,7 +633,7 @@ defmodule BubbleEx.Frontend.Normalize do
           name: Payload.name(raw) || map_key,
           map_key: map_key,
           source: source_ref(raw, path, map_key),
-          layout: layout_from(raw),
+          layout: placeholder_layout(type, raw),
           box: placeholder_box(raw),
           style: style_from(raw),
           content: slots,
@@ -661,6 +661,15 @@ defmodule BubbleEx.Frontend.Normalize do
     do: BubbleEx.Frontend.StaticRepeating.layout(layout_from(raw), raw)
 
   defp element_layout(raw, _kind), do: layout_from(raw)
+
+  # A dynamic Repeating Group placeholder normalizes its per-cell minima and
+  # columns like the static list, so its cell template hangs off the same
+  # normalized layout keys. Other placeholders carry only the container layout
+  # their runtime template children share.
+  defp placeholder_layout("RepeatingGroup", raw),
+    do: element_layout(raw, :repeating_group)
+
+  defp placeholder_layout(_type, raw), do: layout_from(raw)
 
   defp placeholder_source(_raw, _reason), do: %{}
 

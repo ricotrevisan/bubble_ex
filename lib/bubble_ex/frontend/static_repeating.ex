@@ -38,11 +38,57 @@ defmodule BubbleEx.Frontend.StaticRepeating do
 
   @spec layout(map(), map()) :: map()
   def layout(layout, raw) do
-    Map.merge(layout, %{
+    layout
+    |> Map.merge(%{
       cell_min_width: Payload.prop(raw, "cell_min_width_css") || "0px",
       cell_min_height: Payload.prop(raw, "cell_min_height_css") || "0px"
     })
+    |> put_columns(raw)
   end
+
+  defp put_columns(layout, raw) do
+    case Payload.prop(raw, "columns") do
+      nil -> layout
+      columns -> Map.put(layout, :columns, columns)
+    end
+  end
+
+  # A repeating group cell carries the container layout its content shares
+  # (mode, alignment, gaps, wrap) and its own minimum height on the box, never
+  # the outer list's fill flags or cell grid values (`cell_min_*`, `columns`).
+  @cell_layout_drops [:fill_width?, :fill_height?, :cell_min_width, :cell_min_height, :columns]
+
+  @spec cell_layout(map()) :: map()
+  def cell_layout(layout), do: Map.drop(layout, @cell_layout_drops)
+
+  # The one per-item template of a dynamic Repeating Group placeholder as a
+  # synthetic group node, so a consumer lowers each rendered cell with the
+  # ordinary group lowering (wrapper rule, children in the cell's parent
+  # mode). The template identity is the group's, under `/cells/template`.
+  @spec template_cell(Node.t()) :: {:ok, Node.t()} | :unsupported
+  def template_cell(
+        %Node{
+          kind: :placeholder,
+          runtime: %{"boundary" => "container", "type" => "RepeatingGroup", "repeats" => true},
+          children: [_ | _]
+        } = group
+      ) do
+    layout = group.layout || %{}
+
+    {:ok,
+     %Node{
+       exporter_id: group.exporter_id <> "/cells/template",
+       kind: :group,
+       variant: :repeating_cell,
+       map_key: "cell-template",
+       source: %Source{path: group.source.path},
+       layout: cell_layout(layout),
+       box: %{min_width: "0px", min_height: layout[:cell_min_height]},
+       children: group.children
+     }}
+  end
+
+  def template_cell(%Node{}), do: :unsupported
 
   @spec expand([Node.t()]) :: [Node.t()]
   def expand(nodes), do: Enum.map(nodes, &expand_node/1)
@@ -66,8 +112,7 @@ defmodule BubbleEx.Frontend.StaticRepeating do
       map_key: "cell-#{index}",
       source: %Source{path: list.source.path},
       occurrence: [index],
-      layout:
-        Map.drop(list.layout, [:fill_width?, :fill_height?, :cell_min_width, :cell_min_height]),
+      layout: cell_layout(list.layout),
       box: %{min_width: "0px", min_height: list.layout[:cell_min_height]},
       children: Enum.map(list.children, &project(&1, value, index))
     }
