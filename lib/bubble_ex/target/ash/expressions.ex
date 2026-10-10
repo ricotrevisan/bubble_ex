@@ -646,14 +646,14 @@ defmodule BubbleEx.Target.Ash.Expressions do
     do: unsupported(st, {"contains keyword(s) outside a search", nil})
 
   # A yes/no value: `x == true`; negated, empty is not yes (in a search,
-  # `x == false or is_nil(x)` on an attribute, `is_no/1`).
+  # `x == false or is_nil(x)` on an attribute, `no_or_empty/1`).
   defp atom_(%IR{op: op} = ir, st) when op in @boolean_values do
     {v, st} = value(ir, st)
     yes = {:op, "==", v, {:value, true}}
 
     no =
       if st.empty_yes_no_is_no,
-        do: ok(v, &is_no/1),
+        do: ok(v, &no_or_empty/1),
         else: {:call, "is_distinct_from", [v, {:value, true}]}
 
     {all_ok({yes, no, [{v, ir.type}]}, [v]), st}
@@ -941,7 +941,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   # yes/no as no (replay 2026-09-29 and 2026-10-01: `x is no` holds on a
   # record whose x is empty), so between yes/no values with a stored side
   # an empty one is no, in `is` as in `is not`. Against a literal: `x is
-  # no` and `x is not yes` are `is_no(x)`, `x is yes` and `x is not no`
+  # no` and `x is not yes` are `no_or_empty(x)`, `x is yes` and `x is not no`
   # are `x == true`; between two values, both are read as yes or no. The
   # privacy rules keep the stricter `is` (`BubbleEx.Verify.Difference`,
   # `empty_yes_no_is_no`): `privacy/2` and `filter/3` do not set it.
@@ -956,16 +956,16 @@ defmodule BubbleEx.Target.Ash.Expressions do
   # empty, so the comparison holds for no record).
   defp read_as_no(v), do: if(actor?(v), do: v, else: yes(v))
 
-  defp yes_no_literal(v, true), do: {{:op, "==", v, {:value, true}}, is_no(v)}
-  defp yes_no_literal(v, false), do: {is_no(v), {:op, "==", v, {:value, true}}}
+  defp yes_no_literal(v, true), do: {{:op, "==", v, {:value, true}}, no_or_empty(v)}
+  defp yes_no_literal(v, false), do: {no_or_empty(v), {:op, "==", v, {:value, true}}}
 
   # `v` is no or empty. On an attribute, `v == false or is_nil(v)`, which
   # an index on it can serve (`IS DISTINCT FROM` cannot); an actor-side
   # `v` is guarded non-empty, so `v == false`.
-  defp is_no({:ref, _rels, _attr} = v),
+  defp no_or_empty({:ref, _rels, _attr} = v),
     do: {:or, [{:op, "==", v, {:value, false}}, {:call, "is_nil", [v]}]}
 
-  defp is_no(v) do
+  defp no_or_empty(v) do
     if actor?(v),
       do: {:op, "==", v, {:value, false}},
       else: {:call, "is_distinct_from", [v, {:value, true}]}
