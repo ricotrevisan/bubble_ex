@@ -186,7 +186,7 @@ defmodule BubbleEx.Expression.Tree do
     content =
       if kind == :page,
         do: text(props["page_item_type"]),
-        else: text(props["group_type"])
+        else: text(props["group_type"] || props["%gt"])
 
     node = %Node{
       id: id,
@@ -222,7 +222,7 @@ defmodule BubbleEx.Expression.Tree do
       id: id,
       kind: :element,
       type: type,
-      content: text(props["group_type"]),
+      content: text(props["group_type"] || props["%gt"]),
       value: value_type(type, props),
       parent: parent,
       owner: owner,

@@ -358,7 +358,7 @@ defmodule BubbleEx.Workflows.Frontend do
     surface = symbol.parent
     host = bubble(surface)
     env = Sites.workflow_env(raw, path, host, env)
-    props = map(Source.value(raw, ~w(properties %p)))
+    props = Source.member_props(map(Source.value(raw, ~w(properties %p))))
     event_type = Source.value(raw, ~w(type %x))
     kind = Map.get(@kinds, event_type, :unsupported)
     id = symbol.id
@@ -583,7 +583,7 @@ defmodule BubbleEx.Workflows.Frontend do
   defp step(action, path, n, env, ctx) when is_map(action) do
     env = Sites.action_env(action, env)
     type = Source.value(action, ~w(type %x))
-    props = map(Source.value(action, ~w(properties %p)))
+    props = Source.member_props(map(Source.value(action, ~w(properties %p))))
     bubble_id = text(Source.value(action, ~w(id %id))) || "#{ctx.workflow}/#{List.last(path)}"
     id = Symbol.id(:action, bubble_id)
     op = if is_binary(type), do: Map.get(@ops, type) || Lowering.data_op(type)

@@ -2348,10 +2348,39 @@ defmodule BubbleEx.Frontend.Normalize do
     {Map.merge(src_slots, alt_slots), Map.merge(src_bindings, alt_bindings)}
   end
 
+  # One condition entry, readable-keyed whatever dialect arrived: a served
+  # payload spells `%x`/`%c`/`%p`, an export spells `type`/`condition`/
+  # `properties`. Values stay verbatim; property diffs keep readable keys.
+  defp state_entry(state) when is_map(state) do
+    state =
+      Enum.reduce([{"%x", "type"}, {"%c", "condition"}, {"%p", "properties"}], state, fn
+        {compact, readable}, acc ->
+          case Map.fetch(acc, compact) do
+            {:ok, value} -> acc |> Map.delete(compact) |> Map.put_new(readable, value)
+            :error -> acc
+          end
+      end)
+
+    case Map.fetch(state, "properties") do
+      {:ok, diff} when is_map(diff) ->
+        Map.put(state, "properties", Payload.expand_properties(diff))
+
+      _ ->
+        state
+    end
+  end
+
+  defp state_entry(state), do: state
+
   # Editor JSON's `states`, else the compact form's `%s` (the ones a
   # breakpoint rule lowers leave it in apply_breakpoints/4, WTF-477).
   defp condition_slot(raw, exporter_id) do
     states = raw["states"] || raw["%st"] || Payload.prop(raw, "states") || raw["%s"]
+
+    states =
+      if is_map(states) and map_size(states) > 0,
+        do: Map.new(states, fn {k, state} -> {k, state_entry(state)} end),
+        else: states
 
     if is_map(states) and map_size(states) > 0 do
       binding = %{
