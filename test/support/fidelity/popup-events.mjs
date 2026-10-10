@@ -1,4 +1,4 @@
-// The page hook's popup reports (WTF-520), in the pinned browser: the
+// The page hook's popup and page-width reports (WTF-520), in the pinned browser: the
 // generated `.BubbleRuntime` hook (HOOK.js, extracted from the rendered
 // `<Web>.Bubble` by test/bubble_ex/target/phoenix/popup_hook_test.exs) on a
 // synthetic page with the attributes the pages render. LiveView itself is
@@ -61,6 +61,10 @@ try {
   const take = () => page.evaluate(() => window.__pushed.splice(0));
   const report = (scope, element, event) => ["bubble:popup", { scope, element, event }];
 
+  // The viewport's width (WTF-520): reported once mounted.
+  const width = (w) => ["bubble:page_width", { width: w }];
+  assert.deepEqual(await take(), [width(page.viewportSize().width)], "the width once mounted");
+
   await step("P", "bubble:show");
   assert.deepEqual(await take(), [report("", "P", "opened")], "a step opens it");
   await step("P", "bubble:show");
@@ -87,8 +91,17 @@ try {
   );
   assert.deepEqual(await take(), [report("", "P", "opened")], "a server-side step's show");
 
+  // A resize reports the new width once, after its debounce; the same
+  // width again reports nothing.
+  await page.setViewportSize({ width: 700, height: 600 });
+  await page.waitForTimeout(400);
+  assert.deepEqual(await take(), [width(700)], "a resize reports the new width");
+  await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+  await page.waitForTimeout(400);
+  assert.deepEqual(await take(), [], "an unchanged width reports nothing");
+
   assert.deepEqual(errors, []);
-  console.log("PASS popup reports: steps, Escape, toggle, open twice, instance scope, server steps");
+  console.log("PASS popup reports: steps, Escape, toggle, open twice, instance scope, server steps, page width");
 } finally {
   await browser.close();
 }

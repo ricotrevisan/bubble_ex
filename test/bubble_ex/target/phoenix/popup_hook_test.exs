@@ -1,5 +1,6 @@
 defmodule BubbleEx.Target.Phoenix.PopupHookTest do
-  # WTF-520: the generated page hook reports popups opened and closed, in
+  # WTF-520: the generated page hook reports popups opened and closed, and
+  # the viewport's width once mounted and on a resize, in
   # the pinned browser (test/support/fidelity/popup-events.mjs).
   use ExUnit.Case, async: true
 
