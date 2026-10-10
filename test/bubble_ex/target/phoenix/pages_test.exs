@@ -850,6 +850,8 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       refute star =~ ~r/>\s*LABEL KEPT FROM BEFORE/
       assert star =~ ~s|data-bubble-placeholder="icon"|
       assert star =~ ~s|title={Bubble.dev_marker("Icon not available|
+      css = files["assets/css/bubble.css"]
+      assert css =~ ~s|[data-bubble-placeholder="icon"][data-bubble-dev-marker] {|
 
       # A dynamic text names it too: its helper is read, never left unused.
       [close] = Regex.run(~r/<button\s[^>]*data-bubble-id="bClose".*?<\/button>/s, template)

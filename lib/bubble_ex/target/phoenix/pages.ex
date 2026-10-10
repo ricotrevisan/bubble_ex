@@ -4596,6 +4596,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       outline-offset: -1px;
       background-image: repeating-linear-gradient(-45deg, rgba(107, 114, 128, 0.18) 0 3px, transparent 3px 6px);
     }
+
+    /* An icon-only button whose icon cannot be drawn keeps its icon's box
+       with the markers on, so the marker is seen where the icon would be. */
+    [data-bubble-placeholder="icon"][data-bubble-dev-marker] {
+      min-width: var(--bubble-icon-size, 1em);
+      min-height: var(--bubble-icon-size, 1em);
+    }
     """
     |> String.replace(~r/\n\n\n+/, "\n\n")
   end
