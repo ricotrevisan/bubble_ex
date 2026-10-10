@@ -58,6 +58,42 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     assert css =~ "padding-top: 12px;"
   end
 
+  test "Bubble typeface metadata is not part of local or shared CSS font families" do
+    # mixxy migrated export: bTJYS1 has Roboto:::300 + font_weight 300;
+    # Alert_danger_alert_ has Roboto:::; custom Inter UI occurs in reusables.
+    for {token, family} <- [
+          {"Roboto:::300", "Roboto"},
+          {"Roboto:::300,700", "Roboto"},
+          {"Roboto:::", "Roboto"},
+          {"Inter UI:::custom", "Inter UI"}
+        ] do
+      paint = %{"font_face" => token, "font_weight" => "300"}
+
+      style = %Style{
+        exporter_id: "font",
+        map_key: "font",
+        slug: "font",
+        class_name: "s-font",
+        properties: paint
+      }
+
+      local = Css.page(node("text", kind: :text, style: %{resolved: paint}))
+      shared = Css.shared(%Normalized{styles: [style]})
+
+      for css <- [local, shared] do
+        assert css =~ "font-family: #{family};"
+        assert css =~ "font-weight: 300;"
+        refute css =~ ":::"
+      end
+
+      assert {"font-family", family} in Css.declarations(%{"font_family" => token})
+    end
+
+    assert {"font-family", "var(--font_default)"} in Css.declarations(%{
+             "font_face" => "var(--font_default)"
+           })
+  end
+
   test "button line height defaults to one without overriding authored shared line height" do
     style = %Style{
       exporter_id: "button",

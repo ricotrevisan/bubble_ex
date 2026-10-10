@@ -1611,6 +1611,12 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp css_paint_value(key, n) when key in ["font_size", "letter_spacing"] and is_number(n),
     do: "#{n}px"
 
+  # Bubble typefaces append loading metadata (weights or "custom") after
+  # the family. It is not part of CSS font-family; font_weight is separate.
+  defp css_paint_value(key, value)
+       when key in ["font_face", "font_family", "font-family"] and is_binary(value),
+       do: value |> String.split(":::", parts: 2) |> hd()
+
   defp css_paint_value(_key, value), do: value
 
   defp stringify_keys(map) when is_map(map) do
