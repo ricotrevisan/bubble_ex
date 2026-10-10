@@ -452,7 +452,7 @@ reusable element's component gets both from its caller (`bubble_url`,
 * **Typed** (`<Web>.Bubble.url_value/4`): a number parses `3`, `-2` or
   `3.5` (`abc` is empty); a yes/no is yes for `yes`, `true` or `1` and no
   for `no` or `false`, in any case, and empty for anything else (`0`,
-  `y`, empty); a date parses `2026-10-07`, `10/07/2026` (month first),
+  `y`, empty), which `is no` reads as no (WTF-529); a date parses `2026-10-07`, `10/07/2026` (month first),
   `Oct 7, 2026` (with an optional time, as Bubble writes dates into
   URLs), milliseconds since 1970 or ISO 8601 with a time, and one with no
   time is midnight in the app's time zone (`:bubble_time_zone`; Bubble
