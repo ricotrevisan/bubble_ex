@@ -906,11 +906,11 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert hover =~ "TODO(bubble:bHover) isn't clickable: 1 conditional not lowered"
       assert hover =~ "Clickable conditionals not lowered: disabled"
 
-      # Never named after the editor: no text, no name, marked.
+      # Never named after the editor: with no text, after its icon, marked.
       bare = button.("bBare")
-      refute bare =~ "aria-label"
+      assert bare =~ ~s(aria-label="more vert")
       refute bare =~ "Editor name only"
-      assert bare =~ "Icon button with no text: no accessible name"
+      assert bare =~ "Icon button with no text: named after its icon"
 
       # Icon only: the text Bubble keeps is not shown, it names the button.
       # No icon library here, so its icon cannot be drawn: marked in dev.

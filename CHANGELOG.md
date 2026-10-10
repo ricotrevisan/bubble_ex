@@ -37,8 +37,8 @@ All notable changes to this project are documented here.
   - An icon-only button shows its icon, never the text Bubble keeps
     from before the switch to "Icon": that text names it
     (`aria-label`; a dynamic one with the icon's name when empty), never
-    the element's name in the editor. One with no text has no name and
-    is marked in dev.
+    the element's name in the editor. One with no text is named after
+    its icon ("star border"), marked in dev: never an empty name.
 - **No silent gaps in dev for elements not migrated** (WTF-520). A
   native element the generator does not lower (an icon from a set it
   does not draw, a video…) gets the developer markers a plugin's element

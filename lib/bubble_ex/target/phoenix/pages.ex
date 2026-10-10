@@ -2949,8 +2949,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         else: []
 
     unnamed =
-      if label == {:static, ""},
-        do: [{:dev_note, "Icon button with no text: no accessible name"}],
+      if label == {:static, ""} and node.attributes["icon_named"] == true,
+        do: [{:dev_note, "Icon button with no text: named after its icon"}],
         else: []
 
     missing ++ unnamed
@@ -2970,7 +2970,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # An icon-only button shows its icon, never its text (Bubble keeps the
   # text of a button switched to "Icon"): a static text names it
   # (`aria-label`, normalized), a dynamic one where it is rendered, with
-  # its icon's name when the text is empty: never an empty name.
+  # its icon's name when the text is empty; with no text, its icon's name
+  # (normalized, marked in dev): never an empty name.
   defp icon_name(attrs, %Node{variant: :icon} = node, {:expr, expr}) do
     name = "Bubble.name(#{expr}, #{literal(icon_words(node))})"
     List.keystore(attrs, "aria-label", 0, {"aria-label", {:raw, "{" <> name <> "}"}})

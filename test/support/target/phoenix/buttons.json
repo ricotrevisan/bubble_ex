@@ -1,6 +1,6 @@
 {
   "_id": "buttons-fixture",
-  "_comment": "WTF-520: buttons, all data invented. Two notes' edit buttons are not clickable unless the current user owns the note (a conditional); a star swaps its icon when logged in; a send button's workflow is refused; a button with no text has no name; a button is never clickable. test/support/target/phoenix/buttons_behavior.exs",
+  "_comment": "WTF-520: buttons, all data invented. Two notes' edit buttons are not clickable unless the current user owns the note (a conditional); a star swaps its icon when logged in; a send button's workflow is refused; a button with no text is named after its icon; a button is never clickable. test/support/target/phoenix/buttons_behavior.exs",
   "user_types": {
     "note": {
       "display": "Note",

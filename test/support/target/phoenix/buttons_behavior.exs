@@ -7,7 +7,7 @@ defmodule PhxCheckWeb.ButtonsBehaviorTest do
   # "isn't clickable" unless the current user owns the note: it renders
   # disabled and the server refuses its click. A star swaps its icon when
   # logged in (not lowered: marked), a send button's workflow is refused,
-  # a button with no text has no name (marked) and one is never clickable.
+  # a button with no text is named after its icon (marked) and one is never clickable.
   use PhxCheckWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
@@ -124,7 +124,8 @@ defmodule PhxCheckWeb.ButtonsBehaviorTest do
 
     assert tag(view, "bLockA") =~ ~s(aria-label="Edit Alpha")
     assert tag(view, "bStar") =~ ~s(aria-label="Favorite")
-    refute tag(view, "bNoName") =~ "aria-label"
+    # No text: named after its icon, never left without a name.
+    assert tag(view, "bNoName") =~ ~s(aria-label="more vert")
 
     for id <- ~w(bLockA bStar bBroken bNoName) do
       refute tag(view, id) =~ "title=", id
@@ -139,6 +140,6 @@ defmodule PhxCheckWeb.ButtonsBehaviorTest do
     # The star's icon swap is not lowered: it keeps its icon on page load.
     assert tag(view, "bStar") =~ "data-bubble-dev-marker"
     assert tag(view, "bStar") =~ "Conditional icon not lowered"
-    assert tag(view, "bNoName") =~ "no accessible name"
+    assert tag(view, "bNoName") =~ "named after its icon"
   end
 end

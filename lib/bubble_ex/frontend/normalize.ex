@@ -1006,6 +1006,24 @@ defmodule BubbleEx.Frontend.Normalize do
   defp button_disabled?(raw),
     do: Payload.prop(raw, "disabled") == true or Payload.prop(raw, "button_disabled") == true
 
+  # An icon's own name, as words: "material outlined star_border" is
+  # "star border", "fa fa-star" is "star".
+  defp icon_words(icon) when is_binary(icon) do
+    icon
+    |> String.split(" ")
+    |> List.last()
+    |> String.replace_prefix("fa-", "")
+    |> String.replace(~r/[_-]+/, " ")
+  end
+
+  defp icon_words(_icon), do: "Button"
+
+  defp icon_named(attrs, raw) do
+    attrs
+    |> Map.put("aria-label", icon_words(Payload.prop(raw, "icon")))
+    |> Map.put("icon_named", true)
+  end
+
   defp supported_sprite_icon?(icon) when is_binary(icon) do
     fontawesome_4_icon?(icon) or Regex.match?(~r/^material outlined [a-z0-9_]+$/, icon) or
       Regex.match?(~r/^phosphor (regular|bold|fill) [a-z0-9]+(?:-[a-z0-9]+)*$/, icon)
@@ -2744,17 +2762,23 @@ defmodule BubbleEx.Frontend.Normalize do
 
   # An icon-only button is named by its own text (Bubble keeps it when the
   # button is switched to "Icon"), never by its name in the editor; a
-  # dynamic text names it where it is rendered, and one with no text has
-  # no name (the page marks it in dev).
+  # dynamic text names it where it is rendered. One with no text is named
+  # after its icon (`icon_named`: the page marks it in dev), never left
+  # without a name.
   defp element_attributes(raw, :button, :icon) do
     attrs = Map.merge(sprite_attributes(raw), element_attributes(raw, :button, :label))
 
-    case Payload.prop(raw, "text") do
-      label when is_binary(label) ->
-        if String.trim(label) != "", do: Map.put(attrs, "aria-label", label), else: attrs
+    case literal_or_binding(Payload.prop(raw, "text"), "", "text", raw) do
+      {:resolved, label} when is_binary(label) ->
+        if String.trim(label) != "",
+          do: Map.put(attrs, "aria-label", label),
+          else: icon_named(attrs, raw)
+
+      {:binding, _} ->
+        attrs
 
       _ ->
-        attrs
+        icon_named(attrs, raw)
     end
   end
 
