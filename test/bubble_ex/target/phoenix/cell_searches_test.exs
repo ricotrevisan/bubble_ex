@@ -222,6 +222,72 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
                spec.cells
     end
 
+    test "the fixture's second tag, also rendered once: its search loads; not per cell" do
+      %{spec: spec} = spec(app())
+
+      assert %{residue: []} = data(spec, "bOnceSeen")
+
+      assert %{"bTagOnce1" => %{residue: [%{reason: :page_data_in_cell}]}} = spec.cells
+    end
+
+    test "nesting: a card in a wrapper rendered once is rendered once too" do
+      wrapper = %{
+        "id" => "bWrap",
+        "name" => "Wrapper",
+        "type" => "CustomDefinition",
+        "properties" => %{"group_type" => "custom.customer", "width" => 300, "height" => 80},
+        "elements" => %{
+          "bWrapCard" => %{
+            "id" => "bWrapCard",
+            "type" => "CustomElement",
+            "properties" => %{
+              "custom_id" => "bCard",
+              "group_type" => "custom.customer",
+              "order" => 1,
+              "width" => 300,
+              "height" => 40,
+              "data_source" => %{"type" => "ElementParent"}
+            }
+          }
+        }
+      }
+
+      instance = fn id, order ->
+        %{
+          "id" => id,
+          "type" => "CustomElement",
+          "properties" => %{
+            "custom_id" => "bWrap",
+            "group_type" => "custom.customer",
+            "order" => order,
+            "width" => 300,
+            "height" => 80
+          }
+        }
+      end
+
+      # The card only in the cells (bCard1) and nested in a wrapper that is
+      # only in the cells too: still only in cells, so its unbatchable
+      # search alone is residue and both are rendered per cell.
+      base =
+        app()
+        |> card_search_unbatchable()
+        |> put_in(~w(element_definitions bWrap), wrapper)
+        |> put_in(cell_path("bWrap1"), instance.("bWrap1", 20))
+
+      %{spec: spec} = spec(base)
+      assert %{residue: [%{reason: :page_data_in_cell}]} = data(spec, "bCardCount")
+      assert %{"bCard1" => %{residue: []}, "bWrap1" => %{residue: []}} = spec.cells
+
+      # The wrapper also rendered once, outside the list: the card is
+      # rendered once through it, so the search loads, and the card's
+      # instances in cells are not rendered per cell.
+      once = put_in(base, ~w(pages customers elements bWrapOnce), instance.("bWrapOnce", 2))
+      %{spec: spec} = spec(once)
+      assert %{residue: []} = data(spec, "bCardCount")
+      assert %{"bCard1" => %{residue: [%{reason: :page_data_in_cell}]}} = spec.cells
+    end
+
     test "Bubble's random sort in a cell stays residue" do
       app =
         put_in(app(), source_path("bFirst") ++ ["properties", "sort_field"], "_random_sorting")
@@ -358,7 +424,12 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
       assert module =~ "keys: [{:pin_1, :customer_id, :eq, nil}]"
       assert module =~ "customer_id in ^pin_1"
       assert module =~ "is_not_distinct_from(customer_id, ^pin_1)"
-      refute module =~ "page_data_in_cell"
+      # The batched searches are not residue; only the second tag's cell
+      # instance is (it is also rendered once, outside the list).
+      assert [["bTagOnce1"]] =
+               Regex.scan(~r/TODO\(bubble:element:(\w+)\) not loaded: page_data_in_cell/, module,
+                 capture: :all_but_first
+               )
 
       runtime = files["lib/shop_web/bubble_data.ex"]
       assert runtime =~ "def cell_read(ctx, spec, query, batch)"

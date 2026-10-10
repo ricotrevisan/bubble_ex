@@ -28,8 +28,8 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
   # The searches the cells read (count, first, last, open, two, listed,
   # the card's count, and the newest open order of a cell's own list: its
   # records, then those sorted): one query of orders each, whatever the
-  # number of cells.
-  @order_queries 12
+  # number of cells; and the second tag's, read once outside the list.
+  @order_queries 13
 
   # The customers' owners (Dune has none).
   @owners %{"Acme" => @ada, "Bolt" => @bo, "Core" => @ada, "Dune" => nil, "Echo" => @bo}
@@ -181,6 +181,12 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
     assert shown(html, "Tag") == ~w(Acme Bolt Core Dune Echo)
     refute html =~ "Match:"
 
+    # The second tag is also rendered once, outside the list (Acme): there
+    # its search loads (no order's title contains "Acme": 0). Its instances
+    # in the cells are not rendered per cell: none shows its customer.
+    assert html |> shown("Once") |> Enum.reject(&(&1 == "")) == ["Acme"]
+    assert html |> shown("Seen") |> Enum.reject(&(&1 == "")) == ["0"]
+
     if enforced?() do
       # Ada finds only her own orders: Anvil, Axe, Drum, Ear and Emu.
       assert shown(html, "Count") == ~w(2 0 0 1 2)
@@ -208,8 +214,8 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
       assert shown(html, "Chain") == ~w(3 1 3 0 1)
     end
 
-    # Five cells, twelve searches of orders each: one query per search, not
-    # one per cell (60).
+    # Five cells, twelve searches of orders each, and one outside the list:
+    # one query per search, not one per cell (60).
     orders = Map.get(by_table, "order", 0)
 
     assert orders > 0 and orders <= @order_queries,

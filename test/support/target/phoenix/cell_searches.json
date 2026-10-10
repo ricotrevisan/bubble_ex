@@ -1,5 +1,5 @@
 {
-  "_comment": "WTF-520: searches in a repeating group's cells, read for every cell together (one query per cell round, never one per cell; two keys: the customer and its owner). A reusable tag rendered only in the cells searches with a text comparison no batch can key: that search alone is not loaded, the tag is still rendered per cell. Customers and their orders, all data invented; test/support/target/phoenix/cell_searches_behavior.exs counts the queries.",
+  "_comment": "WTF-520: searches in a repeating group's cells, read for every cell together (one query per cell round, never one per cell; two keys: the customer and its owner). A reusable tag rendered only in the cells searches with a text comparison no batch can key: that search alone is not loaded, the tag is still rendered per cell. A second tag with the same search is also rendered once, outside the list: there the search loads, and its instances in the cells are not rendered per cell. Customers and their orders, all data invented; test/support/target/phoenix/cell_searches_behavior.exs counts the queries.",
   "_id": "cell-searches-fixture",
   "user_types": {
     "user": {
@@ -262,6 +262,98 @@
                   "type": "TextExpression",
                   "entries": {
                     "0": "Match: ",
+                    "1": {
+                      "type": "ElementParent"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "bTagOnce": {
+      "id": "bTagOnce",
+      "name": "Customer tag shown once too",
+      "type": "CustomDefinition",
+      "properties": {
+        "group_type": "custom.customer",
+        "width": 300,
+        "height": 80
+      },
+      "elements": {
+        "bOnceName": {
+          "id": "bOnceName",
+          "type": "Text",
+          "properties": {
+            "order": 1,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Once: ",
+                "1": {
+                  "type": "ElementParent",
+                  "next": {
+                    "type": "Message",
+                    "name": "name_text"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bOnceSeen": {
+          "id": "bOnceSeen",
+          "type": "Group",
+          "properties": {
+            "order": 2,
+            "width": 300,
+            "height": 40,
+            "group_type": "number",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.order",
+                "sort_field": "title_text",
+                "descending": false,
+                "ignore_empty_constraints": false,
+                "constraints": {
+                  "0": {
+                    "constraint_type": "text contains string",
+                    "key": "title_text",
+                    "value": {
+                      "type": "ElementParent",
+                      "next": {
+                        "type": "Message",
+                        "name": "name_text"
+                      }
+                    }
+                  }
+                }
+              },
+              "next": {
+                "type": "Message",
+                "name": "count"
+              }
+            }
+          },
+          "elements": {
+            "bOnceSeenN": {
+              "id": "bOnceSeenN",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Seen: ",
                     "1": {
                       "type": "ElementParent"
                     }
@@ -997,6 +1089,56 @@
                 "data_source": {
                   "type": "CurrentDataItem"
                 }
+              }
+            },
+            "bTagOnce1": {
+              "id": "bTagOnce1",
+              "type": "CustomElement",
+              "properties": {
+                "custom_id": "bTagOnce",
+                "group_type": "custom.customer",
+                "order": 14,
+                "width": 300,
+                "height": 80,
+                "data_source": {
+                  "type": "CurrentDataItem"
+                }
+              }
+            }
+          }
+        },
+        "bTagOnceP": {
+          "id": "bTagOnceP",
+          "type": "CustomElement",
+          "properties": {
+            "custom_id": "bTagOnce",
+            "group_type": "custom.customer",
+            "order": 2,
+            "width": 300,
+            "height": 80,
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.customer",
+                "sort_field": "name_text",
+                "descending": false,
+                "ignore_empty_constraints": false,
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "name_text",
+                    "value": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Acme"
+                      }
+                    }
+                  }
+                }
+              },
+              "next": {
+                "type": "Message",
+                "name": "first_element"
               }
             }
           }
