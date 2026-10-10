@@ -3,7 +3,7 @@
     "generated": {
       "by_kind": {
         "click": {
-          "native": 579,
+          "native": 575,
           "total": 1358
         },
         "condition_true": {
@@ -49,15 +49,15 @@
       },
       "by_surface": {
         "page": {
-          "native": 292,
+          "native": 291,
           "total": 634
         },
         "reusable": {
-          "native": 593,
+          "native": 590,
           "total": 1636
         }
       },
-      "data": 260,
+      "data": 266,
       "residue_reasons": {
         "api_connector_action": 30,
         "auth_action": 14,
@@ -65,8 +65,8 @@
         "plugin_event": 250,
         "target_not_rendered": 6,
         "trigger_in_runtime_template": 72,
-        "unavailable_input": 341,
-        "uncompiled_expression": 692,
+        "unavailable_input": 368,
+        "uncompiled_expression": 716,
         "unresolved_reference": 41,
         "unsupported_action": 67,
         "unsupported_event": 11,
@@ -105,18 +105,18 @@
         "total": 4010
       },
       "workflows": {
-        "client": 102,
-        "native": 885,
-        "native_own_body": 1056,
-        "residue": 1385,
+        "client": 98,
+        "native": 881,
+        "native_own_body": 1046,
+        "residue": 1389,
         "total": 2270,
-        "wired": 611
+        "wired": 607
       }
     },
     "ir": {
       "by_kind": {
         "click": {
-          "native": 885,
+          "native": 879,
           "total": 1358
         },
         "condition_true": {
@@ -162,11 +162,11 @@
       },
       "by_surface": {
         "page": {
-          "native": 418,
+          "native": 415,
           "total": 634
         },
         "reusable": {
-          "native": 883,
+          "native": 880,
           "total": 1636
         }
       },
@@ -175,7 +175,7 @@
         "auth_action": 14,
         "plugin_action": 619,
         "plugin_event": 250,
-        "uncompiled_expression": 577,
+        "uncompiled_expression": 594,
         "unresolved_reference": 41,
         "unsupported_action": 67,
         "unsupported_event": 2,
@@ -217,8 +217,8 @@
       },
       "workflows": {
         "disabled": 53,
-        "native": 1301,
-        "residue": 969,
+        "native": 1295,
+        "residue": 975,
         "total": 2270
       }
     },

@@ -345,6 +345,20 @@ holds for data access, which is transitive through custom events. A step
 that fails at run time ends its workflow; the steps before it keep their
 effects, as in Bubble.
 
+## Buttons that are not clickable (WTF-520)
+
+Bubble runs no click workflow of a button that "isn't clickable"
+(`button_disabled`, set on the button or by its conditionals). The
+lowering (`BubbleEx.Workflows.Frontend`) folds the button's
+conditionals in Bubble's order from its static value (the last true one
+decides) and adds the result to each of its click workflows' condition:
+`Only when` and clickable. The server then refuses a click the button
+would not take, whatever the browser sends; the page renders the same
+fold as the button's `disabled` attribute. A conditional that does not
+lower (a condition with no IR, a value that is not a yes/no literal) is
+residue of the workflow, which is refused; one the page cannot decide
+renders the button disabled and marked. Fail closed both ways.
+
 ## Pauses (WTF-451)
 
 "Add a pause before next action" never blocks the LiveView process. The
