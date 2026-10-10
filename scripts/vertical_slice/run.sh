@@ -40,7 +40,8 @@
 # Environment: SLICE_DB_PORT (required: the throwaway PostgreSQL's port on
 # 127.0.0.1, never 5432), SLICE_ROOT (default
 # ~/.local/share/bubble_ex/slices), SLICE_PORT (4378), SLICE_SEED_N
-# (records per type, 3), SLICE_PRIVACY (omit, the default, or enforced),
+# (synthetic worlds, 3: a record and its twin with negated booleans per
+# type each), SLICE_PRIVACY (omit, the default, or enforced),
 # SLICE_PERSONA (the synthetic user signed in, 1 to SLICE_SEED_N, default
 # 1), SLICE_TASKS (generator tasks to complete, default
 # "generate:option_sets generate:schema generate:styles").
@@ -167,7 +168,7 @@ cd "$project"
 
 # --- 3. synthetic data ------------------------------------------------------------------------
 cd "$root"
-step "seed ($seed_n records per type)"
+step "seed ($seed_n worlds, $((2 * seed_n)) records per type)"
 mix run --no-compile scripts/vertical_slice/slice.exs seed "$export_path" "$decisions" "$out" "$seed_n" |
   tee "$logs/seed.log"
 read -r page_path thing email page_id < <(mix run --no-compile scripts/vertical_slice/slice.exs target "$out")

@@ -17,8 +17,9 @@
 # `render` writes the generated project with the pinned lock of the Phoenix
 # compile check, its migration plan (.wtf/plan.json), and OUT/slice.json:
 # the chosen page, its statistics and route, the decision states and the
-# app-wide coverage counts. `seed` writes N (default 3) synthetic records
-# per data type as a loader export and loads them into SLICE_DB's
+# app-wide coverage counts. `seed` writes N (default 3) synthetic worlds,
+# a record and its twin with negated booleans each, so 2N records per data
+# type, as a loader export and loads them into SLICE_DB's
 # `slice_dev` database through the data loader (scripts/vertical_slice/
 # seed.exs), then OUT/seed.json: the sign-in email, the record IDs by type
 # and the loader's counts. Nothing leaves OUT; nothing calls Bubble.
@@ -321,7 +322,8 @@ case System.argv() do
       "sign_in_email" => VerticalSlice.Synthetic.email(persona),
       "persona" => persona,
       "privacy" => privacy,
-      "per_type" => n,
+      "worlds" => n,
+      "per_type" => VerticalSlice.Synthetic.records(n),
       "ids" => VerticalSlice.Synthetic.ids(built.model, n),
       "load" => %{
         "types" => map_size(report.types),

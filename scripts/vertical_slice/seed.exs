@@ -10,6 +10,14 @@
 # and at the next record of its own type (never itself). Users get emails
 # on the reserved `example.test` domain; the first one is the slice's
 # sign-in user.
+#
+# Each world `i` (1 to `n`) holds two records per type (WTF-530): the
+# primary record `i`, which the other types reference, and its twin
+# `n + i`, which points at the same records (same owner, same world) with
+# every boolean negated. So every owner has, per type, a record with each
+# boolean true and one with each boolean false, and a list filtered on a
+# flag ("not archived", "not a draft") is never empty only because every
+# record of the signed-in user carries the same flags.
 defmodule VerticalSlice.Synthetic do
   @moduledoc false
 
@@ -19,7 +27,10 @@ defmodule VerticalSlice.Synthetic do
   @base_ms 1_767_225_600_000
   @day 86_400_000
 
-  @doc "The Bubble-shaped ID of record `i` (1-based) of the `t`-th type."
+  @doc """
+  The Bubble-shaped ID of record `i` (1-based) of the `t`-th type: `1` to
+  `n` are the primary records, `n + 1` to `2n` their twins.
+  """
   def id(t, i),
     do: "1767225600000x" <> String.pad_leading(Integer.to_string(t * 1000 + i), 18, "0")
 
@@ -29,7 +40,8 @@ defmodule VerticalSlice.Synthetic do
   The persona the slice signs in as, from `SLICE_PERSONA`: the index of a
   synthetic user (1, the default, to `n`). Which one matters with enforced
   privacy: user `i`'s booleans are `rem(i, 2) == 1` (user 1's are true,
-  user 2's false) and its options the `i`-th of their set.
+  user 2's false) and its options the `i`-th of their set. Its world holds
+  records with both values of every boolean either way (the twins).
   """
   def persona(value, n) do
     case value do
@@ -49,8 +61,9 @@ defmodule VerticalSlice.Synthetic do
   end
 
   @doc """
-  `%{type id => [row]}`: `n` records per live data type, keyed by field ID
-  (the loader accepts them), with Data API system members.
+  `%{type id => [row]}`: `2n` records per live data type, keyed by field
+  ID (the loader accepts them), with Data API system members: the `n`
+  primary records, then their twins.
   """
   def rows(%Model{} = model, n) do
     types = live_types(model)
@@ -60,16 +73,19 @@ defmodule VerticalSlice.Synthetic do
 
     Map.new(types, fn type ->
       t = index[type.id]
-      {type.id, for(i <- 1..n, do: row(type, t, i, Map.put(ctx, :self, type.id)))}
+      {type.id, for(i <- 1..records(n), do: row(type, t, i, Map.put(ctx, :self, type.id)))}
     end)
   end
 
-  @doc "Every record ID written, by type: `%{type id => [id]}`."
+  @doc "The records written per type for `n` worlds: a primary and a twin each."
+  def records(n), do: 2 * n
+
+  @doc "Every record ID written, by type: `%{type id => [id]}`, primaries first."
   def ids(%Model{} = model, n) do
     model
     |> live_types()
     |> Enum.with_index(1)
-    |> Map.new(fn {type, t} -> {type.id, for(i <- 1..n, do: id(t, i))} end)
+    |> Map.new(fn {type, t} -> {type.id, for(i <- 1..records(n), do: id(t, i))} end)
   end
 
   defp live_types(model),
@@ -78,14 +94,18 @@ defmodule VerticalSlice.Synthetic do
   defp live_keys(set),
     do: for(v <- set.values, not v.deleted, is_binary(v.key), do: v.key)
 
+  # Record `i` of world `w`: references, options and the owner come from
+  # the world, texts, numbers and dates from the record (twins are told
+  # apart), booleans from the world, negated for a twin.
   defp row(%DataType{} = type, t, i, ctx) do
     created = @base_ms + (t * 10 + i) * @day
+    ctx = Map.merge(ctx, %{world: world(i, ctx.n), twin: i > ctx.n})
 
     base = %{
       "_id" => id(t, i),
       "Created Date" => created,
       "Modified Date" => created + @day,
-      "Created By" => user_id(ctx, i)
+      "Created By" => user_id(ctx, ctx.world)
     }
 
     base =
@@ -96,12 +116,16 @@ defmodule VerticalSlice.Synthetic do
           }),
         else: base
 
+    # A generator, not a filter: `false` is a value to write, only `nil`
+    # is left out.
     for %Field{system: nil, deleted: false} = f <- type.fields,
-        value = value(f, i, ctx),
+        {id, value} <- [{f.id, value(f, i, ctx)}],
         value != nil,
         into: base,
-        do: {f.id, value}
+        do: {id, value}
   end
+
+  defp world(i, n), do: rem(i - 1, n) + 1
 
   defp user_id(%{index: index, n: n}, i) do
     case index["user"] do
@@ -112,36 +136,37 @@ defmodule VerticalSlice.Synthetic do
 
   defp value(%Field{type: %Type{cardinality: :many} = type} = f, i, ctx) do
     one = %Field{f | type: %Type{type | cardinality: :one}}
+    next = %{ctx | world: world(ctx.world + 1, ctx.n)}
 
-    case [value(one, i, ctx), value(one, i + 1, ctx)] do
+    case [value(one, i, ctx), value(one, i + 1, next)] do
       [nil, _] -> nil
       [a, b] when a == b -> [a]
       pair -> pair
     end
   end
 
-  defp value(%Field{type: %Type{kind: :scalar, base: base}} = f, i, _ctx) do
+  defp value(%Field{type: %Type{kind: :scalar, base: base}} = f, i, ctx) do
     case base do
       :text -> "Sample #{f.name || f.id} #{i}"
       :number -> i
-      :boolean -> rem(i, 2) == 1
+      :boolean -> (rem(ctx.world, 2) == 1) != ctx.twin
       :date -> @base_ms + i * @day
       _ -> nil
     end
   end
 
-  defp value(%Field{type: %Type{kind: :option, target: set}}, i, ctx) do
+  defp value(%Field{type: %Type{kind: :option, target: set}}, _i, ctx) do
     case ctx.options[set] do
-      [_ | _] = keys -> Enum.at(keys, rem(i - 1, length(keys)))
+      [_ | _] = keys -> Enum.at(keys, rem(ctx.world - 1, length(keys)))
       _ -> nil
     end
   end
 
-  defp value(%Field{type: %Type{kind: :ref, target: target}}, i, ctx) do
+  defp value(%Field{type: %Type{kind: :ref, target: target}}, _i, ctx) do
     case ctx.index[target] do
       nil -> nil
-      t when target == ctx.self -> id(t, rem(i, ctx.n) + 1)
-      t -> id(t, rem(i - 1, ctx.n) + 1)
+      t when target == ctx.self -> id(t, world(ctx.world + 1, ctx.n))
+      t -> id(t, ctx.world)
     end
   end
 

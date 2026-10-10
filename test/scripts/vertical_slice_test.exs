@@ -93,6 +93,100 @@ defmodule BubbleEx.Scripts.VerticalSliceTest do
     end
   end
 
+  describe "Synthetic.rows/2, the twins (WTF-530)" do
+    setup do
+      %{model: Pipeline.build(Pipeline.load_app(@enforced_app), [], module: "Slice").model}
+    end
+
+    test "writes false booleans instead of dropping them", %{model: model} do
+      rows = Synthetic.rows(model, 3)
+      # User 2 is a primary record with false booleans; user 4 is user 1's twin.
+      for user <- [Enum.at(rows["user"], 1), Enum.at(rows["user"], 3)] do
+        assert Map.fetch(user, "admin_boolean") == {:ok, false}
+      end
+    end
+
+    test "writes a primary and a twin per world, bounded and deterministic", %{model: model} do
+      rows = Synthetic.rows(model, 3)
+      ids = Synthetic.ids(model, 3)
+      assert Synthetic.records(3) == 6
+      assert rows == Synthetic.rows(model, 3)
+
+      for {type, list} <- rows do
+        assert length(list) == 6
+        assert Enum.map(list, & &1["_id"]) == ids[type]
+        assert list |> Enum.map(& &1["_id"]) |> Enum.uniq() |> length() == 6
+      end
+
+      emails = for u <- rows["user"], do: u["authentication"]["email"]["email"]
+      assert emails == for(i <- 1..6, do: Synthetic.email(i))
+    end
+
+    test "a twin keeps its primary's references and owner and negates its booleans",
+         %{model: model} do
+      rows = Synthetic.rows(model, 3)
+      types = Map.new(model.data_types, &{&1.id, &1})
+
+      for {type, list} <- rows, i <- 1..3 do
+        primary = Enum.at(list, i - 1)
+        twin = Enum.at(list, i + 2)
+        fields = types[type].fields
+
+        for f <- fields, f.system == nil, not f.deleted do
+          case f.type do
+            %{kind: :ref} ->
+              assert twin[f.id] == primary[f.id], "#{type}.#{f.id} of world #{i}"
+
+            %{kind: :scalar, base: :boolean, cardinality: :one} ->
+              assert is_boolean(primary[f.id])
+              assert twin[f.id] == not primary[f.id], "#{type}.#{f.id} of world #{i}"
+
+            _ ->
+              :ok
+          end
+        end
+
+        assert twin["Created By"] == primary["Created By"]
+      end
+    end
+
+    # A list filtered on a flag ("not archived") must not be empty for a
+    # signed-in user only because all of its records carry the same flags.
+    test "every owner has, per type, each boolean both true and false", %{model: model} do
+      rows = Synthetic.rows(model, 3)
+      user_ids = MapSet.new(rows["user"], & &1["_id"])
+      live = fn type, shape -> for f <- type.fields, live_field?(f, shape), do: f.id end
+
+      checks =
+        for type <- model.data_types,
+            not type.deleted,
+            booleans = live.(type, :boolean),
+            booleans != [],
+            key <- ["Created By" | live.(type, :user_ref)],
+            {owner, owned} <- Enum.group_by(rows[type.id], & &1[key]),
+            b <- booleans do
+          assert MapSet.member?(user_ids, owner)
+
+          assert owned |> Enum.map(& &1[b]) |> Enum.uniq() |> Enum.sort() == [false, true],
+                 "#{type.id}.#{b} owned by #{owner} through #{key}"
+
+          {type.id, b, key, owner}
+        end
+
+      # user, task, note and project carry booleans, note an owner field
+      # too: five (type, boolean, owner key) pairs, three owners each.
+      assert length(checks) == 5 * 3
+    end
+  end
+
+  defp live_field?(%{system: nil, deleted: false, type: type}, :boolean),
+    do: match?(%{kind: :scalar, base: :boolean, cardinality: :one}, type)
+
+  defp live_field?(%{system: nil, deleted: false, type: type}, :user_ref),
+    do: match?(%{kind: :ref, target: "user", cardinality: :one}, type)
+
+  defp live_field?(_field, _shape), do: false
+
   describe "Synthetic.persona/2" do
     test "defaults to user 1 and takes an index up to n" do
       assert Synthetic.persona(nil, 3) == 1
