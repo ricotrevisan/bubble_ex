@@ -750,7 +750,20 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   # The resources the queries a value reads first search (WTF-495): their
   # changes read it again, whatever its own type.
-  defp query_topics(%{residue: [], read: read}) do
+  defp query_topics(d) do
+    case query_resources(d) do
+      [] -> ""
+      resources -> ", query_topics: #{source(resources)}"
+    end
+  end
+
+  @doc """
+  The resources (relative modules) the queries of page data source `d`
+  search first (WTF-495), sorted: their changes read it again, whatever
+  its own type, so they publish them (`BubbleEx.Target.Phoenix`).
+  """
+  @spec query_resources(map()) :: [String.t()]
+  def query_resources(%{residue: [], read: read}) do
     queries =
       case read do
         {:value, v} -> Map.get(v, :queries, [])
@@ -760,13 +773,10 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
         _ -> []
       end
 
-    case queries |> Enum.map(& &1.resource) |> Enum.uniq() |> Enum.sort() do
-      [] -> ""
-      resources -> ", query_topics: #{source(resources)}"
-    end
+    queries |> Enum.map(& &1.resource) |> Enum.uniq() |> Enum.sort()
   end
 
-  defp query_topics(_d), do: ""
+  def query_resources(_d), do: []
 
   defp switch_queries({:query, q}), do: [q | Map.get(q, :queries, [])]
   defp switch_queries({:value, v}), do: Map.get(v, :queries, [])

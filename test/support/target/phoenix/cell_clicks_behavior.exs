@@ -11,9 +11,12 @@ defmodule PhxCheckWeb.CellClicksBehaviorTest do
   # a row's "Refuse" button runs a workflow that is not lowered. The
   # categories page lists categories, each with its products (a nested
   # repeating group); a product row's "Pick" button shows the product and
-  # its category. The browser's event names the cell's scope; the page
-  # accepts it only for a cell it read as the user, and binds the cell's
-  # thing from what it read, never from the browser.
+  # its category. The statuses page lists a board's statuses (options, one
+  # of them twice): a row's "Pick" button, or a change of its note input,
+  # shows that row's status in a detail group outside the list. The
+  # browser's event names the cell's scope; the page accepts it only for a
+  # cell it read as the user, and binds the cell's thing (or option) from
+  # what it read, never from the browser.
   use PhxCheckWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
@@ -31,6 +34,8 @@ defmodule PhxCheckWeb.CellClicksBehaviorTest do
     "Plum" => {"1700000000000x300000000000000003", @fruit, @bo, 3},
     "Almond" => {"1700000000000x300000000000000004", @nuts, @ada, 4}
   }
+
+  @board "1700000000000x400000000000000001"
 
   setup do
     on_exit(fn -> Application.delete_env(:phx_check, PhxCheckWeb.BubbleWorkflows) end)
@@ -60,6 +65,8 @@ defmodule PhxCheckWeb.CellClicksBehaviorTest do
       })
     end
 
+    Ash.Seed.seed!(PhxCheck.Board, %{id: @board, name: "Main", statuses: ~w(todo doing todo done)})
+
     Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: true)
     %{users: users}
   end
@@ -79,12 +86,59 @@ defmodule PhxCheckWeb.CellClicksBehaviorTest do
   defp id(name), do: elem(@products[name], 0)
 
   # The scope of `name`'s cell in the products list, and in `category`'s
-  # cell of the categories list (`Bubble.cell_scope/4`).
+  # cell of the categories list (`Bubble.cell_scope/5`).
   defp row(name), do: "bProducts~2#{id(name)}"
   defp nested(category, name), do: "bCats~2#{category}-bCatProducts~2#{id(name)}"
 
-  # The DOM ID of `name`'s row (`Bubble.cell_id/4`).
+  # The DOM ID of `name`'s row (`Bubble.cell_id/5`).
   defp row_id(name), do: "bubble-cell--bProducts-t-#{id(name)}"
+
+  # The scope of the `n`th of `count` cells holding option `value` in the
+  # statuses list (`Bubble.cell_scope/5`: the option, then, when it is
+  # listed more than once, its occurrence and count), and its DOM ID
+  # (`Bubble.cell_id/5`).
+  defp status_row(value, n \\ 1, count \\ 1),
+    do: "bStatuses~2~4#{value}" <> if(count > 1, do: "~5#{n}~6#{count}", else: "")
+
+  defp status_id(value, n \\ 1, count \\ 1),
+    do: "bubble-cell--bStatuses-o-#{value}" <> if(count > 1, do: "-#{n}-#{count}", else: "")
+
+  # The seeded list's two "todo" cells.
+  defp todo(n), do: status_row("todo", n, 2)
+  defp todo_id(n), do: status_id("todo", n, 2)
+
+  defp row_input(view, id, element) do
+    view
+    |> element(~s(##{id} input[data-bubble-id="#{element}"]))
+    |> render()
+    |> then(&Regex.run(~r/value="([^"]*)"/, &1, capture: :all_but_first))
+    |> then(&(&1 && hd(&1)))
+  end
+
+  defp cell_text(view, id, element) do
+    view
+    |> element(~s(##{id} [data-bubble-id="#{element}"]))
+    |> render()
+    |> then(&Regex.replace(~r/<[^>]*>/, &1, ""))
+    |> String.trim()
+  end
+
+  defp statuses(conn, user) do
+    {:ok, view, _html} = live(sign_in(conn, user), "/statuses")
+    view
+  end
+
+  # The board's statuses, changed through its action: the page reads its
+  # data again on the change notification.
+  defp set_statuses(values) do
+    PhxCheck.Board
+    |> Ash.get!(@board, authorize?: false)
+    |> Ash.Changeset.for_update(:update, %{statuses: values})
+    |> Ash.update!(authorize?: false)
+  end
+
+  defp pick(view, scope),
+    do: render_click(view, "bubble:click", %{"scope" => scope, "element" => "bPickStatus"})
 
   defp text(view, id) do
     view
@@ -514,5 +568,294 @@ defmodule PhxCheckWeb.CellClicksBehaviorTest do
     render_click(view, "bubble:click", %{"scope" => row("Apple"), "element" => "bShow"})
     assert text(view, "bDetailName") == "Detail:"
     assert assigns(view).bubble_displayed == %{}
+  end
+
+  test "a row's click in a list of options shows that row's status in the detail group", %{
+    conn: conn,
+    users: users
+  } do
+    view = statuses(conn, users["Ada"])
+    assert shown(render(view), "Status") == ~w(Todo Doing Todo Done)
+    assert text(view, "bStatusDetailName") == "Picked:"
+
+    # Each cell is keyed by its option and its occurrence, read as the
+    # user: the option is what the page read, not what the browser sent.
+    cells = assigns(view).bubble_page_cells
+
+    assert Map.new(cells, fn {scope, cell} -> {scope, {cell.item, cell.index}} end) == %{
+             todo(1) => {"todo", 1},
+             status_row("doing") => {"doing", 2},
+             todo(2) => {"todo", 3},
+             status_row("done") => {"done", 4}
+           }
+
+    # The row's own button, as rendered.
+    view |> element("##{status_id("doing")} [data-bubble-id=\"bPickStatus\"]") |> render_click()
+    assert text(view, "bStatusDetailName") == "Picked: Doing"
+    assert assigns(view).bubble_displayed[{"", "bStatusDetail"}] == {nil, false, "doing"}
+
+    # The second Todo is a cell of its own.
+    view
+    |> element("##{todo_id(2)} [data-bubble-id=\"bPickStatus\"]")
+    |> render_click()
+
+    assert text(view, "bStatusDetailName") == "Picked: Todo"
+
+    # A row's input keeps its value per cell; its change runs in that cell.
+    view
+    |> element("##{status_id("done")} input[data-bubble-id=\"bStatusNote\"]")
+    |> render_blur(%{"value" => "ship it"})
+
+    settle(view)
+    assert text(view, "bStatusDetailName") == "Picked: Done"
+    assert assigns(view).bubble_inputs[{status_row("done"), "bStatusNote"}] == "ship it"
+    assert assigns(view).bubble_inputs[{todo(1), "bStatusNote"}] == nil
+  end
+
+  test "a list of options reordered between render and click binds the same option, or none", %{
+    conn: conn,
+    users: users
+  } do
+    view = statuses(conn, users["Ada"])
+    html = render(view)
+    # As rendered: Doing's button carries Doing's scope, at position 2.
+    assert html =~ status_row("doing")
+
+    # Reordered before the click is read: the page reads its data again,
+    # then looks the scope up. Doing is now third: still Doing.
+    set_statuses(~w(done todo doing todo))
+    pick(view, status_row("doing"))
+    assert text(view, "bStatusDetailName") == "Picked: Doing"
+    assert shown(render(view), "Status") == ~w(Done Todo Doing Todo)
+
+    # Each scope still names its own option, wherever it now is.
+    for {scope, item} <- [
+          {status_row("done"), "done"},
+          {todo(1), "todo"},
+          {status_row("doing"), "doing"},
+          {todo(2), "todo"}
+        ],
+        do: assert(assigns(view).bubble_page_cells[scope].item == item)
+
+    pick(view, todo(2))
+    assert text(view, "bStatusDetailName") == "Picked: Todo"
+
+    # Doing and a Todo leave the list: their scopes are refused, never
+    # given to the option now at their position. The Todo left is listed
+    # once now: both old Todo scopes are gone, it has a new one.
+    pick(view, status_row("done"))
+    assert text(view, "bStatusDetailName") == "Picked: Done"
+    set_statuses(~w(todo blocked))
+
+    for scope <- [status_row("doing"), todo(1), todo(2), status_row("done")] do
+      pick(view, scope)
+
+      render_change(view, "bubble:change", %{
+        "bubble" => %{"scope" => scope, "element" => "bStatusNote", "value" => "x"}
+      })
+    end
+
+    settle(view)
+    assert text(view, "bStatusDetailName") == "Picked: Done"
+    assert shown(render(view), "Status") == ~w(Todo Blocked)
+
+    assert Map.keys(assigns(view).bubble_page_cells) |> Enum.sort() == [
+             status_row("blocked"),
+             status_row("todo")
+           ]
+
+    refute Enum.any?(Map.keys(assigns(view).bubble_inputs), &(elem(&1, 0) == status_row("doing")))
+
+    # An option new to the list is reached by its own scope only.
+    pick(view, status_row("blocked"))
+    assert text(view, "bStatusDetailName") == "Picked: Blocked"
+  end
+
+  test "a forged option scope is ignored", %{conn: conn, users: users} do
+    view = statuses(conn, users["Ada"])
+    pick(view, status_row("doing"))
+    assert text(view, "bStatusDetailName") == "Picked: Doing"
+    before = assigns(view)
+
+    forged = [
+      # A real option the list does not hold, a made-up one, its label.
+      status_row("blocked"),
+      status_row("bogus"),
+      "bStatuses~2~4Todo",
+      # An occurrence the list does not have, a wrong count, the first one
+      # without its count, and the form of an option listed once.
+      status_row("todo", 3, 2),
+      status_row("todo", 1, 3),
+      "bStatuses~2~4todo~51",
+      status_row("todo"),
+      # The bare value, a position, the list itself.
+      "bStatuses~2todo",
+      "bStatuses~2~31",
+      "bStatuses~2~4",
+      "bStatuses",
+      # An instance-shaped scope, another list's cell, the products list.
+      todo(1) <> "-bPickStatus",
+      "bOther~2~4todo",
+      "bProducts~2~4todo"
+    ]
+
+    for scope <- forged, element <- ["bPickStatus", "bStatusNote"] do
+      render_click(view, "bubble:click", %{"scope" => scope, "element" => element})
+
+      render_change(view, "bubble:change", %{
+        "bubble" => %{"scope" => scope, "element" => element, "value" => "9"}
+      })
+
+      render_click(view, "bubble:commit", %{
+        "scope" => scope,
+        "element" => element,
+        "value" => "9"
+      })
+    end
+
+    # A real cell, but an element of no cell of it.
+    render_click(view, "bubble:click", %{"scope" => todo(1), "element" => "bShow"})
+
+    settle(view)
+    after_ = assigns(view)
+    assert after_.bubble_displayed == before.bubble_displayed
+    assert after_.bubble_inputs == before.bubble_inputs
+    assert after_.bubble_page_cells == before.bubble_page_cells
+    assert text(view, "bStatusDetailName") == "Picked: Doing"
+    refute Enum.any?(Map.keys(after_.bubble_inputs), &(elem(&1, 0) in forged))
+  end
+
+  test "a removed duplicate option carries nothing over to the one left; its stale change is refused",
+       %{conn: conn, users: users} do
+    view = statuses(conn, users["Ada"])
+
+    # The user types in both Todo rows (each change runs the row's
+    # workflow), and marks the second one.
+    for {n, typed} <- [{1, "FIRST"}, {2, "SECOND"}] do
+      render_change(view, "bubble:change", %{
+        "bubble" => %{"scope" => todo(n), "element" => "bStatusNote", "value" => typed}
+      })
+    end
+
+    view |> element("##{todo_id(2)} [data-bubble-id=\"bMark\"]") |> render_click()
+    assert assigns(view).bubble_inputs[{todo(1), "bStatusNote"}] == "FIRST"
+    assert assigns(view).bubble_inputs[{todo(2), "bStatusNote"}] == "SECOND"
+    assert row_input(view, todo_id(1), "bStatusNote") == "FIRST"
+    assert cell_text(view, todo_id(2), "bStatusMarkName") == "Marked: Todo"
+    assert cell_text(view, todo_id(1), "bStatusMarkName") == "Marked:"
+
+    # The first Todo is removed.
+    set_statuses(~w(doing todo done))
+    Process.sleep(150)
+    assert shown(render(view), "Status") == ~w(Doing Todo Done)
+
+    # The Todo left is a new cell: neither FIRST nor SECOND, not marked.
+    inputs = assigns(view).bubble_inputs
+    assert inputs[{status_row("todo"), "bStatusNote"}] == nil
+    refute Map.has_key?(inputs, {todo(1), "bStatusNote"})
+    refute Map.has_key?(inputs, {todo(2), "bStatusNote"})
+    assert row_input(view, status_id("todo"), "bStatusNote") in [nil, ""]
+    assert cell_text(view, status_id("todo"), "bStatusMarkName") == "Marked:"
+
+    refute Enum.any?(Map.keys(assigns(view).bubble_displayed), fn
+             {_, _, {:cell_scope, key}} -> key in [todo(1), todo(2)]
+             _ -> false
+           end)
+
+    # A stale change (or click) of the removed first row, or of the old
+    # second one, is refused: it lands nowhere.
+    pick(view, status_row("doing"))
+    assert text(view, "bStatusDetailName") == "Picked: Doing"
+    before = assigns(view)
+
+    for n <- [1, 2] do
+      render_click(view, "bubble:commit", %{
+        "scope" => todo(n),
+        "element" => "bStatusNote",
+        "value" => "STALE"
+      })
+
+      pick(view, todo(n))
+    end
+
+    settle(view)
+    assert assigns(view).bubble_inputs == before.bubble_inputs
+    assert assigns(view).bubble_displayed == before.bubble_displayed
+    assert text(view, "bStatusDetailName") == "Picked: Doing"
+    assert row_input(view, status_id("todo"), "bStatusNote") in [nil, ""]
+
+    # The row left takes its own events.
+    view
+    |> element("##{status_id("todo")} input[data-bubble-id=\"bStatusNote\"]")
+    |> render_blur(%{"value" => "fresh"})
+
+    settle(view)
+    assert text(view, "bStatusDetailName") == "Picked: Todo"
+    assert assigns(view).bubble_inputs[{status_row("todo"), "bStatusNote"}] == "fresh"
+  end
+
+  test "Display data in a group of a row is kept per row: two equal options keep their own", %{
+    conn: conn,
+    users: users
+  } do
+    view = statuses(conn, users["Ada"])
+
+    view |> element("##{todo_id(1)} [data-bubble-id=\"bMark\"]") |> render_click()
+    assert cell_text(view, todo_id(1), "bStatusMarkName") == "Marked: Todo"
+    assert cell_text(view, todo_id(2), "bStatusMarkName") == "Marked:"
+    assert cell_text(view, status_id("doing"), "bStatusMarkName") == "Marked:"
+
+    assert assigns(view).bubble_displayed[{"", "bStatusMark", {:cell_scope, todo(1)}}] ==
+             {nil, false, "todo"}
+
+    # A reorder keeps it with its row.
+    set_statuses(~w(done todo doing todo))
+    Process.sleep(150)
+    render(view)
+    assert cell_text(view, todo_id(1), "bStatusMarkName") == "Marked: Todo"
+    assert cell_text(view, todo_id(2), "bStatusMarkName") == "Marked:"
+  end
+
+  test "a reusable instance in a row of options has the row's scope and keeps its own state", %{
+    conn: conn,
+    users: users
+  } do
+    view = statuses(conn, users["Ada"])
+    chip = fn row -> row <> "-bStatusChip" end
+
+    assert scoped_text(view, chip.(status_row("doing")), "bChipName") == "Chip: Doing"
+    assert scoped_text(view, chip.(todo(1)), "bChipName") == "Chip: Todo"
+    assert scoped_text(view, chip.(todo(2)), "bChipName") == "Chip: Todo"
+
+    # The chip's own click, in the second Todo's chip only.
+    render_click(view, "bubble:click", %{"scope" => chip.(todo(2)), "element" => "bChipBtn"})
+    assert scoped_text(view, chip.(todo(2)), "bChipPicked") == "ChipPicked: yes"
+    assert scoped_text(view, chip.(todo(1)), "bChipPicked") == "ChipPicked:"
+
+    # Made-up chip scopes are ignored.
+    before = assigns(view).bubble_states
+
+    for scope <- [
+          chip.(status_row("blocked")),
+          chip.(status_row("todo")),
+          chip.("bStatuses~2~31")
+        ],
+        do: render_click(view, "bubble:click", %{"scope" => scope, "element" => "bChipBtn"})
+
+    assert assigns(view).bubble_states == before
+
+    # Reordered: the state stays with its chip.
+    set_statuses(~w(done todo doing todo))
+    Process.sleep(150)
+    render(view)
+    assert scoped_text(view, chip.(todo(2)), "bChipPicked") == "ChipPicked: yes"
+    assert scoped_text(view, chip.(todo(1)), "bChipPicked") == "ChipPicked:"
+
+    # A Todo removed: the chip left starts over, nothing carried over.
+    set_statuses(~w(done doing todo))
+    Process.sleep(150)
+    render(view)
+    assert scoped_text(view, chip.(status_row("todo")), "bChipPicked") == "ChipPicked:"
+    refute Enum.any?(Map.keys(assigns(view).bubble_states), &(elem(&1, 0) == chip.(todo(2))))
   end
 end

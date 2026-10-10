@@ -323,7 +323,117 @@ defmodule BubbleEx.Target.Phoenix.CellClicksTest do
       assert %{read: :displayed, residue: []} = data(spec(app), "bDetail2")
     end
 
+    test "a list of options is keyed by its option: its click and input are wired per cell" do
+      for privacy <- [:omit, :enforced] do
+        spec = spec(app(), privacy)
+
+        assert Spec.option_list?(spec, "bStatuses")
+        assert Spec.option_lists(spec) == ["bStatuses"]
+        refute Spec.option_list?(spec, "bProducts")
+
+        w = Spec.workflow(spec, "bStatusesPage", "wPickStatus")
+        assert %{cell: "bStatuses", residue: []} = w
+        assert Spec.wired?(w) and Spec.native?(w)
+        assert [%{op: :display_data, residue: []} = step] = w.steps
+        assert binds(step) == [{:cell, "bStatuses"}]
+
+        assert spec.surfaces["bStatusesPage"].cell_inputs == %{
+                 "bStatusNote" => %{type: :text, cell: "bStatuses"}
+               }
+
+        assert %{cell: "bStatuses", residue: [], kind: :input_change} =
+                 Spec.workflow(spec, "bStatusesPage", "wStatusNote")
+
+        # Event-driven: empty until a row's click.
+        assert %{read: :displayed, residue: []} = data(spec, "bStatusDetail")
+      end
+    end
+
+    test "an option-typed list whose source computes texts stays keyed by position: unwired" do
+      app =
+        app()
+        |> put_in(["user_types", "board", "fields", "labels_list_text"], %{
+          "display" => "Labels",
+          "value" => "list.text"
+        })
+        |> put_in(
+          [
+            "pages",
+            "statuses",
+            "elements",
+            "bStatuses",
+            "properties",
+            "data_source",
+            "next",
+            "next",
+            "name"
+          ],
+          "labels_list_text"
+        )
+
+      spec = spec(app)
+
+      # Typed as statuses, but holding the board's texts: never value-keyed,
+      # so no user text reaches a scope or a DOM attribute.
+      refute Spec.option_list?(spec, "bStatuses")
+      assert Spec.option_lists(spec) == []
+
+      for id <- ["wPickStatus", "wStatusNote", "wMark"] do
+        assert %{cell: nil, residue: [%{reason: :trigger_in_runtime_template} | _]} =
+                 Spec.workflow(spec, "bStatusesPage", id)
+      end
+
+      refute Map.has_key?(spec.surfaces["bStatusesPage"].cell_inputs, "bStatusNote")
+
+      files = files(app)
+      heex = squash(files["lib/shop_web/live/statuses_live.html.heex"])
+      assert heex =~ ~s|<-Bubble.cells(@bubble_data,"","bStatuses")}|
+      refute heex =~ "keyed_cells"
+      assert files["lib/shop_web/components/bubble.ex"] =~ "@option_lists MapSet.new([])"
+    end
+
+    test "a list of options in another list's cell is keyed by its option in the outer cell" do
+      statuses = get_in(app(), ["pages", "statuses", "elements", "bStatuses"])
+
+      inner =
+        statuses
+        |> Map.put("id", "bCatStatuses")
+        |> Map.put("elements", %{"bCatStatusBtn" => button("bCatStatusBtn")})
+
+      app =
+        app()
+        |> put_in(["pages", "categories", "elements", "bCats", "elements", "bCatStatuses"], inner)
+        |> put_in(
+          ["pages", "categories", "workflows", "wCatStatus"],
+          clicked("wCatStatus", "bCatStatusBtn", [
+            %{
+              "id" => "aCatStatus1",
+              "type" => "SetCustomState",
+              "properties" => %{
+                "element_id" => "bCategoriesPage",
+                "custom_state" => "custom.t_",
+                "value" => 1
+              }
+            }
+          ])
+        )
+
+      spec = spec(app)
+      assert Spec.option_list?(spec, "bCatStatuses")
+      assert %{cell: "bCatStatuses"} = Spec.workflow(spec, "bCategoriesPage", "wCatStatus")
+
+      heex = squash(files(app)["lib/shop_web/live/categories_live.html.heex"])
+
+      assert heex =~
+               ~s|{cell_bcatstatuses,cell_bcatstatuses_i,cell_bcatstatuses_n}<-Bubble.keyed_cells(@bubble_data,"","bCatStatuses",cell_bcats_i)|
+
+      assert heex =~
+               ~s|Bubble.cell_scope(Bubble.cell_scope("","bCats",cell_bcats,cell_bcats_i),"bCatStatuses",cell_bcatstatuses,cell_bcatstatuses_i,cell_bcatstatuses_n)|
+    end
+
     test "a list of texts has cells by position only: its events stay unwired" do
+      # Unlike options (unique within their set), texts have no key that
+      # names the same item once the list changes: only a position.
       texts = %{
         "id" => "bTags",
         "type" => "RepeatingGroup",
@@ -476,6 +586,155 @@ defmodule BubbleEx.Target.Phoenix.CellClicksTest do
                ~s|Bubble.input(@bubble_inputs,Bubble.cell_scope("","bProducts",cell_bproducts,cell_bproducts_i),"bQty")|
 
       refute heex =~ "TODO(bubble:bQtyEcho)"
+    end
+  end
+
+  describe "printed, a list of options" do
+    test "its cells are read with each option's occurrence and keyed by it" do
+      files = files(app())
+      heex = squash(files["lib/shop_web/live/statuses_live.html.heex"])
+      key = "cell_bstatuses,cell_bstatuses_i,cell_bstatuses_n"
+      cell = ~s|Bubble.cell_scope("","bStatuses",#{key})|
+
+      assert heex =~ ~s|:for={{#{key}}<-Bubble.keyed_cells(@bubble_data,"","bStatuses")}|
+      assert heex =~ ~s|id={Bubble.cell_id("","bStatuses",#{key})}|
+      assert heex =~ ~s|phx-click={Bubble.push("click",#{cell},"bPickStatus")}|
+      assert heex =~ ~s|value={Bubble.input(@bubble_inputs,#{cell},"bStatusNote")}|
+
+      # A list of things keeps its cells as before.
+      products = squash(files["lib/shop_web/live/products_live.html.heex"])
+      assert products =~ ~s|<-Bubble.cells(@bubble_data,"","bProducts")}|
+
+      module = files["lib/shop_web/live/statuses_live/workflows.ex"]
+      assert module =~ ~s("bPickStatus" => {"bStatuses", ["wPickStatus"]})
+      assert module =~ ~s("bMark" => {"bStatuses", ["wMark"]})
+
+      assert module =~
+               ~s(@cells [{"bStatuses", [{"bStatusChip", ShopWeb.Reusables.StatusChip.Workflows}]}])
+
+      assert module =~ ~s(cell_lists: [{"bStatuses", nil}])
+
+      assert files["lib/shop_web/components/bubble.ex"] =~
+               ~s|@option_lists MapSet.new(["bStatuses"])|
+
+      # The list is read from the first board's field (a query of boards,
+      # no source of type board): boards publish their changes, so a
+      # reordered list reaches the page.
+      assert module =~ ~s(query_topics: ["Board"])
+      board = files["lib/shop/board.ex"]
+      assert board =~ "notifiers: [Ash.Notifier.PubSub]"
+      assert board =~ ~s(publish_all :update, ["Board"])
+    end
+  end
+
+  # The generated `<Web>.Bubble` cell keys (WTF-520), compiled on its own.
+  describe "cell keys" do
+    setup do
+      module = OptionCellKeysWeb.Bubble
+
+      # Under a name of its own: only this module is compiled (it calls
+      # the others at runtime only; Ash's one struct is a stand-in here).
+      unless Code.ensure_loaded?(module) do
+        Code.compile_string("defmodule OptionCellKeysWeb.NotLoaded, do: defstruct([])")
+
+        source =
+          app()
+          |> files()
+          |> Map.fetch!("lib/shop_web/components/bubble.ex")
+          |> String.replace("defmodule ShopWeb.Bubble do", "defmodule #{inspect(module)} do")
+          |> String.replace("%Ash.NotLoaded{}", "%OptionCellKeysWeb.NotLoaded{}")
+
+        # The runtime modules it calls are not compiled here: no warnings.
+        ExUnit.CaptureIO.capture_io(:stderr, fn -> Code.compile_string(source) end)
+      end
+
+      %{bubble: module}
+    end
+
+    defp list(values), do: %{{"", "bStatuses"} => values, {"", "bTags"} => values}
+
+    # The scopes of a statuses list's cells, with their option.
+    defp scopes(b, values) do
+      for {v, i, n} <- b.keyed_cells(list(values), "", "bStatuses"),
+          into: %{},
+          do: {b.cell_scope("", "bStatuses", v, i, n), v}
+    end
+
+    test "an option's cell is its value, escaped, and, when listed more than once, its occurrence and count",
+         %{bubble: b} do
+      cells = b.keyed_cells(list(~w(todo doing todo done)), "", "bStatuses")
+
+      assert cells == [
+               {"todo", 1, {1, 2}},
+               {"doing", 2, {1, 1}},
+               {"todo", 3, {2, 2}},
+               {"done", 4, {1, 1}}
+             ]
+
+      assert Enum.map(cells, fn {v, i, n} -> b.cell_scope("", "bStatuses", v, i, n) end) == [
+               "bStatuses~2~4todo~51~62",
+               "bStatuses~2~4doing",
+               "bStatuses~2~4todo~52~62",
+               "bStatuses~2~4done"
+             ]
+
+      assert Enum.all?(cells, fn {v, _i, n} -> b.keyed_cell?(v, n) end)
+      assert b.cell_id("", "bStatuses", "todo", 3, {2, 2}) == "bubble-cell--bStatuses-o-todo-2-2"
+      assert b.cell_id("", "bStatuses", "done", 4, {1, 1}) == "bubble-cell--bStatuses-o-done"
+
+      # Escaped as an ID is: never an instance's scope or another cell's.
+      assert b.cell_scope("p", "bStatuses", "a-b~5", 1, {1, 1}) == "p-bStatuses~2~4a~1b~05"
+    end
+
+    test "a reordered list keeps each option's scope", %{bubble: b} do
+      assert scopes(b, ~w(todo doing todo done)) == scopes(b, ~w(done todo doing todo))
+    end
+
+    test "a change in an option's count gives every cell of that value a new scope", %{bubble: b} do
+      before = scopes(b, ~w(todo doing todo done))
+
+      # One "todo" removed: the one left is not either old "todo" cell,
+      # so nothing kept for them (inputs, states) is carried over.
+      shrunk = scopes(b, ~w(doing todo done))
+      assert shrunk["bStatuses~2~4todo"] == "todo"
+      refute Map.has_key?(before, "bStatuses~2~4todo")
+      refute Map.has_key?(shrunk, "bStatuses~2~4todo~51~62")
+      refute Map.has_key?(shrunk, "bStatuses~2~4todo~52~62")
+
+      # A second "todo" added: the first one's scope changes too.
+      grown = scopes(b, ~w(todo doing done todo))
+      refute Map.has_key?(grown, "bStatuses~2~4todo")
+
+      # Other options keep theirs.
+      for scope <- ["bStatuses~2~4doing", "bStatuses~2~4done"],
+          do: assert(before[scope] == shrunk[scope] and shrunk[scope] == grown[scope])
+
+      # Whatever scope survives names the same option.
+      for {scope, v} <- shrunk, Map.has_key?(before, scope), do: assert(before[scope] == v)
+    end
+
+    test "a list of texts, or an empty option, is keyed by position: no event per cell", %{
+      bubble: b
+    } do
+      assert [{"todo", 1, nil}, {"doing", 2, nil}] =
+               cells = b.keyed_cells(list(~w(todo doing)), "", "bTags")
+
+      assert b.cell_scope("", "bTags", "todo", 1, nil) == "bTags~2~31"
+      refute Enum.any?(cells, fn {v, _i, n} -> b.keyed_cell?(v, n) end)
+
+      assert [{"todo", 1, {1, 1}}, {nil, 2, nil}, {"", 3, nil}] =
+               b.keyed_cells(list(["todo", nil, ""]), "", "bStatuses")
+
+      refute b.keyed_cell?(nil, nil)
+      refute b.keyed_cell?("", nil)
+      refute b.keyed_cell?("", {1, 1})
+      # A bare occurrence (the shape before counts) is not a key.
+      refute b.keyed_cell?("todo", 1)
+      assert b.cell_scope("", "bStatuses", nil, 2, nil) == "bStatuses~2~32"
+
+      # A thing is keyed by its ID, as before.
+      assert b.keyed_cell?(%{id: "1x2"}, nil)
+      assert b.cell_scope("", "bProducts", %{id: "1x2"}, 4) == "bProducts~21x2"
     end
   end
 

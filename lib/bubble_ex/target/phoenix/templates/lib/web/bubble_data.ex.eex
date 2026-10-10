@@ -151,7 +151,7 @@ defmodule <%= @web %>.BubbleData do
   ## Reusable instances in repeating group cells (WTF-494)
 
   An instance in a cell (`__bubble__(:cells)`) has a scope per cell, the
-  cell's thing's (`<%= @web %>.Bubble.cell_scope/4`): its thing and the
+  cell's thing's (`<%= @web %>.Bubble.cell_scope/5`): its thing and the
   properties it sets are computed in the cell, and its reusable element's
   sources run in that scope. Each source is read for every cell together,
   never once per cell: what its value reads through relationships is
@@ -198,7 +198,7 @@ defmodule <%= @web %>.BubbleData do
   index}`), its search read for every outer cell together. Its cells'
   sources (`outer` in `__bubble__(:data)`) run for every inner cell of
   every outer cell together, never once per outer cell: their values are
-  kept in the outer cell's scope (`<%= @web %>.Bubble.cell_scope/4`),
+  kept in the outer cell's scope (`<%= @web %>.Bubble.cell_scope/5`),
   what they read through the inner and outer cells' things is loaded for
   all of them first (`cell_loads`, `outer_loads`, `preloads`), and their
   searches are batched across all of them. The reusable instances in
@@ -786,19 +786,19 @@ defmodule <%= @web %>.BubbleData do
     units =
       case Map.get(source, :outer) do
         nil ->
-          for scope <- scopes, {item, i} <- cell_items(data, scope, source.cell) do
-            cell_unit(scope, source, item, i)
+          for scope <- scopes, {item, i, n} <- cell_items(data, scope, source.cell) do
+            cell_unit(scope, source, item, i, n)
           end
 
         # In a repeating group rendered per cell of another (WTF-520):
         # every inner cell of every outer cell, read together.
         outer ->
           for scope <- scopes,
-              {outer_item, oi} <- cell_items(data, scope, outer),
-              outer_scope = Bubble.cell_scope(scope, outer, outer_item, oi),
-              {item, i} <- nested_items(data, scope, source.cell, oi) do
+              {outer_item, oi, on} <- cell_items(data, scope, outer),
+              outer_scope = Bubble.cell_scope(scope, outer, outer_item, oi, on),
+              {item, i, n} <- nested_items(data, scope, source.cell, oi) do
             outer_scope
-            |> cell_unit(source, item, i)
+            |> cell_unit(source, item, i, n)
             |> Map.merge(%{scope: scope, nested: {{outer_item, oi}, outer_scope}})
           end
       end
@@ -819,13 +819,9 @@ defmodule <%= @web %>.BubbleData do
     read_source(socket, group.module, source, units, acc, group.id, true)
   end
 
-  # The items of a repeating group's list, with their 1-based index.
-  defp cell_items(data, scope, rg) do
-    case Map.get(data, {scope, rg}) do
-      list when is_list(list) -> Enum.with_index(list, 1)
-      _ -> []
-    end
-  end
+  # The items of a repeating group's list, with their 1-based index and,
+  # in a list of options, their occurrence (`Bubble.keyed_cells/3`).
+  defp cell_items(data, scope, rg), do: Bubble.keyed_cells(data, scope, rg)
 
   # The outer cells' things of nested units (WTF-520) with `loads`, each
   # outer cell's loaded once for all its inner cells.
@@ -842,12 +838,7 @@ defmodule <%= @web %>.BubbleData do
 
   # The items of a repeating group rendered per cell of another (WTF-520),
   # in the outer cell `index`: its list there, a value per outer cell.
-  defp nested_items(data, scope, rg, index) do
-    case Map.get(data, {scope, rg, index}) do
-      list when is_list(list) -> Enum.with_index(list, 1)
-      _ -> []
-    end
-  end
+  defp nested_items(data, scope, rg, index), do: Bubble.keyed_cells(data, scope, rg, index)
 
   # A cell's value: a group's by the cell's index (what "Display data"
   # showed in it by the cell's thing, WTF-492, so a re-sorted list keeps
@@ -855,19 +846,29 @@ defmodule <%= @web %>.BubbleData do
   # in the cell, the cell's thing's.
   # In a nested repeating group's cell (WTF-520), `scope` is the outer
   # cell's: the inner cells' values are kept there.
-  defp cell_unit(scope, %{instance: instance} = source, item, i) when is_binary(instance) do
-    key = {Bubble.nest(Bubble.cell_scope(scope, source.cell, item, i), instance), source.element}
+  defp cell_unit(scope, %{instance: instance} = source, item, i, n) when is_binary(instance) do
+    key = {Bubble.nest(Bubble.cell_scope(scope, source.cell, item, i, n), instance), source.element}
     %{scope: scope, cell: {item, i}, nested: nil, key: key, shown: key}
   end
 
-  defp cell_unit(scope, source, item, i),
+  defp cell_unit(scope, source, item, i, n),
     do: %{
       scope: scope,
       cell: {item, i},
       nested: nil,
       key: {scope, source.element, i},
-      shown: {scope, source.element, {:cell, Runtime.id(item)}}
+      shown: {scope, source.element, shown_cell(scope, source.cell, item, i, n)}
     }
+
+  # What "Display data" showed in a cell is kept by its thing's ID (a
+  # re-sorted list keeps it), or in a list of options by the cell's scope
+  # (WTF-520: two equal options keep their own; `BubbleWorkflows`, the
+  # same key).
+  defp shown_cell(scope, rg, item, i, n) do
+    if is_binary(item) and Bubble.keyed_cell?(item, n),
+      do: {:cell_scope, Bubble.cell_scope(scope, rg, item, i, n)},
+      else: {:cell, Runtime.id(item)}
+  end
 
   # One source in every unit (`%{scope, cell, key, shown}`): its value is
   # kept under `key`. A reusable element property's default is only for
@@ -1172,7 +1173,7 @@ defmodule <%= @web %>.BubbleData do
 
   # The reusable instances in repeating group cells (WTF-494): for every
   # surface, each instance in the cells of its lists, one scope per cell
-  # (`<%= @web %>.Bubble.cell_scope/4`), read for every cell together
+  # (`<%= @web %>.Bubble.cell_scope/5`), read for every cell together
   # (`load_groups/4`); then the instances in their own lists' cells, at
   # most `max_cell_depth/0` levels down and `max_cells/0` scopes in all.
   # The cells are those of the lists just read, as the current user: a
@@ -1228,14 +1229,14 @@ defmodule <%= @web %>.BubbleData do
   # WTF-520), every inner cell of every outer cell, in the outer cell's
   # scope.
   defp cell_scopes(data, scope, {outer, rg}) do
-    for {outer_item, oi} <- cell_items(data, scope, outer),
-        outer_scope = Bubble.cell_scope(scope, outer, outer_item, oi),
-        {item, i} <- nested_items(data, scope, rg, oi),
-        do: Bubble.cell_scope(outer_scope, rg, item, i)
+    for {outer_item, oi, on} <- cell_items(data, scope, outer),
+        outer_scope = Bubble.cell_scope(scope, outer, outer_item, oi, on),
+        {item, i, n} <- nested_items(data, scope, rg, oi),
+        do: Bubble.cell_scope(outer_scope, rg, item, i, n)
   end
 
   defp cell_scopes(data, scope, rg),
-    do: for({item, i} <- cell_items(data, scope, rg), do: Bubble.cell_scope(scope, rg, item, i))
+    do: for({item, i, n} <- cell_items(data, scope, rg), do: Bubble.cell_scope(scope, rg, item, i, n))
 
   # Logged once per page process, not on every read (a keystroke reads).
   defp warn_capped do

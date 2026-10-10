@@ -704,9 +704,11 @@ Dropdown's or a Checkbox's.
 
 A reusable-element instance in a repeating group's cell is rendered once
 per cell, in a scope of its own: the cell's thing's
-(`<Web>.Bubble.cell_scope/4`: `<scope>-<repeating group>~2<the thing's
-unique ID>`, then `-<instance>`; a list of texts or numbers, which has no
-unique ID, by the cell's position). A re-sorted list keeps what each
+(`<Web>.Bubble.cell_scope/5`: `<scope>-<repeating group>~2<the thing's
+unique ID>`, then `-<instance>`; a list of options by the option's value
+and, when listed `c` times, its occurrence and count,
+`~4<value>[~5<n>~6<c>]`, WTF-520; a list of texts or
+numbers, which has no unique ID, by the cell's position). A re-sorted list keeps what each
 thing's cell held, as "Display data" does in cells (WTF-492). In that
 scope:
 
@@ -767,7 +769,10 @@ kept for it (custom states, inputs, what "Display data" showed) is
 dropped, and its scope takes no event, a paused or scheduled workflow
 included. A list of texts or numbers has no unique ID: its cells are
 by position, duplicates included; a list holding the same thing twice
-gives both cells one scope (they share their states).
+gives both cells one scope (they share their states). A list of options
+keys each cell by its option, its occurrence and the option's count (the
+second of two equal options has a scope of its own); when the count
+changes, every instance in a cell of that option starts over.
 
 An instance inside a runtime container of a cell (not the cell's own
 template) keeps one scope and is marked.
@@ -916,7 +921,7 @@ repeating group in a table of the cell, or in another runtime container
 there, is a marked runtime container, never an empty loop.
 
 **Its cells** have a scope of their own, the outer cell's
-(`<Web>.Bubble.cell_scope/4` of the outer list and its thing): a group in
+(`<Web>.Bubble.cell_scope/5` of the outer list and its thing): a group in
 an inner cell is kept under `{outer cell's scope, group, inner index}`,
 a reusable instance in it under `<outer cell's scope>-<inner>~2<thing>-<instance>`
 (by the things' unique IDs, so a re-sorted list keeps what each cell
@@ -1108,6 +1113,29 @@ The frontend workflow metrics (`docs/frontend-workflows.md`, *native*
 and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
+
+### Private fixture app (test version), 2026-10-10, clicks and input changes in cells of option lists (WTF-520)
+
+Cells of a list of options are keyed by their option and its occurrence
+(`docs/frontend-workflows.md`), no longer by position, so their clicks
+and input changes are wired per cell. Of the 41 workflows left unwired
+in lists keyed by position, the 39 in lists of options are wired now: 29
+run whole (native), 10 are refused by the runtime with the notice, for
+their own residue. The 2 in lists of texts stay residue.
+
+| | before | after |
+|-|------:|------:|
+| workflows native / wired | 850 / 577 | 879 / 606 |
+| native steps | 2,487 | 2,523 |
+| `:trigger_in_runtime_template` (residue entries, workflows) | 111 | 72 |
+| `:unavailable_input` (residue entries, workflows) | 395 | 350 |
+
+No data source moved (the page data counts are unchanged). The resources
+a source's queries search now publish their changes too; in this app
+none is new (the 21 such resources are all among the 44 read as a
+source's own type), so no resource gained a notifier. Requiring the
+list's source to compute the option set too (not only its type of
+content) moved no count (47 repeating groups here are lists of options).
 
 ### Private fixture app (test version), 2026-10-09, clicks and input changes in cells (WTF-520)
 

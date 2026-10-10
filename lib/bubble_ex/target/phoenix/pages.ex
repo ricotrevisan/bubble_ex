@@ -1058,7 +1058,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp cells(node, ctx, acc) do
     rg = bid(node)
-    {item, index} = cell_vars(rg)
+    key = cell_key_args(rg, ctx)
+
+    # A list of options (WTF-520) is read with each option's occurrence
+    # (`<Web>.Bubble.keyed_cells/3`): its cells are keyed by the option.
+    cells_fun = if option_list?(rg, ctx), do: "Bubble.keyed_cells", else: "Bubble.cells"
 
     # Nested (WTF-520): the inner list in the outer cell (its index), the
     # inner cells' values kept in the outer cell's scope.
@@ -1066,16 +1070,16 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       case nested_list?(node, ctx) do
         true ->
           outer = ctx.cell
-          {outer_item, outer_index} = cell_vars(outer)
+          {_outer_item, outer_index} = cell_vars(outer)
 
           scope =
-            "Bubble.cell_scope(#{scope_var(ctx)}, #{literal(outer)}, #{outer_item}, #{outer_index})"
+            "Bubble.cell_scope(#{scope_var(ctx)}, #{literal(outer)}, #{cell_key_args(outer, ctx)})"
 
-          {"Bubble.cells(@bubble_data, #{scope_var(ctx)}, #{literal(rg)}, #{outer_index})", scope,
+          {"#{cells_fun}(@bubble_data, #{scope_var(ctx)}, #{literal(rg)}, #{outer_index})", scope,
            %{outer_cell: outer, cell_scope: scope}}
 
         false ->
-          {"Bubble.cells(@bubble_data, #{scope_var(ctx)}, #{literal(rg)})", scope_var(ctx),
+          {"#{cells_fun}(@bubble_data, #{scope_var(ctx)}, #{literal(rg)})", scope_var(ctx),
            %{outer_cell: nil, cell_scope: nil}}
       end
 
@@ -1102,9 +1106,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     template = [
       "<div :for={{",
-      item,
-      ", ",
-      index,
+      key,
       "} <- ",
       list,
       "} id={Bubble.cell_id(",
@@ -1112,9 +1114,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       ", ",
       literal(rg),
       ", ",
-      item,
-      ", ",
-      index,
+      key,
       ")}>\n",
       indent(children, 1),
       "</div>"
@@ -1431,6 +1431,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # The loop variables of a repeating group's cells.
   defp cell_vars(rg), do: {"cell_" <> ident(rg), "cell_" <> ident(rg) <> "_i"}
 
+  # What keys a cell of `rg` (`<Web>.Bubble.cell_scope/5`, `cell_id/5`):
+  # its item and index, and in a list of options (WTF-520) the option's
+  # occurrence too.
+  defp cell_key_args(rg, ctx) do
+    {item, index} = cell_vars(rg)
+
+    if option_list?(rg, ctx),
+      do: "#{item}, #{index}, cell_#{ident(rg)}_n",
+      else: "#{item}, #{index}"
+  end
+
+  # Whether `rg`'s list holds option-set values (`FlowSpec.option_list?/2`).
+  defp option_list?(rg, ctx), do: FlowSpec.option_list?(Map.get(ctx, :flows), rg)
+
   # Whether the page loads a repeating group's list per cell of the
   # repeating group holding it (WTF-520): two levels, the outer one
   # outside any cell.
@@ -1613,8 +1627,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # Once per cell, in the cell's scope (WTF-494): the cell's thing's
   # unique ID, not its position.
   defp cell_scope(node, ctx) do
-    {item, index} = cell_vars(ctx.cell)
-    cell = "Bubble.cell_scope(#{cells_scope(ctx)}, #{literal(ctx.cell)}, #{item}, #{index})"
+    cell =
+      "Bubble.cell_scope(#{cells_scope(ctx)}, #{literal(ctx.cell)}, #{cell_key_args(ctx.cell, ctx)})"
+
     "Bubble.nest(#{cell}, #{literal(bid(node))})"
   end
 
@@ -3393,12 +3408,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # runtime container there (WTF-520).
   defp cell_events?(ctx), do: Map.get(ctx, :cell_events, false) == true
 
-  # The current cell's scope (`<Web>.Bubble.cell_scope/4`): the scope its
+  # The current cell's scope (`<Web>.Bubble.cell_scope/5`): the scope its
   # page events carry and its inputs are kept under (WTF-520).
-  defp cell_scope_expr(ctx) do
-    {item, index} = cell_vars(ctx.cell)
-    "Bubble.cell_scope(#{cells_scope(ctx)}, #{literal(ctx.cell)}, #{item}, #{index})"
-  end
+  defp cell_scope_expr(ctx),
+    do:
+      "Bubble.cell_scope(#{cells_scope(ctx)}, #{literal(ctx.cell)}, #{cell_key_args(ctx.cell, ctx)})"
 
   # The page's state and input maps, passed down to a scoped component.
   defp flow_attrs(definition, ctx) do
@@ -4601,7 +4615,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       web: ctx.web,
       module: ctx.module,
       modals: modals,
-      viewer_loads: source(viewer_loads)
+      viewer_loads: source(viewer_loads),
+      option_lists: source(FlowSpec.option_lists(Map.get(base, :flows)))
     })
   end
 
