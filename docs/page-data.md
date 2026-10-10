@@ -1144,6 +1144,24 @@ and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
 
+### Private fixture app (test version), 2026-10-10, the viewport's width (WTF-520)
+
+`Current page width` is bound (above): one reusable instance's property
+reading it (with a URL parameter) is loaded now, and one click workflow
+reading it is wired and runs whole.
+
+| | before | after |
+|-|------:|------:|
+| page data sources wired / residue | 2,774 / 587 | 2,775 / 586 |
+| reusable properties wired | 1,015 | 1,016 |
+| `:unavailable_input` (residue entries, sources) | 417 | 416 |
+| workflows native / wired | 879 / 606 | 880 / 607 |
+| native steps | 2,523 | 2,524 |
+| `:unavailable_input` (residue entries, workflows) | 350 | 349 |
+
+The plugin placeholders change no count (`placeholder` was already
+counted).
+
 ### Private fixture app (test version), 2026-10-10, clicks and input changes in cells of option lists (WTF-520)
 
 Cells of a list of options are keyed by their option and its occurrence
