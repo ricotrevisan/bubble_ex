@@ -816,6 +816,20 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
                   "button_type" => "icon",
                   "icon" => "material outlined star_border",
                   "text" => "LABEL KEPT FROM BEFORE"
+                }),
+              "bClose" =>
+                button.("bClose", 4, %{
+                  "button_type" => "icon",
+                  "icon" => "material outlined close",
+                  "text" => %{
+                    "type" => "TextExpression",
+                    "entries" => %{
+                      "0" => %{
+                        "type" => "CurrentUser",
+                        "next" => %{"type" => "Message", "name" => "email"}
+                      }
+                    }
+                  }
                 })
             }
           }
@@ -836,6 +850,10 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       refute star =~ ~r/>\s*LABEL KEPT FROM BEFORE/
       assert star =~ ~s|data-bubble-placeholder="icon"|
       assert star =~ ~s|title={Bubble.dev_marker("Icon not available|
+
+      # A dynamic text names it too: its helper is read, never left unused.
+      [close] = Regex.run(~r/<button\s[^>]*data-bubble-id="bClose".*?<\/button>/s, template)
+      assert close =~ ~r/aria-label=\{label_bclose\(/
 
       # An icon set the generator does not draw: an empty box, marked in dev.
       assert template =~ "TODO(bubble:bLock) Button is not lowered"

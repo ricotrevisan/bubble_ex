@@ -913,7 +913,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           |> Map.put("type", "button")
           |> Enum.to_list()
 
-    element(tag, node, attrs ++ icon_only_attrs(node, label, inner), inner, ctx, acc)
+    attrs = icon_name(attrs, node, label)
+    element(tag, node, attrs ++ icon_only_attrs(node, inner), inner, ctx, acc)
   end
 
   defp emit(%Node{kind: :link} = node, ctx, acc) do
@@ -2821,32 +2822,23 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # An icon-only button shows its icon, never its text (Bubble keeps the
   # text of a button switched to "Icon"): the text names it for assistive
-  # technology instead. One whose icon cannot be drawn (no symbol in the
+  # technology instead (`aria-label`, from the normalized text, else a
+  # dynamic text's value). One whose icon cannot be drawn (no symbol in the
   # exporter's download nor the stored icon library) is an empty button,
   # marked with the developer markers on, as an element not migrated.
-  defp icon_only_attrs(%Node{variant: :icon} = node, label, inner) do
-    name =
-      case label do
-        {:static, text} when text != "" ->
-          if Map.has_key?(node.attributes, "aria-label"), do: [], else: [{"aria-label", text}]
+  defp icon_name(attrs, %Node{variant: :icon}, {:expr, _} = label),
+    do: List.keystore(attrs, "aria-label", 0, {"aria-label", slot_attr(label)})
 
-        _ ->
-          []
-      end
+  defp icon_name(attrs, _node, _label), do: attrs
 
-    missing =
-      if inner == "",
-        do: [
-          {"data-bubble-placeholder", "icon"},
-          {"data-bubble-dev-marker", {:expr, "Bubble.dev_markers?()"}},
-          {"title", {:expr, "Bubble.dev_marker(#{literal(icon_title(node))})"}}
-        ],
-        else: []
+  defp icon_only_attrs(%Node{variant: :icon} = node, ""),
+    do: [
+      {"data-bubble-placeholder", "icon"},
+      {"data-bubble-dev-marker", {:expr, "Bubble.dev_markers?()"}},
+      {"title", {:expr, "Bubble.dev_marker(#{literal(icon_title(node))})"}}
+    ]
 
-    name ++ missing
-  end
-
-  defp icon_only_attrs(_node, _label, _inner), do: []
+  defp icon_only_attrs(_node, _inner), do: []
 
   defp icon_title(node) do
     case node.attributes["asset_fragment"] do
