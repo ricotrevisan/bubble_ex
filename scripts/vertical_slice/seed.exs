@@ -20,25 +20,53 @@
 # record of the signed-in user carries the same flags. A user's booleans
 # are true in odd worlds (the persona's flags); every other primary's are
 # false there, Bubble's default for a new record, so what odd worlds reach
-# through references (a role's group, a task's project) is not archived
-# or a draft either. Even worlds are the opposite.
+# through references (a task's project, a note's team) is not archived
+# or a draft either. Even worlds are the opposite. With `n = 1` a
+# reference to a record's own type points at primary 1, so primary 1
+# references itself (its twin references primary 1 too).
 defmodule VerticalSlice.Synthetic do
   @moduledoc false
 
   alias BubbleEx.Model
   alias BubbleEx.Model.{DataType, Field, Type}
+  alias BubbleEx.Verify.{Interpreter, Value}
+  alias BubbleEx.Verify.Interpreter.Dataset
 
   @base_ms 1_767_225_600_000
   @day 86_400_000
+  # Record numbers of a type are `t * 1000 + i` with `i` up to `2n`: at
+  # most 1000 per type keeps every ID distinct.
+  @max_worlds 500
 
   @doc """
   The Bubble-shaped ID of record `i` (1-based) of the `t`-th type: `1` to
   `n` are the primary records, `n + 1` to `2n` their twins.
   """
-  def id(t, i),
+  def id(t, i) when i in 1..(2 * @max_worlds)//1,
     do: "1767225600000x" <> String.pad_leading(Integer.to_string(t * 1000 + i), 18, "0")
 
   def email(i), do: "slice-user-#{i}@example.test"
+
+  @doc """
+  The number of synthetic worlds from the seed's `N` argument (default 3):
+  1 to #{@max_worlds}, so that record IDs stay distinct across types.
+  """
+  def worlds(value) do
+    case value do
+      blank when blank in [nil, ""] ->
+        3
+
+      text ->
+        case Integer.parse(text) do
+          {n, ""} when n in 1..@max_worlds//1 ->
+            n
+
+          _ ->
+            raise ArgumentError,
+                  "N must be a number of worlds from 1 to #{@max_worlds}, got #{inspect(text)}"
+        end
+    end
+  end
 
   @doc """
   The persona the slice signs in as, from `SLICE_PERSONA`: the index of a
@@ -71,6 +99,7 @@ defmodule VerticalSlice.Synthetic do
   primary records, then their twins.
   """
   def rows(%Model{} = model, n) do
+    check_worlds!(n)
     types = live_types(model)
     index = types |> Enum.with_index(1) |> Map.new(fn {t, i} -> {t.id, i} end)
     options = Map.new(model.option_sets, &{&1.id, live_keys(&1)})
@@ -88,10 +117,131 @@ defmodule VerticalSlice.Synthetic do
 
   @doc "Every record ID written, by type: `%{type id => [id]}`, primaries first."
   def ids(%Model{} = model, n) do
+    check_worlds!(n)
+
     model
     |> live_types()
     |> Enum.with_index(1)
     |> Map.new(fn {type, t} -> {type.id, for(i <- 1..records(n), do: id(t, i))} end)
+  end
+
+  @doc """
+  The record of `type_id` the drive visits signed in as `persona`: the
+  first of the persona's primary, its twin, then the other records in
+  order that the privacy rules let the persona view, as the generated
+  policies read them (`BubbleEx.Verify.Interpreter.target/1`). Primaries
+  and twins have opposite flags, so a rule that needs a flag either way
+  finds one of the two. Without enforced privacy, or when no record is
+  known to be viewable (no rule grants it, or the interpreter cannot
+  tell), the persona's primary. nil for a type with no records.
+  """
+  def target(%Model{} = model, n, persona, type_id, privacy) do
+    case ids(model, n)[type_id] do
+      nil ->
+        nil
+
+      ids ->
+        primary = Enum.at(ids, persona - 1)
+        twin = Enum.at(ids, n + persona - 1)
+        candidates = [primary, twin | ids -- [primary, twin]]
+
+        if privacy == :enforced,
+          do: Enum.find(candidates, primary, viewable(model, n, persona)),
+          else: primary
+    end
+  end
+
+  # Whether the persona may view a record, under the generated policies'
+  # reading; false when the interpreter cannot tell.
+  defp viewable(model, n, persona) do
+    user = id(Map.fetch!(index(model), "user"), persona)
+
+    case {Interpreter.new(model), dataset(model, n)} do
+      {{:ok, interpreter}, {:ok, ds}} ->
+        interpreter = Interpreter.target(interpreter)
+
+        fn record ->
+          match?({:ok, %{visible: true}}, Interpreter.access(interpreter, ds, user, record))
+        end
+
+      _ ->
+        fn _record -> false end
+    end
+  end
+
+  @doc """
+  The synthetic rows as the privacy interpreter's dataset: records keyed
+  by ID, values in the canonical form of `BubbleEx.Verify.Value`.
+  """
+  def dataset(%Model{} = model, n) do
+    types = Map.new(live_types(model), &{&1.id, &1})
+
+    model
+    |> rows(n)
+    |> Enum.flat_map(fn {type_id, rows} ->
+      fields = types[type_id].fields
+      for row <- rows, do: {row["_id"], type_id, canonical(fields, row)}
+    end)
+    |> Dataset.new()
+  end
+
+  @system %{
+    created_by: "Created By",
+    created_date: "Created Date",
+    modified_date: "Modified Date"
+  }
+
+  defp canonical(fields, row) do
+    for %Field{deleted: false} = f <- fields,
+        {:ok, value} <- [cast(f, raw(f, row))],
+        value != nil,
+        into: %{},
+        do: {f.id, value}
+  end
+
+  defp raw(%Field{system: nil, id: id}, row), do: row[id]
+  defp raw(%Field{system: :email}, row), do: get_in(row, ["authentication", "email", "email"])
+  defp raw(%Field{system: system}, row), do: row[@system[system]]
+
+  defp cast(_field, nil), do: {:ok, nil}
+
+  defp cast(%Field{type: %Type{cardinality: :many} = type} = f, values) do
+    one = %Field{f | type: %Type{type | cardinality: :one}}
+    Value.cast(%{"list" => Enum.map(values, &json(one, &1))})
+  end
+
+  defp cast(%Field{system: :created_by}, value), do: Value.cast(%{"ref" => value})
+
+  defp cast(%Field{system: system}, value) when system in [:created_date, :modified_date],
+    do: Value.cast(%{"date" => value})
+
+  defp cast(%Field{system: :email}, value), do: Value.cast(%{"text" => value})
+  defp cast(f, value), do: Value.cast(json(f, value))
+
+  defp json(%Field{type: %Type{kind: :ref}}, id), do: %{"ref" => id}
+  defp json(%Field{type: %Type{kind: :option}}, key), do: %{"option" => key}
+
+  defp json(%Field{type: %Type{kind: :structured, base: :geographic_address}}, v),
+    do: %{
+      "geographic_address" => %{
+        "formatted_address" => v["address"],
+        "lat" => v["lat"],
+        "lng" => v["lng"]
+      }
+    }
+
+  defp json(%Field{type: %Type{kind: :structured, base: base}}, v),
+    do: %{Atom.to_string(base) => v}
+
+  defp json(%Field{type: %Type{base: base}}, v), do: %{Atom.to_string(base) => v}
+
+  defp index(model),
+    do: model |> live_types() |> Enum.with_index(1) |> Map.new(fn {t, i} -> {t.id, i} end)
+
+  defp check_worlds!(n) do
+    unless is_integer(n) and n in 1..@max_worlds//1 do
+      raise ArgumentError, "the seed writes 1 to #{@max_worlds} worlds, got #{inspect(n)}"
+    end
   end
 
   defp live_types(model),

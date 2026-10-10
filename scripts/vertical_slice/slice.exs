@@ -21,8 +21,9 @@
 # a record and its twin with negated booleans each, so 2N records per data
 # type, as a loader export and loads them into SLICE_DB's
 # `slice_dev` database through the data loader (scripts/vertical_slice/
-# seed.exs), then OUT/seed.json: the sign-in email, the record IDs by type
-# and the loader's counts. Nothing leaves OUT; nothing calls Bubble.
+# seed.exs), then OUT/seed.json: the sign-in email, the record IDs by type,
+# the page's thing (a record of its type the persona may view,
+# Synthetic.target/5) and the loader's counts. N is 1 to 500. Nothing leaves OUT; nothing calls Bubble.
 Code.require_file("pipeline.exs", __DIR__)
 Code.require_file("pages.exs", __DIR__)
 Code.require_file("seed.exs", __DIR__)
@@ -287,7 +288,7 @@ case System.argv() do
 
   ["seed", export, decisions_path, out | rest] ->
     out = Cli.private_dir!(Path.expand(out))
-    n = rest |> List.first("3") |> String.to_integer()
+    n = rest |> List.first() |> VerticalSlice.Synthetic.worlds()
     persona = VerticalSlice.Synthetic.persona(System.get_env("SLICE_PERSONA"), n)
     app = Pipeline.load_app(export)
     decisions = decisions_path |> Cli.decisions() |> Pipeline.load_decisions()
@@ -318,6 +319,18 @@ case System.argv() do
       report.types |> Map.values() |> Enum.map(&Map.get(&1, key, 0)) |> Enum.sum()
     end
 
+    # The page's thing, viewable by the persona when a record of its type
+    # is (render wrote slice.json first).
+    thing_type =
+      case File.read(Path.join(out, "slice.json")) do
+        {:ok, text} -> Jason.decode!(text)["thing_type"]
+        {:error, _} -> nil
+      end
+
+    thing =
+      thing_type &&
+        VerticalSlice.Synthetic.target(built.model, n, persona, thing_type, privacy)
+
     seed = %{
       "sign_in_email" => VerticalSlice.Synthetic.email(persona),
       "persona" => persona,
@@ -325,6 +338,7 @@ case System.argv() do
       "worlds" => n,
       "per_type" => VerticalSlice.Synthetic.records(n),
       "ids" => VerticalSlice.Synthetic.ids(built.model, n),
+      "thing" => thing,
       "load" => %{
         "types" => map_size(report.types),
         "inserted" => counts.(:inserted),
@@ -342,11 +356,12 @@ case System.argv() do
 
     IO.inspect(seed["load"]["diagnostics"], label: "loader diagnostics")
 
-  # What the browser drive visits: `<path> <thing id or -> <email> <page ID>`.
+  # What the browser drive visits: `<path> <thing id or -> <email> <page ID>`;
+  # the thing is the one `seed` chose (Synthetic.target/5).
   ["target", out] ->
     slice = out |> Path.join("slice.json") |> File.read!() |> Jason.decode!()
     seed = out |> Path.join("seed.json") |> File.read!() |> Jason.decode!()
-    thing = slice["thing_type"] && seed["ids"][slice["thing_type"]] |> List.wrap() |> List.first()
+    thing = slice["thing_type"] && seed["thing"]
     IO.puts("#{slice["path"]} #{thing || "-"} #{seed["sign_in_email"]} #{slice["page"]["id"]}")
 
   _ ->
