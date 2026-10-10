@@ -640,6 +640,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   defp binding(:actor, loads), do: "BubbleWorkflows.actor(ctx, #{loads_source(loads)})"
   defp binding(:now, _loads), do: "ctx.now"
+  defp binding(:page_width, _loads), do: "ctx.page_width"
 
   defp binding({:param, id}, loads),
     do: "BubbleWorkflows.param(ctx, #{literal(id)}, #{loads_source(loads)})"
@@ -831,12 +832,19 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp data_default(%{kind: :param, element: e, holder: e}), do: ", default: true"
   defp data_default(_d), do: ""
 
-  # The input elements a source's value or search constraints read.
+  # What a source reading the viewport's width (`Current page width`)
+  # names among its inputs: no element's Bubble ID has a space, so the
+  # runtime reads it again when the width changes, as for an input.
+  @page_width_input "Current Page Width"
+
+  # The input elements a source's value or search constraints read (and
+  # the viewport's width, `@page_width_input`).
   defp data_inputs(read) do
     read
     |> read_bindings()
     |> Enum.flat_map(fn
       %{bind: {:input, %{element: e}}} -> [e]
+      %{bind: :page_width} -> [@page_width_input]
       _ -> []
     end)
     |> Enum.uniq()

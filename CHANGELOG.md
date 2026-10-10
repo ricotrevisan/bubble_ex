@@ -688,6 +688,29 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Current page width** (WTF-520). A data source, a reusable
+  instance's property or a workflow reading the viewport's width was
+  `:unavailable_input`: a navigation's "Compact" property (`Current page
+  width > 767 and the URL's compact`) was never set, so the labels its
+  conditionals hide when it is yes kept their page-load visibility
+  (hidden). The page's hook (`<Web>.Bubble.runtime/1`) now reports
+  `window.innerWidth` once connected, after a reconnect and when a resize
+  changes it (`bubble:page_width`, a whole number of pixels up to
+  100,000; anything else is ignored); the runtime keeps it
+  (`@bubble_page_width`, `ctx.page_width`) and reads again what reads it,
+  as after an input's change (its sources list `"Current Page Width"`
+  among their `inputs`). Empty until reported, so `empty > 767` is no.
+  The pages' own conditionals reading the width directly are still not
+  lowered (`docs/page-data.md`).
+
+- **A plugin's element shows where it is missing** (WTF-520). An element
+  of a plugin is not migrated: it rendered as an empty box with a
+  template comment, invisible on the page (a row of icons was blank).
+  It now carries `data-bubble-placeholder="plugin"` and a title, and
+  `bubble.css` outlines and hatches it (an unlayered rule, over its own
+  styles). Nothing is drawn in its place. An unsupported native element
+  keeps its empty box.
+
 - **Clicks and input changes in the cells of a list of options run in
   that cell** (WTF-520). A repeating group whose list holds option-set
   values had cells keyed by position, so its rows' clicks and input

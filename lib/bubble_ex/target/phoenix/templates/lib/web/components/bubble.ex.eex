@@ -679,7 +679,10 @@ defmodule <%= @web %>.Bubble do
         "background: transparent; overflow: visible; max-width: 24rem; " <>
         "z-index: #{@notice_z}"
 
-  @doc "The page's hook: element steps, overlays and Escape. Render it once per page."
+  @doc """
+  The page's hook: element steps, overlays and Escape, and the viewport's
+  width. Render it once per page.
+  """
   def runtime(assigns) do
     ~H"""
     <div id="bubble-runtime" phx-hook=".BubbleRuntime" hidden></div>
@@ -770,7 +773,29 @@ defmodule <%= @web %>.Bubble do
           this.handleEvent("bubble:exec", ({ ops }) => (ops || []).forEach((op) => this.exec(op)))
           // A refused click or input change (WTF-453): a short notice, as text.
           this.handleEvent("bubble:notice", ({ text }) => this.notice(text))
+          // The viewport's width, Bubble's "Current page width" (WTF-520):
+          // reported once connected, then whenever a resize changes it.
+          this.pageWidth = null
+          const resized = () => {
+            clearTimeout(this.widthTimer)
+            this.widthTimer = setTimeout(() => this.reportWidth(), 150)
+          }
+          window.addEventListener("resize", resized)
+          this.listeners.push(["resize", resized])
+          this.reportWidth()
           this.raiseNotice()
+        },
+        // A reconnected page is mounted afresh on the server: it knows no
+        // width until it is told again.
+        reconnected() {
+          this.pageWidth = null
+          this.reportWidth()
+        },
+        reportWidth() {
+          const width = Math.round(window.innerWidth)
+          if (!Number.isFinite(width) || width === this.pageWidth) return
+          this.pageWidth = width
+          this.pushEvent("bubble:page_width", { width })
         },
         // The notice region lives in the top layer (WTF-474), above every
         // z-index a page has: an open manual popover, kept open (empty, it
@@ -790,6 +815,7 @@ defmodule <%= @web %>.Bubble do
           this.listeners.forEach(([name, listener]) => window.removeEventListener(name, listener))
           clearTimeout(this.noticeTimer)
           clearTimeout(this.noticeTextTimer)
+          clearTimeout(this.widthTimer)
         },
         notice(text) {
           const region = document.getElementById("bubble-notice")

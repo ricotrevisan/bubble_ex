@@ -89,6 +89,13 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
     open =~ ~r/\shidden(\s|>|=)/
   end
 
+  # The viewport's width as the page's hook reports it (WTF-520); what
+  # reads it is read again after the input debounce.
+  defp report_width(view, width) do
+    render_hook(view, "bubble:page_width", %{"width" => width})
+    Process.sleep(250)
+  end
+
   defp read(query, name, type),
     do: Bubble.url_value(Bubble.url_query(query), [], {:query, name}, type)
 
@@ -358,6 +365,69 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
       if enforced?(),
         do: assert(text(view, "bNoted") == "Noted:"),
         else: assert(text(view, "bNoted") == "Noted: Second")
+    end
+  end
+
+  # The wide page (WTF-520): the Side nav's Compact property is `Current page
+  # width > 767 and compact`, its label hidden when Compact is yes.
+  describe "the viewport's width" do
+    test "a reusable instance's property reads it, with a URL parameter", %{conn: conn, u1: u1} do
+      data_access_on()
+      {:ok, view, _html} = live(sign_in(conn, u1), "/wide?compact=yes")
+
+      # Not reported yet: empty, and empty > 767 is no, so Compact is no.
+      refute hidden?(view, "bSideLabel", "bWideNav")
+
+      report_width(view, 1024)
+      assert hidden?(view, "bSideLabel", "bWideNav")
+
+      report_width(view, 767)
+      refute hidden?(view, "bSideLabel", "bWideNav")
+
+      report_width(view, 768)
+      assert hidden?(view, "bSideLabel", "bWideNav")
+
+      # Without the parameter, Compact is no at any width.
+      {:ok, view, _html} = live(sign_in(conn, u1), "/wide")
+      report_width(view, 1024)
+      refute hidden?(view, "bSideLabel", "bWideNav")
+    end
+
+    test "only a whole number of pixels in range is taken", %{conn: conn, u1: u1} do
+      data_access_on()
+      {:ok, view, _html} = live(sign_in(conn, u1), "/wide?compact=yes")
+
+      for bad <- ["1024", 1024.5, -1, 100_001, nil, %{"w" => 1}] do
+        report_width(view, bad)
+        refute hidden?(view, "bSideLabel", "bWideNav"), inspect(bad)
+      end
+
+      render_hook(view, "bubble:page_width", %{"other" => 1024})
+      Process.sleep(250)
+      refute hidden?(view, "bSideLabel", "bWideNav")
+    end
+
+    test "a workflow reads it", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/wide")
+      render_click(view, "bubble:click", %{"scope" => "", "element" => "bWideBtn"})
+      assert text(view, "bWideShown") == "Width:"
+
+      report_width(view, 800)
+      render_click(view, "bubble:click", %{"scope" => "", "element" => "bWideBtn"})
+      assert text(view, "bWideShown") == "Width: 800"
+    end
+  end
+
+  describe "an element not migrated" do
+    test "a plugin's is a visible placeholder, never a guess at its content", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/wide")
+      html = view |> element(selector("bSideIcon", "bWideNav")) |> render()
+      assert html =~ ~s(data-bubble-placeholder="plugin")
+      assert html =~ ~s|title="Plugin element (not migrated)"|
+      assert text(view, "bSideIcon", "bWideNav") == ""
+
+      refute view |> element(selector("bSideVideo", "bWideNav")) |> render() =~
+               "data-bubble-placeholder"
     end
   end
 end

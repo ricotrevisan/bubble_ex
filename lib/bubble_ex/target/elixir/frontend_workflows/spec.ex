@@ -42,7 +42,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   args, residue}`.
 
   A compiled value is `%{source, bindings}`, each binding `%{var, bind,
-  loads}` with `bind` one of `:actor`, `:now`, `{:param, id}`, `{:step,
+  loads}` with `bind` one of `:actor`, `:now`, `:page_width`, `{:param, id}`, `{:step,
   action}`, `{:url, name}`, `{:url_value, url}` (see `url/1`), `{:url_thing,
   url}` (`url/1`'s, with the thing's `resource`), `{:state, key}` (key `%{path, element,
   state}`), `{:input, key}` (key `%{path, element}`) or `{:cell_input,

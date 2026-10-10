@@ -700,6 +700,33 @@ that set the content is not lowered yet (the static value is the first
 value, as before), and neither is an input in a repeating group's cell, a
 Dropdown's or a Checkbox's.
 
+## The viewport's width (WTF-520)
+
+Bubble's `Current page width` is the browser's viewport width. A page
+data source, a reusable instance's property or a workflow reading it was
+not loaded (`:unavailable_input`): a property such as a navigation's
+"Compact" toggle (`Current page width > 767 and the URL's compact`) was never
+set, and every conditional of the reusable element reading it kept its
+visibility on page load (a label hidden on load stayed hidden).
+
+It is now kept by the page: the page's hook (`<Web>.Bubble.runtime/1`)
+reports `window.innerWidth` (CSS pixels, the width the breakpoints'
+media rules read) once connected, after a reconnect, and when a resize
+changes it (150 ms after the last resize event); the runtime keeps it as
+`@bubble_page_width` and binds it as `ctx.page_width`. A source reading
+it names `"Current Page Width"` among its `inputs` (no element's Bubble
+ID has a space), so a change reads it again, and whatever reads it,
+after the input debounce, as an input's change does; conditions are
+evaluated again with it. It is the same in every scope and cell. Only a
+whole number of pixels from 0 to 100,000 is taken; anything else the
+browser sends is ignored.
+
+Before the hook reports it (the static render, the first moments of a
+connected one) it is empty: `empty > 767` is no, so such a toggle starts
+as no, and follows the width once reported. Conditionals of the page's
+own templates that read the width directly (not through page data) are
+not lowered yet; Bubble's breakpoints are media rules, as before.
+
 ## Reusable instances in repeating group cells (WTF-494)
 
 A reusable-element instance in a repeating group's cell is rendered once
@@ -1076,6 +1103,9 @@ does not re-read either. A source that uses Current date/time directly (a
 search constrained by `Current date/time`, a displayed "time ago") is
 therefore frozen at its last read; to refresh it on a schedule, have the
 "do every" workflow set a custom state the source reads.
+
+A source reading `Current page width` (WTF-520, above) is read again
+when the browser reports a new width, as for an input's change.
 
 ## Residue fails loudly
 

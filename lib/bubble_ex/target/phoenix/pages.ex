@@ -96,6 +96,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   alias BubbleEx.Frontend.{
     Conditions,
+    Payload,
     ReusableParameters,
     ResponsiveImages,
     StaticAssets,
@@ -745,6 +746,16 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp finish(markup), do: String.trim_trailing(markup) <> "\n"
 
+  # A plugin's element is not migrated (WTF-520): its box shows that
+  # something is missing there, hatched and outlined (bubble.css), never a
+  # guess at what the plugin draws. An unsupported native element keeps
+  # its empty box.
+  defp plugin_placeholder(type) do
+    if Payload.plugin_type?(type),
+      do: [{"data-bubble-placeholder", "plugin"}, {"title", "Plugin element (not migrated)"}],
+      else: []
+  end
+
   # --- nodes ----------------------------------------------------------------------
 
   defp emit(%Node{kind: :page} = node, ctx, acc) do
@@ -812,7 +823,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp emit(%Node{kind: :placeholder} = node, ctx, acc) do
     type = node.attributes["data-placeholder-kind"] || "element"
     acc = mark(acc, node, "#{type} is not lowered (plugin or unsupported element)")
-    element("div", node, [], "", ctx, acc, placeholder: true)
+    element("div", node, plugin_placeholder(type), "", ctx, acc, placeholder: true)
   end
 
   defp emit(%Node{kind: kind} = node, ctx, acc)
@@ -4525,6 +4536,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
        stays hidden whatever its display utility. */
     #{closing}
     [data-bubble-id][hidden] { display: none; }
+
+    /* A plugin's element that is not migrated: its box, hatched and
+       outlined, whatever its own styles (unlayered: it wins). */
+    [data-bubble-placeholder="plugin"] {
+      outline: 1px dashed rgba(107, 114, 128, 0.9);
+      outline-offset: -1px;
+      background-image: repeating-linear-gradient(-45deg, rgba(107, 114, 128, 0.18) 0 3px, transparent 3px 6px);
+    }
     """
     |> String.replace(~r/\n\n\n+/, "\n\n")
   end

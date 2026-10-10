@@ -126,4 +126,61 @@ defmodule BubbleEx.Target.Phoenix.UrlTest do
     assert runtime =~ "Bubble.url_query(query)"
     refute runtime =~ ~s|k != "bubble_thing"|
   end
+
+  # The wide page (WTF-520): an instance's property `Current page width >
+  # 767 and compact`, as a left nav's "Compact" toggle.
+  test "Current page width is the width the browser reports, read again when it changes", %{
+    files: files,
+    spec: spec
+  } do
+    assert [%{residue: [], read: {:value, _}}] =
+             for(d <- spec.surfaces["bWide"].data, Map.get(d, :param) == "param_pMini", do: d)
+
+    assert [%{residue: []}] = spec.surfaces["bWide"].workflows
+
+    workflows = files["lib/shop_web/live/wide_live/workflows.ex"]
+    assert workflows =~ "page_data_current_page_width = ctx.page_width"
+    assert workflows =~ "Shop.Bubble.Runtime.compare(:gt, page_data_current_page_width, 767)"
+    # Its source names the width among its inputs: read again on a change.
+    assert workflows =~ ~s|inputs: ["Current Page Width"]|
+
+    # The label reads the instance's value, loaded now, not a marker.
+    side = files["lib/shop_web/components/reusables/side_nav.html.heex"]
+
+    assert tag(side, "bSideLabel") =~
+             ~s|Bubble.data(@bubble_data, @scope, "param_pMini/bSideDef")|
+
+    refute side =~ "TODO(bubble:bSideLabel)"
+
+    # The page's hook reports the width; the runtime takes a whole number
+    # of pixels and reads again what reads it.
+    hook = files["lib/shop_web/components/bubble.ex"]
+    assert hook =~ ~s|this.pushEvent("bubble:page_width", { width })|
+    assert hook =~ ~s|window.addEventListener("resize", resized)|
+
+    runtime = files["lib/shop_web/bubble_workflows.ex"]
+    assert runtime =~ ~s|def handle_event(socket, page, "bubble:page_width", %{"width" => width})|
+    assert runtime =~ "page_width: Map.get(socket.assigns, :bubble_page_width)"
+    assert runtime =~ "BubbleData.mark_inputs([@page_width_input])"
+  end
+
+  test "a plugin's element is a visible placeholder, a native one stays an empty box", %{
+    files: files
+  } do
+    side = files["lib/shop_web/components/reusables/side_nav.html.heex"]
+
+    icon = tag(side, "bSideIcon")
+    assert icon =~ ~s|data-bubble-placeholder="plugin"|
+    assert icon =~ ~s|title="Plugin element (not migrated)"|
+    assert side =~ "TODO(bubble:bSideIcon)"
+    # Nothing drawn in its place.
+    assert [_, inner] = Regex.run(~r/data-bubble-id="bSideIcon".*?>(.*?)<\/div>/s, side)
+    assert String.trim(String.replace(inner, ~r/<%!--.*?--%>/s, "")) == ""
+
+    refute tag(side, "bSideVideo") =~ "data-bubble-placeholder"
+
+    css = files["assets/css/bubble.css"]
+    assert css =~ ~s|[data-bubble-placeholder="plugin"] {|
+    assert css =~ "outline: 1px dashed"
+  end
 end
