@@ -707,7 +707,8 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     # typed, bList's and bStrict's are the same query: one read makes it
     # once (WTF-501).
     random? = &(&1 =~ "md5(")
-    first_open? = &(&1 =~ ~r/WHERE \(t0\."done"/)
+    # (`done = no` also matches an empty done, WTF-529: `(done = false OR done IS NULL)`)
+    first_open? = &(&1 =~ ~r/WHERE \(+t0\."done"/)
     # Empty values sort last both ways, as Bubble's (replay 2026-10-07).
     card2? = &(&1 =~ ~r/ORDER BY t0\."title" DESC NULLS LAST LIMIT/)
     plain? = &(&1 =~ ~r/FROM "task" AS t0 ORDER BY t0\."title"( ASC)? NULLS LAST LIMIT/)
