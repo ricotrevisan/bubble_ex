@@ -1001,6 +1001,11 @@ defmodule BubbleEx.Frontend.Normalize do
     Regex.match?(~r/^fa fa-[a-z0-9]+(?:-[a-z0-9]+)*$/, icon)
   end
 
+  # A button that is not clickable: the editor's "This element isn't
+  # clickable" (`button_disabled`), or `disabled`.
+  defp button_disabled?(raw),
+    do: Payload.prop(raw, "disabled") == true or Payload.prop(raw, "button_disabled") == true
+
   defp supported_sprite_icon?(icon) when is_binary(icon) do
     fontawesome_4_icon?(icon) or Regex.match?(~r/^material outlined [a-z0-9_]+$/, icon) or
       Regex.match?(~r/^phosphor (regular|bold|fill) [a-z0-9]+(?:-[a-z0-9]+)*$/, icon)
@@ -2734,16 +2739,23 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp element_attributes(raw, :button, :navigation) do
-    if Payload.prop(raw, "disabled") == true, do: %{"disabled" => true}, else: %{}
+    if button_disabled?(raw), do: %{"disabled" => true}, else: %{}
   end
 
+  # An icon-only button is named by its own text (Bubble keeps it when the
+  # button is switched to "Icon"), never by its name in the editor; a
+  # dynamic text names it where it is rendered, and one with no text has
+  # no name (the page marks it in dev).
   defp element_attributes(raw, :button, :icon) do
-    label = Payload.prop(raw, "text") || Payload.name(raw) || "Button"
-    label = if is_binary(label) and String.trim(label) != "", do: label, else: "Button"
+    attrs = Map.merge(sprite_attributes(raw), element_attributes(raw, :button, :label))
 
-    sprite_attributes(raw)
-    |> Map.merge(element_attributes(raw, :button, :label))
-    |> Map.put("aria-label", label)
+    case Payload.prop(raw, "text") do
+      label when is_binary(label) ->
+        if String.trim(label) != "", do: Map.put(attrs, "aria-label", label), else: attrs
+
+      _ ->
+        attrs
+    end
   end
 
   defp element_attributes(raw, :button, :label_icon) do
@@ -2753,7 +2765,7 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp element_attributes(raw, :button, _variant) do
-    if Payload.prop(raw, "disabled") == true,
+    if button_disabled?(raw),
       do: %{"disabled" => true},
       else: %{"type" => "button"}
   end

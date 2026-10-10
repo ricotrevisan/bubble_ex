@@ -674,6 +674,17 @@ defmodule <%= @web %>.Bubble do
   """
   def dev_markers?, do: Application.get_env(:<%= @app %>, :bubble_dev_markers, false) == true
 
+  @doc """
+  An accessible name: `value` shown as text, or `fallback` when it is
+  empty (an icon-only button's dynamic text, WTF-520): never an empty name.
+  """
+  def name(value, fallback) do
+    case value |> to_string() |> String.trim() do
+      "" -> fallback
+      text -> text
+    end
+  end
+
   @doc "`text` with the developer markers on (`dev_markers?/0`), else nil."
   def dev_marker(text), do: if(dev_markers?(), do: text)
 

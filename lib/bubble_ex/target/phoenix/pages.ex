@@ -769,11 +769,30 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         do: {"plugin", "Plugin element (not migrated)"},
         else: {"unsupported", "#{type} (not migrated)"}
 
-    [
-      {"data-bubble-placeholder", kind},
-      {"data-bubble-dev-marker", {:expr, "Bubble.dev_markers?()"}},
-      {"title", {:expr, "Bubble.dev_marker(#{literal(title)})"}}
-    ]
+    [{"data-bubble-placeholder", kind}, {:dev_note, title}]
+  end
+
+  # The developer markers of an element (WTF-520): what the page leaves
+  # out of it or keeps at its page-load value, one tooltip for all
+  # (`{:dev_note, text}` in its attributes). Shown only with the markers on
+  # (`Bubble.dev_markers?/0`, dev only by default): production renders
+  # neither the marker nor the tooltip. A placeholder is hatched
+  # (`data-bubble-placeholder`), any other element outlined
+  # (`data-bubble-dev-note`).
+  defp dev_note_attrs([], _attrs), do: []
+
+  defp dev_note_attrs(notes, attrs) do
+    note =
+      if List.keymember?(attrs, "data-bubble-placeholder", 0),
+        do: [],
+        else: [{"data-bubble-dev-note", {:expr, "Bubble.dev_markers?()"}}]
+
+    note ++
+      [
+        {"data-bubble-dev-marker", {:expr, "Bubble.dev_markers?()"}},
+        {"title",
+         {:expr, "Bubble.dev_marker(#{literal(notes |> Enum.uniq() |> Enum.join("; "))})"}}
+      ]
   end
 
   # --- nodes ----------------------------------------------------------------------
@@ -904,17 +923,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     tag = if navigation?, do: "a", else: "button"
     inner = button_inner(node, label, ctx)
 
-    attrs =
+    {attrs, acc} =
       if navigation?,
-        do: link_attrs(node, ctx),
-        else:
-          node.attributes
-          |> Map.take(["disabled", "aria-label"])
-          |> Map.put("type", "button")
-          |> Enum.to_list()
+        do: {link_attrs(node, ctx), acc},
+        else: button_attrs(node, ctx, acc)
 
     attrs = icon_name(attrs, node, label)
-    element(tag, node, attrs ++ icon_only_attrs(node, inner), inner, ctx, acc)
+    {notes, acc} = button_notes(node, label, inner, acc)
+    element(tag, node, attrs ++ notes, inner, ctx, acc)
   end
 
   defp emit(%Node{kind: :link} = node, ctx, acc) do
@@ -2021,7 +2037,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> Kernel.++(clicks)
       |> put_authored_id(node, ctx, acc)
 
-    rest = sorted_attrs(rest)
+    {notes, rest} = Enum.split_with(rest, &match?({:dev_note, _}, &1))
+    notes = Enum.map(notes, &elem(&1, 1)) ++ data_notes(node, ctx)
+    rest = sorted_attrs(rest ++ dev_note_attrs(notes, rest))
 
     # Text uses pre-wrap: formatter-inserted indentation around a binding
     # would become visible content. Keep the exact emitted inner markup while
@@ -2342,6 +2360,17 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
+  # An element whose own data source would be read once per cell, and is
+  # not (`:page_data_in_cell`, WTF-520), shows nothing of it: with the
+  # developer markers on it says so, never a silent gap.
+  defp data_notes(node, ctx) do
+    texts = ctx |> Map.get(:data_blocked, %{}) |> Map.get(bid(node), [])
+
+    if Enum.any?(texts, &(&1 =~ "its data source is not loaded" and &1 =~ "page_data_in_cell")),
+      do: ["Data not loaded: it would be searched once per cell"],
+      else: []
+  end
+
   # An element whose data source is not loaded is marked, loudly (WTF-420).
   defp mark_data(acc, node, ctx) do
     ctx
@@ -2516,7 +2545,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       slot: name,
       raw?: Map.get(compiled, :raw?, false),
       bbcode?: bbcode?,
-      checks: if(Map.has_key?(compiled, :visibility), do: loaded_checks(compiled), else: [])
+      checks:
+        if(Map.has_key?(compiled, :visibility) or Map.has_key?(compiled, :property),
+          do: loaded_checks(compiled),
+          else: []
+        )
     }
 
     {helper <> "(" <> Enum.join(reads, ", ") <> ")", %{acc | helpers: [entry | acc.helpers]}}
@@ -2820,25 +2853,143 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp text_tag(:h4), do: "h4"
   defp text_tag(_), do: "p"
 
+  # A button's own attributes, with "isn't clickable" (`disabled`, WTF-520):
+  # static, or from its conditionals folded like visibility. A conditional
+  # the page cannot decide (it does not compile, reads what the page does
+  # not keep, or a property with no value) leaves the button disabled,
+  # fail closed, and marked; the runtime refuses its click workflows then
+  # too (they carry the same condition, `BubbleEx.Workflows.Frontend`).
+  defp button_attrs(node, ctx, acc) do
+    base = node.attributes |> Map.take(["aria-label"]) |> Map.put("type", "button")
+    static = if node.attributes["disabled"] == true, do: [{"disabled", true}], else: []
+
+    payload =
+      case node.bindings["condition"] do
+        %{kind: :condition, payload: payload} -> payload
+        _ -> nil
+      end
+
+    {disabled, acc} =
+      case length(Conditions.property(payload, "button_disabled")) do
+        0 -> {static, acc}
+        states -> conditional_disabled(node, states, static, ctx, acc)
+      end
+
+    {Enum.to_list(base) ++ disabled, acc}
+  end
+
+  defp conditional_disabled(node, states, static, ctx, acc) do
+    id = Conditions.disabled_id(node.bindings["condition"].id)
+
+    case ctx.expressions[id] do
+      nil ->
+        disabled_closed(node, states, "it does not compile", acc)
+
+      %{property: %{constant?: true}} ->
+        {static, acc}
+
+      %{bindings: vars} = compiled ->
+        cond do
+          var = Enum.find(vars, &(not kept_input?(&1, ctx))) ->
+            disabled_closed(node, states, unkept(var), acc)
+
+          unset_reads(vars, ctx) != {[], []} ->
+            disabled_closed(
+              node,
+              states,
+              "it reads a reusable element's property with no value",
+              acc
+            )
+
+          true ->
+            ctx = Map.put(ctx, :viewer, true)
+            {call, acc} = add_helper(node, "disabled", compiled, false, ctx, acc)
+            {[{"disabled", {:raw, "{" <> call <> "}"}}], acc}
+        end
+    end
+  end
+
+  defp disabled_closed(node, states, why, acc) do
+    noun = if states == 1, do: "conditional", else: "conditionals"
+
+    {[{"disabled", true}, {:dev_note, "Clickable conditionals not lowered: disabled"}],
+     mark(acc, node, "isn't clickable: #{states} #{noun} not lowered (#{why}); disabled")}
+  end
+
+  # What else a button's conditionals set that the page keeps at its
+  # page-load value (its icon, text or kind, WTF-520), and an icon it cannot
+  # draw: marked, and with the developer markers on, outlined with a
+  # tooltip. An icon-only button whose icon is missing is a placeholder.
+  defp button_notes(node, label, inner, acc) do
+    payload =
+      case node.bindings["condition"] do
+        %{kind: :condition, payload: payload} -> payload
+        _ -> nil
+      end
+
+    {notes, acc} =
+      for {key, what} <- [{"icon", "icon"}, {"text", "text"}, {"button_type", "kind"}],
+          states = length(Conditions.property(payload, key)),
+          states > 0,
+          reduce: {[], acc} do
+        {notes, acc} ->
+          noun = if states == 1, do: "conditional", else: "conditionals"
+
+          {notes ++ [{:dev_note, "Conditional #{what} not lowered"}],
+           mark(acc, node, "#{what}: #{states} #{noun} not lowered; shown as on page load")}
+      end
+
+    {notes ++ icon_notes(node, label, inner), acc}
+  end
+
+  defp icon_notes(%Node{variant: :icon} = node, label, inner) do
+    missing =
+      if inner == "",
+        do: [{"data-bubble-placeholder", "icon"}, {:dev_note, icon_title(node)}],
+        else: []
+
+    unnamed =
+      if label == {:static, ""},
+        do: [{:dev_note, "Icon button with no text: no accessible name"}],
+        else: []
+
+    missing ++ unnamed
+  end
+
+  defp icon_notes(%Node{variant: :label_icon} = node, _label, inner) do
+    if icon_svg_missing?(inner), do: [{:dev_note, icon_title(node)}], else: []
+  end
+
+  defp icon_notes(_node, _label, _inner), do: []
+
+  # A label-and-icon button shows its label alone when its icon cannot be
+  # drawn.
+  defp icon_svg_missing?(inner),
+    do: not (inner |> IO.iodata_to_binary() |> String.contains?("<svg"))
+
   # An icon-only button shows its icon, never its text (Bubble keeps the
-  # text of a button switched to "Icon"): the text names it for assistive
-  # technology instead (`aria-label`, from the normalized text, else a
-  # dynamic text's value). One whose icon cannot be drawn (no symbol in the
-  # exporter's download nor the stored icon library) is an empty button,
-  # marked with the developer markers on, as an element not migrated.
-  defp icon_name(attrs, %Node{variant: :icon}, {:expr, _} = label),
-    do: List.keystore(attrs, "aria-label", 0, {"aria-label", slot_attr(label)})
+  # text of a button switched to "Icon"): a static text names it
+  # (`aria-label`, normalized), a dynamic one where it is rendered, with
+  # its icon's name when the text is empty: never an empty name.
+  defp icon_name(attrs, %Node{variant: :icon} = node, {:expr, expr}) do
+    name = "Bubble.name(#{expr}, #{literal(icon_words(node))})"
+    List.keystore(attrs, "aria-label", 0, {"aria-label", {:raw, "{" <> name <> "}"}})
+  end
+
+  defp icon_name(attrs, %Node{variant: :icon}, {:static, text}) when text != "",
+    do: List.keystore(attrs, "aria-label", 0, {"aria-label", text})
 
   defp icon_name(attrs, _node, _label), do: attrs
 
-  defp icon_only_attrs(%Node{variant: :icon} = node, ""),
-    do: [
-      {"data-bubble-placeholder", "icon"},
-      {"data-bubble-dev-marker", {:expr, "Bubble.dev_markers?()"}},
-      {"title", {:expr, "Bubble.dev_marker(#{literal(icon_title(node))})"}}
-    ]
+  defp icon_words(node) do
+    case node.attributes["asset_fragment"] do
+      fragment when is_binary(fragment) ->
+        fragment |> String.replace(~r/^fa-/, "") |> String.replace(~r/[_-]+/, " ")
 
-  defp icon_only_attrs(_node, _inner), do: []
+      _ ->
+        "Button"
+    end
+  end
 
   defp icon_title(node) do
     case node.attributes["asset_fragment"] do
@@ -4598,10 +4749,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     }
 
     /* An icon-only button whose icon cannot be drawn keeps its icon's box
-       with the markers on, so the marker is seen where the icon would be. */
+       (24px unless sized, as the exporter's) with the markers on, so the
+       marker is seen where the icon would be. */
     [data-bubble-placeholder="icon"][data-bubble-dev-marker] {
-      min-width: var(--bubble-icon-size, 1em);
-      min-height: var(--bubble-icon-size, 1em);
+      min-width: var(--bubble-icon-size, 24px);
+      min-height: var(--bubble-icon-size, 24px);
+    }
+
+    /* An element the page renders with something left at its page-load
+       value or not loaded (a conditional not lowered, data searched once
+       per cell…), with the developer markers on: outlined, its content
+       still shown. */
+    [data-bubble-dev-note][data-bubble-dev-marker] {
+      outline: 1px dashed rgba(217, 119, 6, 0.9);
+      outline-offset: -1px;
     }
     """
     |> String.replace(~r/\n\n\n+/, "\n\n")

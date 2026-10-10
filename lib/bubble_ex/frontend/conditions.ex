@@ -64,6 +64,47 @@ defmodule BubbleEx.Frontend.Conditions do
   @spec may_hide?(term()) :: boolean()
   def may_hide?(payload), do: Enum.any?(visibility(payload), fn {_, v} -> v != true end)
 
+  @doc """
+  The states that set property `key` (the editor's name, its compact alias
+  too), in order: `{condition, value}`, `value` as the state sets it.
+  """
+  @spec property(term(), String.t()) :: [{term(), term()}]
+  def property(payload, key) do
+    for %{condition: condition, properties: props} <- states(payload),
+        {:ok, value} <- [fetch(props, key)],
+        do: {condition, value}
+  end
+
+  defp fetch(props, key) do
+    case Map.fetch(props, key) do
+      {:ok, value} ->
+        {:ok, value}
+
+      :error ->
+        case Payload.prop(%{"properties" => props}, key) do
+          nil -> :error
+          value -> {:ok, value}
+        end
+    end
+  end
+
+  @doc """
+  The states that set a yes/no property `key`, in order: `{condition,
+  value?}`; `value?` is nil when a state sets it to anything but a yes/no
+  literal (a target cannot lower it).
+  """
+  @spec boolean_property(term(), String.t()) :: [{term(), boolean() | nil}]
+  def boolean_property(payload, key),
+    do: for({c, v} <- property(payload, key), do: {c, if(is_boolean(v), do: v)})
+
+  @doc """
+  The key a target keeps a button's compiled "isn't clickable"
+  conditionals under (`BubbleEx.Target.Elixir.Frontend.compile/5`'s
+  result), from its `:condition` binding's ID (WTF-520).
+  """
+  @spec disabled_id(String.t()) :: String.t()
+  def disabled_id(condition_id), do: condition_id <> " :: disabled"
+
   @doc "How many states set a property other than visibility."
   @spec other_properties(term()) :: non_neg_integer()
   def other_properties(payload) do

@@ -830,7 +830,47 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
                       }
                     }
                   }
-                })
+                }),
+              "bSave" => %{
+                "id" => "bSave",
+                "type" => "Button",
+                "properties" => %{"order" => 5, "width" => 120, "height" => 32, "text" => "Save"},
+                "states" => %{
+                  "0" => %{
+                    "condition" => %{
+                      "type" => "CurrentUser",
+                      "next" => %{"type" => "Message", "name" => "logged_in"}
+                    },
+                    "properties" => %{"button_disabled" => true, "text" => "Saved"}
+                  }
+                }
+              },
+              "bHover" => %{
+                "id" => "bHover",
+                "type" => "Button",
+                "properties" => %{"order" => 7, "width" => 120, "height" => 32, "text" => "Go"},
+                "states" => %{
+                  "0" => %{
+                    "condition" => %{
+                      "type" => "ThisElement",
+                      "next" => %{"type" => "Message", "name" => "is_hovered"}
+                    },
+                    "properties" => %{"button_disabled" => true}
+                  }
+                }
+              },
+              "bBare" => %{
+                "id" => "bBare",
+                "type" => "Button",
+                "name" => "Editor name only",
+                "properties" => %{
+                  "order" => 6,
+                  "width" => 32,
+                  "height" => 32,
+                  "button_type" => "icon",
+                  "icon" => "material outlined more_vert"
+                }
+              }
             }
           }
         }
@@ -839,9 +879,38 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       {files, _project, _opts} = render(app)
       template = files["lib/shop_web/live/tools_live.html.heex"]
 
-      [write] = Regex.run(~r/<button\s[^>]*data-bubble-id="bWrite".*?<\/button>/s, template)
+      button = fn id ->
+        hd(Regex.run(~r/<button\s[^>]*data-bubble-id="#{id}".*?<\/button>/s, template))
+      end
+
+      # A conditional icon is not lowered: the button keeps its icon on page
+      # load, marked; with no icon library here, the icon is marked missing.
+      write = button.("bWrite")
       assert write =~ "Write"
-      refute template =~ "TODO(bubble:bWrite)"
+      assert write =~ "TODO(bubble:bWrite) icon: 1 conditional not lowered; shown as on page load"
+      assert write =~ ~s|data-bubble-dev-note={Bubble.dev_markers?()}|
+      assert write =~ "Conditional icon not lowered; Icon not available (note-pencil)"
+
+      # A label button's "isn't clickable" on the current user: lowered to
+      # `disabled`; its conditional text is marked.
+      save = button.("bSave")
+      assert save =~ "disabled={disabled_bsave(@current_user)}"
+      refute save =~ "isn't clickable"
+      assert save =~ "TODO(bubble:bSave) text: 1 conditional not lowered"
+      assert save =~ ~s|title={Bubble.dev_marker("Conditional text not lowered")}|
+
+      # One the page cannot decide (hovering is not kept): disabled, fail
+      # closed, and marked.
+      hover = button.("bHover")
+      assert hover =~ ~r/\sdisabled\s/
+      assert hover =~ "TODO(bubble:bHover) isn't clickable: 1 conditional not lowered"
+      assert hover =~ "Clickable conditionals not lowered: disabled"
+
+      # Never named after the editor: no text, no name, marked.
+      bare = button.("bBare")
+      refute bare =~ "aria-label"
+      refute bare =~ "Editor name only"
+      assert bare =~ "Icon button with no text: no accessible name"
 
       # Icon only: the text Bubble keeps is not shown, it names the button.
       # No icon library here, so its icon cannot be drawn: marked in dev.
@@ -849,13 +918,18 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert star =~ ~s|aria-label="LABEL KEPT FROM BEFORE"|
       refute star =~ ~r/>\s*LABEL KEPT FROM BEFORE/
       assert star =~ ~s|data-bubble-placeholder="icon"|
-      assert star =~ ~s|title={Bubble.dev_marker("Icon not available|
+      assert star =~ "Icon not available (star_border)"
       css = files["assets/css/bubble.css"]
       assert css =~ ~s|[data-bubble-placeholder="icon"][data-bubble-dev-marker] {|
 
-      # A dynamic text names it too: its helper is read, never left unused.
-      [close] = Regex.run(~r/<button\s[^>]*data-bubble-id="bClose".*?<\/button>/s, template)
-      assert close =~ ~r/aria-label=\{label_bclose\(/
+      assert css =~ "min-width: var(--bubble-icon-size, 24px);"
+      assert css =~ ~s|[data-bubble-dev-note][data-bubble-dev-marker] {|
+
+      # A dynamic text names it too, its icon's name when empty: its helper
+      # is read, never left unused, and the name is never empty.
+      close = button.("bClose")
+      assert close =~ ~r/aria-label=\{Bubble.name\(label_bclose\(.*\), "close"\)\}/s
+      assert files["lib/shop_web/components/bubble.ex"] =~ "def name(value, fallback) do"
 
       # An icon set the generator does not draw: an empty box, marked in dev.
       assert template =~ "TODO(bubble:bLock) Button is not lowered"
