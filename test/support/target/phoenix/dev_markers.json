@@ -1,0 +1,325 @@
+{
+  "_id": "dev-markers-fixture",
+  "_comment": "WTF-520: elements whose dynamic value is left out (it reads data the page does not load, or its expression does not compile), all data invented. They render as before, empty or with their literal parts, and with the developer markers on they say so. test/support/target/phoenix/dev_markers_behavior.exs",
+  "user_types": {
+    "note": {
+      "display": "Note",
+      "fields": {
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        },
+        "photo_image": {
+          "display": "Photo",
+          "value": "image"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": [
+              "email"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "pages": {
+    "index": {
+      "id": "bHome",
+      "name": "index",
+      "type": "Page",
+      "properties": {
+        "title": "Home"
+      },
+      "elements": {
+        "bBox": {
+          "id": "bBox",
+          "type": "Group",
+          "properties": {
+            "order": 1,
+            "width": 300,
+            "height": 100,
+            "min_height_css": "40px",
+            "group_type": "custom.note",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.note",
+                "ignore_empty_constraints": false,
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "title_text",
+                    "value": {
+                      "type": "NoSuchThing"
+                    }
+                  }
+                }
+              },
+              "next": {
+                "type": "Message",
+                "name": "first_element"
+              }
+            }
+          },
+          "elements": {
+            "bBoxTitle": {
+              "id": "bBoxTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": {
+                      "type": "ElementParent",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bBoxPartial": {
+              "id": "bBoxPartial",
+              "type": "Text",
+              "properties": {
+                "order": 2,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Title: ",
+                    "1": {
+                      "type": "ElementParent",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bBoxPhoto": {
+              "id": "bBoxPhoto",
+              "type": "Image",
+              "properties": {
+                "order": 3,
+                "width": 40,
+                "height": 40,
+                "min_height_css": "40px",
+                "src": {
+                  "type": "ElementParent",
+                  "next": {
+                    "type": "Message",
+                    "name": "photo_image"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bBroken": {
+          "id": "bBroken",
+          "type": "Text",
+          "properties": {
+            "order": 2,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": {
+                  "type": "NoSuchThing"
+                }
+              }
+            }
+          }
+        },
+        "bBrokenPartial": {
+          "id": "bBrokenPartial",
+          "type": "Text",
+          "properties": {
+            "order": 3,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Hello ",
+                "1": {
+                  "type": "NoSuchThing"
+                },
+                "2": "!"
+              }
+            }
+          }
+        },
+        "bInput": {
+          "id": "bInput",
+          "type": "Input",
+          "properties": {
+            "order": 4,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "placeholder": {
+              "type": "TextExpression",
+              "entries": {
+                "0": {
+                  "type": "NoSuchThing"
+                }
+              }
+            },
+            "initial_content": {
+              "type": "TextExpression",
+              "entries": {
+                "0": {
+                  "type": "NoSuchThing"
+                }
+              }
+            }
+          }
+        },
+        "bButton": {
+          "id": "bButton",
+          "type": "Button",
+          "properties": {
+            "order": 5,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Open ",
+                "1": {
+                  "type": "NoSuchThing"
+                }
+              }
+            }
+          }
+        },
+        "bImage": {
+          "id": "bImage",
+          "type": "Image",
+          "properties": {
+            "order": 6,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "src": {
+              "type": "TextExpression",
+              "entries": {
+                "0": {
+                  "type": "NoSuchThing"
+                }
+              }
+            }
+          }
+        },
+        "bLink": {
+          "id": "bLink",
+          "type": "Link",
+          "properties": {
+            "order": 7,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Docs"
+              }
+            },
+            "destination": {
+              "type": "TextExpression",
+              "entries": {
+                "0": {
+                  "type": "NoSuchThing"
+                }
+              }
+            }
+          }
+        },
+        "bPlain": {
+          "id": "bPlain",
+          "type": "Text",
+          "properties": {
+            "order": 8,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Plain"
+              }
+            }
+          }
+        },
+        "bAvatar": {
+          "id": "bAvatar",
+          "type": "Image",
+          "properties": {
+            "order": 9,
+            "width": 40,
+            "height": 40,
+            "min_height_css": "40px",
+            "src": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "https://example.com/a/",
+                "1": {
+                  "type": "CurrentUser",
+                  "next": {
+                    "type": "Message",
+                    "name": "email"
+                  }
+                }
+              }
+            },
+            "alt": {
+              "type": "TextExpression",
+              "entries": {
+                "0": {
+                  "type": "CurrentUser",
+                  "next": {
+                    "type": "Message",
+                    "name": "email"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

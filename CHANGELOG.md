@@ -6,6 +6,20 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **A value left out is marked in dev, never a silent gap** (WTF-520).
+  A text, label, placeholder, input value, image source or link
+  destination whose expression reads data the page does not load, or
+  does not compile, rendered empty with only a HEEx comment, which never
+  reaches the browser. With the developer markers on
+  (`config :app, :bubble_dev_markers`, dev only by default) the element
+  is now outlined, its layout box kept, with a tooltip naming what was
+  left out and why ("Text not migrated: reads data that is not loaded",
+  "...: expression does not compile"). An image source that is not one
+  image or file value, a link's dynamic destination that is not a file
+  and an image's dynamic alt text, dropped before without a comment, are
+  marked too. A text or label mixing literal parts with the value left
+  out keeps its literal parts ("Total: "). Production renders no marker
+  and no tooltip.
 - **A list row built from a reusable element no longer goes blank for
   one search it cannot batch** (WTF-520). A reusable element rendered
   in a repeating group's cells with a search reading its own thing that

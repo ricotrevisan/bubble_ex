@@ -24,9 +24,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       (`BubbleEx.Target.Elixir.Frontend`) is a helper in the LiveView whose
       arguments are assigns; anything else is a `TODO(bubble:<id>)` marker
       (a HEEx comment, rendering nothing, as the exporter renders an
-      unresolved slot empty). A Text whose dynamic content has BBCode in
-      its own literal text (`"[b]" <> title <> "[/b]"`, WTF-450) renders
-      bold, italic, underline and strikethrough through
+      unresolved slot empty; a text or label keeps the literal parts of
+      its expression). With the developer markers on, the element is
+      outlined with a tooltip naming what was left out and why ("Text not
+      migrated: reads data that is not loaded", "...: expression does not
+      compile", WTF-520); production renders neither. A Text whose
+      dynamic content has BBCode in its own literal text
+      (`"[b]" <> title <> "[/b]"`, WTF-450) renders bold, italic,
+      underline and strikethrough through
       `<Web>.Bubble.bbcode/1`: the helper returns the literal tags as
       data around the values, which are escaped like any text; BBCode or
       HTML in data shows as typed, and other tags stay text with a marker
@@ -936,6 +941,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp emit(%Node{kind: :link} = node, ctx, acc) do
     {text, acc} = slot(node, "text", ctx, acc)
     {attrs, acc} = file_link_attrs(node, ctx, acc)
+
+    acc =
+      if node.attributes["disabled"] != true and override(node, "destination", ctx) == nil and
+           not file_binding?(node, "destination", ctx),
+         do: unlowered_binding(node, "destination", ctx, acc),
+         else: acc
+
     element("a", node, attrs, button_inner(node, text, ctx), ctx, acc)
   end
 
@@ -2038,7 +2050,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> put_authored_id(node, ctx, acc)
 
     {notes, rest} = Enum.split_with(rest, &match?({:dev_note, _}, &1))
-    notes = Enum.map(notes, &elem(&1, 1)) ++ data_notes(node, ctx)
+    {binding_notes, acc} = take_binding_notes(acc, node)
+    notes = Enum.map(notes, &elem(&1, 1)) ++ data_notes(node, ctx) ++ binding_notes
     rest = sorted_attrs(rest ++ dev_note_attrs(notes, rest))
 
     # Text uses pre-wrap: formatter-inserted indentation around a binding
@@ -2471,7 +2484,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           &((data_input?(&1.input) or unrendered_input?(&1.input, ctx)) and
               not data_read?(&1, ctx))
         )
-        |> unloaded_slot(node, name, compiled, ctx, acc)
+        |> unloaded_slot(node, name, compiled, ctx, acc, binding)
 
       compiled ->
         compiled_slot(node, name, compiled, ctx, acc, binding)
@@ -2480,13 +2493,125 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # A binding reading page data the page does not load (WTF-420) is a
   # marker, never an empty value.
-  defp unloaded_slot(nil, node, name, compiled, ctx, acc),
-    do: compiled_slot(node, name, compiled, ctx, acc)
+  defp unloaded_slot(nil, node, name, compiled, ctx, acc, binding),
+    do: compiled_slot(node, name, compiled, ctx, acc, binding)
 
-  defp unloaded_slot(%{input: {kind, ref}}, node, name, _compiled, _ctx, acc) do
+  defp unloaded_slot(%{input: {kind, ref}}, node, name, _compiled, _ctx, acc, binding) do
     what = if kind == :element_state, do: "element_state:" <> ref["state"], else: kind
     acc = mark(acc, node, "#{name}: reads page data that is not loaded (#{what})")
-    {{:static, ""}, %{acc | counts: Map.update!(acc.counts, "bindings_marked", &(&1 + 1))}}
+    residue_slot(node, name, binding, :unloaded, acc)
+  end
+
+  # A value binding left out (it reads data the page does not load, or its
+  # expression does not compile): counted in `bindings_marked`, with a
+  # `TODO(bubble:<id>)` marker, and with the developer markers on, the
+  # element is outlined with a tooltip naming why (WTF-520): never a silent
+  # gap. Production renders what it did: the value empty, its layout box
+  # kept. A text or label mixing literal parts with the residue keeps the
+  # literal parts (`partial_text/2`).
+  defp residue_slot(node, name, binding, reason, acc) do
+    acc =
+      acc
+      |> Map.update!(:counts, &Map.update!(&1, "bindings_marked", fn n -> n + 1 end))
+      |> add_binding_note(node, "#{slot_title(name)} not migrated: #{residue_why(reason)}")
+
+    {{:static, partial_text(name, binding)}, acc}
+  end
+
+  defp residue_why(:unloaded), do: "reads data that is not loaded"
+  defp residue_why(:uncompiled), do: "expression does not compile"
+  defp residue_why(:not_file), do: "not one image or file value"
+  defp residue_why(:unlowered), do: "dynamic value not lowered"
+
+  # A value binding the page never renders through slot/4 (WTF-520): an
+  # image's source that is not one image or file value (only those go
+  # through the safe file route) or does not compile, a link's dynamic
+  # destination that is not a file, an image's dynamic alt text. It stays
+  # empty, as before, and is marked like a binding left out.
+  defp unlowered_binding(node, name, ctx, acc) do
+    case node.bindings[name] do
+      %{kind: :value, id: id} = binding ->
+        reason =
+          cond do
+            ctx.expressions[id] == nil -> :uncompiled
+            name == "src" -> :not_file
+            true -> :unlowered
+          end
+
+        note =
+          case reason do
+            :uncompiled -> "#{name}: dynamic value not compiled"
+            :not_file -> "#{name}: dynamic value is not one image or file value"
+            :unlowered -> "#{name}: dynamic value not lowered"
+          end
+
+        {_slot, acc} = residue_slot(node, name, binding, reason, mark(acc, node, note))
+        acc
+
+      _ ->
+        acc
+    end
+  end
+
+  defp slot_title("text"), do: "Text"
+  defp slot_title("label"), do: "Label"
+  defp slot_title("placeholder"), do: "Placeholder"
+  defp slot_title("value"), do: "Value"
+  defp slot_title("src"), do: "Image source"
+  defp slot_title("destination"), do: "Link"
+  defp slot_title("alt"), do: "Alt text"
+
+  defp slot_title(name),
+    do: name |> to_string() |> String.replace("_", " ") |> String.capitalize()
+
+  # The literal parts of a shown text or label (a `TextExpression`'s
+  # string entries, in order) whose dynamic parts are residue: "Total: "
+  # stays when the total cannot be read. Only whole texts: an attribute
+  # (a source, a link, an input's value or placeholder) is never assembled
+  # from a part of its expression.
+  defp partial_text(name, %{payload: payload}) when name in ["text", "label"] do
+    case text_entries(payload) do
+      [_ | _] = entries ->
+        text =
+          for entry <- entries,
+              is_binary(entry) or is_number(entry),
+              into: "",
+              do: to_string(entry)
+
+        if String.trim(text) == "", do: "", else: text
+
+      _ ->
+        ""
+    end
+  end
+
+  defp partial_text(_name, _binding), do: ""
+
+  defp text_entries(%{"type" => "TextExpression", "entries" => entries}),
+    do: sorted_entries(entries)
+
+  defp text_entries(%{"%x" => "TextExpression", "%e" => entries}), do: sorted_entries(entries)
+  defp text_entries(_payload), do: nil
+
+  defp sorted_entries(entries) when is_map(entries) do
+    if Enum.all?(Map.keys(entries), &(is_binary(&1) and &1 =~ ~r/\A\d{1,9}\z/)),
+      do: entries |> Enum.sort_by(&String.to_integer(elem(&1, 0))) |> Enum.map(&elem(&1, 1)),
+      else: nil
+  end
+
+  defp sorted_entries(_entries), do: nil
+
+  # The developer notes of an element's value bindings left out, taken by
+  # its opening tag (open_tag/6), so an element rendered again elsewhere
+  # (a cell, another instance) carries only its own.
+  defp add_binding_note(acc, node, note) do
+    notes = Map.get(acc, :binding_notes, %{})
+    Map.put(acc, :binding_notes, Map.update(notes, bid(node), [note], &(&1 ++ [note])))
+  end
+
+  defp take_binding_notes(acc, node) do
+    {notes, rest} = acc |> Map.get(:binding_notes, %{}) |> Map.pop(bid(node), [])
+    {notes, Map.put(acc, :binding_notes, rest)}
   end
 
   defp data_read?(%{input: input}, ctx) do
@@ -2507,7 +2632,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
-  defp compiled_slot(node, name, compiled, ctx, acc, binding \\ nil) do
+  defp compiled_slot(node, name, compiled, ctx, acc, binding) do
     case compiled do
       %{source: source} ->
         {source, bbcode} = bbcode_source(node, name, source)
@@ -2520,7 +2645,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         {{if(bbcode, do: :bbcode, else: :expr), call}, acc}
 
       _ ->
-        {{:static, ""}, mark_binding(acc, node, name, binding)}
+        acc = mark(acc, node, "#{name}: dynamic #{binding.kind} not compiled")
+        residue_slot(node, name, binding, :uncompiled, acc)
     end
   end
 
@@ -2814,11 +2940,6 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp need_var(acc, var, %{surface: :page}), do: add_assign(acc, var, "nil")
   defp need_var(acc, _var, _ctx), do: acc
 
-  defp mark_binding(acc, node, name, binding) do
-    acc = mark(acc, node, "#{name}: dynamic #{binding.kind} not compiled")
-    %{acc | counts: Map.update!(acc.counts, "bindings_marked", &(&1 + 1))}
-  end
-
   defp helper_name(slot, node, acc) do
     base = "#{ident(slot)}_#{ident(bid(node))}"
     taken = MapSet.new(acc.helpers, & &1.name)
@@ -3104,6 +3225,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     alt = resolved(node, "alt") || node.attributes["alt"] || ""
 
     {src, acc} = image_source(node, ctx, acc)
+    acc = mark_image_bindings(node, src, ctx, acc)
 
     variants =
       node
@@ -3130,6 +3252,21 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       [] -> {img, acc}
       _ -> {["<picture style=\"display: contents\">\n", sources, img, "\n</picture>"], acc}
     end
+  end
+
+  # A dynamic source that gave no source and is not a file binding (whose
+  # residue slot/4 marks), and a dynamic alt text: left out, marked
+  # (WTF-520).
+  defp mark_image_bindings(node, src, ctx, acc) do
+    acc =
+      if src in [nil, ""] and override(node, "src", ctx) == nil and
+           not file_binding?(node, "src", ctx),
+         do: unlowered_binding(node, "src", ctx, acc),
+         else: acc
+
+    if override(node, "alt", ctx) == nil,
+      do: unlowered_binding(node, "alt", ctx, acc),
+      else: acc
   end
 
   # A bound file or image field, an instance's value (a reusable's

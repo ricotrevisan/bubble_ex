@@ -990,6 +990,197 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
     end
   end
 
+  # WTF-520: a value binding left out (it reads data the page does not
+  # load, or its expression does not compile) renders as before, empty or
+  # with its literal parts, and is marked: a TODO comment, and with the
+  # developer markers on, an outline with a tooltip naming why.
+  # dev_markers_behavior.exs runs the generated page with the markers on
+  # and off.
+  describe "values left out" do
+    setup do
+      app = app("test/support/target/phoenix/dev_markers.json")
+      {:ok, model} = BubbleEx.Model.build(app)
+      {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
+      {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+      {:ok, index} = BubbleEx.Index.build(app, model: model)
+      {:ok, lowered} = BubbleEx.Workflows.Frontend.build(app, model, index)
+      {:ok, page_data} = BubbleEx.PageData.build(app, model)
+      {:ok, backend} = BubbleEx.Workflows.Backend.build(app, model, index)
+      {:ok, workflows} = BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "Shop")
+
+      {:ok, expressions} =
+        BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend,
+          runtime: "Shop.Bubble.Runtime",
+          namespace: "Shop"
+        )
+
+      {:ok, spec} =
+        BubbleEx.Target.Elixir.FrontendWorkflows.map(lowered, project,
+          namespace: "Shop",
+          frontend: frontend,
+          backend: workflows,
+          page_data: page_data
+        )
+
+      opts = [
+        module: "Shop",
+        frontend: frontend,
+        expressions: expressions,
+        workflows: workflows,
+        frontend_workflows: spec
+      ]
+
+      {:ok, files} = Phoenix.render(project, opts)
+      %{template: files["lib/shop_web/live/index_live.html.heex"], project: project, opts: opts}
+    end
+
+    # The element's markup: its leading TODO comments, its opening tag
+    # and, for a non-void element, its content.
+    defp marked(template, id) do
+      [element] =
+        Regex.run(
+          ~r/(?:<%!-- TODO\(bubble:#{id}\)[^\n]*?--%>)*<(\w+)\s+data-bubble-id="#{id}"[^>]*?\/?>(?:.*?<\/\1>)?/s,
+          template,
+          capture: :first
+        )
+
+      element
+    end
+
+    defp title(why), do: ~s|title={Bubble.dev_marker("#{why}")}|
+
+    defp assert_marked(element, todo, why) do
+      assert element =~ todo
+      assert element =~ "data-bubble-dev-marker={Bubble.dev_markers?()}"
+      assert element =~ "data-bubble-dev-note={Bubble.dev_markers?()}"
+      assert element =~ why
+      refute element =~ "data-bubble-placeholder"
+    end
+
+    test "a text reading data the page does not load", %{template: template} do
+      text = marked(template, "bBoxTitle")
+
+      assert_marked(
+        text,
+        "text: reads page data that is not loaded",
+        title("Text not migrated: reads data that is not loaded")
+      )
+
+      assert text =~ ~r/--%><\/p>\z/
+    end
+
+    test "a text whose expression does not compile", %{template: template} do
+      text = marked(template, "bBroken")
+
+      assert_marked(
+        text,
+        "text: dynamic value not compiled",
+        title("Text not migrated: expression does not compile")
+      )
+
+      assert text =~ ~r/--%><\/p>\z/
+    end
+
+    test "a partial text keeps its literal parts, in order", %{template: template} do
+      unloaded = marked(template, "bBoxPartial")
+      assert unloaded =~ title("Text not migrated: reads data that is not loaded")
+      assert unloaded =~ ~r/--%>Title: <\/p>\z/
+
+      broken = marked(template, "bBrokenPartial")
+      assert broken =~ title("Text not migrated: expression does not compile")
+      assert broken =~ ~r/--%>Hello !<\/p>\z/
+    end
+
+    test "a button's label keeps its literal parts", %{template: template} do
+      button = marked(template, "bButton")
+
+      assert_marked(
+        button,
+        "label: dynamic value not compiled",
+        title("Label not migrated: expression does not compile")
+      )
+
+      assert button =~ ~r/--%>Open <\/button>\z/
+    end
+
+    test "an input's placeholder and value: one tooltip for both, never a partial value", %{
+      template: template
+    } do
+      input = marked(template, "bInput")
+      assert input =~ "placeholder: dynamic value not compiled"
+
+      assert_marked(
+        input,
+        "value: dynamic value not compiled",
+        "Placeholder not migrated: expression does not compile; " <>
+          "Value not migrated: expression does not compile"
+      )
+
+      refute input =~ "placeholder="
+      refute input =~ ~r/\svalue=/
+    end
+
+    test "image sources: not loaded, not compiled, not one image or file value; alt text", %{
+      template: template
+    } do
+      photo = marked(template, "bBoxPhoto")
+
+      assert_marked(
+        photo,
+        "src: reads page data that is not loaded",
+        title("Image source not migrated: reads data that is not loaded")
+      )
+
+      image = marked(template, "bImage")
+
+      assert_marked(
+        image,
+        "src: dynamic value not compiled",
+        title("Image source not migrated: expression does not compile")
+      )
+
+      # A text URL is never an image source: only one image or file value
+      # goes through the safe file route. Its dynamic alt is not lowered.
+      avatar = marked(template, "bAvatar")
+      assert avatar =~ "src: dynamic value is not one image or file value"
+
+      assert_marked(
+        avatar,
+        "alt: dynamic value not lowered",
+        "Image source not migrated: not one image or file value; " <>
+          "Alt text not migrated: dynamic value not lowered"
+      )
+
+      for img <- [photo, image, avatar], do: refute(img =~ ~r/\ssrc=/)
+    end
+
+    test "a link's dynamic destination", %{template: template} do
+      link = marked(template, "bLink")
+
+      assert_marked(
+        link,
+        "destination: dynamic value not compiled",
+        title("Link not migrated: expression does not compile")
+      )
+
+      refute link =~ "href="
+      assert link =~ ~r/--%>Docs<\/a>\z/
+    end
+
+    test "an element with nothing left out is not marked", %{template: template} do
+      plain = marked(template, "bPlain")
+      refute plain =~ "TODO"
+      refute plain =~ "dev_marker"
+    end
+
+    test "counted in bindings_marked", %{project: project, opts: opts} do
+      {:ok, report} = Phoenix.frontend_report(project, opts)
+      # bBoxTitle, bBoxPartial, bBoxPhoto, bBroken, bBrokenPartial, bInput
+      # (2), bButton, bImage, bLink, bAvatar (2).
+      assert report["bindings_marked"] == 12
+    end
+  end
+
   describe "Tailwind.utilities/2" do
     test "exact utilities, arbitrary values and arbitrary properties" do
       assert {["flex", "w-[240px]", "[box-shadow:0_2px_4px_#0003]"], []} =

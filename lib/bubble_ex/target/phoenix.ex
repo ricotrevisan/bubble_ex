@@ -545,7 +545,10 @@ defmodule BubbleEx.Target.Phoenix do
       template, whatever its kind
 
   `"markers"` counts `TODO(bubble:<id>)` notes (an element can carry
-  several); `"bindings_compiled"` / `"bindings_marked"` value bindings;
+  several); `"bindings_compiled"` / `"bindings_marked"` value bindings
+  (marked: left out, empty or with a text's literal parts, because they
+  read data the page does not load or do not compile, or an image source,
+  alt text or link destination the page does not lower; WTF-520);
   `"utilities"` / `"residue_declarations"` style declarations, and
   `"elements_with_residue"` the elements with a residue rule.
   `"visibility_conditions_compiled"` / `"visibility_conditions_marked"`
