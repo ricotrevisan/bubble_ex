@@ -1132,6 +1132,57 @@ defmodule BubbleEx.FrontendTest do
       refute icon_label.placeholder?
     end
 
+    test "icon buttons with conditionals stay native; an icon set not drawn stays a placeholder" do
+      hovered = %{
+        "0" => %{
+          "condition" => %{
+            "type" => "ThisElement",
+            "next" => %{"type" => "Message", "name" => "is_hovered"}
+          },
+          "properties" => %{"icon" => "material outlined star"}
+        }
+      }
+
+      payload =
+        page_with_elements(%{
+          "iconOnly" => %{
+            "id" => "b-icon",
+            "type" => "Button",
+            "properties" => %{
+              "button_type" => "icon",
+              "icon" => "material outlined star_border",
+              "order" => 1
+            },
+            "states" => hovered
+          },
+          "iconLabel" => %{
+            "id" => "b-label",
+            "type" => "Button",
+            "properties" => %{
+              "button_type" => "label_icon",
+              "icon" => "phosphor regular note-pencil",
+              "text" => "Write",
+              "order" => 2
+            },
+            "states" => hovered
+          },
+          "otherSet" => %{
+            "id" => "b-other",
+            "type" => "Button",
+            "properties" => %{"button_type" => "icon", "icon" => "feather lock", "order" => 3}
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert [icon_only, icon_label, other] = page.children
+      assert {icon_only.kind, icon_only.variant} == {:button, :icon}
+      refute icon_only.placeholder?
+      assert {icon_label.kind, icon_label.variant} == {:button, :label_icon}
+      refute icon_label.placeholder?
+      assert other.kind == :placeholder
+      assert other.attributes["data-placeholder-kind"] == "Button"
+    end
+
     test "classifies explicit normal and h4 Text semantics" do
       payload =
         page_with_elements(%{

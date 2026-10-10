@@ -179,7 +179,7 @@ defmodule BubbleEx.Target.Phoenix.UrlTest do
     assert runtime =~ "BubbleData.mark_inputs([@page_width_input])"
   end
 
-  test "a plugin's element is an empty placeholder, marked in dev only", %{
+  test "an element not migrated is an empty placeholder, marked in dev only", %{
     files: files
   } do
     side = files["lib/shop_web/components/reusables/side_nav.html.heex"]
@@ -195,10 +195,15 @@ defmodule BubbleEx.Target.Phoenix.UrlTest do
     assert [_, inner] = Regex.run(~r/data-bubble-id="bSideIcon".*?>(.*?)<\/div>/s, side)
     assert String.trim(String.replace(inner, ~r/<%!--.*?--%>/s, "")) == ""
 
-    refute tag(side, "bSideVideo") =~ "data-bubble-placeholder"
+    # A native element not lowered is one too, titled with its type: never a
+    # silent gap in dev.
+    video = tag(side, "bSideVideo")
+    assert video =~ ~s|data-bubble-placeholder="unsupported"|
+    assert video =~ ~s|data-bubble-dev-marker={Bubble.dev_markers?()}|
+    assert video =~ ~s|title={Bubble.dev_marker("Video (not migrated)")}|
 
     css = files["assets/css/bubble.css"]
-    assert css =~ ~s|[data-bubble-placeholder="plugin"][data-bubble-dev-marker] {|
+    assert css =~ ~s|[data-bubble-placeholder][data-bubble-dev-marker] {|
     assert css =~ "outline: 1px dashed"
 
     assert files["lib/shop_web/components/bubble.ex"] =~

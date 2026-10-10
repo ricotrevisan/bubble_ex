@@ -774,6 +774,75 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
     refute "w-[fit-content]" in fill
   end
 
+  describe "icon buttons" do
+    test "with conditionals, a button with a drawn icon is a button; another set is marked" do
+      hovered = %{
+        "0" => %{
+          "condition" => %{
+            "type" => "ThisElement",
+            "next" => %{"type" => "Message", "name" => "is_hovered"}
+          },
+          "properties" => %{"icon" => "phosphor fill clock"}
+        }
+      }
+
+      button = fn id, order, props ->
+        %{
+          "id" => id,
+          "type" => "Button",
+          "properties" => Map.merge(%{"order" => order, "width" => 120, "height" => 32}, props),
+          "states" => hovered
+        }
+      end
+
+      app = %{
+        "pages" => %{
+          "tools" => %{
+            "id" => "bToolsPage",
+            "name" => "tools",
+            "type" => "Page",
+            "properties" => %{"title" => "Tools"},
+            "elements" => %{
+              "bWrite" =>
+                button.("bWrite", 1, %{
+                  "button_type" => "label_icon",
+                  "icon" => "phosphor regular note-pencil",
+                  "text" => "Write"
+                }),
+              "bLock" =>
+                button.("bLock", 2, %{"button_type" => "icon", "icon" => "feather lock"}),
+              "bStar" =>
+                button.("bStar", 3, %{
+                  "button_type" => "icon",
+                  "icon" => "material outlined star_border",
+                  "text" => "LABEL KEPT FROM BEFORE"
+                })
+            }
+          }
+        }
+      }
+
+      {files, _project, _opts} = render(app)
+      template = files["lib/shop_web/live/tools_live.html.heex"]
+
+      [write] = Regex.run(~r/<button\s[^>]*data-bubble-id="bWrite".*?<\/button>/s, template)
+      assert write =~ "Write"
+      refute template =~ "TODO(bubble:bWrite)"
+
+      # Icon only: the text Bubble keeps is not shown, it names the button.
+      # No icon library here, so its icon cannot be drawn: marked in dev.
+      [star] = Regex.run(~r/<button\s[^>]*data-bubble-id="bStar".*?<\/button>/s, template)
+      assert star =~ ~s|aria-label="LABEL KEPT FROM BEFORE"|
+      refute star =~ ~r/>\s*LABEL KEPT FROM BEFORE/
+      assert star =~ ~s|data-bubble-placeholder="icon"|
+      assert star =~ ~s|title={Bubble.dev_marker("Icon not available|
+
+      # An icon set the generator does not draw: an empty box, marked in dev.
+      assert template =~ "TODO(bubble:bLock) Button is not lowered"
+      assert template =~ ~s|title={Bubble.dev_marker("Button (not migrated)")}|
+    end
+  end
+
   describe "Tailwind.utilities/2" do
     test "exact utilities, arbitrary values and arbitrary properties" do
       assert {["flex", "w-[240px]", "[box-shadow:0_2px_4px_#0003]"], []} =

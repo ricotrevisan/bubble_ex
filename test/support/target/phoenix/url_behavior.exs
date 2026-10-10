@@ -534,7 +534,7 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
   end
 
   describe "an element not migrated" do
-    test "a plugin's is an empty placeholder, marked only with the developer markers", %{
+    test "a plugin's or a native one not lowered is an empty box, marked only in dev", %{
       conn: conn
     } do
       {:ok, view, _html} = live(conn, "/wide")
@@ -543,6 +543,10 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
       refute html =~ "data-bubble-dev-marker"
       refute html =~ "title="
       assert text(view, "bSideIcon", "bWideNav") == ""
+      video = view |> element(selector("bSideVideo", "bWideNav")) |> render()
+      assert video =~ ~s(data-bubble-placeholder="unsupported")
+      refute video =~ "data-bubble-dev-marker"
+      refute video =~ "title="
 
       Application.put_env(:phx_check, :bubble_dev_markers, true)
       {:ok, view, _html} = live(conn, "/wide")
@@ -551,8 +555,11 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
       assert html =~ ~s|title="Plugin element (not migrated)"|
       assert text(view, "bSideIcon", "bWideNav") == ""
 
-      refute view |> element(selector("bSideVideo", "bWideNav")) |> render() =~
-               "data-bubble-placeholder"
+      # A native element not lowered: the same, titled with its type.
+      html = view |> element(selector("bSideVideo", "bWideNav")) |> render()
+      assert html =~ ~s(data-bubble-placeholder="unsupported")
+      assert html =~ ~s|title="Video (not migrated)"|
+      assert text(view, "bSideVideo", "bWideNav") == ""
     end
   end
 end

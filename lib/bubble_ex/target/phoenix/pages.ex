@@ -76,8 +76,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       destination through the page map and URL allowlist, a Text's
       content as a slot rendered by the static text path, other values as
       attributes
-    * a plugin's element (not migrated, WTF-520) is an empty box with
-      `data-bubble-placeholder="plugin"`; with the developer markers on
+    * an element not migrated (WTF-520) is an empty box with
+      `data-bubble-placeholder="plugin"` (a plugin's) or `"unsupported"`
+      (a native one not lowered); with the developer markers on
       (`<Web>.Bubble.dev_markers?/0`, `config :app, :bubble_dev_markers`,
       dev only by default) it is outlined, hatched and titled
     * Bubble IDs in generated Elixir and HEEx expressions are string
@@ -756,19 +757,23 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp finish(markup), do: String.trim_trailing(markup) <> "\n"
 
-  # A plugin's element is not migrated (WTF-520): an empty box, never a
-  # guess at what the plugin draws. With the developer markers on
-  # (`Bubble.dev_markers?/0`, dev only by default) it is outlined and
-  # hatched (bubble.css) with a tooltip. An unsupported native element
-  # keeps its plain empty box.
-  defp plugin_placeholder(type) do
-    if Payload.plugin_type?(type),
-      do: [
-        {"data-bubble-placeholder", "plugin"},
-        {"data-bubble-dev-marker", {:expr, "Bubble.dev_markers?()"}},
-        {"title", {:expr, ~s|Bubble.dev_marker("Plugin element (not migrated)")|}}
-      ],
-      else: []
+  # An element that is not migrated (WTF-520), a plugin's or a native one
+  # the generator does not lower (an icon from a set it does not draw, a
+  # video…): an empty box, never a guess at what it draws. With the
+  # developer markers on (`Bubble.dev_markers?/0`, dev only by default) it
+  # is outlined and hatched (bubble.css) with a tooltip naming its type,
+  # so a page in dev never shows a silent gap.
+  defp placeholder_marker(type) do
+    {kind, title} =
+      if Payload.plugin_type?(type),
+        do: {"plugin", "Plugin element (not migrated)"},
+        else: {"unsupported", "#{type} (not migrated)"}
+
+    [
+      {"data-bubble-placeholder", kind},
+      {"data-bubble-dev-marker", {:expr, "Bubble.dev_markers?()"}},
+      {"title", {:expr, "Bubble.dev_marker(#{literal(title)})"}}
+    ]
   end
 
   # --- nodes ----------------------------------------------------------------------
@@ -838,7 +843,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp emit(%Node{kind: :placeholder} = node, ctx, acc) do
     type = node.attributes["data-placeholder-kind"] || "element"
     acc = mark(acc, node, "#{type} is not lowered (plugin or unsupported element)")
-    element("div", node, plugin_placeholder(type), "", ctx, acc, placeholder: true)
+    element("div", node, placeholder_marker(type), "", ctx, acc, placeholder: true)
   end
 
   defp emit(%Node{kind: kind} = node, ctx, acc)
@@ -908,7 +913,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           |> Map.put("type", "button")
           |> Enum.to_list()
 
-    element(tag, node, attrs, inner, ctx, acc)
+    element(tag, node, attrs ++ icon_only_attrs(node, label, inner), inner, ctx, acc)
   end
 
   defp emit(%Node{kind: :link} = node, ctx, acc) do
@@ -2814,8 +2819,45 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp text_tag(:h4), do: "h4"
   defp text_tag(_), do: "p"
 
-  defp button_inner(%Node{variant: variant} = node, text, ctx)
-       when variant in [:icon, :label_icon] do
+  # An icon-only button shows its icon, never its text (Bubble keeps the
+  # text of a button switched to "Icon"): the text names it for assistive
+  # technology instead. One whose icon cannot be drawn (no symbol in the
+  # exporter's download nor the stored icon library) is an empty button,
+  # marked with the developer markers on, as an element not migrated.
+  defp icon_only_attrs(%Node{variant: :icon} = node, label, inner) do
+    name =
+      case label do
+        {:static, text} when text != "" ->
+          if Map.has_key?(node.attributes, "aria-label"), do: [], else: [{"aria-label", text}]
+
+        _ ->
+          []
+      end
+
+    missing =
+      if inner == "",
+        do: [
+          {"data-bubble-placeholder", "icon"},
+          {"data-bubble-dev-marker", {:expr, "Bubble.dev_markers?()"}},
+          {"title", {:expr, "Bubble.dev_marker(#{literal(icon_title(node))})"}}
+        ],
+        else: []
+
+    name ++ missing
+  end
+
+  defp icon_only_attrs(_node, _label, _inner), do: []
+
+  defp icon_title(node) do
+    case node.attributes["asset_fragment"] do
+      fragment when is_binary(fragment) -> "Icon not available (#{fragment})"
+      _ -> "Icon not available"
+    end
+  end
+
+  defp button_inner(%Node{variant: :icon} = node, _text, ctx), do: icon_svg(node, ctx)
+
+  defp button_inner(%Node{variant: :label_icon} = node, text, ctx) do
     svg = icon_svg(node, ctx)
 
     label =
@@ -4552,11 +4594,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     #{closing}
     [data-bubble-id][hidden] { display: none; }
 
-    /* A plugin's element that is not migrated, with the developer markers
-       on (`config :app, :bubble_dev_markers`, dev only by default): its
-       box, hatched and outlined, whatever its own styles (unlayered: it
-       wins). Without them it is an empty box. */
-    [data-bubble-placeholder="plugin"][data-bubble-dev-marker] {
+    /* An element that is not migrated (a plugin's, or a native one not
+       lowered), with the developer markers on (`config :app,
+       :bubble_dev_markers`, dev only by default): its box, hatched and
+       outlined, whatever its own styles (unlayered: it wins). Without
+       them it is an empty box. */
+    [data-bubble-placeholder][data-bubble-dev-marker] {
       outline: 1px dashed rgba(107, 114, 128, 0.9);
       outline-offset: -1px;
       background-image: repeating-linear-gradient(-45deg, rgba(107, 114, 128, 0.18) 0 3px, transparent 3px 6px);

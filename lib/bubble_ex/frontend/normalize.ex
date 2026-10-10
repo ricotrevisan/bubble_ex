@@ -1047,6 +1047,10 @@ defmodule BubbleEx.Frontend.Normalize do
     end
   end
 
+  # A button with an icon from a supported sprite is native whatever its
+  # conditionals and workflows, as a label button is (WTF-520): its base
+  # icon is drawn, its workflows wired, its conditionals lowered or marked
+  # like any element's. Only an icon from another set is a placeholder.
   defp classify_button(raw) do
     icon = Payload.prop(raw, "icon")
 
@@ -1055,12 +1059,12 @@ defmodule BubbleEx.Frontend.Normalize do
         {:native, :button, :label}
 
       "icon" when is_binary(icon) ->
-        if supported_sprite_icon?(icon) and static_behavior?(raw),
+        if supported_sprite_icon?(icon),
           do: {:native, :button, :icon},
           else: {:placeholder, :unsupported_button_variant}
 
       "label_icon" when is_binary(icon) ->
-        if supported_sprite_icon?(icon) and static_behavior?(raw),
+        if supported_sprite_icon?(icon),
           do: {:native, :button, :label_icon},
           else: {:placeholder, :unsupported_button_variant}
 
