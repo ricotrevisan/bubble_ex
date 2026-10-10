@@ -721,7 +721,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     do: bindings_of(r) ++ Enum.flat_map(Map.get(read, :queries, []), &bindings_of({:query, &1}))
 
   defp unscoped?(%{bind: {kind, _}}), do: kind in [:url, :url_value, :url_thing]
-  defp unscoped?(%{bind: bind}), do: bind in [:actor, :now]
+  defp unscoped?(%{bind: bind}), do: bind in [:actor, :now, :page_width]
 
   @doc """
   The instances in repeating group cells (`structure`: instance =>
@@ -1042,7 +1042,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
        when kind in [:url, :url_value, :url_thing],
        do: false
 
-  defp binding_varies?(bind, _per_scope?, _varying) when bind in [:actor, :now], do: false
+  defp binding_varies?(bind, _per_scope?, _varying) when bind in [:actor, :now, :page_width],
+    do: false
 
   defp binding_varies?({kind, _}, _per_scope?, _varying)
        when kind in [

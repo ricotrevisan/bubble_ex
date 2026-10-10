@@ -1,5 +1,5 @@
 {
-  "_comment": "Synthetic fixture: Get data from page URL (WTF-508), as replayed 2026-10-07; empty texts (WTF-514) and the case-insensitive User email (WTF-515). All data invented.",
+  "_comment": "Synthetic fixture: Get data from page URL (WTF-508), as replayed 2026-10-07; empty texts (WTF-514) and the case-insensitive User email (WTF-515). All data invented. The wide page: Current page width (WTF-520) in a reusable instance's property, with a URL parameter, in a click workflow and a condition, beside a typed input's workflow; a plugin's element and a native one, not migrated.",
   "_id": "url-fixture",
   "element_definitions": {
     "nav": {
@@ -137,6 +137,85 @@
       "properties": {
         "height": 100,
         "width": 300
+      },
+      "type": "CustomDefinition"
+    },
+    "side": {
+      "elements": {
+        "bSideLabel": {
+          "id": "bSideLabel",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 41,
+            "text": {
+              "entries": {
+                "0": "Side label"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "param_pMini",
+                  "next": {
+                    "name": "is_true",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bSideDef"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": false
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bSideIcon": {
+          "id": "bSideIcon",
+          "properties": {
+            "height": 18,
+            "min_height_css": "18px",
+            "order": 42,
+            "width": 18
+          },
+          "type": "1700000000000x100000000000000000-AAA"
+        },
+        "bSideVideo": {
+          "id": "bSideVideo",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 46,
+            "width": 40
+          },
+          "type": "Video"
+        }
+      },
+      "id": "bSideDef",
+      "name": "Side nav",
+      "properties": {
+        "height": 100,
+        "width": 240,
+        "parameters": {
+          "0": {
+            "btype_id": "boolean",
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pMini",
+            "param_name": "Compact"
+          }
+        }
       },
       "type": "CustomDefinition"
     }
@@ -1035,6 +1114,262 @@
             "element_id": "bCopy"
           },
           "type": "ButtonClicked"
+        }
+      }
+    },
+    "wide": {
+      "custom_states": {
+        "width_": {
+          "default_val": null,
+          "display": "Width",
+          "value": "number"
+        },
+        "typed_": {
+          "default_val": null,
+          "display": "Typed",
+          "value": "text"
+        },
+        "wide_": {
+          "default_val": null,
+          "display": "Wide",
+          "value": "text"
+        }
+      },
+      "elements": {
+        "bWideNav": {
+          "id": "bWideNav",
+          "type": "CustomElement",
+          "properties": {
+            "custom_id": "bSideDef",
+            "height": 100,
+            "min_height_css": "100px",
+            "order": 43,
+            "width": 240,
+            "param_pMini": {
+              "properties": {
+                "name": "Current Page Width"
+              },
+              "type": "PageData",
+              "next": {
+                "args": 767,
+                "name": "greater_than",
+                "next": {
+                  "args": {
+                    "properties": {
+                      "parameter_name": {
+                        "entries": {
+                          "0": "compact"
+                        },
+                        "type": "TextExpression"
+                      },
+                      "value": "boolean"
+                    },
+                    "type": "GetParamFromUrl"
+                  },
+                  "name": "and_",
+                  "type": "Message"
+                },
+                "type": "Message"
+              }
+            }
+          }
+        },
+        "bWideBtn": {
+          "id": "bWideBtn",
+          "type": "Button",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 44,
+            "width": 200,
+            "text": {
+              "entries": {
+                "0": "Measure"
+              },
+              "type": "TextExpression"
+            }
+          }
+        },
+        "bWideShown": {
+          "id": "bWideShown",
+          "type": "Text",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 45,
+            "width": 300,
+            "text": {
+              "entries": {
+                "0": "Width: ",
+                "1": {
+                  "next": {
+                    "name": "custom.width_",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bWide"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            }
+          }
+        },
+        "bWideIn": {
+          "id": "bWideIn",
+          "type": "Input",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 47,
+            "width": 200,
+            "value": ""
+          }
+        },
+        "bWideTyped": {
+          "id": "bWideTyped",
+          "type": "Text",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 48,
+            "width": 300,
+            "text": {
+              "entries": {
+                "0": "Typed: ",
+                "1": {
+                  "next": {
+                    "name": "custom.typed_",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bWide"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            }
+          }
+        },
+        "bWideCond": {
+          "id": "bWideCond",
+          "type": "Text",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 49,
+            "width": 300,
+            "text": {
+              "entries": {
+                "0": "Cond: ",
+                "1": {
+                  "next": {
+                    "name": "custom.wide_",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bWide"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            }
+          }
+        }
+      },
+      "id": "bWide",
+      "name": "wide",
+      "properties": {
+        "title": "Wide"
+      },
+      "type": "Page",
+      "workflows": {
+        "wMeasure": {
+          "actions": {
+            "0": {
+              "id": "aMeasure",
+              "type": "SetCustomState",
+              "properties": {
+                "custom_state": "custom.width_",
+                "element_id": "bWide",
+                "value": {
+                  "properties": {
+                    "name": "Current Page Width"
+                  },
+                  "type": "PageData"
+                }
+              }
+            }
+          },
+          "id": "wMeasure",
+          "properties": {
+            "element_id": "bWideBtn"
+          },
+          "type": "ButtonClicked"
+        },
+        "wTyped": {
+          "actions": {
+            "0": {
+              "id": "aTyped",
+              "type": "SetCustomState",
+              "properties": {
+                "custom_state": "custom.typed_",
+                "element_id": "bWide",
+                "value": {
+                  "next": {
+                    "name": "get_data",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bWideIn"
+                  },
+                  "type": "GetElement"
+                }
+              }
+            }
+          },
+          "id": "wTyped",
+          "properties": {
+            "element_id": "bWideIn"
+          },
+          "type": "InputChanged"
+        },
+        "wWideCond": {
+          "actions": {
+            "0": {
+              "id": "aWideCond",
+              "type": "SetCustomState",
+              "properties": {
+                "custom_state": "custom.wide_",
+                "element_id": "bWide",
+                "value": {
+                  "entries": {
+                    "0": "wide"
+                  },
+                  "type": "TextExpression"
+                }
+              }
+            }
+          },
+          "id": "wWideCond",
+          "properties": {
+            "condition": {
+              "properties": {
+                "name": "Current Page Width"
+              },
+              "type": "PageData",
+              "next": {
+                "args": 767,
+                "name": "greater_than",
+                "type": "Message"
+              }
+            },
+            "run_when": "every_time"
+          },
+          "type": "ConditionTrue"
         }
       }
     }

@@ -126,4 +126,85 @@ defmodule BubbleEx.Target.Phoenix.UrlTest do
     assert runtime =~ "Bubble.url_query(query)"
     refute runtime =~ ~s|k != "bubble_thing"|
   end
+
+  # The wide page (WTF-520): an instance's property `Current page width >
+  # 767 and compact`: a side panel hidden below a width when a URL flag is set.
+  test "Current page width is the width the browser reports, read again when it changes", %{
+    files: files,
+    spec: spec
+  } do
+    assert [%{residue: [], read: {:value, _}}] =
+             for(d <- spec.surfaces["bWide"].data, Map.get(d, :param) == "param_pMini", do: d)
+
+    assert [[], [], []] = for(w <- spec.surfaces["bWide"].workflows, do: w.residue)
+
+    workflows = files["lib/shop_web/live/wide_live/workflows.ex"]
+    assert workflows =~ "page_data_current_page_width = ctx.page_width"
+    assert workflows =~ "Shop.Bubble.Runtime.compare(:gt, page_data_current_page_width, 767)"
+    # Its source names the width among its inputs: read again on a change.
+    assert workflows =~ ~s|inputs: ["Current Page Width"]|
+
+    # The label reads the instance's value, loaded now, not a marker.
+    side = files["lib/shop_web/components/reusables/side_nav.html.heex"]
+
+    assert tag(side, "bSideLabel") =~
+             ~s|Bubble.data(@bubble_data, @scope, "param_pMini/bSideDef")|
+
+    refute side =~ "TODO(bubble:bSideLabel)"
+
+    # Only a page reading it says so: its hook reports, its runtime reads.
+    assert workflows =~ "page_width: true"
+    refute files["lib/shop_web/live/index_live/workflows.ex"] =~ "page_width: true"
+
+    assert files["lib/shop_web/live/wide_live.html.heex"] =~
+             "<Bubble.runtime reads_width={@bubble_reads_width} />"
+
+    hook = files["lib/shop_web/components/bubble.ex"]
+    assert hook =~ ~s|data-bubble-reads-width={@reads_width}|
+    assert hook =~ ~s|if (!this.el.hasAttribute("data-bubble-reads-width")) return|
+    assert hook =~ ~s|this.pushEvent("bubble:page_width", { width }, () => {})|
+    assert hook =~ ~s|window.addEventListener("resize", resized)|
+
+    # The first width comes with the connect params, read at every connect.
+    assert files["assets/js/app.js"] =~
+             "params: () => ({_csrf_token: csrfToken, bubble_page_width: Math.round(window.innerWidth)})"
+
+    runtime = files["lib/shop_web/bubble_workflows.ex"]
+
+    assert runtime =~
+             ~s|def handle_event(socket, _page, "bubble:page_width", %{"width" => width})|
+
+    assert runtime =~ ~s|%{"bubble_page_width" => width}|
+    assert runtime =~ "page_width: Map.get(socket.assigns, :bubble_page_width)"
+    assert runtime =~ "BubbleData.mark_inputs([@page_width_input])"
+  end
+
+  test "a plugin's element is an empty placeholder, marked in dev only", %{
+    files: files
+  } do
+    side = files["lib/shop_web/components/reusables/side_nav.html.heex"]
+
+    # An empty box everywhere; outlined, hatched and titled only with the
+    # developer markers on (dev).
+    icon = tag(side, "bSideIcon")
+    assert icon =~ ~s|data-bubble-placeholder="plugin"|
+    assert icon =~ ~s|data-bubble-dev-marker={Bubble.dev_markers?()}|
+    assert icon =~ ~s|title={Bubble.dev_marker("Plugin element (not migrated)")}|
+    assert side =~ "TODO(bubble:bSideIcon)"
+    # Nothing drawn in its place.
+    assert [_, inner] = Regex.run(~r/data-bubble-id="bSideIcon".*?>(.*?)<\/div>/s, side)
+    assert String.trim(String.replace(inner, ~r/<%!--.*?--%>/s, "")) == ""
+
+    refute tag(side, "bSideVideo") =~ "data-bubble-placeholder"
+
+    css = files["assets/css/bubble.css"]
+    assert css =~ ~s|[data-bubble-placeholder="plugin"][data-bubble-dev-marker] {|
+    assert css =~ "outline: 1px dashed"
+
+    assert files["lib/shop_web/components/bubble.ex"] =~
+             "Application.get_env(:shop, :bubble_dev_markers, false) == true"
+
+    assert files["config/dev.exs"] =~ "config :shop, :bubble_dev_markers, true"
+    refute files["config/prod.exs"] =~ "bubble_dev_markers"
+  end
 end

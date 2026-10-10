@@ -27,6 +27,10 @@ config :<%= @app %>, <%= @module %>.Accounts.Secrets,
 
 config :<%= @app %>, dev_routes: true
 
+# The developer markers (WTF-520): a plugin's element that is not migrated
+# is outlined and hatched, with a tooltip. Off unless set (production).
+config :<%= @app %>, :bubble_dev_markers, true
+
 config :logger, :default_formatter, format: "[$level] $message\n"
 
 config :phoenix, :stacktrace_depth, 20

@@ -664,6 +664,18 @@ defmodule <%= @web %>.Bubble do
 
   defp bbcode_node(assigns), do: ~H"{@node}"
 
+  @doc """
+  Whether the pages show the developer markers (WTF-520): a plugin's
+  element that is not migrated is outlined and hatched, with a tooltip.
+  `config :<%= @app %>, :bubble_dev_markers, true` turns them on (the
+  generated config/dev.exs does); off unless set, so production shows an
+  empty box.
+  """
+  def dev_markers?, do: Application.get_env(:<%= @app %>, :bubble_dev_markers, false) == true
+
+  @doc "`text` with the developer markers on (`dev_markers?/0`), else nil."
+  def dev_marker(text), do: if(dev_markers?(), do: text)
+
   # The maximum CSS z-index: the notice's fallback where the popover
   # top layer is unsupported. The pages clamp theirs below it.
   @notice_z 2_147_483_647
@@ -679,10 +691,22 @@ defmodule <%= @web %>.Bubble do
         "background: transparent; overflow: visible; max-width: 24rem; " <>
         "z-index: #{@notice_z}"
 
-  @doc "The page's hook: element steps, overlays and Escape. Render it once per page."
+  @doc """
+  The page's hook: element steps, overlays and Escape, and, on a page that
+  reads it (`reads_width`, the runtime's `@bubble_reads_width`), the
+  viewport's width. Render it once per page.
+  """
+  attr :reads_width, :boolean, default: false
+
   def runtime(assigns) do
     ~H"""
-    <div id="bubble-runtime" phx-hook=".BubbleRuntime" hidden></div>
+    <div
+      id="bubble-runtime"
+      phx-hook=".BubbleRuntime"
+      data-bubble-reads-width={@reads_width}
+      hidden
+    >
+    </div>
     <div
       id="bubble-notice"
       role="status"
@@ -770,7 +794,36 @@ defmodule <%= @web %>.Bubble do
           this.handleEvent("bubble:exec", ({ ops }) => (ops || []).forEach((op) => this.exec(op)))
           // A refused click or input change (WTF-453): a short notice, as text.
           this.handleEvent("bubble:notice", ({ text }) => this.notice(text))
+          // The viewport's width, Bubble's "Current page width" (WTF-520),
+          // on a page that reads it only: the connect params carry the
+          // first one (app.js); reported once mounted (a project whose
+          // app.js predates it), then whenever a resize changes it. The
+          // server drops a width it already has.
+          this.pageWidth = null
+          const resized = () => {
+            clearTimeout(this.widthTimer)
+            this.widthTimer = setTimeout(() => this.reportWidth(), 150)
+          }
+          window.addEventListener("resize", resized)
+          this.listeners.push(["resize", resized])
+          this.reportWidth()
           this.raiseNotice()
+        },
+        // A reconnected page is mounted afresh on the server: it knows no
+        // width until it is told again.
+        reconnected() {
+          this.pageWidth = null
+          this.reportWidth()
+        },
+        reportWidth() {
+          if (!this.el.hasAttribute("data-bubble-reads-width")) return
+          // Disconnected: nothing is sent; `reconnected` reports again.
+          const socket = this.liveSocket
+          if (socket && typeof socket.isConnected === "function" && !socket.isConnected()) return
+          const width = Math.round(window.innerWidth)
+          if (!Number.isFinite(width) || width === this.pageWidth) return
+          this.pageWidth = width
+          this.pushEvent("bubble:page_width", { width }, () => {})
         },
         // The notice region lives in the top layer (WTF-474), above every
         // z-index a page has: an open manual popover, kept open (empty, it
@@ -790,6 +843,7 @@ defmodule <%= @web %>.Bubble do
           this.listeners.forEach(([name, listener]) => window.removeEventListener(name, listener))
           clearTimeout(this.noticeTimer)
           clearTimeout(this.noticeTextTimer)
+          clearTimeout(this.widthTimer)
         },
         notice(text) {
           const region = document.getElementById("bubble-notice")

@@ -30,6 +30,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   |--------|---------|
   | Current user | the LiveView's `current_user` |
   | Current date/time | the time the workflow started |
+  | Current page width | the browser's viewport width in CSS pixels, as the page's hook reports it once connected (and again when it changes); empty before that |
   | a custom event's parameter | its argument |
   | Result of step N | the step's result |
   | an element's custom state | the page's state map, per reusable-element instance |
@@ -2126,6 +2127,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   end
 
   defp bind({:page_data, %{"name" => "Current Date/Time"}}, _ctx), do: {:ok, :now}
+
+  # The viewport's width, as the browser reports it (WTF-520): a data
+  # source or condition reading it is read again when it changes.
+  defp bind({:page_data, %{"name" => "Current Page Width"}}, _ctx), do: {:ok, :page_width}
 
   # A query a page data source reads first (WTF-495, `Data`).
   defp bind({:query, %{"n" => n}}, _ctx) when is_binary(n), do: {:ok, {:query, n}}
