@@ -3,7 +3,7 @@ defmodule BubbleEx.Buildprint.V5Test do
   # `.buildprint/index.sqlite` (and `state.json`) under its ExUnit tmp_dir.
   use ExUnit.Case, async: true
 
-  alias BubbleEx.{Diagnostic, Error, Model}
+  alias BubbleEx.{AppDefinition, Diagnostic, Error, Model}
   alias BubbleEx.Buildprint.V5
   alias BubbleEx.Test.SplitExport
   alias Exqlite.Sqlite3
@@ -482,6 +482,106 @@ defmodule BubbleEx.Buildprint.V5Test do
     test "reads paths holding URI syntax", %{tmp_dir: dir} do
       ws = write_workspace(dir, name: "odd ?name#x%20&mode=rw")
       assert {:ok, %V5{counts: %{"data_types" => 2}}} = V5.load(ws)
+    end
+  end
+
+  describe "AppDefinition.load/2" do
+    test "workspace root and .buildprint return the same marked app, model and metadata", %{
+      tmp_dir: dir
+    } do
+      preamble = put_in(preamble(), ["user_types", "malformed-secret-id"], 42)
+      ws = write_workspace(dir, preamble: preamble, symbols: Map.put(@symbols, "field", 5))
+      assert {:ok, reader} = V5.load(ws)
+      assert reader.model.diagnostics != []
+      assert reader.diagnostics != []
+
+      assert {:ok, %AppDefinition{} = definition} = AppDefinition.load(ws)
+      assert {:ok, definition} == AppDefinition.load(Path.join(ws, ".buildprint"))
+      assert definition.app == reader.app
+      assert definition.model == reader.model
+      assert Model.matches?(definition.model, definition.app)
+      assert BubbleEx.Frontend.EditorGeometry.editor?(definition.app)
+
+      assert definition.source == %{
+               kind: :buildprint_v5,
+               geometry: :editor,
+               metadata:
+                 Map.take(Map.from_struct(reader), [
+                   :format_version,
+                   :schema_version,
+                   :counts,
+                   :symbol_counts,
+                   :snapshot
+                 ])
+             }
+
+      assert definition.diagnostics ==
+               Diagnostic.normalize(reader.diagnostics ++ reader.model.diagnostics)
+
+      refute inspect(definition.source) =~ dir
+    end
+
+    test "equivalent .bubble and stored snapshot yield the same app and model", %{tmp_dir: dir} do
+      ws = write_workspace(dir)
+      assert {:ok, workspace} = AppDefinition.load(ws)
+      path = Path.join(dir, "equivalent.bubble")
+
+      File.write!(path, Jason.encode!(BubbleEx.Frontend.EditorGeometry.unmark(workspace.app)))
+      assert {:ok, file} = AppDefinition.load(path)
+      assert file.app == workspace.app
+      assert file.model == workspace.model
+      assert file.diagnostics == workspace.model.diagnostics
+      assert file.source.kind == :bubble_export
+    end
+
+    test "ignores invalid unapplied TypeScript and leaves stored files unchanged", %{tmp_dir: dir} do
+      ws = write_workspace(dir)
+      bp = Path.join(ws, ".buildprint")
+      sources = Path.join(ws, "pages")
+      File.mkdir_p!(sources)
+
+      File.write!(
+        Path.join(sources, "index.ts"),
+        "invalid TypeScript $bp-private unapplied edits"
+      )
+
+      before = {snapshot(bp), snapshot(sources)}
+
+      assert {:ok, definition} = AppDefinition.load(ws)
+      assert definition.app["pages"]["pg1"]["name"] == "index"
+      refute inspect(definition) =~ "unapplied edits"
+      assert {snapshot(bp), snapshot(sources)} == before
+    end
+
+    test "passes through version, WAL, tamper and index-cap failures without fallback", %{
+      tmp_dir: dir
+    } do
+      version = write_workspace(dir, name: "version", metadata: %{"schemaVersion" => "17"})
+      wal = write_workspace(dir, name: "wal")
+      File.write!(Path.join([wal, ".buildprint", "index.sqlite-wal"]), "frames")
+
+      tamper = fn rows ->
+        Enum.map(rows, fn
+          {"__preamble__", json, _sha} -> {"__preamble__", json, String.duplicate("0", 64)}
+          row -> row
+        end)
+      end
+
+      tampered = write_workspace(dir, name: "tamper", tamper: tamper)
+      capped = write_workspace(dir, name: "cap")
+
+      for {ws, opts, kind} <- [
+            {version, [], :unknown_format},
+            {wal, [], :parse_failed},
+            {tampered, [], :parse_failed},
+            {capped, [max_index_bytes: 1], :body_too_large}
+          ] do
+        # A valid JSON file in a rejected workspace must not act as a fallback.
+        File.write!(Path.join(ws, "app.bubble"), "{}")
+        assert {:error, %Error{kind: ^kind} = error} = V5.load(ws, opts)
+        assert {:error, error} == AppDefinition.load(ws, opts)
+        assert {:error, error} == AppDefinition.load(Path.join(ws, ".buildprint"), opts)
+      end
     end
   end
 
