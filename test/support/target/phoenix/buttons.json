@@ -1,0 +1,477 @@
+{
+  "_id": "buttons-fixture",
+  "_comment": "WTF-520: buttons, all data invented. Two notes' edit buttons are not clickable unless the current user owns the note (a conditional); a star swaps its icon when logged in; a send button's workflow is refused; a button with no text is named after its icon; a button is never clickable; one is always clickable, its only state (under a condition that does not compile) setting the value it already has. test/support/target/phoenix/buttons_behavior.exs",
+  "user_types": {
+    "note": {
+      "display": "Note",
+      "fields": {
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        },
+        "owner_user": {
+          "display": "Owner",
+          "value": "user"
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": [
+              "email"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "pages": {
+    "index": {
+      "id": "bHome",
+      "name": "index",
+      "type": "Page",
+      "properties": {
+        "title": "Home"
+      },
+      "custom_states": {
+        "label_": {
+          "default_val": "start",
+          "display": "Label",
+          "value": "text"
+        }
+      },
+      "elements": {
+        "bNoteA": {
+          "id": "bNoteA",
+          "type": "Group",
+          "properties": {
+            "order": 1,
+            "width": 300,
+            "height": 60,
+            "group_type": "custom.note",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.note",
+                "sort_field": "title_text",
+                "descending": false,
+                "ignore_empty_constraints": false,
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "title_text",
+                    "value": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Alpha"
+                      }
+                    }
+                  }
+                }
+              },
+              "next": {
+                "type": "Message",
+                "name": "first_element"
+              }
+            }
+          },
+          "elements": {
+            "bLockA": {
+              "id": "bLockA",
+              "type": "Button",
+              "properties": {
+                "order": 1,
+                "width": 40,
+                "height": 40,
+                "min_height_css": "40px",
+                "button_type": "icon",
+                "icon": "material outlined lock",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Edit Alpha"
+                  }
+                }
+              },
+              "states": {
+                "0": {
+                  "type": "State",
+                  "condition": {
+                    "type": "ElementParent",
+                    "next": {
+                      "type": "Message",
+                      "name": "owner_user",
+                      "next": {
+                        "type": "Message",
+                        "name": "not_equals",
+                        "args": {
+                          "type": "CurrentUser"
+                        }
+                      }
+                    }
+                  },
+                  "properties": {
+                    "button_disabled": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bNoteB": {
+          "id": "bNoteB",
+          "type": "Group",
+          "properties": {
+            "order": 2,
+            "width": 300,
+            "height": 60,
+            "group_type": "custom.note",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.note",
+                "sort_field": "title_text",
+                "descending": false,
+                "ignore_empty_constraints": false,
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "title_text",
+                    "value": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Beta"
+                      }
+                    }
+                  }
+                }
+              },
+              "next": {
+                "type": "Message",
+                "name": "first_element"
+              }
+            }
+          },
+          "elements": {
+            "bLockB": {
+              "id": "bLockB",
+              "type": "Button",
+              "properties": {
+                "order": 1,
+                "width": 40,
+                "height": 40,
+                "min_height_css": "40px",
+                "button_type": "icon",
+                "icon": "material outlined lock",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Edit Beta"
+                  }
+                }
+              },
+              "states": {
+                "0": {
+                  "type": "State",
+                  "condition": {
+                    "type": "ElementParent",
+                    "next": {
+                      "type": "Message",
+                      "name": "owner_user",
+                      "next": {
+                        "type": "Message",
+                        "name": "not_equals",
+                        "args": {
+                          "type": "CurrentUser"
+                        }
+                      }
+                    }
+                  },
+                  "properties": {
+                    "button_disabled": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bStar": {
+          "id": "bStar",
+          "type": "Button",
+          "properties": {
+            "order": 4,
+            "width": 40,
+            "height": 40,
+            "min_height_css": "40px",
+            "button_type": "icon",
+            "icon": "material outlined star_border",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Favorite"
+              }
+            }
+          },
+          "states": {
+            "0": {
+              "type": "State",
+              "condition": {
+                "type": "CurrentUser",
+                "next": {
+                  "type": "Message",
+                  "name": "logged_in"
+                }
+              },
+              "properties": {
+                "icon": "material outlined star"
+              }
+            }
+          }
+        },
+        "bBroken": {
+          "id": "bBroken",
+          "type": "Button",
+          "properties": {
+            "order": 5,
+            "width": 40,
+            "height": 40,
+            "min_height_css": "40px",
+            "button_type": "icon",
+            "icon": "material outlined send",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Send"
+              }
+            }
+          }
+        },
+        "bNoName": {
+          "id": "bNoName",
+          "type": "Button",
+          "properties": {
+            "order": 6,
+            "width": 40,
+            "height": 40,
+            "min_height_css": "40px",
+            "button_type": "icon",
+            "icon": "material outlined more_vert"
+          }
+        },
+        "bFixed": {
+          "id": "bFixed",
+          "type": "Button",
+          "properties": {
+            "order": 7,
+            "width": 120,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Fixed"
+              }
+            },
+            "button_disabled": true
+          }
+        },
+        "bLabel": {
+          "id": "bLabel",
+          "type": "Text",
+          "properties": {
+            "order": 8,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Label: ",
+                "1": {
+                  "type": "GetElement",
+                  "properties": {
+                    "element_id": "bHome"
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "custom.label_"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bNever": {
+          "id": "bNever",
+          "type": "Button",
+          "properties": {
+            "order": 9,
+            "width": 120,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Never"
+              }
+            }
+          },
+          "states": {
+            "0": {
+              "type": "State",
+              "condition": {
+                "type": "NoSuchThing"
+              },
+              "properties": {
+                "button_disabled": false
+              }
+            }
+          }
+        }
+      },
+      "workflows": {
+        "wLockA": {
+          "id": "wLockA",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bLockA"
+          },
+          "actions": {
+            "0": {
+              "type": "SetCustomState",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "alpha"
+                  }
+                }
+              },
+              "id": "wLockAa0"
+            }
+          }
+        },
+        "wLockB": {
+          "id": "wLockB",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bLockB"
+          },
+          "actions": {
+            "0": {
+              "type": "SetCustomState",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "beta"
+                  }
+                }
+              },
+              "id": "wLockBa0"
+            }
+          }
+        },
+        "wBroken": {
+          "id": "wBroken",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bBroken"
+          },
+          "actions": {
+            "0": {
+              "type": "SetCustomState",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "should not run"
+                  }
+                }
+              },
+              "id": "wBrokena0"
+            },
+            "1": {
+              "type": "SendEmail",
+              "properties": {
+                "to": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "a@example.com"
+                  }
+                }
+              },
+              "id": "wBrokena1"
+            }
+          }
+        },
+        "wFixed": {
+          "id": "wFixed",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bFixed"
+          },
+          "actions": {
+            "0": {
+              "type": "SetCustomState",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "fixed"
+                  }
+                }
+              },
+              "id": "wFixeda0"
+            }
+          }
+        },
+        "wNever": {
+          "id": "wNever",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bNever"
+          },
+          "actions": {
+            "0": {
+              "id": "wNevera0",
+              "type": "SetCustomState",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "never"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

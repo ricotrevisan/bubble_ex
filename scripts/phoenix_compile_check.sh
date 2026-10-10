@@ -53,7 +53,10 @@
 #     test/support/target/phoenix/nested_lists_behavior.exs); for
 #     phoenix_cell_clicks, clicks and input changes of the page's own
 #     elements in repeating group cells, run in the cell the page read
-#     (WTF-520, test/support/target/phoenix/cell_clicks_behavior.exs)
+#     (WTF-520, test/support/target/phoenix/cell_clicks_behavior.exs); for
+#     phoenix_buttons, buttons that are not clickable per user, refused on
+#     the server, and icon buttons' names and developer markers (WTF-520,
+#     test/support/target/phoenix/buttons_behavior.exs)
 #   * the same checks with privacy: :enforced (WTF-423) on the fixtures
 #     with privacy rules, pages and workflows (a second scratch project,
 #     <scratch>_enforced), plus the generated privacy-matrix tests against
@@ -218,6 +221,14 @@ for fixture in $fixtures; do
       rm test/index_thing_behavior_test.exs
     fi
 
+    # Buttons (WTF-520): "isn't clickable" per user, refused on the server;
+    # icon buttons' names and developer markers.
+    if [[ "$fixture" == phoenix_buttons ]]; then
+      cp "$root/test/support/target/phoenix/buttons_behavior.exs" test/buttons_behavior_test.exs
+      mix test test/buttons_behavior_test.exs
+      rm test/buttons_behavior_test.exs
+    fi
+
     # Visibility conditionals (WTF-477): the hidden attribute per user and
     # custom state.
     if [[ "$fixture" == phoenix_visibility ]]; then
@@ -328,7 +339,7 @@ done
 # policies too; and test/support/target/phoenix/enforced_behavior.exs,
 # which must pass here and fail without policies (above).
 enforced_scratch="${scratch}_enforced"
-enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows phoenix_index_thing phoenix_visibility phoenix_reusable_params phoenix_list_ops phoenix_shapes phoenix_page_load phoenix_tables phoenix_url phoenix_cell_searches phoenix_nested_lists phoenix_cell_clicks workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
+enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows phoenix_index_thing phoenix_visibility phoenix_reusable_params phoenix_list_ops phoenix_shapes phoenix_page_load phoenix_tables phoenix_url phoenix_cell_searches phoenix_nested_lists phoenix_cell_clicks phoenix_buttons workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
 mkdir -p "$enforced_scratch"
 first=1
 
@@ -375,6 +386,7 @@ for fixture in $enforced_fixtures; do
       phoenix_cell_searches) behavior=test/support/target/phoenix/cell_searches_behavior.exs ;;
       phoenix_nested_lists) behavior=test/support/target/phoenix/nested_lists_behavior.exs ;;
       phoenix_cell_clicks) behavior=test/support/target/phoenix/cell_clicks_behavior.exs ;;
+      phoenix_buttons) behavior=test/support/target/phoenix/buttons_behavior.exs ;;
     esac
 
     if [[ -n "$behavior" ]]; then

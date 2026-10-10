@@ -455,6 +455,68 @@ defmodule BubbleEx.Workflows.FrontendTest do
     end
   end
 
+  describe "a button that isn't clickable (WTF-520)" do
+    @buttons "test/support/target/phoenix/buttons.json"
+
+    defp buttons, do: @buttons |> File.read!() |> Jason.decode!()
+
+    test "its click workflows carry it in their condition" do
+      lowered = lower(buttons())
+
+      # Not clickable unless the user owns the note: Only when not that.
+      assert %Workflow{condition: %{ir: %{op: :not}}, residue: []} =
+               workflow(lowered, "wLockA")
+
+      # Never clickable: never runs.
+      assert %Workflow{condition: %{ir: %{op: :literal, args: [false]}}, residue: []} =
+               workflow(lowered, "wFixed")
+
+      # A button with no such conditional keeps its workflow as is.
+      assert %Workflow{condition: nil} = workflow(lowered, "wBroken")
+    end
+
+    test "an \"Only when\" is kept, and both must hold" do
+      app =
+        put_in(buttons(), ~w(pages index workflows wLockA properties condition), %{
+          "type" => "CurrentUser",
+          "next" => %{"type" => "Message", "name" => "logged_in"}
+        })
+
+      assert %Workflow{condition: %{ir: %{op: :and, args: [_only_when, %{op: :not}]}}} =
+               app |> lower() |> workflow("wLockA")
+    end
+
+    test "a state that cannot change it is skipped, whatever its condition" do
+      # Clickable by default; the only state makes it clickable, under a
+      # condition that does not lower: it is always clickable.
+      app =
+        put_in(buttons(), ~w(pages index elements bNoteA elements bLockA states 0), %{
+          "condition" => %{"type" => "NoSuchThing"},
+          "properties" => %{"button_disabled" => false}
+        })
+
+      assert %Workflow{condition: nil, residue: []} = app |> lower() |> workflow("wLockA")
+    end
+
+    test "one that does not lower refuses the workflow, never runs it as if clickable" do
+      path = ~w(pages index elements bNoteA elements bLockA states 0)
+
+      not_literal =
+        put_in(buttons(), path ++ ~w(properties button_disabled), %{
+          "type" => "CurrentUser",
+          "next" => %{"type" => "Message", "name" => "logged_in"}
+        })
+
+      assert %Workflow{residue: [%{reason: :unsupported_option, subject: "workflow:" <> _}]} =
+               not_literal |> lower() |> workflow("wLockA")
+
+      broken = put_in(buttons(), path ++ ~w(condition), %{"type" => "NoSuchThing"})
+
+      assert %Workflow{residue: [%{reason: :uncompiled_expression}]} =
+               broken |> lower() |> workflow("wLockA")
+    end
+  end
+
   defp walk(%BubbleEx.Expression.IR{args: args} = ir), do: [ir | Enum.flat_map(args, &walk/1)]
   defp walk(_), do: []
 end

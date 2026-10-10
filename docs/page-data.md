@@ -362,8 +362,12 @@ and so is what reads it, but its instances are still rendered per cell
 (WTF-494). A search that reads nothing of the scope is the same query in
 every cell, read once. A value over searches read first (WTF-495) in
 such a reusable element is held to the same rule (before, it was read
-once per cell). A search source of its own that reads the scope still
-blocks the per-cell rendering of its instances, as before.
+once per cell). A search source of its own that reads the scope and
+cannot be batched is residue the same way where the reusable element is
+rendered only in cells (no instance of it is rendered once, on a page
+or in a reusable element rendered once); where one is rendered once,
+the search loads there and still blocks the per-cell rendering of the
+instances in cells, as before (*Searches in cells*, below).
 
 What the source reads is the union of what the base, the conditions and
 the branches read: its `inputs`, `reads` and `deps` in
@@ -787,8 +791,14 @@ each source for all the cells at once (`<Web>.BubbleData`):
   shared by every cell;
 * a search that reads the instance is read for every cell together
   (*Searches in cells*, below); one that cannot be would run once per
-  cell: a reusable element with one (or nesting one, outside its own
-  cells) is not rendered per cell. Its instances in cells keep one fixed scope and are
+  cell. Where the reusable element is rendered only in cells (none of
+  its instances, nor of a reusable element nesting it, is rendered
+  once), that search alone is residue (`:page_data_in_cell`, `kind`
+  `"query"`), with what reads it, and the instances are still rendered
+  per cell: one list the row's details read stays empty, not the whole
+  row. Where an instance is rendered once, a reusable element with one
+  (or nesting one, outside its own cells) is not rendered per cell, so
+  the search still loads in that instance. Its instances in cells keep one fixed scope and are
   marked, with their sources (`:page_data_in_cell`, `kind` `"query"`):
   `TODO(bubble:<id>) rendered once for every cell, not per cell`. When
   another instance gives the reusable element its thing, such an
@@ -1155,6 +1165,62 @@ The frontend workflow metrics (`docs/frontend-workflows.md`, *native*
 and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
+
+### Private fixture app (test version), 2026-10-10, list rows of a reusable element only in cells; buttons (WTF-520)
+
+One reusable element was rendered in a repeating group's cells only, and
+one of its searches (a list filtered by an option list of its own
+thing, which no batch can key) kept its one instance from being rendered
+per cell: every value the row read from its thing was empty. That
+search is now residue alone and the instance is rendered per cell. The
+page data counts move by a net 3 the other way, source by source:
+
+| | before | after |
+|-|------:|------:|
+| the instance's own source and the property it sets (`:page_data_in_cell` before) | residue | wired |
+| the search, a list in the row's collapsed details | wired | `:page_data_in_cell` |
+| an instance in that list's cells: its source and 3 properties | wired | `:unavailable_input` |
+| page data sources wired / residue | 2,775 / 586 | 2,772 / 589 |
+
+The 5 sources counted wired before were never read in a row: the
+reusable element was rendered once for every cell, with no thing. Now
+its other sources load in every row.
+
+Buttons with an icon from a drawn set are native whatever their
+conditionals and workflows: 201 of the app's buttons were placeholders
+for that alone (`no_native_lowering` 521 → 320; elements generated
+5,390 → 5,544 and residue 1,748 → 1,594 in the plan's coverage, the
+others in runtime templates).
+
+"Isn't clickable" is lowered for every button (88 set it by a
+conditional): 33 fold into a `disabled` helper; 52 read what the page
+does not keep or do not compile and render disabled, marked (fail
+closed); the rest set the page-load value. Each click workflow of such a
+button carries the same condition, and one whose condition does not
+bind is refused. Against the counts recorded before this change
+(icon buttons native, nothing about clickability):
+
+| | before | after |
+|-|------:|------:|
+| frontend workflows native (IR) | 1,301 | 1,295 |
+| frontend workflows native / wired (generated code) | 885 / 611 | 881 / 607 |
+| click workflows native (generated code) | 579 | 575 |
+| workflows run in the browser | 102 | 98 |
+| `:unavailable_input` / `:uncompiled_expression` (workflows) | 341 / 692 | 368 / 715 |
+
+A state that sets the value the button already has (before any that
+sets another) cannot change it and is skipped, whatever its condition:
+2 click workflows keep no condition, and one condition that did not
+compile is no longer read (`:uncompiled_expression` 716 → 715). The 4
+workflows no longer run in the browser carry a condition now and run
+on the server. In the structural summary, 9 more frontend
+workflows are residue (generated 793 → 784 of 2,940): their buttons'
+clickability does not bind. Its reasons move with them, a workflow's
+condition being read before its steps (`:unavailable_input` 363 → 400,
+`:uncompiled_expression` 688 → 698; `:unsupported_action` 52 → 32,
+`:blocked_by_callee` 150 → 141, `:plugin_action` 338 → 331). Conditional icons (52), texts (44) and kinds (1) are
+kept at their page-load value and marked. The generated templates'
+markers go from 2,781 (before both changes) to 2,736.
 
 ### Private fixture app (test version), 2026-10-10, the viewport's width (WTF-520)
 

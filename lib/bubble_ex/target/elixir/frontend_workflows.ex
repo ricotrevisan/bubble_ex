@@ -230,6 +230,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         |> Map.put(:in_cells, in_cells)
         |> Map.put(:once, once_instances(in_cells, ctx))
 
+      ctx = Map.put(ctx, :rendered_once, rendered_once(ctx.once, kinds))
+
       # The page's data (WTF-420): its sources are bound against every
       # source that lowered, then only what loads is read by the rest.
       page_data = Keyword.get(opts, :page_data)
@@ -700,6 +702,27 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         rendered?(id, ctx),
         into: %{},
         do: {id, %{surface: bubble(e.surface), holder: holder}}
+  end
+
+  # The reusable elements rendered once somewhere (WTF-520): with an
+  # instance rendered once on a page, or in a reusable element rendered
+  # once somewhere. The others are rendered only in repeating group cells,
+  # if at all.
+  defp rendered_once(once, kinds) do
+    by_surface =
+      Enum.group_by(Map.values(once), & &1.surface, & &1.holder)
+
+    pages = for {id, :page} <- kinds, do: id
+    reach_once(pages, MapSet.new(), by_surface)
+  end
+
+  defp reach_once([], seen, _by_surface), do: seen
+
+  defp reach_once([surface | rest], seen, by_surface) do
+    new =
+      by_surface |> Map.get(surface, []) |> Enum.uniq() |> Enum.reject(&MapSet.member?(seen, &1))
+
+    reach_once(new ++ rest, Enum.into(new, seen), by_surface)
   end
 
   # The element a bound display step sets: the instance for an instance's

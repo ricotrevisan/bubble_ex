@@ -79,9 +79,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   every cell together (WTF-520, `cell_batch/2`: one query per round of
   cells, each cell's records found by its keys; the query gets `batch`,
   printed through `BubbleData.cell_read/4`); one that cannot be would
-  query once per cell: a reusable element (or one it nests) with such a
-  search is not rendered per cell (`cell_instances/4`), and such a
-  search in a cell is residue.
+  query once per cell. In a reusable element rendered only in cells
+  (`ctx.rendered_once` does not hold it) such a search is residue, and
+  its instances are still rendered per cell; one with an instance
+  rendered once (or nesting such an element) is not rendered per cell
+  (`cell_instances/4`). Such a search in a cell is residue.
 
   A repeating group in another's cell (WTF-520, two levels:
   `ctx.nested_lists`, inner => outer, from the page's structure) is read
@@ -99,9 +101,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       third level, or one in a table's row or another runtime container),
       or a search there that cannot be read for every cell together: the
       page would read once per cell (`detail.kind` `"list"` or
-      `"query"`); a reusable instance in a cell whose reusable element
-      has such a search reading its instance (`"query"`, on the
-      instance's sources)
+      `"query"`); such a search of a reusable element rendered only in
+      cells (`"query"`); a reusable instance in a cell whose reusable
+      element, also rendered once elsewhere, has such a search reading
+      its instance (`"query"`, on the instance's sources)
     * `:uncompiled_expression` - constructs prefixed `ash:` (a search the
       Ash filter compiler rejects) or `elixir:`
     * `:unavailable_input` - an input the page does not provide, or
@@ -579,7 +582,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # still rendered per cell.
   defp per_cell(bound, ctx) do
     nested = Map.get(ctx, :nested, %{})
-    bound = queries_in_cells(bound, Map.get(ctx, :per_cell, MapSet.new()))
+
+    bound =
+      queries_in_cells(
+        bound,
+        Map.get(ctx, :per_cell, MapSet.new()),
+        Map.get(ctx, :rendered_once, MapSet.new())
+      )
+
     blocked = not_per_cell(bound, nested)
 
     if MapSet.size(blocked) == 0,
@@ -599,14 +609,20 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # In a reusable element rendered per cell, a source whose searches read
   # its scope is read for every cell together (WTF-520): its queries are
   # batched. A value or conditional source whose searches cannot be is
-  # residue; a search source that cannot be keeps its instances from
-  # being rendered per cell (`per_cell_blocked/2`).
-  defp queries_in_cells(bound, reusables) do
+  # residue. A search source that cannot be is residue too where the
+  # reusable element is rendered only in cells (`ctx.rendered_once`: no
+  # instance of it is rendered once), so its instances are still rendered
+  # per cell and only what reads that search is empty; where an instance
+  # is rendered once, the search keeps its instances in cells from being
+  # rendered per cell (`per_cell_blocked/2`), and it loads in the others.
+  defp queries_in_cells(bound, reusables, once) do
     marked =
       Enum.map(bound, fn
         %{residue: [], cell: nil, read: {kind, _}} = b
         when kind in [:switch, :value, :query] ->
-          if MapSet.member?(reusables, b.surface), do: batch_in_reusable(b), else: b
+          if MapSet.member?(reusables, b.surface),
+            do: batch_in_reusable(b, MapSet.member?(once, b.surface)),
+            else: b
 
         b ->
           b
@@ -615,10 +631,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     if marked == bound, do: bound, else: prune(marked)
   end
 
-  defp batch_in_reusable(%{read: {kind, _} = read} = b) do
+  defp batch_in_reusable(%{read: {kind, _} = read} = b, once?) do
     case batch_read(read, true) do
       {:ok, read} -> %{b | read: read}
-      :error when kind == :query -> b
+      :error when kind == :query and once? -> b
       :error -> %{b | read: nil, residue: [in_cell_entry(b.symbol, :query)]}
     end
   end

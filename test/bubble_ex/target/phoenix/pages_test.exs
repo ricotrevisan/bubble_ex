@@ -774,6 +774,222 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
     refute "w-[fit-content]" in fill
   end
 
+  describe "icon buttons" do
+    test "with conditionals, a button with a drawn icon is a button; another set is marked" do
+      hovered = %{
+        "0" => %{
+          "condition" => %{
+            "type" => "ThisElement",
+            "next" => %{"type" => "Message", "name" => "is_hovered"}
+          },
+          "properties" => %{"icon" => "phosphor fill clock"}
+        }
+      }
+
+      button = fn id, order, props ->
+        %{
+          "id" => id,
+          "type" => "Button",
+          "properties" => Map.merge(%{"order" => order, "width" => 120, "height" => 32}, props),
+          "states" => hovered
+        }
+      end
+
+      app = %{
+        "pages" => %{
+          "tools" => %{
+            "id" => "bToolsPage",
+            "name" => "tools",
+            "type" => "Page",
+            "properties" => %{"title" => "Tools"},
+            "elements" => %{
+              "bWrite" =>
+                button.("bWrite", 1, %{
+                  "button_type" => "label_icon",
+                  "icon" => "phosphor regular note-pencil",
+                  "text" => "Write"
+                }),
+              "bLock" =>
+                button.("bLock", 2, %{"button_type" => "icon", "icon" => "feather lock"}),
+              "bStar" =>
+                button.("bStar", 3, %{
+                  "button_type" => "icon",
+                  "icon" => "material outlined star_border",
+                  "text" => "LABEL KEPT FROM BEFORE"
+                }),
+              "bClose" =>
+                button.("bClose", 4, %{
+                  "button_type" => "icon",
+                  "icon" => "material outlined close",
+                  "text" => %{
+                    "type" => "TextExpression",
+                    "entries" => %{
+                      "0" => %{
+                        "type" => "CurrentUser",
+                        "next" => %{"type" => "Message", "name" => "email"}
+                      }
+                    }
+                  }
+                }),
+              "bSave" => %{
+                "id" => "bSave",
+                "type" => "Button",
+                "properties" => %{"order" => 5, "width" => 120, "height" => 32, "text" => "Save"},
+                "states" => %{
+                  "0" => %{
+                    "condition" => %{
+                      "type" => "CurrentUser",
+                      "next" => %{"type" => "Message", "name" => "logged_in"}
+                    },
+                    "properties" => %{"button_disabled" => true, "text" => "Saved"}
+                  }
+                }
+              },
+              "bHover" => %{
+                "id" => "bHover",
+                "type" => "Button",
+                "properties" => %{"order" => 7, "width" => 120, "height" => 32, "text" => "Go"},
+                "states" => %{
+                  "0" => %{
+                    "condition" => %{
+                      "type" => "ThisElement",
+                      "next" => %{"type" => "Message", "name" => "is_hovered"}
+                    },
+                    "properties" => %{"button_disabled" => true}
+                  }
+                }
+              },
+              "bNever" => %{
+                "id" => "bNever",
+                "type" => "Button",
+                "properties" => %{"order" => 8, "width" => 120, "height" => 32, "text" => "Never"},
+                "states" => %{
+                  "0" => %{
+                    "condition" => %{"type" => "NoSuchThing"},
+                    "properties" => %{"button_disabled" => false}
+                  }
+                }
+              },
+              "bOdd" => %{
+                "id" => "bOdd",
+                "type" => "Button",
+                "properties" => %{
+                  "order" => 9,
+                  "width" => 32,
+                  "height" => 32,
+                  "button_type" => "icon",
+                  "icon" => "material outlined close",
+                  "text" => %{
+                    "type" => "TextExpression",
+                    "entries" => %{"0" => %{"type" => "NoSuchThing"}}
+                  }
+                }
+              },
+              "bSpace" => %{
+                "id" => "bSpace",
+                "type" => "Button",
+                "properties" => %{
+                  "order" => 10,
+                  "width" => 32,
+                  "height" => 32,
+                  "button_type" => "icon",
+                  "icon" => "material outlined add",
+                  "text" => "   "
+                }
+              },
+              "bBare" => %{
+                "id" => "bBare",
+                "type" => "Button",
+                "name" => "Editor name only",
+                "properties" => %{
+                  "order" => 6,
+                  "width" => 32,
+                  "height" => 32,
+                  "button_type" => "icon",
+                  "icon" => "material outlined more_vert"
+                }
+              }
+            }
+          }
+        }
+      }
+
+      {files, _project, _opts} = render(app)
+      template = files["lib/shop_web/live/tools_live.html.heex"]
+
+      button = fn id ->
+        hd(Regex.run(~r/<button\s[^>]*data-bubble-id="#{id}".*?<\/button>/s, template))
+      end
+
+      # A conditional icon is not lowered: the button keeps its icon on page
+      # load, marked; with no icon library here, the icon is marked missing.
+      write = button.("bWrite")
+      assert write =~ "Write"
+      assert write =~ "TODO(bubble:bWrite) icon: 1 conditional not lowered; shown as on page load"
+      assert write =~ ~s|data-bubble-dev-note={Bubble.dev_markers?()}|
+      assert write =~ "Conditional icon not lowered; Icon not available (note-pencil)"
+
+      # A label button's "isn't clickable" on the current user: lowered to
+      # `disabled`; its conditional text is marked.
+      save = button.("bSave")
+      assert save =~ "disabled={disabled_bsave(@current_user)}"
+      refute save =~ "isn't clickable"
+      assert save =~ "TODO(bubble:bSave) text: 1 conditional not lowered"
+      assert save =~ ~s|title={Bubble.dev_marker("Conditional text not lowered")}|
+
+      # One the page cannot decide (hovering is not kept): disabled, fail
+      # closed, and marked.
+      hover = button.("bHover")
+      assert hover =~ ~r/\sdisabled\s/
+      assert hover =~ "TODO(bubble:bHover) isn't clickable: 1 conditional not lowered"
+      assert hover =~ "Clickable conditionals not lowered: disabled"
+
+      # A state that cannot make it not clickable (it sets the value the
+      # button has) is skipped, though its condition does not compile.
+      never = button.("bNever")
+      refute never =~ "disabled"
+      refute never =~ "isn't clickable"
+
+      # A dynamic text that does not compile, or only spaces: named after
+      # the icon, marked; never a blank name.
+      odd = button.("bOdd")
+      assert odd =~ ~s(aria-label="close")
+      assert odd =~ "Icon button with no text: named after its icon"
+      space = button.("bSpace")
+      assert space =~ ~s(aria-label="add")
+      refute space =~ ~s(aria-label=" )
+
+      # Never named after the editor: with no text, after its icon, marked.
+      bare = button.("bBare")
+      assert bare =~ ~s(aria-label="more vert")
+      refute bare =~ "Editor name only"
+      assert bare =~ "Icon button with no text: named after its icon"
+
+      # Icon only: the text Bubble keeps is not shown, it names the button.
+      # No icon library here, so its icon cannot be drawn: marked in dev.
+      [star] = Regex.run(~r/<button\s[^>]*data-bubble-id="bStar".*?<\/button>/s, template)
+      assert star =~ ~s|aria-label="LABEL KEPT FROM BEFORE"|
+      refute star =~ ~r/>\s*LABEL KEPT FROM BEFORE/
+      assert star =~ ~s|data-bubble-placeholder="icon"|
+      assert star =~ "Icon not available (star_border)"
+      css = files["assets/css/bubble.css"]
+      assert css =~ ~s|[data-bubble-placeholder="icon"][data-bubble-dev-marker] {|
+
+      assert css =~ "min-width: var(--bubble-icon-size, 24px);"
+      assert css =~ ~s|[data-bubble-dev-note][data-bubble-dev-marker] {|
+
+      # A dynamic text names it too, its icon's name when empty: its helper
+      # is read, never left unused, and the name is never empty.
+      close = button.("bClose")
+      assert close =~ ~r/aria-label=\{Bubble.name\(label_bclose\(.*\), "close"\)\}/s
+      assert files["lib/shop_web/components/bubble.ex"] =~ "def name(value, fallback) do"
+
+      # An icon set the generator does not draw: an empty box, marked in dev.
+      assert template =~ "TODO(bubble:bLock) Button is not lowered"
+      assert template =~ ~s|title={Bubble.dev_marker("Button (not migrated)")}|
+    end
+  end
+
   describe "Tailwind.utilities/2" do
     test "exact utilities, arbitrary values and arbitrary properties" do
       assert {["flex", "w-[240px]", "[box-shadow:0_2px_4px_#0003]"], []} =

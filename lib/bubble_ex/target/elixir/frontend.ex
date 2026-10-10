@@ -93,14 +93,23 @@ defmodule BubbleEx.Target.Elixir.Frontend do
       when is_map(app) and not is_struct(app) and is_list(opts) do
     env = Env.new(model, tree: Tree.build(app), searches: :page)
 
+    nodes = Enum.flat_map(frontend.pages ++ frontend.reusables, &nodes/1)
+
     compiled =
-      for node <- Enum.flat_map(frontend.pages ++ frontend.reusables, &nodes/1),
+      for node <- nodes,
           {_slot, %{kind: kind, id: id, payload: payload}} <- node.bindings,
           result = compile_kind(kind, payload, node, env, project, opts),
           into: %{},
           do: {id, result}
 
-    {:ok, compiled}
+    disabled =
+      for %Node{kind: :button} = node <- nodes,
+          %{kind: :condition, id: id, payload: payload} <- [node.bindings["condition"]],
+          result = compile_disabled(payload, node, env, project, opts),
+          into: %{},
+          do: {Conditions.disabled_id(id), result}
+
+    {:ok, Map.merge(compiled, disabled)}
   end
 
   def compile(_app, _model, _project, _frontend, _opts),
@@ -116,14 +125,55 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   """
   @spec residue(Normalized.t(), %{String.t() => compiled()}) :: [Residue.t()]
   def residue(%Normalized{} = frontend, compiled) when is_map(compiled) do
-    for node <- Enum.flat_map(frontend.pages ++ frontend.reusables, &nodes/1),
-        %{kind: :condition, id: id, payload: payload} <- [node.bindings["condition"]],
-        states = Conditions.visibility(payload),
-        states != [],
-        not Map.has_key?(compiled, id),
-        %{bubble_id: bubble_id} when is_binary(bubble_id) <- [node.source],
-        uniq: true,
-        do: Residue.entry("element:" <> bubble_id, :element_condition, %{states: length(states)})
+    nodes = Enum.flat_map(frontend.pages ++ frontend.reusables, &nodes/1)
+
+    visibility =
+      for node <- nodes,
+          %{kind: :condition, id: id, payload: payload} <- [node.bindings["condition"]],
+          states = Conditions.visibility(payload),
+          states != [],
+          not Map.has_key?(compiled, id),
+          %{bubble_id: bubble_id} when is_binary(bubble_id) <- [node.source],
+          uniq: true,
+          do:
+            Residue.entry("element:" <> bubble_id, :element_condition, %{states: length(states)})
+
+    buttons =
+      for %Node{kind: :button} = node <- nodes,
+          %{kind: :condition, id: id, payload: payload} <- [node.bindings["condition"]],
+          %{bubble_id: bubble_id} when is_binary(bubble_id) <- [node.source],
+          {property, states} <-
+            button_unlowered(payload, id, compiled, node.attributes["disabled"] == true),
+          do:
+            Residue.entry("element:" <> bubble_id, :element_condition, %{
+              states: states,
+              property: property
+            })
+
+    visibility ++ buttons
+  end
+
+  # The button properties the page leaves at their page-load value although
+  # a conditional sets them (WTF-520): "isn't clickable" when it does not
+  # compile (the button is then disabled, fail closed), its icon, its text
+  # and its kind (label, icon) always. `{property, states}`.
+  @unlowered_button_properties ~w(icon text button_type)
+
+  @doc false
+  @spec button_unlowered(term(), String.t(), map()) :: [{String.t(), pos_integer()}]
+  def button_unlowered(payload, condition_id, compiled, initial \\ false) do
+    disabled = length(Conditions.disabled_states(payload, initial))
+
+    disabled =
+      if disabled > 0 and not Map.has_key?(compiled, Conditions.disabled_id(condition_id)),
+        do: [{"button_disabled", disabled}],
+        else: []
+
+    disabled ++
+      for key <- @unlowered_button_properties,
+          n = length(Conditions.property(payload, key)),
+          n > 0,
+          do: {key, n}
   end
 
   defp nodes(%Node{} = node), do: [node | Enum.flat_map(node.children, &nodes/1)]
@@ -183,6 +233,55 @@ defmodule BubbleEx.Target.Elixir.Frontend do
     else
       _ -> nil
     end
+  end
+
+  # A button's "isn't clickable" conditionals (`button_disabled`), folded
+  # like visibility from its state on page load: the `disabled` attribute.
+  # Absent when one does not compile (the page then renders the button
+  # disabled, fail closed).
+  defp compile_disabled(payload, %Node{source: source} = node, env, project, opts) do
+    env = %{env | host: source && source.bubble_id}
+
+    initial = node.attributes["disabled"] == true
+
+    with [_ | _] = states <- Conditions.disabled_states(payload, initial),
+         {:ok, parts} <- compile_states(states, env, project, opts),
+         {:ok, bindings} <- merge_bindings(parts),
+         true <- Enum.all?(bindings, &page_input?(&1.input)) do
+      results = Enum.map(parts, &elem(&1, 2))
+
+      %{
+        source: fold_source(parts, initial),
+        bindings: bindings,
+        runtime: results |> Enum.flat_map(& &1.runtime) |> Enum.uniq() |> Enum.sort(),
+        loads: merge_loads(results),
+        type: "boolean",
+        approximated: [],
+        file?: false,
+        raw?: true,
+        property: %{
+          name: "disabled",
+          states: length(states),
+          initial: initial,
+          constant?: Enum.all?(states, fn {_condition, value} -> value == initial end)
+        }
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  # The states in Bubble's order as one `cond`: the last true one decides,
+  # else the value on page load.
+  defp fold_source(parts, initial) do
+    clauses =
+      parts
+      |> Enum.reverse()
+      |> Enum.map_join("\n", fn {source, value, _result} -> "#{truth(source)} -> #{value}" end)
+
+    "cond do\n#{clauses}\ntrue -> #{initial}\nend"
+    |> Code.format_string!()
+    |> IO.iodata_to_binary()
   end
 
   # What a page can supply a condition with: the current user, an

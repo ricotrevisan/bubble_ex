@@ -2,7 +2,7 @@ defmodule BubbleEx.Frontend.Normalize do
   @moduledoc false
 
   alias BubbleEx.Error
-  alias BubbleEx.Frontend.{Naming, Payload}
+  alias BubbleEx.Frontend.{Conditions, Naming, Payload}
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Frontend.Normalized.{Diagnostic, Identity, Node, Source, Style}
 
@@ -1001,6 +1001,29 @@ defmodule BubbleEx.Frontend.Normalize do
     Regex.match?(~r/^fa fa-[a-z0-9]+(?:-[a-z0-9]+)*$/, icon)
   end
 
+  # A button that is not clickable: the editor's "This element isn't
+  # clickable" (`button_disabled`), or `disabled`.
+  defp button_disabled?(raw),
+    do: Payload.prop(raw, "disabled") == true or Payload.prop(raw, "button_disabled") == true
+
+  # An icon's own name, as words: "material outlined star_border" is
+  # "star border", "fa fa-star" is "star".
+  defp icon_words(icon) when is_binary(icon) do
+    icon
+    |> String.split(" ")
+    |> List.last()
+    |> String.replace_prefix("fa-", "")
+    |> String.replace(~r/[_-]+/, " ")
+  end
+
+  defp icon_words(_icon), do: "Button"
+
+  defp icon_named(attrs, raw) do
+    attrs
+    |> Map.put("aria-label", icon_words(Payload.prop(raw, "icon")))
+    |> Map.put("icon_named", true)
+  end
+
   defp supported_sprite_icon?(icon) when is_binary(icon) do
     fontawesome_4_icon?(icon) or Regex.match?(~r/^material outlined [a-z0-9_]+$/, icon) or
       Regex.match?(~r/^phosphor (regular|bold|fill) [a-z0-9]+(?:-[a-z0-9]+)*$/, icon)
@@ -1047,6 +1070,10 @@ defmodule BubbleEx.Frontend.Normalize do
     end
   end
 
+  # A button with an icon from a supported sprite is native whatever its
+  # conditionals and workflows, as a label button is (WTF-520): its base
+  # icon is drawn, its workflows wired, its conditionals lowered or marked
+  # like any element's. Only an icon from another set is a placeholder.
   defp classify_button(raw) do
     icon = Payload.prop(raw, "icon")
 
@@ -1055,12 +1082,12 @@ defmodule BubbleEx.Frontend.Normalize do
         {:native, :button, :label}
 
       "icon" when is_binary(icon) ->
-        if supported_sprite_icon?(icon) and static_behavior?(raw),
+        if supported_sprite_icon?(icon),
           do: {:native, :button, :icon},
           else: {:placeholder, :unsupported_button_variant}
 
       "label_icon" when is_binary(icon) ->
-        if supported_sprite_icon?(icon) and static_behavior?(raw),
+        if supported_sprite_icon?(icon),
           do: {:native, :button, :label_icon},
           else: {:placeholder, :unsupported_button_variant}
 
@@ -2362,7 +2389,7 @@ defmodule BubbleEx.Frontend.Normalize do
     id = Payload.bubble_id(raw)
     matches = if is_binary(id), do: Map.get(workflows, id, []), else: []
 
-    with true <- Payload.prop(raw, "disabled") != true,
+    with false <- button_disabled?(raw) or may_disable?(raw),
          [workflow] <- matches,
          false <- conditioned?(workflow),
          [action] <- workflow_actions(workflow),
@@ -2373,6 +2400,17 @@ defmodule BubbleEx.Frontend.Normalize do
     else
       _ -> :error
     end
+  end
+
+  # A button whose conditionals may make it not clickable is no plain
+  # link: its click runs through the workflow, which carries the condition
+  # (WTF-520).
+  defp may_disable?(raw) do
+    states = raw["states"] || raw["%st"] || Payload.prop(raw, "states") || raw["%s"]
+
+    states
+    |> Conditions.disabled_states(false)
+    |> Enum.any?()
   end
 
   defp click_workflows(raw) do
@@ -2730,16 +2768,29 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp element_attributes(raw, :button, :navigation) do
-    if Payload.prop(raw, "disabled") == true, do: %{"disabled" => true}, else: %{}
+    if button_disabled?(raw), do: %{"disabled" => true}, else: %{}
   end
 
+  # An icon-only button is named by its own text (Bubble keeps it when the
+  # button is switched to "Icon"), never by its name in the editor; a
+  # dynamic text names it where it is rendered. One with no text is named
+  # after its icon (`icon_named`: the page marks it in dev), never left
+  # without a name.
   defp element_attributes(raw, :button, :icon) do
-    label = Payload.prop(raw, "text") || Payload.name(raw) || "Button"
-    label = if is_binary(label) and String.trim(label) != "", do: label, else: "Button"
+    attrs = Map.merge(sprite_attributes(raw), element_attributes(raw, :button, :label))
 
-    sprite_attributes(raw)
-    |> Map.merge(element_attributes(raw, :button, :label))
-    |> Map.put("aria-label", label)
+    case literal_or_binding(Payload.prop(raw, "text"), "", "text", raw) do
+      {:resolved, label} when is_binary(label) ->
+        if String.trim(label) != "",
+          do: Map.put(attrs, "aria-label", label),
+          else: icon_named(attrs, raw)
+
+      {:binding, _} ->
+        attrs
+
+      _ ->
+        icon_named(attrs, raw)
+    end
   end
 
   defp element_attributes(raw, :button, :label_icon) do
@@ -2749,7 +2800,7 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp element_attributes(raw, :button, _variant) do
-    if Payload.prop(raw, "disabled") == true,
+    if button_disabled?(raw),
       do: %{"disabled" => true},
       else: %{"type" => "button"}
   end

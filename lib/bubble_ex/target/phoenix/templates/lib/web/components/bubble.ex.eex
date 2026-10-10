@@ -665,13 +665,25 @@ defmodule <%= @web %>.Bubble do
   defp bbcode_node(assigns), do: ~H"{@node}"
 
   @doc """
-  Whether the pages show the developer markers (WTF-520): a plugin's
-  element that is not migrated is outlined and hatched, with a tooltip.
+  Whether the pages show the developer markers (WTF-520): an element
+  that is not migrated (a plugin's, or a native one not lowered) is
+  outlined and hatched, with a tooltip.
   `config :<%= @app %>, :bubble_dev_markers, true` turns them on (the
   generated config/dev.exs does); off unless set, so production shows an
   empty box.
   """
   def dev_markers?, do: Application.get_env(:<%= @app %>, :bubble_dev_markers, false) == true
+
+  @doc """
+  An accessible name: `value` shown as text, or `fallback` when it is
+  empty (an icon-only button's dynamic text, WTF-520): never an empty name.
+  """
+  def name(value, fallback) do
+    case value |> to_string() |> String.trim() do
+      "" -> fallback
+      text -> text
+    end
+  end
 
   @doc "`text` with the developer markers on (`dev_markers?/0`), else nil."
   def dev_marker(text), do: if(dev_markers?(), do: text)

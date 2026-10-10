@@ -6,6 +6,50 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **A list row built from a reusable element no longer goes blank for
+  one search it cannot batch** (WTF-520). A reusable element rendered
+  in a repeating group's cells with a search reading its own thing that
+  no batch can key (for example a list filtered by an option list of
+  that thing) was not rendered per cell at all: the instance's own data
+  and properties were not passed, so every value the row read from its
+  thing was empty. Where the reusable element is rendered only in cells
+  (no instance of it, nor of a reusable element nesting it, is rendered
+  once), that search alone is now `:page_data_in_cell` residue (with
+  what reads it) and the instances are rendered per cell. Where an
+  instance is also rendered once, the old rule stays, so the search
+  still loads there. An element whose own source is such residue is
+  marked in dev ("Data not loaded"), never a silent gap.
+- **Buttons: icons, "isn't clickable" and conditionals** (WTF-520).
+  - An icon or label-and-icon button from a drawn icon set was a
+    placeholder as soon as it had a conditional or a workflow (a rule
+    kept from the static exporter). It is a button now, its workflows
+    wired.
+  - "Isn't clickable" (`button_disabled`, static or conditional) is
+    lowered, for every button: its conditionals fold like visibility
+    into the `disabled` attribute, and each click workflow of the
+    button carries the same condition (`Only when` and clickable), so
+    the server refuses a click the button would not take. A conditional
+    the page cannot decide renders the button disabled and marked; one
+    that does not lower refuses the workflow. Fail closed both ways. A
+    state that only sets the value the button already has is skipped,
+    whatever its condition, and a Go to page button that may not be
+    clickable is a button, not a plain link.
+  - A conditional icon, text or kind is not lowered: the button keeps
+    its page-load value, marked in dev and listed as
+    `:element_condition` residue (`detail.property`).
+  - An icon-only button shows its icon, never the text Bubble keeps
+    from before the switch to "Icon": that text names it
+    (`aria-label`; a dynamic one with the icon's name when empty), never
+    the element's name in the editor. One with no text is named after
+    its icon ("star border"), marked in dev: never an empty name.
+- **No silent gaps in dev for elements not migrated** (WTF-520). A
+  native element the generator does not lower (an icon from a set it
+  does not draw, a video…) gets the developer markers a plugin's element
+  has: `data-bubble-placeholder="unsupported"`, outlined, hatched and
+  titled "<type> (not migrated)" in dev. An icon a button cannot draw is
+  marked "Icon not available" (an icon-only button keeps a 24px box).
+  Production renders neither markers nor tooltips.
+
 - **A page search for "x = no" finds the records whose x is empty**
   (WTF-529). Bubble reads an empty yes/no as no (replays of 2026-09-29
   and 2026-10-01 on privacy rule conditions, `docs/replay-kit.md`), but

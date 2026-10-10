@@ -242,10 +242,19 @@ defmodule BubbleEx.Workflows.Frontend do
                returns: Lowering.returns(raw)
              }}
 
+    # The buttons' raw JSON, for their "isn't clickable" (`clickable/4`).
+    buttons =
+      for %{kind: :element, attrs: %{type: "Button"}} = s <- index.symbols,
+          raw = at(app, s.path),
+          is_map(raw),
+          into: %{},
+          do: {s.bubble_id, {raw, pointer_path(s.path)}}
+
     ctx = %{
       model: model,
       index: index,
       tree: tree,
+      buttons: buttons,
       surfaces: surfaces,
       pages: for({id, %{kind: :page}} <- surfaces, into: %{}, do: {bubble(id), id}),
       page_things: page_things(app, surfaces),
@@ -363,6 +372,7 @@ defmodule BubbleEx.Workflows.Frontend do
     element = text(props["element_id"])
     ppath = path ++ ["properties"]
     condition = Lowering.expr(props["condition"], ppath ++ ["condition"], env)
+    {condition, clickable_residue} = clickable(condition, kind, element, id, env, ctx)
     run_when = run_when(props["run_when"])
 
     interval =
@@ -371,7 +381,7 @@ defmodule BubbleEx.Workflows.Frontend do
     event_residue =
       event_residue(id, kind, event_type, props) ++
         element_residue(id, kind, element, ctx) ++
-        condition_residue(id, kind, condition, run_when)
+        condition_residue(id, kind, condition, run_when) ++ clickable_residue
 
     within = if element, do: container(element, ctx), else: nil
     ctx = Map.put(ctx, :within, within)
@@ -401,6 +411,118 @@ defmodule BubbleEx.Workflows.Frontend do
       path: symbol.path
     }
   end
+
+  # --- buttons that are not clickable (WTF-520) -------------------------------------------
+
+  # Bubble runs no click workflow of a button that "isn't clickable"
+  # (`button_disabled`, set statically or by its conditionals). A click
+  # workflow of such a button carries it in its condition, `Only when` and
+  # not disabled, so the target refuses the click as it refuses any
+  # workflow whose condition is false: the page renders the button
+  # disabled too, but the server decides. The conditionals fold in
+  # Bubble's order from the static value (the last true one decides). One
+  # that does not compile, or sets anything but a yes/no literal, is
+  # residue of the workflow: refused, never run as if clickable.
+  defp clickable(condition, :click, element, id, env, %{buttons: buttons})
+       when is_binary(element) do
+    case buttons[element] do
+      {raw, path} -> clickable_condition(condition, not_clickable(raw, path, env), id)
+      nil -> {condition, []}
+    end
+  end
+
+  defp clickable(condition, _kind, _element, _id, _env, _ctx), do: {condition, []}
+
+  defp clickable_condition(condition, {:ok, nil}, _id), do: {condition, []}
+
+  defp clickable_condition(condition, {:ok, %Expr{ir: disabled} = expr}, _id) do
+    clickable = negate(disabled)
+
+    case condition do
+      nil ->
+        {%{expr | ir: clickable}, []}
+
+      %Expr{ir: %IR{} = ir} ->
+        {%{condition | ir: IR.node(:and, [ir, clickable], "boolean")}, []}
+
+      # Already residue (it does not compile): the workflow is refused.
+      %Expr{} ->
+        {condition, []}
+    end
+  end
+
+  defp clickable_condition(condition, {:error, residue}, id),
+    do: {condition, Enum.map(residue, &%{&1 | subject: id})}
+
+  defp negate(%IR{op: :literal, args: [value]}), do: IR.node(:literal, [value != true], "boolean")
+  defp negate(ir), do: IR.node(:not, [ir], "boolean")
+
+  # The button's "isn't clickable" as a yes/no IR: `{:ok, nil}` when it is
+  # always clickable, `{:error, residue}` when it cannot be lowered.
+  defp not_clickable(raw, path, env) do
+    props = map(Source.value(raw, ~w(properties %p)))
+    static = props["button_disabled"] == true or props["disabled"] == true
+
+    {key, states} =
+      case Source.get(raw, ~w(states %st %s)) do
+        {key, states} when is_map(states) -> {key, states}
+        _ -> {nil, %{}}
+      end
+
+    # The states before the first that sets another value than the static
+    # one cannot change it, whatever their condition: dropped
+    # (`BubbleEx.Frontend.Conditions.disabled_states/2`).
+    sets =
+      for(
+        {skey, state} <- Lowering.ordered(states),
+        is_map(state),
+        props = map(Source.value(state, ~w(properties %p))),
+        Map.has_key?(props, "button_disabled"),
+        do: {skey, Source.value(state, ~w(condition %c)), props["button_disabled"]}
+      )
+      |> Enum.drop_while(fn {_skey, _condition, value} -> value == static end)
+
+    cond do
+      sets == [] and not static ->
+        {:ok, nil}
+
+      sets == [] ->
+        {:ok, %Expr{path: Source.pointer(path), ir: IR.node(:literal, [true], "boolean")}}
+
+      true ->
+        fold_clickable(sets, static, path ++ [key], env)
+    end
+  end
+
+  defp fold_clickable(sets, static, path, env) do
+    Enum.reduce_while(sets, {:ok, IR.node(:literal, [static], "boolean")}, fn
+      {skey, condition, value}, {:ok, acc} when is_boolean(value) ->
+        case Lowering.expr(condition, path ++ [skey, "condition"], env) do
+          %Expr{ir: %IR{} = ir} ->
+            {:cont, {:ok, if(value, do: either(ir, acc), else: both(negate(ir), acc))}}
+
+          %Expr{} = failed ->
+            {:halt, {:error, Lowering.expr_residue("", [failed])}}
+        end
+
+      {_skey, _condition, _value}, _acc ->
+        {:halt,
+         {:error, [Residue.entry("", :unsupported_option, %{options: ["button_disabled"]})]}}
+    end)
+    |> case do
+      {:ok, %IR{op: :literal, args: [false]}} -> {:ok, nil}
+      {:ok, ir} -> {:ok, %Expr{path: Source.pointer(path), ir: ir}}
+      error -> error
+    end
+  end
+
+  defp either(_ir, %IR{op: :literal, args: [true]} = acc), do: acc
+  defp either(ir, %IR{op: :literal, args: [false]}), do: ir
+  defp either(ir, acc), do: IR.node(:or, [ir, acc], "boolean")
+
+  defp both(_ir, %IR{op: :literal, args: [false]} = acc), do: acc
+  defp both(ir, %IR{op: :literal, args: [true]}), do: ir
+  defp both(ir, acc), do: IR.node(:and, [ir, acc], "boolean")
 
   # A condition-true event needs its condition and a known "run this".
   defp condition_residue(id, :condition_true, nil, run_when),
