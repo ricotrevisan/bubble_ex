@@ -76,6 +76,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       destination through the page map and URL allowlist, a Text's
       content as a slot rendered by the static text path, other values as
       attributes
+    * a plugin's element (not migrated, WTF-520) is an empty box with
+      `data-bubble-placeholder="plugin"`; with the developer markers on
+      (`<Web>.Bubble.dev_markers?/0`, `config :app, :bubble_dev_markers`,
+      dev only by default) it is outlined, hatched and titled
     * Bubble IDs in generated Elixir and HEEx expressions are string
       literals (braces, `<` and `\#{` escaped), in comments sanitized
 
@@ -596,7 +600,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       files: [
         {dir <> entry.file <> ".ex", format(live_view_module(module, entry, acc, base))},
         {dir <> entry.file <> ".html.heex",
-         [markup, if(base.flows, do: "\n<Bubble.runtime />", else: overlay_keys(page, base))]
+         [
+           markup,
+           if(base.flows,
+             do: "\n<Bubble.runtime reads_width={@bubble_reads_width} />",
+             else: overlay_keys(page, base)
+           )
+         ]
          |> IO.iodata_to_binary()
          |> finish()}
       ]
@@ -746,13 +756,18 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp finish(markup), do: String.trim_trailing(markup) <> "\n"
 
-  # A plugin's element is not migrated (WTF-520): its box shows that
-  # something is missing there, hatched and outlined (bubble.css), never a
-  # guess at what the plugin draws. An unsupported native element keeps
-  # its empty box.
+  # A plugin's element is not migrated (WTF-520): an empty box, never a
+  # guess at what the plugin draws. With the developer markers on
+  # (`Bubble.dev_markers?/0`, dev only by default) it is outlined and
+  # hatched (bubble.css) with a tooltip. An unsupported native element
+  # keeps its plain empty box.
   defp plugin_placeholder(type) do
     if Payload.plugin_type?(type),
-      do: [{"data-bubble-placeholder", "plugin"}, {"title", "Plugin element (not migrated)"}],
+      do: [
+        {"data-bubble-placeholder", "plugin"},
+        {"data-bubble-dev-marker", {:expr, "Bubble.dev_markers?()"}},
+        {"title", {:expr, ~s|Bubble.dev_marker("Plugin element (not migrated)")|}}
+      ],
       else: []
   end
 
@@ -4537,9 +4552,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     #{closing}
     [data-bubble-id][hidden] { display: none; }
 
-    /* A plugin's element that is not migrated: its box, hatched and
-       outlined, whatever its own styles (unlayered: it wins). */
-    [data-bubble-placeholder="plugin"] {
+    /* A plugin's element that is not migrated, with the developer markers
+       on (`config :app, :bubble_dev_markers`, dev only by default): its
+       box, hatched and outlined, whatever its own styles (unlayered: it
+       wins). Without them it is an empty box. */
+    [data-bubble-placeholder="plugin"][data-bubble-dev-marker] {
       outline: 1px dashed rgba(107, 114, 128, 0.9);
       outline-offset: -1px;
       background-image: repeating-linear-gradient(-45deg, rgba(107, 114, 128, 0.18) 0 3px, transparent 3px 6px);
@@ -4633,6 +4650,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     Templates.render("lib/web/components/bubble.ex", %{
       web: ctx.web,
       module: ctx.module,
+      app: ctx.app,
       modals: modals,
       viewer_loads: source(viewer_loads),
       option_lists: source(FlowSpec.option_lists(Map.get(base, :flows)))

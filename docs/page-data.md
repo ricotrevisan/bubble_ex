@@ -704,28 +704,39 @@ Dropdown's or a Checkbox's.
 
 Bubble's `Current page width` is the browser's viewport width. A page
 data source, a reusable instance's property or a workflow reading it was
-not loaded (`:unavailable_input`): a property such as a navigation's
-"Compact" toggle (`Current page width > 767 and the URL's compact`) was never
-set, and every conditional of the reusable element reading it kept its
-visibility on page load (a label hidden on load stayed hidden).
+not loaded (`:unavailable_input`): a property such as "hide the side
+panel below a width when a URL flag is set" (`Current page width > 767
+and the URL's flag`) was never set, and every conditional of the
+reusable element reading it kept its visibility on page load.
 
-It is now kept by the page: the page's hook (`<Web>.Bubble.runtime/1`)
-reports `window.innerWidth` (CSS pixels, the width the breakpoints'
-media rules read) once connected, after a reconnect, and when a resize
-changes it (150 ms after the last resize event); the runtime keeps it as
-`@bubble_page_width` and binds it as `ctx.page_width`. A source reading
-it names `"Current Page Width"` among its `inputs` (no element's Bubble
-ID has a space), so a change reads it again, and whatever reads it,
-after the input debounce, as an input's change does; conditions are
-evaluated again with it. It is the same in every scope and cell. Only a
-whole number of pixels from 0 to 100,000 is taken; anything else the
-browser sends is ignored.
+It is now kept by the page, in CSS pixels (`window.innerWidth`, the
+width the breakpoints' media rules read):
 
-Before the hook reports it (the static render, the first moments of a
-connected one) it is empty: `empty > 767` is no, so such a toggle starts
-as no, and follows the width once reported. Conditionals of the page's
-own templates that read the width directly (not through page data) are
-not lowered yet; Bubble's breakpoints are media rules, as before.
+* **at connect**: the LiveSocket's params carry it (`bubble_page_width`
+  in the scaffolded `assets/js/app.js`, read again at every connect), and
+  the connected mount keeps it (`@bubble_page_width`, `ctx.page_width`),
+  so the first connected render is right. The static render has no
+  width: it is empty there (`empty > 767` is no). A project whose
+  `app.js` predates this (it is owned) gets it from the hook's first
+  report instead, a render later;
+* **on a resize**: the page's hook (`<Web>.Bubble.runtime/1`) reports a
+  changed width 150 ms after the last resize event, and again after a
+  reconnect; nothing is sent while disconnected;
+* **only where it is read**: a surface whose loaded source or wired
+  workflow (a condition's included) binds it says so (`page_width:
+  true` in `__bubble__(:surface)`); the page renders the hook with
+  `data-bubble-reads-width` when any of its surfaces does (the page, its
+  instances, those in cells). Elsewhere the hook reports nothing, and a
+  report the server gets anyway is only kept: no read, no condition;
+* **read again once per burst**: a source reading it names `"Current
+  Page Width"` among its `inputs`; the server reads again what reads it,
+  and checks the conditions, 150 ms after the last of a burst of
+  reports, with or without data access. The same width again, or
+  anything but a whole number of pixels from 0 to 100,000, is ignored.
+
+It is the same in every scope and cell. Conditionals of the page's own
+templates that read the width directly (not through page data) are not
+lowered yet; Bubble's breakpoints are media rules, as before.
 
 ## Reusable instances in repeating group cells (WTF-494)
 
@@ -1105,7 +1116,7 @@ therefore frozen at its last read; to refresh it on a schedule, have the
 "do every" workflow set a custom state the source reads.
 
 A source reading `Current page width` (WTF-520, above) is read again
-when the browser reports a new width, as for an input's change.
+when the browser reports a new width, once per burst of reports.
 
 ## Residue fails loudly
 
@@ -1642,6 +1653,10 @@ Answered by the replay of 2026-10-07 and removed from this list:
 server actions with an empty input (kept stricter than Bubble, above)
 and "Display data" over a group's own source.
 
+* **`Current page width` and the scrollbar** (WTF-520, above): the page
+  reports `window.innerWidth`, which includes a vertical scrollbar.
+  Whether Bubble's value includes it (and so where a threshold falls on
+  a page that scrolls) is not replayed.
 * **An empty text is empty** (WTF-514, above): that Bubble compares
   `""` as equal to an empty value in `is` / `is not` is inferred from
   its data model (it stores no empty texts), not replayed. A condition

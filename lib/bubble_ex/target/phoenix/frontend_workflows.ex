@@ -242,10 +242,36 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       cell_clicks: #{cell_map_source(cell_clicks)},
       cell_changes: #{cell_map_source(cell_changes)},
       cell_inputs: #{cell_inputs_source(cell_inputs)},
-      cell_lists: #{cell_lists_source(cell_lists)}
+      cell_lists: #{cell_lists_source(cell_lists)}#{page_width_source(surface)}
     }
     """
   end
+
+  # Whether the surface reads the viewport's width (WTF-520): a loaded
+  # source or a wired workflow (a condition's included) binding it. Only
+  # then does the page's hook report it, and the runtime read again on a
+  # report; listed only when true.
+  defp page_width_source(surface) do
+    data = for d <- Map.get(surface, :data, []), d.residue == [], do: d
+    wired = Enum.filter(surface.workflows, &Spec.wired?/1)
+
+    if binds_page_width?(data) or binds_page_width?(wired),
+      do: ",\n  page_width: true",
+      else: ""
+  end
+
+  defp binds_page_width?(%{bind: :page_width}), do: true
+  defp binds_page_width?(%_{} = struct), do: struct |> Map.from_struct() |> binds_page_width?()
+
+  defp binds_page_width?(map) when is_map(map),
+    do: Enum.any?(map, fn {_k, v} -> binds_page_width?(v) end)
+
+  defp binds_page_width?(list) when is_list(list), do: Enum.any?(list, &binds_page_width?/1)
+
+  defp binds_page_width?(tuple) when is_tuple(tuple),
+    do: tuple |> Tuple.to_list() |> binds_page_width?()
+
+  defp binds_page_width?(_term), do: false
 
   # Element => `{repeating group, workflow IDs}`.
   defp cell_group(workflows) do

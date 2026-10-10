@@ -443,7 +443,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     assert page =~
              ~r/scope="bInst1"\s+bubble_states=\{@bubble_states\}\s+bubble_inputs=\{@bubble_inputs\}/
 
-    assert page =~ "<Bubble.runtime />"
+    assert page =~ "<Bubble.runtime reads_width={@bubble_reads_width} />"
 
     card = files["lib/shop_web/components/reusables/card.html.heex"]
     assert card =~ ~s|<div class={@class} data-bubble-scope={@scope} {@rest}>|

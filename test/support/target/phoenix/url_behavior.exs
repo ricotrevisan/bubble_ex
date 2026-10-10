@@ -39,6 +39,7 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
     on_exit(fn ->
       Application.delete_env(:phx_check, PhxCheckWeb.BubbleWorkflows)
       Application.delete_env(:phx_check, :bubble_time_zone)
+      Application.delete_env(:phx_check, :bubble_dev_markers)
       Calendar.put_time_zone_database(Calendar.UTCOnlyTimeZoneDatabase)
     end)
 
@@ -94,6 +95,35 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
   defp report_width(view, width) do
     render_hook(view, "bubble:page_width", %{"width" => width})
     Process.sleep(250)
+  end
+
+  # The queries `fun` makes, in any process (the LiveView's own included).
+  defp queries(fun) do
+    handler = "url-#{System.unique_integer([:positive])}"
+    parent = self()
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:phx_check, :repo, :query],
+        fn _, _, meta, _ -> send(parent, {:url_query, meta.source}) end,
+        nil
+      )
+
+    try do
+      result = fun.()
+      {result, collect_queries([])}
+    after
+      :telemetry.detach(handler)
+    end
+  end
+
+  defp collect_queries(acc) do
+    receive do
+      {:url_query, source} -> collect_queries([source | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
   end
 
   defp read(query, name, type),
@@ -368,14 +398,49 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
     end
   end
 
-  # The wide page (WTF-520): the Side nav's Compact property is `Current page
-  # width > 767 and compact`, its label hidden when Compact is yes.
+  # The wide page (WTF-520): the Side nav's Compact property is `Current
+  # page width > 767 and compact`, its label hidden when Compact is yes.
   describe "the viewport's width" do
-    test "a reusable instance's property reads it, with a URL parameter", %{conn: conn, u1: u1} do
+    test "the connect params carry the first one: the first connected render has it", %{
+      conn: conn,
+      u1: u1
+    } do
+      data_access_on()
+      conn = sign_in(conn, u1)
+
+      {:ok, view, _html} =
+        conn |> put_connect_params(%{"bubble_page_width" => 1024}) |> live("/wide?compact=yes")
+
+      assert hidden?(view, "bSideLabel", "bWideNav")
+
+      # The static render has no width: empty > 767 is no.
+      static = conn |> get("/wide?compact=yes") |> html_response(200)
+      [open] = Regex.run(~r/<p[^>]*data-bubble-id="bSideLabel"[^>]*>/s, static)
+      refute open =~ ~r/\shidden(\s|>|=)/
+
+      # Narrow, or no parameter: shown.
+      {:ok, view, _html} =
+        conn |> put_connect_params(%{"bubble_page_width" => 600}) |> live("/wide?compact=yes")
+
+      refute hidden?(view, "bSideLabel", "bWideNav")
+
+      {:ok, view, _html} =
+        conn |> put_connect_params(%{"bubble_page_width" => 1024}) |> live("/wide")
+
+      refute hidden?(view, "bSideLabel", "bWideNav")
+
+      # A malformed one is none.
+      {:ok, view, _html} =
+        conn |> put_connect_params(%{"bubble_page_width" => "1024"}) |> live("/wide?compact=yes")
+
+      refute hidden?(view, "bSideLabel", "bWideNav")
+    end
+
+    test "a reported width is read again, with a URL parameter", %{conn: conn, u1: u1} do
       data_access_on()
       {:ok, view, _html} = live(sign_in(conn, u1), "/wide?compact=yes")
 
-      # Not reported yet: empty, and empty > 767 is no, so Compact is no.
+      # No connect params here: empty, and empty > 767 is no.
       refute hidden?(view, "bSideLabel", "bWideNav")
 
       report_width(view, 1024)
@@ -387,9 +452,9 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
       report_width(view, 768)
       assert hidden?(view, "bSideLabel", "bWideNav")
 
-      # Without the parameter, Compact is no at any width.
-      {:ok, view, _html} = live(sign_in(conn, u1), "/wide")
-      report_width(view, 1024)
+      # A burst is read once, at its last width.
+      for w <- [1000, 600, 1200, 700], do: render_hook(view, "bubble:page_width", %{"width" => w})
+      Process.sleep(250)
       refute hidden?(view, "bSideLabel", "bWideNav")
     end
 
@@ -407,22 +472,80 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
       refute hidden?(view, "bSideLabel", "bWideNav")
     end
 
-    test "a workflow reads it", %{conn: conn} do
+    test "a click workflow and a condition read it", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/wide")
       render_click(view, "bubble:click", %{"scope" => "", "element" => "bWideBtn"})
       assert text(view, "bWideShown") == "Width:"
+      assert text(view, "bWideCond") == "Cond:"
+
+      report_width(view, 600)
+      assert text(view, "bWideCond") == "Cond:"
 
       report_width(view, 800)
       render_click(view, "bubble:click", %{"scope" => "", "element" => "bWideBtn"})
       assert text(view, "bWideShown") == "Width: 800"
+      assert text(view, "bWideCond") == "Cond: wide"
+    end
+
+    test "a report while a typed input's workflow is pending runs it once, on the latest", %{
+      conn: conn,
+      u1: u1
+    } do
+      data_access_on()
+      {:ok, view, _html} = live(sign_in(conn, u1), "/wide?compact=yes")
+
+      render_change(view, "bubble:change", %{
+        "bubble" => %{"scope" => "", "element" => "bWideIn", "value" => "abc"}
+      })
+
+      render_hook(view, "bubble:page_width", %{"width" => 1024})
+      Process.sleep(400)
+
+      assert text(view, "bWideTyped") == "Typed: abc"
+      assert hidden?(view, "bSideLabel", "bWideNav")
+    end
+
+    test "a page that does not read it, and a width it already has, read nothing", %{
+      conn: conn,
+      u1: u1
+    } do
+      data_access_on()
+      {:ok, view, _html} = live(sign_in(conn, u1), "/")
+      # The page load's own reads (its page-loaded run) are done first.
+      _ = render(view)
+      {_, queries} = queries(fn -> report_width(view, 1024) end)
+      assert queries == []
+
+      {:ok, view, _html} =
+        sign_in(conn, u1)
+        |> put_connect_params(%{"bubble_page_width" => 1024})
+        |> live("/wide?compact=yes")
+
+      _ = render(view)
+      {_, queries} = queries(fn -> report_width(view, 1024) end)
+      assert queries == []
+
+      {_, queries} = queries(fn -> report_width(view, 600) end)
+      refute queries == []
+      refute hidden?(view, "bSideLabel", "bWideNav")
     end
   end
 
   describe "an element not migrated" do
-    test "a plugin's is a visible placeholder, never a guess at its content", %{conn: conn} do
+    test "a plugin's is an empty placeholder, marked only with the developer markers", %{
+      conn: conn
+    } do
       {:ok, view, _html} = live(conn, "/wide")
       html = view |> element(selector("bSideIcon", "bWideNav")) |> render()
       assert html =~ ~s(data-bubble-placeholder="plugin")
+      refute html =~ "data-bubble-dev-marker"
+      refute html =~ "title="
+      assert text(view, "bSideIcon", "bWideNav") == ""
+
+      Application.put_env(:phx_check, :bubble_dev_markers, true)
+      {:ok, view, _html} = live(conn, "/wide")
+      html = view |> element(selector("bSideIcon", "bWideNav")) |> render()
+      assert html =~ "data-bubble-dev-marker"
       assert html =~ ~s|title="Plugin element (not migrated)"|
       assert text(view, "bSideIcon", "bWideNav") == ""
 

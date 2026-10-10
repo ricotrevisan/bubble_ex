@@ -8,7 +8,9 @@ import {hooks as colocatedHooks} from "phoenix-colocated/<%= @app %>"
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
-  params: {_csrf_token: csrfToken},
+  // The viewport's width (Bubble's "Current page width"), read again at
+  // every (re)connect, so the first connected render has it.
+  params: () => ({_csrf_token: csrfToken, bubble_page_width: Math.round(window.innerWidth)}),
   hooks: {...colocatedHooks},
 })
 

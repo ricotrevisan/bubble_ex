@@ -18,6 +18,7 @@ const html = `<!doctype html><body>
        data-bubble-escape="${escape}" role="dialog" aria-modal="true" hidden ${box}><button>Ok</button></div>
   <div data-bubble-scope="inst1"><div data-overlay="popup" data-bubble-id="Q" data-bubble-events="opened" hidden ${box}></div></div>
   <div data-overlay="popup" data-bubble-id="R" hidden ${box}></div>
+  <div id="bubble-runtime" data-bubble-reads-width hidden></div>
 </body>`;
 
 const browser = await chromium.launch({ headless: true });
@@ -31,6 +32,8 @@ try {
 
   await page.evaluate(() => {
     const h = Object.create(window.__hook);
+    h.el = document.getElementById("bubble-runtime");
+    window.__connected = true;
     window.__pushed = [];
     window.__handlers = {};
     h.pushEvent = (name, payload) => window.__pushed.push([name, payload]);
@@ -40,6 +43,7 @@ try {
       setAttribute: (el, a, v) => el.setAttribute(a, v)
     });
     h.liveSocket = {
+      isConnected: () => window.__connected,
       js: () => ({
         exec: (el, cmd) =>
           JSON.parse(cmd).forEach(([kind, o]) => {
@@ -100,8 +104,29 @@ try {
   await page.waitForTimeout(400);
   assert.deepEqual(await take(), [], "an unchanged width reports nothing");
 
+  // Disconnected: nothing is sent; a reconnect reports the width again
+  // (the server mounted afresh).
+  await page.evaluate(() => (window.__connected = false));
+  await page.setViewportSize({ width: 650, height: 600 });
+  await page.waitForTimeout(400);
+  assert.deepEqual(await take(), [], "nothing is sent while disconnected");
+  await page.evaluate(() => {
+    window.__connected = true;
+    window.__h.reconnected();
+  });
+  assert.deepEqual(await take(), [width(650)], "a reconnect reports again");
+
+  // A page that does not read the width never reports it.
+  await page.evaluate(() => {
+    window.__h.el.removeAttribute("data-bubble-reads-width");
+    window.__h.reconnected();
+  });
+  await page.setViewportSize({ width: 900, height: 600 });
+  await page.waitForTimeout(400);
+  assert.deepEqual(await take(), [], "a page not reading the width reports nothing");
+
   assert.deepEqual(errors, []);
-  console.log("PASS popup reports: steps, Escape, toggle, open twice, instance scope, server steps, page width");
+  console.log("PASS popup reports: steps, Escape, toggle, open twice, instance scope, server steps, page width (mount, resize, reconnect, off)");
 } finally {
   await browser.close();
 }

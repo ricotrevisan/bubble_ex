@@ -187,7 +187,14 @@ defmodule <%= @web %>.BubbleWorkflows do
   import Phoenix.Component, only: [assign: 3]
 
   import Phoenix.LiveView,
-    only: [connected?: 1, push_event: 3, push_navigate: 2, push_patch: 2, redirect: 2]
+    only: [
+      connected?: 1,
+      get_connect_params: 1,
+      push_event: 3,
+      push_navigate: 2,
+      push_patch: 2,
+      redirect: 2
+    ]
 
   alias <%= @module %>.Workflows.Runtime
   alias <%= @web %>.Bubble
@@ -200,6 +207,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   # The widest viewport a page takes as reported (CSS pixels), and what the
   # page's data sources reading it name among their inputs (WTF-520).
   @max_page_width 100_000
+  @page_width_delay 150
   @page_width_input "Current Page Width"
 
   # What a browser is told when its click or input change is refused: no
@@ -329,10 +337,42 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_page_cells, %{})
     |> assign(:bubble_committed, %{})
     |> assign(:bubble_thing, nil)
-    |> assign(:bubble_page_width, nil)<%= if @enforced? do %>
+    |> assign(:bubble_page_width, connect_width(socket))
+    |> assign(:bubble_page_width_ref, nil)
+    |> assign(:bubble_reads_width, reads_width?(page))<%= if @enforced? do %>
     |> then(&if(BubbleData.data_access?(), do: refresh_actor(&1), else: &1))<% end %>
     |> refresh_viewer()
     |> assign(:bubble_mounted, true)
+  end
+
+  # The viewport's width the browser connected with (`bubble_page_width`
+  # in the LiveSocket's params, app.js): the first connected render reads
+  # it. Empty in the static render, and when absent or malformed.
+  defp connect_width(socket) do
+    if connected?(socket) do
+      case get_connect_params(socket) do
+        %{"bubble_page_width" => width}
+        when is_integer(width) and width >= 0 and width <= @max_page_width ->
+          width
+
+        _ ->
+          nil
+      end
+    end
+  rescue
+    # A socket not in its mount (the test helper's): no connect params.
+    RuntimeError -> nil
+  end
+
+  # Whether anything on the page (an instance, one in a cell included)
+  # reads the viewport's width (`page_width: true` in its surface).
+  defp reads_width?(page) do
+    modules =
+      for {_scope, m} <- surfaces(page),
+          module <- [m | for({_rg, entries} <- cells(m), {_s, c} <- entries, do: c)],
+          do: module
+
+    Enum.any?(modules, &Map.get(&1.__bubble__(:surface), :page_width, false))
   end
 
   @doc """
@@ -512,20 +552,27 @@ defmodule <%= @web %>.BubbleWorkflows do
   end
 
   # The viewport's width (Bubble's `Current page width`), which the page's
-  # hook reports once connected and again when it changes: the sources and
-  # conditions reading it are read again, as after an input's change. A
-  # width that is not a whole number of pixels in range is ignored.
-  def handle_event(socket, page, "bubble:page_width", %{"width" => width})
+  # hook reports when it changes (the connect params carry the first one,
+  # `mount/2`). A page that reads it (`@bubble_reads_width`) reads again,
+  # @page_width_delay ms after the last of a burst of reports, what reads
+  # it, as after an input's change; any other page only keeps it. The
+  # same width again, or one that is not a whole number of pixels in
+  # range, is ignored.
+  def handle_event(socket, _page, "bubble:page_width", %{"width" => width})
       when is_integer(width) and width >= 0 and width <= @max_page_width do
-    if Map.get(socket.assigns, :bubble_page_width) == width do
-      {:noreply, socket}
-    else
-      socket =
-        socket
-        |> assign(:bubble_page_width, width)
-        |> BubbleData.mark_inputs([@page_width_input])
+    cond do
+      Map.get(socket.assigns, :bubble_page_width) == width ->
+        {:noreply, socket}
 
-      {:noreply, event(socket, page, [], nil, :deferred)}
+      not Map.get(socket.assigns, :bubble_reads_width, false) ->
+        {:noreply, assign(socket, :bubble_page_width, width)}
+
+      true ->
+        ref = make_ref()
+        Process.send_after(self(), {:bubble, :page_width, ref}, @page_width_delay)
+
+        {:noreply,
+         socket |> assign(:bubble_page_width, width) |> assign(:bubble_page_width_ref, ref)}
     end
   end
 
@@ -722,6 +769,21 @@ defmodule <%= @web %>.BubbleWorkflows do
       socket = socket |> assign(:bubble_pending_events, nil) |> assign(:bubble_pending_keys, nil)
       {socket, run} = settle_after_events(socket, page, pending, run)
       {:noreply, socket |> dispatch(run) |> notice()}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # The last of a burst of width reports (`handle_event/4`): what reads the
+  # width is read again, and the conditions checked, once.
+  def handle_info(socket, page, {:bubble, :page_width, ref}) do
+    if Map.get(socket.assigns, :bubble_page_width_ref) == ref do
+      socket =
+        socket
+        |> assign(:bubble_page_width_ref, nil)
+        |> BubbleData.mark_inputs([@page_width_input])
+
+      {:noreply, event(socket, page, [])}
     else
       {:noreply, socket}
     end

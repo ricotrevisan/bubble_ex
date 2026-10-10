@@ -690,26 +690,30 @@ All notable changes to this project are documented here.
 
 - **Current page width** (WTF-520). A data source, a reusable
   instance's property or a workflow reading the viewport's width was
-  `:unavailable_input`: a navigation's "Compact" property (`Current page
-  width > 767 and the URL's compact`) was never set, so the labels its
-  conditionals hide when it is yes kept their page-load visibility
-  (hidden). The page's hook (`<Web>.Bubble.runtime/1`) now reports
-  `window.innerWidth` once connected, after a reconnect and when a resize
-  changes it (`bubble:page_width`, a whole number of pixels up to
-  100,000; anything else is ignored); the runtime keeps it
-  (`@bubble_page_width`, `ctx.page_width`) and reads again what reads it,
-  as after an input's change (its sources list `"Current Page Width"`
-  among their `inputs`). Empty until reported, so `empty > 767` is no.
-  The pages' own conditionals reading the width directly are still not
-  lowered (`docs/page-data.md`).
+  `:unavailable_input`: a property such as "hide the side panel below a
+  width when a URL flag is set" was never set, so the conditionals
+  reading it kept their page-load visibility. The width now comes with
+  the LiveSocket's connect params (`bubble_page_width` in the scaffolded
+  `app.js`), so the first connected render has it (the static render is
+  empty), and the page's hook (`<Web>.Bubble.runtime/1`) reports a
+  changed width on a resize and after a reconnect, only on a page that
+  reads it (`page_width: true` in a surface, `data-bubble-reads-width` on
+  the hook). The runtime (`@bubble_page_width`, `ctx.page_width`) reads
+  again what reads it once per burst of reports (150 ms), with or without
+  data access, and ignores the same width again and anything but a whole
+  number of pixels up to 100,000; a page that does not read it only
+  keeps it. The pages' own conditionals reading the width directly are
+  still not lowered (`docs/page-data.md`).
 
-- **A plugin's element shows where it is missing** (WTF-520). An element
+- **A plugin's element is marked in development** (WTF-520). An element
   of a plugin is not migrated: it rendered as an empty box with a
-  template comment, invisible on the page (a row of icons was blank).
-  It now carries `data-bubble-placeholder="plugin"` and a title, and
-  `bubble.css` outlines and hatches it (an unlayered rule, over its own
-  styles). Nothing is drawn in its place. An unsupported native element
-  keeps its empty box.
+  template comment, invisible on the page. It now carries
+  `data-bubble-placeholder="plugin"` everywhere; with the developer
+  markers on (`config :app, :bubble_dev_markers, true`, which the
+  generated `config/dev.exs` sets; off unless set, so production shows
+  the empty box) it is also outlined and hatched (`bubble.css`) with a
+  tooltip (`Bubble.dev_markers?/0`). Nothing is drawn in its place. An
+  unsupported native element keeps its empty box.
 
 - **Clicks and input changes in the cells of a list of options run in
   that cell** (WTF-520). A repeating group whose list holds option-set
