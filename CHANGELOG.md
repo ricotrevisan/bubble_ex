@@ -6,6 +6,29 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **A page search for "x = no" finds the records whose x is empty**
+  (WTF-529). Bubble reads an empty yes/no as no (replays of 2026-09-29
+  and 2026-10-01, `docs/replay-kit.md`), but page searches compiled
+  `x = no` as `x == false`, which no empty (NULL) x matches, and page
+  conditions compared it the same way. Searches
+  (`Target.Ash.Expressions.search/3`, a `:filtered` list of things
+  included) now compile `x = no` and `x != yes` to `x == false or
+  is_nil(x)` on a field (an index can serve it), `x = yes` and `x != no`
+  to `x == true`, and `x = y` between two yes/no values reads each as
+  yes or no; `BubbleEx.Target.Elixir` (page and workflow conditions,
+  `:filtered` on options and values) reads them the same way, so a
+  condition and a search agree. `is empty` stays an exact test and the
+  current user's empty value still matches nothing. **The privacy
+  policies are unchanged** (owner decision, 2026-09-29: `x is no` in a
+  rule needs a stored no): `filter/3` and `privacy/2` keep the stricter
+  reading, held byte for byte by a golden recorded before the change
+  (`test/bubble_ex/target/ash/yes_no_privacy_test.exs`). The shared
+  privacy expectation table gains `expected_elixir` for the three cases
+  where page conditions now select more than the policies
+  (`w_public_is_not_`, `admin_no_not_coach_no_`,
+  `zj_access_has_assignee_is_public_`). See `docs/page-data.md`, "Empty
+  yes/no values".
+
 - **A page reads its data again when a resource only its queries
   search changes** (WTF-520). A source over queries (a thing's list of
   options read from "Search for boards:first item", a count) subscribed

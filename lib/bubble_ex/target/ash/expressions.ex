@@ -28,7 +28,8 @@ defmodule BubbleEx.Target.Ash.Expressions do
   | `x is empty` | a reference with a `belongs_to`: `not exists(rel, true)` (a dangling ID is empty; there are no foreign keys), `is_nil(^actor([..., :rel]))` on the actor side; otherwise `is_nil(x)`, also `x == ""` for text and `x == []` for a list |
   | `>`, `<`, `>=`, `<=` | the operator |
   | `and`, `or`, `not` | the operator |
-  | a yes/no value used as a condition | `x == true` |
+  | `x is y` / `x is not y` between yes/no values in a search (`search/3`; not in privacy rules) | an empty one reads as no, as in Bubble (WTF-529): `x is no` and `x is not yes` are `x == false or is_nil(x)` on an attribute (`is_distinct_from(x, true)` on another value), `x is yes` and `x is not no` are `x == true`; between two values `is_not_distinct_from(a, true) == is_not_distinct_from(b, true)` (`!=` for `is not`) |
+  | a yes/no value used as a condition | `x == true`; negated, `is_distinct_from(x, true)` (in a search, as `x is no`) |
   | `logged in` | `not is_nil(^actor(:id))` |
   | `list contains item` | `item in list` (lists of things are `{:array, :string}` of IDs, WTF-338) |
   | `list contains item`, `list is empty` on a list an owner decision derives as a `has_many` or normalizes to a join (`many_to_many`) | `exists(list, id == item)` (a record-side item read as `parent(...)`), `not exists(list, true)`; the list has no other use as a value |
@@ -54,7 +55,8 @@ defmodule BubbleEx.Target.Ash.Expressions do
   and `is not` are pushed down to the atoms (De Morgan), so a guard is
   never negated; `a is b` between yes/no values of which one is a
   condition is expanded to `(a and b) or (not a and not
-  b)` (a stored yes/no side is `== true` / `== false`: empty is neither).
+  b)` (a stored yes/no side is `== true` / `== false`: empty is neither;
+  in a search, `is no` holds on an empty one, WTF-529).
   A condition reading the actor used as any other value is rejected; any
   other condition used as a value is `if(c, true, false)`, never NULL. The
   one exception is `is empty` on an actor-side value, which tests the
@@ -205,7 +207,10 @@ defmodule BubbleEx.Target.Ash.Expressions do
     case unsort(ir) do
       {%IR{op: :search, args: [type, pred]}, sort} ->
         opts =
-          Keyword.merge([inputs: :arguments, search?: true], Keyword.put(opts, :resource, type))
+          Keyword.merge(
+            [inputs: :arguments, search?: true, empty_yes_no_is_no: true],
+            Keyword.put(opts, :resource, type)
+          )
 
         pred = pred || IR.node(:literal, [true], "boolean")
         result = do_filter(pred, lookup, opts)
@@ -355,6 +360,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
       resource: Keyword.fetch!(opts, :resource),
       inputs: Keyword.get(opts, :inputs, :unsupported),
       search?: Keyword.get(opts, :search?, false),
+      empty_yes_no_is_no: Keyword.get(opts, :empty_yes_no_is_no, false),
       loads: MapSet.new(),
       args: %{},
       at: path_text(Keyword.get(opts, :path, "")),
@@ -459,7 +465,8 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
   # Two yes/no sides, one a condition: expanded so that each side keeps its
   # own polarities and guards (a stored yes/no side is `== true` / `==
-  # false`: empty is neither). A condition's negation is not always its
+  # false`: empty is neither; in a search, `is no` holds on an empty one,
+  # WTF-529). A condition's negation is not always its
   # complement (an empty value fails both), so comparing it as a plain
   # value could match where neither side holds (WTF-471).
   defp boolean_equality?(l, r), do: condition?(l) or condition?(r)
@@ -527,8 +534,14 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
   defp atom_(%IR{op: op, args: [l, r]}, st) when op in [:eq, :neq] do
     {[a, b], st} = values([l, r], st)
-    eq = eq_node(a, b, st)
-    neq = if yes_no_pair?(l, r), do: yes_no_neq(l, r, a, b), else: neq_node(a, b, st)
+
+    {eq, neq} =
+      cond do
+        st.empty_yes_no_is_no and yes_no_pair?(l, r) -> yes_no_read_as_no(l, r, a, b)
+        yes_no_pair?(l, r) -> {eq_node(a, b, st), yes_no_neq(l, r, a, b)}
+        true -> {eq_node(a, b, st), neq_node(a, b, st)}
+      end
+
     operands = [{a, l.type}, {b, r.type}]
     {all_ok(if(op == :eq, do: {eq, neq, operands}, else: {neq, eq, operands}), [a, b]), st}
   end
@@ -632,11 +645,18 @@ defmodule BubbleEx.Target.Ash.Expressions do
   defp atom_(%IR{op: :text_contains_words}, st),
     do: unsupported(st, {"contains keyword(s) outside a search", nil})
 
-  # A yes/no value: `x == true`; negated, empty is not yes.
+  # A yes/no value: `x == true`; negated, empty is not yes (in a search,
+  # `x == false or is_nil(x)` on an attribute, `is_no/1`).
   defp atom_(%IR{op: op} = ir, st) when op in @boolean_values do
     {v, st} = value(ir, st)
     yes = {:op, "==", v, {:value, true}}
-    {all_ok({yes, {:call, "is_distinct_from", [v, {:value, true}]}, [{v, ir.type}]}, [v]), st}
+
+    no =
+      if st.empty_yes_no_is_no,
+        do: ok(v, &is_no/1),
+        else: {:call, "is_distinct_from", [v, {:value, true}]}
+
+    {all_ok({yes, no, [{v, ir.type}]}, [v]), st}
   end
 
   defp atom_(%IR{op: op}, st), do: unsupported(st, {"the condition #{inspect(op)}", nil})
@@ -916,6 +936,40 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
   defp yes_no_not(v, false), do: yes(v)
   defp yes_no_not(v, true), do: {:call, "is_distinct_from", [v, {:value, true}]}
+
+  # In a search (`empty_yes_no_is_no`, WTF-529): Bubble reads an empty
+  # yes/no as no (replay 2026-09-29 and 2026-10-01: `x is no` holds on a
+  # record whose x is empty), so between yes/no values with a stored side
+  # an empty one is no, in `is` as in `is not`. Against a literal: `x is
+  # no` and `x is not yes` are `is_no(x)`, `x is yes` and `x is not no`
+  # are `x == true`; between two values, both are read as yes or no. The
+  # privacy rules keep the stricter `is` (`BubbleEx.Verify.Difference`,
+  # `empty_yes_no_is_no`): `privacy/2` and `filter/3` do not set it.
+  defp yes_no_read_as_no(%IR{op: :literal, args: [b]}, _r, _a, v), do: yes_no_literal(v, b)
+  defp yes_no_read_as_no(_l, %IR{op: :literal, args: [b]}, v, _b), do: yes_no_literal(v, b)
+
+  defp yes_no_read_as_no(_l, _r, a, b),
+    do: {{:op, "==", read_as_no(a), read_as_no(b)}, {:op, "!=", read_as_no(a), read_as_no(b)}}
+
+  # A side of a comparison between two yes/no values: yes or no, never
+  # NULL; an actor-side one as is (guarded non-empty: NULL when it is
+  # empty, so the comparison holds for no record).
+  defp read_as_no(v), do: if(actor?(v), do: v, else: yes(v))
+
+  defp yes_no_literal(v, true), do: {{:op, "==", v, {:value, true}}, is_no(v)}
+  defp yes_no_literal(v, false), do: {is_no(v), {:op, "==", v, {:value, true}}}
+
+  # `v` is no or empty. On an attribute, `v == false or is_nil(v)`, which
+  # an index on it can serve (`IS DISTINCT FROM` cannot); an actor-side
+  # `v` is guarded non-empty, so `v == false`.
+  defp is_no({:ref, _rels, _attr} = v),
+    do: {:or, [{:op, "==", v, {:value, false}}, {:call, "is_nil", [v]}]}
+
+  defp is_no(v) do
+    if actor?(v),
+      do: {:op, "==", v, {:value, false}},
+      else: {:call, "is_distinct_from", [v, {:value, true}]}
+  end
 
   # `v` is yes, never NULL (an actor-side `v` is guarded non-empty).
   defp yes(v) do

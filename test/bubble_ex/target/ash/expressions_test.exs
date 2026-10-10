@@ -208,6 +208,97 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
     end
   end
 
+  # WTF-529: a search reads an empty yes/no as no, as Bubble does (replay
+  # 2026-09-29 and 2026-10-01: `x is no` holds on a record whose x is
+  # empty). The privacy policies (`filter/3`, `privacy/2`) keep the
+  # stricter `x is no` (owner decision, 2026-09-29).
+  describe "yes/no comparisons (WTF-529)" do
+    setup do
+      item = IR.node(:this, [:filter_item], "custom.task")
+      record = IR.node(:this, [:rule_record], "custom.task")
+
+      admin =
+        IR.node(:field, [IR.node(:current_user, [], "user"), "user", "admin_boolean"], "boolean")
+
+      %{
+        public: IR.node(:field, [item, "task", "public_boolean"], "boolean"),
+        rule_public: IR.node(:field, [record, "task", "public_boolean"], "boolean"),
+        parent_public:
+          IR.node(
+            :field,
+            [
+              IR.node(:field, [item, "task", "parent_custom_task"], "custom.task"),
+              "task",
+              "public_boolean"
+            ],
+            "boolean"
+          ),
+        admin: admin,
+        yes: IR.node(:literal, [true], "boolean"),
+        no: IR.node(:literal, [false], "boolean")
+      }
+    end
+
+    defp searched(pred, project) do
+      ir = IR.node(:search, ["task", pred], "list.custom.task")
+      {:ok, %{expr: expr, diagnostics: []}} = Expressions.search(ir, project)
+      Source.expr(expr)
+    end
+
+    defp policy(pred, project) do
+      {:ok, %{expr: expr, diagnostics: []}} = Expressions.filter(pred, project, resource: "task")
+      Source.expr(expr)
+    end
+
+    test "in a search an empty yes/no is no", %{project: project} = c do
+      no = "expr(public == false or is_nil(public))"
+      yes = "expr(public == true)"
+
+      cases = [
+        {IR.node(:eq, [c.public, c.no], "boolean"), no},
+        {IR.node(:eq, [c.no, c.public], "boolean"), no},
+        {IR.node(:neq, [c.public, c.yes], "boolean"), no},
+        {IR.node(:eq, [c.public, c.yes], "boolean"), yes},
+        {IR.node(:neq, [c.public, c.no], "boolean"), yes},
+        # `not x`, `not (x is no)`, `not (x is not yes)`
+        {IR.node(:not, [c.public], "boolean"), no},
+        {IR.node(:not, [IR.node(:eq, [c.public, c.no], "boolean")], "boolean"), yes},
+        {IR.node(:not, [IR.node(:neq, [c.public, c.yes], "boolean")], "boolean"), yes},
+        # a field of a related record: empty also when there is none
+        {IR.node(:eq, [c.parent_public, c.no], "boolean"),
+         "expr(parent.public == false or is_nil(parent.public))"},
+        # two values: both read as yes or no, never NULL
+        {IR.node(:eq, [c.public, c.parent_public], "boolean"),
+         "expr(is_not_distinct_from(public, true) == is_not_distinct_from(parent.public, true))"},
+        {IR.node(:neq, [c.public, c.parent_public], "boolean"),
+         "expr(is_not_distinct_from(public, true) != is_not_distinct_from(parent.public, true))"},
+        # `is empty` stays an exact NULL test (not replayed for yes/no)
+        {IR.node(:is_empty, [c.public], "boolean"), "expr(is_nil(public))"},
+        {IR.node(:not, [IR.node(:is_empty, [c.public], "boolean")], "boolean"),
+         "expr(not is_nil(public))"},
+        # the current user's value keeps its guard: an empty one matches nothing
+        {IR.node(:eq, [c.admin, c.no], "boolean"), "expr(^actor(:admin) == false)"},
+        {IR.node(:eq, [c.public, c.admin], "boolean"),
+         "expr(is_not_distinct_from(public, true) == ^actor(:admin))"}
+      ]
+
+      for {pred, expected} <- cases, do: assert(searched(pred, project) == expected)
+    end
+
+    test "privacy rules keep the stricter reading", %{project: project} = c do
+      cases = [
+        {IR.node(:eq, [c.rule_public, c.no], "boolean"), "expr(public == false)"},
+        {IR.node(:neq, [c.rule_public, c.yes], "boolean"),
+         "expr(is_distinct_from(public, true))"},
+        {IR.node(:neq, [c.rule_public, c.no], "boolean"),
+         "expr(is_not_distinct_from(public, true))"},
+        {IR.node(:not, [c.rule_public], "boolean"), "expr(is_distinct_from(public, true))"}
+      ]
+
+      for {pred, expected} <- cases, do: assert(policy(pred, project) == expected)
+    end
+  end
+
   test "a search compiles to a filter on the searched resource, with its sort", %{
     project: project
   } do

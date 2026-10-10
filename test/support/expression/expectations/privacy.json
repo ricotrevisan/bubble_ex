@@ -471,9 +471,35 @@
           "k3"
         ]
       },
+      "expected_elixir": {
+        "logged_out": [],
+        "u1": [
+          "k2",
+          "k3",
+          "k4",
+          "k5"
+        ],
+        "u2": [
+          "k1",
+          "k2",
+          "k3",
+          "k5"
+        ],
+        "u3": [
+          "k2",
+          "k3",
+          "k4",
+          "k5"
+        ],
+        "u4": [
+          "k2",
+          "k3",
+          "k5"
+        ]
+      },
       "rule": "w_public_is_not_",
       "type": "task",
-      "why": "the negation of v_public_is_ (empty public still matches neither)"
+      "why": "the negation of v_public_is_ (empty public still matches neither in the policies); page and workflow conditions read an empty public as no, as Bubble does (WTF-529), so k2 and k5 (empty public, no access) differ from 'access doesn't contain the actor' (yes) there"
     },
     {
       "expected": {
@@ -836,9 +862,36 @@
           "u7"
         ]
       },
+      "expected_elixir": {
+        "logged_out": [
+          "u1",
+          "u2",
+          "u7"
+        ],
+        "u1": [
+          "u1",
+          "u2",
+          "u7"
+        ],
+        "u2": [
+          "u1",
+          "u2",
+          "u7"
+        ],
+        "u3": [
+          "u1",
+          "u2",
+          "u7"
+        ],
+        "u4": [
+          "u1",
+          "u2",
+          "u7"
+        ]
+      },
       "rule": "admin_no_not_coach_no_",
       "type": "user",
-      "why": "(admin is no) is not (coach is no): one is a stored no and the other a stored yes; an empty side satisfies neither polarity (stricter than Bubble, where empty is no), so u2 and u3 are not selected, as a NULL-tolerant comparison would"
+      "why": "(admin is no) is not (coach is no): one is a stored no and the other a stored yes; an empty side satisfies neither polarity in the policies (stricter than Bubble, where empty is no), so u2 and u3 are not selected, as a NULL-tolerant comparison would. Page and workflow conditions read an empty yes/no as no (WTF-529): u2 (empty admin, coach yes) is selected; u3 (no, empty) and u4 (empty, empty) are not"
     },
     {
       "expected": {
@@ -861,28 +914,38 @@
       "expected_elixir": {
         "logged_out": [
           "k1",
-          "k3"
+          "k2",
+          "k3",
+          "k5"
         ],
         "u1": [
           "k1",
-          "k3"
+          "k2",
+          "k3",
+          "k5"
         ],
         "u2": [
           "k1",
-          "k3"
+          "k2",
+          "k3",
+          "k5"
         ],
         "u3": [
           "k1",
-          "k3"
+          "k2",
+          "k3",
+          "k5"
         ],
         "u4": [
           "k1",
-          "k3"
+          "k2",
+          "k3",
+          "k5"
         ]
       },
       "rule": "zj_access_has_assignee_is_public_",
       "type": "task",
-      "why": "(access contains assignee) is public: k1 (contains, yes). k3's empty access contains nothing and public is no, which Bubble's reading grants (Elixir) but the policies do not: a compared condition's negative side needs its record values non-empty (WTF-471); the base policies (a NULL-free value comparison) granted no more than this row allows elsewhere"
+      "why": "(access contains assignee) is public: k1 (contains, yes). k3's empty access contains nothing and public is no, which Bubble's reading grants (Elixir) but the policies do not: a compared condition's negative side needs its record values non-empty (WTF-471); the base policies (a NULL-free value comparison) granted no more than this row allows elsewhere. k2 and k5 (no access, empty public): their empty public reads as no in page and workflow conditions (WTF-529), equal to 'contains' (no), so Elixir selects them too"
     },
     {
       "expected": {

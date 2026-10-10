@@ -87,9 +87,10 @@ the workflow API and private files:
   (`actor_empty_denies`, reported as intended differences). Likewise
   (WTF-467) a logged-out user is denied every comparison reading it
   (Bubble's temporary user is unequal to any record's user), `x is no`
-  needs a stored no (Bubble reads an empty yes/no as no), and the
-  `everyone` rule's grants reach only users no rule lacking them matches
-  (Bubble's reach every user).
+  in a privacy rule needs a stored no (Bubble reads an empty yes/no as
+  no; page searches and conditions do too, see "Empty yes/no values"
+  below), and the `everyone` rule's grants reach only users no rule
+  lacking them matches (Bubble's reach every user).
 * **Searches on fields some users may not view are decided per user**
   (WTF-457). In Bubble, viewing a field and constraining a search on it
   are separate permissions: a page search constrained (or sorted) on a
@@ -1645,6 +1646,52 @@ with`, `:minus item`, …), given to a text operator,
 sent as a URL parameter or path segment, written by a backend workflow
 or returned by it. Before, `text/1` showed its debug output
 (`#Ash.CiString<...>`), and `is` never matched it.
+
+## Empty yes/no values (WTF-529)
+
+**An empty yes/no is no**, as in Bubble: the replays of 2026-09-29 and
+2026-10-01 (`docs/replay-kit.md`, "An empty yes/no reads as no") found
+`x is no` holding on a record whose x is empty (0 of 2, then 0 of 5
+agreeing with the stricter reading). Page searches (their constraints,
+a `:filtered` list of things, which becomes a search) and every
+condition compiled by `BubbleEx.Target.Elixir` (page conditions,
+visibility, `Only when`, `:filtered` on options or values, backend
+workflow conditions) read it so, wherever a stored yes/no (a field, an
+option's attribute, an input, a `defaulting to`) is compared with `is`
+or `is not`:
+
+| constraint | search (`Target.Ash.Expressions.search/3`) | in memory (`Target.Elixir`) |
+|------------|---------------------------------------------|-----------------------------|
+| `x = no`, `x != yes`, `not x` | `x == false or is_nil(x)` | `x != true` |
+| `x = yes`, `x != no`, `x` | `x == true` | `x == true` |
+| `x = y` (`x != y`) between two yes/no values | `is_not_distinct_from(x, true) == is_not_distinct_from(y, true)` (`!=`) | `(x == true) == (y == true)` (`!=`) |
+| `x is empty` | `is_nil(x)` (unchanged) | `empty?(x)` (unchanged) |
+
+The two agree, and a field the user may not view reads as empty, so as
+no, in memory. `x == false or is_nil(x)` is written so that an index on
+the field can serve both branches (`IS DISTINCT FROM` cannot). Before,
+`x = no` was `x == false` and a record whose x was empty was in no
+search for `no`.
+
+Unchanged, and noted:
+
+* **The privacy policies keep the stricter reading** (owner decision,
+  2026-09-29): `x is no` in a privacy rule still needs a stored no
+  (`BubbleEx.Verify.Difference`, `empty_yes_no_is_no`). With enforced
+  policies a record whose Secret is empty is not found by a rule
+  "Secret is no", although a page search for "Secret = no" would match
+  it. `test/bubble_ex/target/ash/yes_no_privacy_test.exs` holds the
+  policy compilation of every yes/no form to a golden recorded before
+  this change.
+* **The current user's empty yes/no** still matches nothing, in either
+  polarity (the fail-safe guard): `Current User's admin is no` holds for
+  no logged-out visitor or user whose admin is empty. Bubble would read
+  it as no; not replayed for searches.
+* **`is empty` on a yes/no** stays the exact empty test: whether Bubble
+  counts an empty yes/no as empty (or never empty, being no) is not
+  replayed.
+* **A list of yes/no values** (`contains`, `:filtered` with `This item`)
+  compares its items as stored.
 
 ## Unverified Bubble behavior and open questions
 
