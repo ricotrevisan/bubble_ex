@@ -22,24 +22,24 @@
       "authenticated": 16,
       "none": 1
     },
-    "native_own_body": 160,
+    "native_own_body": 157,
     "privacy_bypasses": 186,
     "residue_reasons": {
       "api_connector_action": 113,
       "auth_action": 3,
       "plugin_action": 14,
-      "uncompiled_expression": 1528,
+      "uncompiled_expression": 1534,
       "unresolved_reference": 16,
       "unsupported_action": 34,
       "unsupported_option": 32
     },
     "step_ops": {
       "call": 160,
-      "create": 67,
+      "create": 66,
       "delete": 34,
       "delete_list": 9,
       "return": 47,
-      "schedule": 137,
+      "schedule": 133,
       "schedule_list": 1,
       "terminate": 125,
       "update": 301,
@@ -47,8 +47,8 @@
       "update_list": 5
     },
     "steps": {
-      "native": 887,
-      "residue": 1572,
+      "native": 882,
+      "residue": 1577,
       "total": 2459
     },
     "triggers": 20,
