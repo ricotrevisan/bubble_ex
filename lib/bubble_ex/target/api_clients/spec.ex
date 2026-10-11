@@ -19,6 +19,11 @@ defmodule BubbleEx.Target.ApiClients.Spec do
       not needed when the group's `:base_url` is configured)
     * `types` - the response shapes of the external types calls decode
       into: external type ID => `%{field ID => response path}`
+    * `shapes` - the same types' field types (WTF-533), for decoding a
+      call's own type into a typed map: external type ID => `[%{id, path,
+      type, list}]` in field order, `type` a scalar (`:text`, `:number`,
+      `:boolean`, `:date`, `:date_unix`), `{:external, id}` (a known type,
+      not through a cycle) or `:other`
     * `residue` - calls not generated: `%{group, call, name, reasons}`
       (reason atoms, sorted), in Bubble ID order
 
@@ -35,7 +40,12 @@ defmodule BubbleEx.Target.ApiClients.Spec do
 
   @schema_version 1
 
-  defstruct schema_version: @schema_version, groups: [], env: [], types: %{}, residue: []
+  defstruct schema_version: @schema_version,
+            groups: [],
+            env: [],
+            types: %{},
+            shapes: %{},
+            residue: []
 
   @type value ::
           {:literal, String.t()}
@@ -56,6 +66,7 @@ defmodule BubbleEx.Target.ApiClients.Spec do
           groups: [BubbleEx.Target.ApiClients.Group.t()],
           env: [map()],
           types: %{String.t() => %{String.t() => [String.t() | integer()]}},
+          shapes: %{String.t() => [map()]},
           residue: [map()]
         }
 
@@ -151,6 +162,9 @@ defmodule BubbleEx.Target.ApiClients.Call do
     * `env` - the environment variables it reads, sorted
     * `response` - `%{kind: :json | :text | :empty, list: boolean, type:
       external type ID or nil}`
+    * `wrap_errors` - Bubble's "Include errors in response and allow
+      workflow actions to continue": a response that is not 2xx is the
+      result (`returned_an_error`, `error`), not an error
   """
 
   @enforce_keys [:id, :function, :method]
@@ -165,6 +179,7 @@ defmodule BubbleEx.Target.ApiClients.Call do
     :json,
     :auth,
     :response,
+    wrap_errors: false,
     path: [],
     query: [],
     headers: [],
@@ -189,6 +204,7 @@ defmodule BubbleEx.Target.ApiClients.Call do
           auth: nil | {:basic, String.t(), String.t()},
           args: [map()],
           env: [String.t()],
-          response: map()
+          response: map(),
+          wrap_errors: boolean()
         }
 end

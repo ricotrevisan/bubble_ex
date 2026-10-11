@@ -46,7 +46,8 @@
             ]
           },
           "returns": "api.apiconnector2.bad.defs.T",
-          "types": null
+          "types": null,
+          "wrap_errors": false
         }
       ],
       "id": "bad",

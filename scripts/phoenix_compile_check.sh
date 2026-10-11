@@ -60,7 +60,11 @@
 #     phoenix_dev_markers, values left out (data not loaded, expressions
 #     that do not compile) render as before, marked only with the
 #     developer markers on (WTF-520,
-#     test/support/target/phoenix/dev_markers_behavior.exs)
+#     test/support/target/phoenix/dev_markers_behavior.exs); for
+#     phoenix_api_calls, API Connector calls from a backend and a page
+#     workflow through the generated Req clients, against a stub, and
+#     their secrets only from the configuration (WTF-533,
+#     test/support/target/phoenix/api_calls_behavior.exs)
 #   * the same checks with privacy: :enforced (WTF-423) on the fixtures
 #     with privacy rules, pages and workflows (a second scratch project,
 #     <scratch>_enforced), plus the generated privacy-matrix tests against
@@ -150,6 +154,15 @@ for fixture in $fixtures; do
     if [[ "$fixture" == phoenix_api_clients ]]; then
       (cd "$root" && mix run --no-compile scripts/phoenix_compile_check/request_shape.exs \
         "$scratch" test/support/target/phoenix/api_clients.json)
+    fi
+
+    # API Connector calls (WTF-533): Req clients called by a backend and a
+    # page workflow, against a Req.Test stub (never the API's host).
+    if [[ "$fixture" == phoenix_api_calls ]]; then
+      cp "$root/test/support/target/phoenix/api_calls_behavior.exs" \
+        test/api_calls_behavior_test.exs
+      mix test test/api_calls_behavior_test.exs
+      rm test/api_calls_behavior_test.exs
     fi
 
     # Frontend workflows (WTF-372): their behavior in the generated app,
@@ -352,7 +365,7 @@ done
 # policies too; and test/support/target/phoenix/enforced_behavior.exs,
 # which must pass here and fail without policies (above).
 enforced_scratch="${scratch}_enforced"
-enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows phoenix_index_thing phoenix_visibility phoenix_reusable_params phoenix_list_ops phoenix_shapes phoenix_page_load phoenix_tables phoenix_url phoenix_cell_searches phoenix_nested_lists phoenix_cell_clicks phoenix_buttons phoenix_dev_markers workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
+enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows phoenix_index_thing phoenix_visibility phoenix_reusable_params phoenix_list_ops phoenix_shapes phoenix_page_load phoenix_tables phoenix_url phoenix_cell_searches phoenix_nested_lists phoenix_cell_clicks phoenix_buttons phoenix_dev_markers phoenix_api_calls workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
 mkdir -p "$enforced_scratch"
 first=1
 
@@ -401,6 +414,7 @@ for fixture in $enforced_fixtures; do
       phoenix_cell_clicks) behavior=test/support/target/phoenix/cell_clicks_behavior.exs ;;
       phoenix_buttons) behavior=test/support/target/phoenix/buttons_behavior.exs ;;
       phoenix_dev_markers) behavior=test/support/target/phoenix/dev_markers_behavior.exs ;;
+      phoenix_api_calls) behavior=test/support/target/phoenix/api_calls_behavior.exs ;;
     esac
 
     if [[ -n "$behavior" ]]; then

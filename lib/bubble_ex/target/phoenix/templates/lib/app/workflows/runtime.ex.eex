@@ -858,7 +858,60 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   @doc "A step whose condition is false."
   def skip(ctx), do: {:cont, ctx}
+<%= if @api_clients? do %>
+  # --- API Connector calls (WTF-533) ---------------------------------------------------------
 
+  @doc """
+  An API Connector call, made on the server with its generated client
+  (`<%= @module %>.ApiClients.*`). `params` are the step's values of the call's
+  non-private parameters; its secrets (keys, tokens, private parameters)
+  come from `config/runtime.exs`, never from a step or a page. The call's
+  result is the step's result.
+
+    * secrets not set: the step is **refused** before anything is sent,
+      with `{:api_env_missing, %{step: step, names: names}}`, and an error
+      names the variables (never a value); the workflow stops
+    * any other error (a non-2xx response, a timeout, a body that does not
+      decode) fails the step, which ends the workflow, as in Bubble; a call
+      with "Include errors in response" returns them as its result instead
+      (`returned_an_error`)
+
+  A failure is logged with the status or the error's kind only, never a
+  header, a secret or the response body.
+  """
+  def api_call(ctx, step, module, function, params) do
+    params = Map.new(params, fn {key, value} -> {key, api_param(value)} end)
+
+    case apply(module, function, [params, []]) do
+      {:ok, value} ->
+        {:cont, put_step(ctx, step, value)}
+
+      {:error, %<%= @module %>.ApiClients.MissingEnvError{names: names} = error} ->
+        Logger.error("bubble workflow #{inspect(ctx.workflow)}: step #{inspect(step)} refused: " <> Exception.message(error))
+        {:halt, {:error, {:api_env_missing, %{step: step, names: names}}}}
+
+      {:error, reason} ->
+        fail(ctx, step, {:api_call, api_reason(reason)})
+    end
+  end
+
+  # A parameter's value as the client sends it: a thing is its Bubble ID,
+  # a date its text (UTC), as Bubble's server writes them.
+  defp api_param(value) when is_binary(value) or is_number(value) or is_boolean(value) or is_nil(value), do: value
+  defp api_param(values) when is_list(values), do: Enum.map(values, &api_param/1)
+  defp api_param(%{__struct__: _, id: id}), do: id
+  defp api_param(value), do: text(value)
+
+  # A failed call as logs and results show it: never a body or a header.
+  defp api_reason({:status, status, _body}), do: {:status, status}
+  defp api_reason({:redirect_refused, status, _location}), do: {:redirect_refused, status}
+  defp api_reason({:decode, _error}), do: :decode
+  defp api_reason(%Req.TransportError{reason: reason}), do: {:transport, reason}
+  defp api_reason(%{__exception__: true, __struct__: kind}), do: {:exception, kind}
+  defp api_reason(reason) when is_atom(reason), do: reason
+  defp api_reason({kind, _detail}) when is_atom(kind), do: kind
+  defp api_reason(_reason), do: :error
+<% end %>
   defp put_step(ctx, step, value), do: %{ctx | steps: Map.put(ctx.steps, step, value)}
 
   defp continue({:ok, value}, ctx, step), do: {:cont, put_step(ctx, step, value)}

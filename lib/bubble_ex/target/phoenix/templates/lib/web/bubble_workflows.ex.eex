@@ -1491,9 +1491,11 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   defp paused(ctx, _status), do: ctx
 
-  # Refused before its first step: not lowered, or data access is off.
+  # Refused before its first step (not lowered, or data access is off), or
+  # at an API Connector call whose secrets are not set (WTF-533).
   defp refused?({:error, {:not_lowered, _}}), do: true
   defp refused?({:error, {:data_access_disabled, _}}), do: true
+  defp refused?({:error, {:api_env_missing, _}}), do: true
   defp refused?(_status), do: false
 
   defp apply_ctx(socket, %Ctx{} = ctx) do
@@ -2491,11 +2493,28 @@ defmodule <%= @web %>.BubbleWorkflows do
     if data_access?(), do: run_backend(ctx, fun), else: {:halt, {:error, :data_access_disabled}, ctx}
   end
 
+  @doc """
+  Runs an API Connector call step (WTF-533) on the server, in this
+  LiveView process, with the backend workflow runtime
+  (`Runtime.api_call/5`): the browser sends only the event, never a value
+  of the call. Its secrets and private parameters come from
+  `config/runtime.exs` and never reach the browser. It reads and writes no
+  stored data, so data access does not gate it. A call refused because its
+  secrets are not set refuses the workflow, with the page's notice.
+  """
+  def api(ctx, fun) do
+    b = %{backend(ctx) | workflow: ctx.workflow, now: ctx.now, steps: ctx.steps}
+    backend_result(fun.(b), ctx)
+  end
+
   defp run_backend(ctx, fun) do
     b = %{backend(ctx) | workflow: ctx.workflow, now: ctx.now, steps: ctx.steps}
     ctx = %{ctx | data_stale: true}
+    backend_result(fun.(b), ctx)
+  end
 
-    case fun.(b) do
+  defp backend_result(result, ctx) do
+    case result do
       {:cont, b} -> {:cont, %{ctx | backend: b, steps: b.steps}}
       {:halt, {:error, reason}} -> {:halt, {:error, reason}, ctx}
       {:halt, other} -> {:halt, {:error, {:unexpected, other}}, ctx}

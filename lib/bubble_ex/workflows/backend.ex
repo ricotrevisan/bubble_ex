@@ -36,6 +36,7 @@ defmodule BubbleEx.Workflows.Backend do
   | Trigger a custom event (`TriggerCustomEvent`) | `:call` | `workflow`, `params` |
   | Terminate this workflow (`TerminateWorkflow`) | `:terminate` | `returns` |
   | Return data from API (`APIReturnData`) | `:return` | `values` (key/value pairs) or `text` and `content_type` |
+  | an API Connector call (`apiconnector2-<group>.<call>`, WTF-533) | `:api_call` | `group`, `call`, `params` (`%{parameter, in, key, value}`), `ignored` |
 
   The step vocabulary, the data operations and the value structs are
   shared with the frontend lowering (`BubbleEx.Workflows.Lowering`,
@@ -56,8 +57,9 @@ defmodule BubbleEx.Workflows.Backend do
     * `:unsupported_action` - no lowering for the action type (cancelling
       a scheduled workflow needs Bubble's scheduled IDs, sending email and
       deleting files need an owner choice, …)
-    * `:api_connector_action` - an API Connector call; it waits for the
-      generated Req clients (WTF-374)
+    * `:api_connector_action` - an API Connector call whose Req client
+      cannot be generated (`detail.reasons`, WTF-374); one that can is
+      lowered (`:api_call`, WTF-533)
     * `:plugin_action`, `:auth_action` - as in `BubbleEx.Plan.Residue`
     * `:unsupported_event`, `:plugin_event` - an event with no backend
       lowering (recurring events are unverified: no export has one)
@@ -408,6 +410,7 @@ defmodule BubbleEx.Workflows.Backend do
     bubble_id = text(Source.value(action, ~w(id %id))) || "#{workflow}/#{List.last(path)}"
     id = Symbol.id(:action, bubble_id)
     op = if is_binary(type), do: Map.get(@ops, type)
+    op = if Lowering.api_call?(type), do: :api_call, else: op
     ppath = path ++ ["properties"]
     condition = expr(props["condition"], ppath ++ ["condition"], env)
 
@@ -423,7 +426,7 @@ defmodule BubbleEx.Workflows.Backend do
 
     case if(op, do: [], else: Lowering.type_residue(id, type)) do
       [] ->
-        {args, residue} = lower(op, props, ppath, id, env, ctx)
+        {args, residue} = lower(op, props, ppath, id, env, Map.put(ctx, :type, type))
         options = unknown_members(op, props)
 
         option_residue =
@@ -458,6 +461,9 @@ defmodule BubbleEx.Workflows.Backend do
     }
   end
 
+  defp unknown_members(:api_call, props),
+    do: for({key, _} <- props, not Lowering.api_member?(key), do: key)
+
   defp unknown_members(op, props) do
     known = ["condition" | Map.fetch!(@members, op)]
 
@@ -472,6 +478,9 @@ defmodule BubbleEx.Workflows.Backend do
   defp lower(op, props, path, id, env, ctx)
        when op in [:create, :update, :update_current_user, :update_list, :delete, :delete_list],
        do: Lowering.data_args(op, props, path, id, env, ctx)
+
+  defp lower(:api_call, props, path, id, env, ctx),
+    do: Lowering.api_call(ctx.type, props, path, id, env, ctx)
 
   defp lower(:schedule, props, path, id, env, ctx) do
     {callee, params, residue} = scheduled(props, path, id, env, ctx)

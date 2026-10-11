@@ -9,7 +9,7 @@ defmodule <%= @module %>.ApiClients do
   `""` inside a string and `null` as a value), and `opts`:
 
     * `:env` - a map of environment variables that takes precedence over
-      the system environment (tests pass stubs here)
+      the configured ones (tests pass stubs here)
     * `:base_url` - replaces the call's scheme, host and port
     * `:follow_redirects` - follow redirects (default `false`; see
       "Redirects"), at most `:max_redirects` (default 5)
@@ -46,15 +46,33 @@ defmodule <%= @module %>.ApiClients do
   A function returns `{:ok, body}` for a 2xx response (decoded JSON, a
   typed struct when the call returns a known API Connector type, text, or
   nil for an empty response), or `{:error, reason}`: `{:status, status,
-  body}`, `{:missing_env, names}`, `{:unknown_parameters, keys}`,
+  body}`, a `<%= @module %>.ApiClients.MissingEnvError` (a secret it needs is
+  not set: nothing was sent), `{:unknown_parameters, keys}`,
   `:invalid_parameters` (params neither a map nor a keyword list),
   `{:decode, reason}` or a transport exception.
+
+  A call with Bubble's "Include errors in response and allow workflow
+  actions to continue" returns `{:ok, result}` for any response: on a 2xx
+  its body with `returned_an_error` false, otherwise `returned_an_error`
+  true and `error`'s `status_code`, `status_message` and `body` (the
+  response body as text), as Bubble's result has them. A transport error
+  (a timeout, a refused connection) is still `{:error, exception}`.
+
+  The clients never log. An error never holds the request's headers,
+  authentication or secrets.
 
   ## Secrets
 
   Bubble's private values, and every literal of a request that is not
-  structure (path words, versions, media types), are never in the code: they are read from these environment
-  variables when a call is made (`.wtf/api_clients.json` lists them too).
+  structure (path words, versions, media types), are never in the code:
+  they are read from these environment variables, which
+  `config/runtime.exs` reads into the application environment
+  (`config :<%= @app %>, <%= @module %>.ApiClients, env: %{name => value}`) when the
+  app boots. A call whose variables are not set (or empty) is refused with
+  a `<%= @module %>.ApiClients.MissingEnvError` naming them, before anything is
+  sent: a migrated app fails closed until its owner sets them.
+  `mix bubble.api_env` lists the ones that are missing, `.env.example`
+  names them all (`.wtf/api_clients.json` lists them too).
   A variable holding a header or parameter whose name Bubble does not send
   holds `Name: value` (a header) or `name=value` (a parameter). A host
   variable (`<GROUP>_HOST`) holds an API host, or part of one, that is
@@ -65,6 +83,24 @@ defmodule <%= @module %>.ApiClients do
   """
 
   @app :<%= @app %>
+
+  defmodule MissingEnvError do
+    @moduledoc """
+    A call needs environment variables that are not set (or are empty):
+    it was refused before anything was sent. `names` are the variables,
+    never their values. Set them where the app runs (`config/runtime.exs`
+    reads them); `mix bubble.api_env` lists every missing one.
+    """
+    defexception names: []
+
+    @impl true
+    def message(%__MODULE__{names: names}),
+      do:
+        "API Connector call refused: set the environment variable(s) " <>
+          Enum.join(names, ", ") <> " (read in config/runtime.exs)"
+  end
+
+  @env_names <%= @env_names %>
 
   @defaults [
     receive_timeout: <%= @receive_timeout %>,
@@ -92,6 +128,7 @@ defmodule <%= @module %>.ApiClients do
           {:ok, %{String.t() => String.t()}} | {:error, term()}
   def env(opts, names, group \\ nil, hosts \\ []) do
     overrides = Keyword.get(opts, :env, %{})
+    configured = configured_env()
 
     # Host variables are needed only without a configured base URL.
     base_url? =
@@ -101,13 +138,48 @@ defmodule <%= @module %>.ApiClients do
     names = if base_url?, do: names, else: names ++ hosts
 
     values =
-      Map.new(names, fn name -> {name, Map.get(overrides, name) || System.get_env(name)} end)
+      Map.new(names, fn name ->
+        {name, present(Map.get(overrides, name)) || present(Map.get(configured, name))}
+      end)
 
     case for({name, nil} <- values, do: name) do
       [] -> {:ok, values}
-      missing -> {:error, {:missing_env, Enum.sort(missing)}}
+      missing -> {:error, %MissingEnvError{names: Enum.sort(missing)}}
     end
   end
+
+  @doc """
+  The environment variables every generated call may read, by name (from
+  `config/runtime.exs`); `missing_env/0` those not set.
+  """
+  @spec env_names() :: [String.t()]
+  def env_names, do: @env_names
+
+  @doc "The environment variables that are not set (or empty), sorted."
+  @spec missing_env() :: [String.t()]
+  def missing_env do
+    configured = configured_env()
+    for name <- @env_names, present(Map.get(configured, name)) == nil, do: name
+  end
+
+  # Only what config/runtime.exs put in the application environment: never
+  # the system environment directly, never the export.
+  defp configured_env do
+    case Application.fetch_env(@app, __MODULE__) do
+      {:ok, config} when is_list(config) ->
+        case Keyword.get(config, :env) do
+          env when is_map(env) -> env
+          env when is_list(env) -> Map.new(env)
+          _ -> %{}
+        end
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp present(value) when is_binary(value) and value != "", do: value
+  defp present(_), do: nil
 
   @doc false
   @spec request(module(), keyword(), map()) :: {:ok, term()} | {:error, term()}
@@ -133,19 +205,23 @@ defmodule <%= @module %>.ApiClients do
 
     {follow?, options} = Keyword.pop(options, :follow_redirects, false)
     {max, options} = Keyword.pop(options, :max_redirects, 5)
-    send_request(options, if(follow?, do: max, else: 0), request.response)
+    wrap? = Map.get(request, :wrap_errors, false)
+    send_request(options, if(follow?, do: max, else: 0), request.response, wrap?)
   end
 
   @redirects [301, 302, 303, 307, 308]
 
-  defp send_request(options, redirects, response) do
+  defp send_request(options, redirects, response, wrap?) do
     case Req.request(options) do
       {:ok, %Req.Response{status: status} = resp} when status in @redirects and redirects > 0 ->
         with {:ok, options} <- redirect(options, resp),
-             do: send_request(options, redirects - 1, response)
+             do: send_request(options, redirects - 1, response, wrap?)
 
       {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
-        decode(body, response)
+        decode(body, response, if(wrap?, do: %{"returned_an_error" => false}, else: %{}))
+
+      {:ok, %Req.Response{status: status, body: body}} when wrap? ->
+        wrapped_error(status, body, response)
 
       {:ok, %Req.Response{status: status, body: body}} ->
         {:error, {:status, status, body}}
@@ -153,6 +229,29 @@ defmodule <%= @module %>.ApiClients do
       {:error, exception} ->
         {:error, exception}
     end
+  end
+
+  # Bubble's result of a call that includes errors in its response.
+  defp wrapped_error(status, body, response) do
+    term = %{
+      "returned_an_error" => true,
+      "error" => %{
+        "status_code" => status,
+        "status_message" => status_message(status),
+        "body" => if(is_binary(body), do: body, else: "")
+      }
+    }
+
+    case response do
+      {:json, decoder, _list?} -> decoder.(term)
+      _ -> {:ok, term}
+    end
+  end
+
+  defp status_message(status) do
+    Plug.Conn.Status.reason_phrase(status)
+  rescue
+    ArgumentError -> ""
   end
 
   # The next request of a redirect. Another origin (or a downgrade to
@@ -195,19 +294,26 @@ defmodule <%= @module %>.ApiClients do
   defp auth(nil), do: []
   defp auth({:basic, user, password}), do: [auth: {:basic, user <> ":" <> password}]
 
-  defp decode(_body, :empty), do: {:ok, nil}
-  defp decode(body, :text), do: {:ok, body}
-  defp decode(body, :json), do: json(body)
+  # `extra` (Bubble's `returned_an_error`) goes into a JSON object.
+  defp decode(_body, :empty, extra), do: {:ok, if(extra == %{}, do: nil, else: extra)}
+  defp decode(body, :text, _extra), do: {:ok, body}
 
-  defp decode(body, {:json, decoder, list?}) do
+  defp decode(body, :json, extra) do
+    with {:ok, term} <- json(body), do: {:ok, merge(term, extra)}
+  end
+
+  defp decode(body, {:json, decoder, list?}, extra) do
     with {:ok, term} <- json(body) do
       cond do
-        is_nil(term) -> {:ok, nil}
+        is_nil(term) and extra == %{} -> {:ok, nil}
         list? and is_list(term) -> each(term, decoder)
-        true -> decoder.(term)
+        true -> decoder.(merge(term || %{}, extra))
       end
     end
   end
+
+  defp merge(term, extra) when is_map(term), do: Map.merge(term, extra)
+  defp merge(term, _extra), do: term
 
   defp json(""), do: {:ok, nil}
 
@@ -271,6 +377,15 @@ defmodule <%= @module %>.ApiClients do
   end
 
   @doc false
+  # A parameter in a JSON body outside quotes (`"n": <n>`). Bubble pastes
+  # its text into the body, so a text that is JSON (`3`, `true`, `[1]`)
+  # is that JSON value; other text is a JSON string, any other value
+  # itself (WTF-533).
+  @spec json_arg(term()) :: term()
+  def json_arg(value) when is_binary(value), do: json_value(value)
+  def json_arg(value), do: value
+
+  @doc false
   # A `Name: value` header line from an environment variable.
   @spec header_line(String.t()) :: {String.t(), String.t()}
   def header_line(line) do
@@ -306,6 +421,40 @@ defmodule <%= @module %>.ApiClients do
   @spec map_list(term(), (term() -> term())) :: term()
   def map_list(list, fun) when is_list(list), do: Enum.map(list, fun)
   def map_list(value, _fun), do: value
+
+  @doc false
+  # A response value as its API type's field type (a typed map, WTF-533):
+  # Bubble's text, number and yes/no; a date from ISO 8601 text. Anything
+  # it cannot read as that type is nil; other types stay as decoded.
+  @spec cast_value(term(), atom() | {:list, atom()}) :: term()
+  def cast_value(nil, _type), do: nil
+  def cast_value(values, {:list, type}) when is_list(values), do: Enum.map(values, &cast_value(&1, type))
+  def cast_value(_value, {:list, _type}), do: nil
+  def cast_value(value, :text) when is_binary(value), do: value
+  def cast_value(value, :text) when is_number(value) or is_boolean(value), do: to_string(value)
+  def cast_value(value, :text), do: Jason.encode!(value)
+  def cast_value(value, :number) when is_number(value), do: value
+
+  def cast_value(value, :number) when is_binary(value) do
+    case Float.parse(String.trim(value)) do
+      {number, ""} -> number
+      _ -> nil
+    end
+  end
+
+  def cast_value(value, :boolean) when is_boolean(value), do: value
+  def cast_value("true", :boolean), do: true
+  def cast_value("false", :boolean), do: false
+
+  def cast_value(value, :date) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, date, _offset} -> date
+      {:error, _} -> nil
+    end
+  end
+
+  def cast_value(_value, type) when type in [:number, :boolean, :date], do: nil
+  def cast_value(value, _type), do: value
 
   @doc false
   # A typed struct from its fields.

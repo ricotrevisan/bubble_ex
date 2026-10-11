@@ -67,12 +67,17 @@ defmodule BubbleEx.Target.ApiClientsTest do
              method: :post,
              base: %{scheme: "https", host: [literal: "api.payments.example"], port: 8443},
              path: [[literal: "v1"], [literal: "charges"]],
-             query: [%{name: "source", value: [env: "PAYMENTS_CREATE_CHARGE_LITERAL_1"]}],
+             query: [
+               %{name: "source", value: [env: "BUBBLE_API_PAYMENTS_CREATE_CHARGE_LITERAL_1"]}
+             ],
              headers: [
-               %{name: "X-Api-Key", value: [env: "PAYMENTS_API_KEY"]},
-               %{name: "X-Tenant", value: [env: "PAYMENTS_SHARED_1"]},
+               %{name: "X-Api-Key", value: [env: "BUBBLE_API_PAYMENTS_API_KEY"]},
+               %{name: "X-Tenant", value: [env: "BUBBLE_API_PAYMENTS_SHARED_1"]},
                %{name: "Content-Type", value: [arg: "content_type"]},
-               %{name: "Idempotency-Key", value: [env: "PAYMENTS_CREATE_CHARGE_IDEMPOTENCY_KEY"]}
+               %{
+                 name: "Idempotency-Key",
+                 value: [env: "BUBBLE_API_PAYMENTS_CREATE_CHARGE_IDEMPOTENCY_KEY"]
+               }
              ],
              json:
                {:object,
@@ -82,22 +87,25 @@ defmodule BubbleEx.Target.ApiClientsTest do
                   {"description",
                    {:text,
                     [
-                      env: "PAYMENTS_CREATE_CHARGE_LITERAL_2",
+                      env: "BUBBLE_API_PAYMENTS_CREATE_CHARGE_LITERAL_2",
                       arg: "order",
-                      env: "PAYMENTS_CREATE_CHARGE_LITERAL_3",
+                      env: "BUBBLE_API_PAYMENTS_CREATE_CHARGE_LITERAL_3",
                       arg: "customer"
                     ]}},
                   {"metadata",
                    {:object,
                     [
-                      {"channel", {:text, [env: "PAYMENTS_CREATE_CHARGE_LITERAL_4"]}},
+                      {"channel", {:text, [env: "BUBBLE_API_PAYMENTS_CREATE_CHARGE_LITERAL_4"]}},
                       {"tags",
                        {:array,
-                        [{:text, [env: "PAYMENTS_CREATE_CHARGE_LITERAL_5"]}, {:arg, "tag"}]}}
+                        [
+                          {:text, [env: "BUBBLE_API_PAYMENTS_CREATE_CHARGE_LITERAL_5"]},
+                          {:arg, "tag"}
+                        ]}}
                     ]}},
                   {"capture", {:json, true}},
-                  {"retries", {:env_json, "PAYMENTS_CREATE_CHARGE_LITERAL_6"}},
-                  {"signature", {:text, [env: "PAYMENTS_CREATE_CHARGE_SIGNING"]}}
+                  {"retries", {:env_json, "BUBBLE_API_PAYMENTS_CREATE_CHARGE_LITERAL_6"}},
+                  {"signature", {:text, [env: "BUBBLE_API_PAYMENTS_CREATE_CHARGE_SIGNING"]}}
                 ]},
              response: %{kind: :json, list: false, type: nil}
            } = call(spec, "gPay", "cCharge")
@@ -123,49 +131,52 @@ defmodule BubbleEx.Target.ApiClientsTest do
   test "secrets, stripped names and suspicious literals become environment variables",
        %{spec: spec} do
     send_email = call(spec, "gMail", "cSend")
-    assert send_email.auth == {:basic, "MAIL_USERNAME", "MAIL_PASSWORD"}
-    assert send_email.headers == [%{name: nil, value: [env_line: "MAIL_SEND_EMAIL_HEADER_LH1"]}]
+    assert send_email.auth == {:basic, "BUBBLE_API_MAIL_USERNAME", "BUBBLE_API_MAIL_PASSWORD"}
+
+    assert send_email.headers == [
+             %{name: nil, value: [env_line: "BUBBLE_API_MAIL_SEND_EMAIL_HEADER_LH1"]}
+           ]
 
     assert {:object,
             [
               {"to", {:text, [arg: "to"]}},
-              {"token", {:text, [env: "MAIL_SEND_EMAIL_API_TOKEN"]}},
-              {"key", {:text, [env: "MAIL_SEND_EMAIL_LITERAL_1"]}},
-              {"html", {:text, [env: "MAIL_SEND_EMAIL_LITERAL_2"]}}
+              {"token", {:text, [env: "BUBBLE_API_MAIL_SEND_EMAIL_API_TOKEN"]}},
+              {"key", {:text, [env: "BUBBLE_API_MAIL_SEND_EMAIL_LITERAL_1"]}},
+              {"html", {:text, [env: "BUBBLE_API_MAIL_SEND_EMAIL_LITERAL_2"]}}
             ]} = send_email.json
 
     subscribe = call(spec, "gForms", "cSubscribe")
     assert subscribe.response.kind == :text
 
-    assert subscribe.query == [%{name: "key", value: [env: "FORMS_API_KEY"]}]
+    assert subscribe.query == [%{name: "key", value: [env: "BUBBLE_API_FORMS_API_KEY"]}]
 
     assert subscribe.form == [
              %{name: "email", value: [arg: "email"]},
-             %{name: "list_id", value: [env: "FORMS_SUBSCRIBE_LIST_ID"]},
-             %{name: nil, value: [env_line: "FORMS_SUBSCRIBE_PARAM_F3"]}
+             %{name: "list_id", value: [env: "BUBBLE_API_FORMS_SUBSCRIBE_LIST_ID"]},
+             %{name: nil, value: [env_line: "BUBBLE_API_FORMS_SUBSCRIBE_PARAM_F3"]}
            ]
 
     assert Enum.map(spec.env, &{&1.name, &1.kind}) == [
-             {"FORMS_API_KEY", :auth},
-             {"FORMS_SUBSCRIBE_LIST_ID", :private},
-             {"FORMS_SUBSCRIBE_LITERAL_1", :literal},
-             {"FORMS_SUBSCRIBE_PARAM_F3", :private_line},
-             {"MAIL_PASSWORD", :auth},
-             {"MAIL_SEND_EMAIL_API_TOKEN", :private},
-             {"MAIL_SEND_EMAIL_HEADER_LH1", :private_line},
-             {"MAIL_SEND_EMAIL_LITERAL_1", :literal},
-             {"MAIL_SEND_EMAIL_LITERAL_2", :literal},
-             {"MAIL_USERNAME", :auth},
-             {"PAYMENTS_API_KEY", :auth},
-             {"PAYMENTS_CREATE_CHARGE_IDEMPOTENCY_KEY", :private},
-             {"PAYMENTS_CREATE_CHARGE_LITERAL_1", :literal},
-             {"PAYMENTS_CREATE_CHARGE_LITERAL_2", :literal},
-             {"PAYMENTS_CREATE_CHARGE_LITERAL_3", :literal},
-             {"PAYMENTS_CREATE_CHARGE_LITERAL_4", :literal},
-             {"PAYMENTS_CREATE_CHARGE_LITERAL_5", :literal},
-             {"PAYMENTS_CREATE_CHARGE_LITERAL_6", :literal},
-             {"PAYMENTS_CREATE_CHARGE_SIGNING", :private},
-             {"PAYMENTS_SHARED_1", :literal}
+             {"BUBBLE_API_FORMS_API_KEY", :auth},
+             {"BUBBLE_API_FORMS_SUBSCRIBE_LIST_ID", :private},
+             {"BUBBLE_API_FORMS_SUBSCRIBE_LITERAL_1", :literal},
+             {"BUBBLE_API_FORMS_SUBSCRIBE_PARAM_F3", :private_line},
+             {"BUBBLE_API_MAIL_PASSWORD", :auth},
+             {"BUBBLE_API_MAIL_SEND_EMAIL_API_TOKEN", :private},
+             {"BUBBLE_API_MAIL_SEND_EMAIL_HEADER_LH1", :private_line},
+             {"BUBBLE_API_MAIL_SEND_EMAIL_LITERAL_1", :literal},
+             {"BUBBLE_API_MAIL_SEND_EMAIL_LITERAL_2", :literal},
+             {"BUBBLE_API_MAIL_USERNAME", :auth},
+             {"BUBBLE_API_PAYMENTS_API_KEY", :auth},
+             {"BUBBLE_API_PAYMENTS_CREATE_CHARGE_IDEMPOTENCY_KEY", :private},
+             {"BUBBLE_API_PAYMENTS_CREATE_CHARGE_LITERAL_1", :literal},
+             {"BUBBLE_API_PAYMENTS_CREATE_CHARGE_LITERAL_2", :literal},
+             {"BUBBLE_API_PAYMENTS_CREATE_CHARGE_LITERAL_3", :literal},
+             {"BUBBLE_API_PAYMENTS_CREATE_CHARGE_LITERAL_4", :literal},
+             {"BUBBLE_API_PAYMENTS_CREATE_CHARGE_LITERAL_5", :literal},
+             {"BUBBLE_API_PAYMENTS_CREATE_CHARGE_LITERAL_6", :literal},
+             {"BUBBLE_API_PAYMENTS_CREATE_CHARGE_SIGNING", :private},
+             {"BUBBLE_API_PAYMENTS_SHARED_1", :literal}
            ]
   end
 
@@ -235,7 +246,9 @@ defmodule BubbleEx.Target.ApiClientsTest do
       runtime = files["lib/acme/api_clients.ex"]
       assert runtime =~ "Req.request(options)"
       assert runtime =~ "retry: :safe_transient"
-      assert runtime =~ "`PAYMENTS_CREATE_CHARGE_SIGNING` - private body parameter `signing`"
+
+      assert runtime =~
+               "`BUBBLE_API_PAYMENTS_CREATE_CHARGE_SIGNING` - private body parameter `signing`"
 
       test = files["test/acme/api_clients/payments_test.exs"]
       assert test =~ "Req.Test.stub(__MODULE__"
@@ -358,11 +371,14 @@ defmodule BubbleEx.Target.ApiClientsTest do
       # The IDs are in the documentation as text.
       {:ok, ast} = Code.string_to_quoted(runtime)
 
-      {_, [doc]} =
+      {_, docs} =
         Macro.prewalk(ast, [], fn
           {:@, _, [{:moduledoc, _, [doc]}]} = node, acc -> {node, [doc | acc]}
           node, acc -> {node, acc}
         end)
+
+      # The runtime's own (MissingEnvError has one too).
+      doc = Enum.find(docs, &(&1 =~ "The runtime of"))
 
       assert doc =~ "send(self(), :pwned_group)"
       assert doc =~ ~s(\n"""\n)

@@ -20,7 +20,10 @@ defmodule BubbleEx.Target.Elixir do
   ## Semantics
 
   Field access is nil-safe (a field of an empty value is empty), written as
-  `get_in(x, [Access.key(:a), Access.key(:b)])`. Records are compared by
+  `get_in(x, [Access.key(:a), Access.key(:b)])`. A field of an API
+  Connector value (a call's result, WTF-533) is its typed struct's
+  attribute when the API type has one (a data field stores it), else the
+  value at its Bubble field ID in the map the generated client decoded. Records are compared by
   Bubble ID. Empty values follow `BubbleEx.Target.Ash.Expressions`: a
   comparison with a value read from the current user is false when that
   value is empty, in either polarity (negation is pushed down to the
@@ -95,7 +98,8 @@ defmodule BubbleEx.Target.Elixir do
   Not compiled yet (diagnosed with `:elixir_expr_unsupported`, stage
   `{:target, :elixir}`): searches, and `:filtered` or sorting of a list of
   things (these become Ash queries, `FrontendWorkflows.Lists`), other
-  sorting by a field, API type fields, fields of the items of a
+  sorting by a field, fields of a list of API values (or through one),
+  fields of the items of a
   list-of-things field (stored as a list of IDs: `a path through a list
   or value`, `a field of first`, ...; a page's data sources read such
   lists' records first, `FrontendWorkflows.Lists`).
@@ -148,7 +152,7 @@ defmodule BubbleEx.Target.Elixir do
   @through_lists ~w(first last item_at unique limit merge intersect minus_list minus_item plus_item)a
   @conditions ~w(eq neq gt lt gte lte and or not is_empty logged_in member text_contains
                  text_contains_words)a
-  @boolean_values [:field, :input, :fallback, :option_attribute, :option_label]
+  @boolean_values [:field, :input, :fallback, :option_attribute, :option_label, :external_field]
   @compare %{gt: :gt, lt: :lt, gte: :gte, lte: :lte}
 
   @doc """
@@ -265,7 +269,22 @@ defmodule BubbleEx.Target.Elixir do
       end)
 
     enums = Map.new(project.enums, &{&1.source.option_set, &1})
-    %{types: types, enums: enums}
+    %{types: types, enums: enums, externals: externals(project)}
+  end
+
+  # API Connector types with a generated typed struct (WTF-533): external
+  # type ID => field ID => `%{name, list?}`, the struct's attribute.
+  defp externals(project) do
+    for %{source: %{external_type: id}, fields: fields} <- project.typed_structs,
+        into: %{} do
+      attributes =
+        for a <- fields,
+            is_binary(a.source[:field]),
+            into: %{},
+            do: {a.source[:field], %{name: a.name, list?: match?({:array, _}, a.type)}}
+
+      {id, attributes}
+    end
   end
 
   # --- values ---------------------------------------------------------------------
@@ -343,6 +362,8 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   defp value(%IR{op: :field} = ir, st), do: path(ir, [], :value, st)
+
+  defp value(%IR{op: :external_field} = ir, st), do: external(ir, [], st)
 
   # A condition used as a value: strictly true or false, never nil (WTF-471).
   defp value(%IR{op: op} = ir, st) when op in @conditions do
@@ -893,6 +914,57 @@ defmodule BubbleEx.Target.Elixir do
   # IR types are Bubble descriptors; the Model classifies them.
   defp classify(type) when is_binary(type), do: type |> Type.classify() |> elem(0)
   defp classify(_type), do: nil
+
+  # --- API Connector values ------------------------------------------------------------
+
+  # A field chain of an API Connector value (WTF-533: a call's result, as
+  # the generated client decoded it), nil-safe: an API type with a typed
+  # struct (one a data field stores) is read by its attributes, any other
+  # (a call's own type) from the decoded map by Bubble field ID. A field of
+  # a list of API values, or through one, is not compiled.
+  defp external(%IR{op: :external_field, args: [base, ext, field], type: type}, fields, st),
+    do: external(base, [{ext, field, type} | fields], st)
+
+  defp external(%IR{type: type} = base, fields, st) do
+    if match?(%Type{cardinality: :many}, classify(type)) do
+      unsupported(st, {"a field of a list of API values", nil})
+    else
+      case external_keys(fields, st.lookup.externals) do
+        {:ok, keys} ->
+          {source, st} = value(base, st)
+          {ok(source, &"get_in(#{&1}, [#{Enum.join(keys, ", ")}])"), st}
+
+        {:error, what} ->
+          unsupported(st, what)
+      end
+    end
+  end
+
+  defp external_keys(fields, externals) do
+    {init, [_last]} = Enum.split(fields, -1)
+    structs = Enum.map(fields, fn {ext, _, _} -> Map.has_key?(externals, ext) end)
+
+    cond do
+      Enum.any?(init, fn {_, _, type} -> match?(%Type{cardinality: :many}, classify(type)) end) ->
+        {:error, {"a field through a list of API values", nil}}
+
+      Enum.all?(structs) ->
+        Enum.reduce_while(fields, {:ok, []}, &struct_key(&1, &2, externals))
+
+      not Enum.any?(structs) ->
+        {:ok, Enum.map(fields, fn {_, field, _} -> "Access.key(#{lit(field)})" end)}
+
+      true ->
+        {:error, {"an API value mixing typed structs and maps", nil}}
+    end
+  end
+
+  defp struct_key({ext, field, _type}, {:ok, acc}, externals) do
+    case get_in(externals, [ext, field]) do
+      %{name: name} -> {:cont, {:ok, acc ++ ["Access.key(#{atom(name)})"]}}
+      nil -> {:halt, {:error, {"an API type field its typed struct lacks", ext}}}
+    end
+  end
 
   # --- field paths ----------------------------------------------------------------
 

@@ -20,8 +20,10 @@ defmodule BubbleEx.Target.ApiClients do
   keys from Bubble's keys in snake case): each Bubble call site supplies its
   own values. Bubble's private values are never read; they, and literals of
   the request that are not structure (see `BubbleEx.Model.ConnectorRequest`), are read from environment
-  variables at call time. The names are deterministic, from the group's
-  module (`PAYMENTS`) and the call's function (`CREATE_CHARGE`):
+  variables, which the generated app reads in `config/runtime.exs` (never
+  from the export, WTF-533). The names are deterministic, from the group's
+  module (`PAYMENTS`) and the call's function (`CREATE_CHARGE`), all
+  under `BUBBLE_API_` (`<GROUP>` below is `BUBBLE_API_PAYMENTS`):
 
   | What | Variable |
   |---|---|
@@ -62,10 +64,13 @@ defmodule BubbleEx.Target.ApiClients do
 
   Bubble's `data_type` gives the decoding: JSON (default), text or empty.
   A call returning an API Connector type the Model resolves
-  (`BubbleEx.Model.ExternalType.known?/1`) records it in `response.type`,
-  with the response paths of that type and the types it nests in `types`;
-  the renderer decodes into the Project's typed struct for it when there
-  is one, else the response stays a map.
+  (`BubbleEx.Model.ExternalType.known?/1`; the Model resolves every call's
+  own return type, WTF-533) records it in `response.type`, with the
+  response paths of that type and the types it nests in `types` and their
+  field types in `shapes`; the renderer decodes into the Project's typed
+  struct for it when there is one (a data field stores the type), else
+  into a typed map: Bubble field ID => the value at its response path,
+  cast to the field's type.
   """
 
   alias BubbleEx.{Error, Model}
@@ -94,7 +99,14 @@ defmodule BubbleEx.Target.ApiClients do
                       )
 
   # Module segments taken by the renderer's own modules.
-  @reserved_modules ~w(Decode)
+  @reserved_modules ~w(Decode MissingEnvError)
+
+  # Every variable a client reads is namespaced (WTF-533).
+  @env_prefix "BUBBLE_API_"
+
+  @doc "The prefix of every environment variable the clients read."
+  @spec env_prefix() :: String.t()
+  def env_prefix, do: @env_prefix
 
   @doc """
   The Spec of `model`'s API Connector calls. Deterministic: the same Model
@@ -110,6 +122,7 @@ defmodule BubbleEx.Target.ApiClients do
 
     groups = Enum.reject(groups, &(&1.calls == []))
     types = types(model, groups)
+    shapes = shapes(model, types)
     used = for g <- groups, c <- g.calls, name <- c.env, into: MapSet.new(), do: name
 
     {:ok,
@@ -122,6 +135,7 @@ defmodule BubbleEx.Target.ApiClients do
          |> Enum.map(&Map.delete(&1, :key))
          |> Enum.sort_by(& &1.name),
        types: types,
+       shapes: shapes,
        residue: Enum.reverse(state.residue)
      }}
   end
@@ -135,7 +149,7 @@ defmodule BubbleEx.Target.ApiClients do
     base = Naming.base(:pascal, group.name, group.id, "Api")
     {module, modules} = Naming.claim(base, state.modules, :pascal, :none)
     state = %{state | modules: modules}
-    prefix = env_part(Macro.underscore(module))
+    prefix = @env_prefix <> env_part(Macro.underscore(module))
 
     {shared, state} = shared(group, prefix, state)
 
@@ -365,7 +379,8 @@ defmodule BubbleEx.Target.ApiClients do
       auth: shared.auth,
       args: args,
       env: [],
-      response: response(call, model)
+      response: response(call, model),
+      wrap_errors: call.wrap_errors
     }
 
     {%{built | env: call_env(built)}, state}
@@ -607,6 +622,36 @@ defmodule BubbleEx.Target.ApiClients do
       |> Enum.reduce(acc, &visit(model, &1.type.target, &2))
     end
   end
+
+  # The field types of the types `types` has paths for (WTF-533).
+  defp shapes(model, types) do
+    Map.new(types, fn {id, paths} ->
+      type = Model.external_type(model, id)
+
+      fields =
+        Enum.map(type.fields, fn f ->
+          %{
+            id: f.id,
+            path: Map.fetch!(paths, f.id),
+            type: field_type(f, types),
+            list: f.type.cardinality == :many
+          }
+        end)
+
+      {id, fields}
+    end)
+  end
+
+  @scalars [:text, :number, :boolean, :date, :date_unix]
+
+  defp field_type(%{type: %Type{kind: :scalar, base: base}}, _types) when base in @scalars,
+    do: base
+
+  defp field_type(%{type: %Type{kind: :external, target: id}, cycle: false}, types)
+       when is_map_key(types, id),
+       do: {:external, id}
+
+  defp field_type(_field, _types), do: :other
 
   defp response_path(path, id) when is_list(path) and path != [] do
     if Enum.all?(path, &(is_binary(&1) or is_integer(&1))), do: path, else: [id]

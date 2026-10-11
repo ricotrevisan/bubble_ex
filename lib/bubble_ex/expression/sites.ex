@@ -23,9 +23,10 @@ defmodule BubbleEx.Expression.Sites do
       database trigger's workflow knows the triggering type
       (`trigger_type`), and every step knows the result types of the
       workflow's earlier steps (`steps`): a created or changed thing, a
-      changed list, a signed-up user, or a custom event's return values
-      (`custom_events`); in Bubble order, so a step that changes an
-      earlier step's result has that result's type
+      changed list, a signed-up user, a custom event's return values
+      (`custom_events`), or an API Connector call's API type (WTF-533); in
+      Bubble order, so a step that changes an earlier step's result has
+      that result's type
     * searches run on a page (`Env.searches: :page`) except in a backend
       workflow and in a page workflow's server-side action (`:backend`,
       `action_env/2`)
@@ -208,8 +209,8 @@ defmodule BubbleEx.Expression.Sites do
   end
 
   # What a step's result is, from its own definition; nil when that is
-  # not known (an API Connector call, a plugin action, "Schedule API
-  # workflow", ...): never guessed.
+  # not known (a plugin action, "Schedule API workflow", an API Connector
+  # call whose type does not resolve, ...): never guessed.
   defp step_type(action, env) do
     props =
       case Source.value(action, ~w(properties %p)) do
@@ -230,7 +231,27 @@ defmodule BubbleEx.Expression.Sites do
        when type in ~w(TriggerCustomEvent TriggerCustomEventFromReusable),
        do: returns(props, env)
 
+  defp step_type("apiconnector2-" <> ref, _props, env), do: api_result(ref, env.model)
+
   defp step_type(_type, _props, _env), do: nil
+
+  # An API Connector call's result (WTF-533): the API type it returns (a
+  # list of it for a list response), when the Model resolves that type.
+  defp api_result(ref, %Model{} = model) do
+    with [group_id, call_id] <- String.split(ref, ".", parts: 2),
+         %Model.Connector{} = group <- Enum.find(model.connectors, &(&1.id == group_id)),
+         %Model.ConnectorCall{returns: returns, request: request} <-
+           Model.Connector.call(group, call_id),
+         {%Model.Type{kind: :external, target: id, cardinality: cardinality}, nil} <-
+           Model.Type.classify(returns || ""),
+         %Model.ExternalType{} <- Model.external_type(model, id) do
+      if cardinality == :many or (request != nil and request.list), do: "list." <> id, else: id
+    else
+      _ -> nil
+    end
+  end
+
+  defp api_result(_ref, _model), do: nil
 
   # A custom event's return values: the step's result is read by return
   # ID. A custom event that declares none, or is not found, has no result.

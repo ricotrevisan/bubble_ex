@@ -62,6 +62,7 @@ defmodule BubbleEx.Workflows.Frontend do
   | Schedule API workflow (on a list) | `:schedule` / `:schedule_list` | `workflow`, `at`, (`list`, `interval`), `params` |
   | Terminate this workflow | `:terminate` | `returns` |
   | Add a pause before next action (`PauseWFClient`) | `:pause` | `length` (milliseconds) |
+  | an API Connector call (`apiconnector2-<group>.<call>`, WTF-533) | `:api_call` | `group`, `call`, `params`, `ignored` (`BubbleEx.Workflows.Lowering`); a target runs it on the server |
 
   Every step may carry a `condition` ("Only when"). A custom event called
   or scheduled must belong to the same page or reusable element, as in
@@ -586,6 +587,7 @@ defmodule BubbleEx.Workflows.Frontend do
     bubble_id = text(Source.value(action, ~w(id %id))) || "#{ctx.workflow}/#{List.last(path)}"
     id = Symbol.id(:action, bubble_id)
     op = if is_binary(type), do: Map.get(@ops, type) || Lowering.data_op(type)
+    op = if Lowering.api_call?(type), do: :api_call, else: op
     ppath = path ++ ["properties"]
     condition = Lowering.expr(props["condition"], ppath ++ ["condition"], env)
 
@@ -601,7 +603,7 @@ defmodule BubbleEx.Workflows.Frontend do
     }
 
     if op do
-      {args, residue} = lower(op, props, ppath, id, env, ctx)
+      {args, residue} = lower(op, props, ppath, id, env, Map.put(ctx, :type, type))
       options = unknown_members(op, props)
       exprs = [condition | Lowering.exprs_of(args)]
 
@@ -636,6 +638,9 @@ defmodule BubbleEx.Workflows.Frontend do
       residue: [Residue.entry(id, :unsupported_action, %{type: nil})]
     }
   end
+
+  defp unknown_members(:api_call, props),
+    do: for({key, _} <- props, not Lowering.api_member?(key), do: key)
 
   defp unknown_members(op, props) do
     known =
@@ -869,6 +874,9 @@ defmodule BubbleEx.Workflows.Frontend do
 
     {%{returns: returns}, residue}
   end
+
+  defp lower(:api_call, props, path, id, env, ctx),
+    do: Lowering.api_call(ctx.type, props, path, id, env, ctx)
 
   defp lower(op, props, path, id, env, ctx), do: Lowering.data_args(op, props, path, id, env, ctx)
 

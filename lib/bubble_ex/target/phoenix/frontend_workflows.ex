@@ -552,6 +552,13 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
           "#{src(args.list)}, #{src(args.interval)}, #{keyed(args.params, :param)})"
       )
 
+  # An API Connector call (WTF-533): on the server, in the LiveView
+  # process, through the backend workflow runtime; never data-gated.
+  defp op(:api_call, args, id, env),
+    do:
+      "BubbleWorkflows.api(ctx, fn run -> " <>
+        BubbleEx.Target.Phoenix.Workflows.api_call(args, id, env.spec.namespace, "run") <> " end)"
+
   # A step run on the backend workflow runtime (WTF-373).
   defp backend(call), do: "BubbleWorkflows.backend(ctx, fn run -> #{call} end)"
 

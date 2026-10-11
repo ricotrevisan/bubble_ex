@@ -78,6 +78,10 @@ defmodule BubbleEx.Model.ConnectorCall do
       structure, placeholders and structural literals only); nil when the call is
       not an object
     * `publish_as` - how it is used as supplied (`"data"` or `"action"`)
+    * `wrap_errors` - Bubble's "Include errors in response and allow
+      workflow actions to continue" (`wrap_error`): a response that is not
+      2xx is the call's result (`returned_an_error`, `error`'s
+      `status_code`, `status_message` and `body`), not a failed step
     * `returns` - the type descriptor it returns (`ret_value`) when it is a
       string, verbatim
     * `registry` - its types registry (`types`, JSON text) decoded to type
@@ -111,6 +115,7 @@ defmodule BubbleEx.Model.ConnectorCall do
     :path,
     :raw,
     :request,
+    wrap_errors: false,
     parameters: []
   ]
 
@@ -119,6 +124,7 @@ defmodule BubbleEx.Model.ConnectorCall do
           name: String.t() | nil,
           method: String.t() | nil,
           publish_as: String.t() | nil,
+          wrap_errors: boolean(),
           host: String.t() | nil,
           parameters: [BubbleEx.Model.ConnectorParameter.t()],
           request: BubbleEx.Model.ConnectorRequest.t() | nil,
