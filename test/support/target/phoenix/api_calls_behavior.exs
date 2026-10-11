@@ -34,7 +34,7 @@ defmodule PhxCheckWeb.ApiCallsBehaviorTest do
     Req.Test.set_req_test_to_shared()
     on_exit(fn -> Req.Test.set_req_test_to_private() end)
 
-    Application.put_env(:phx_check, @stub, plug: {Req.Test, @stub}, retry_delay: 1)
+    Application.put_env(:phx_check, @stub, plug: {Req.Test, @stub})
     secrets(@secrets)
     :ok
   end
@@ -106,13 +106,12 @@ defmodule PhxCheckWeb.ApiCallsBehaviorTest do
       refute inspect(error) =~ "test-key"
     end
 
-    test "a timeout fails the step after the GET's retries" do
+    test "a timeout fails the step; an action is never retried, a GET included" do
       stub(&Req.Test.transport_error(&1, :timeout))
 
       assert {:error, error} = Runtime.run("wFetch", %{"item" => "42"})
       assert inspect(error) =~ ":timeout"
-      # GET is idempotent: the default two retries.
-      assert length(requests()) == 3
+      assert length(requests()) == 1
     end
   end
 

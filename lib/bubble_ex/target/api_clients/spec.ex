@@ -38,7 +38,8 @@ defmodule BubbleEx.Target.ApiClients.Spec do
 
   alias BubbleEx.CanonicalJson
 
-  @schema_version 1
+  # 2: every environment variable is under BUBBLE_API_ (WTF-533).
+  @schema_version 2
 
   defstruct schema_version: @schema_version,
             groups: [],

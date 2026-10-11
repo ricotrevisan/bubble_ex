@@ -30,6 +30,9 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
   @receive_timeout 30_000
   @connect_timeout 10_000
   @max_retries 2
+  @max_body_bytes 10_000_000
+  @deadline 30_000
+  @max_retry_delay 5_000
 
   @json_path ".wtf/api_clients.json"
 
@@ -62,7 +65,13 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
           env_names: code(Enum.map(spec.env, & &1.name)),
           receive_timeout: format_int(@receive_timeout),
           connect_timeout: format_int(@connect_timeout),
-          max_retries: @max_retries
+          max_retries: @max_retries,
+          max_body_bytes: format_int(@max_body_bytes),
+          max_body_bytes_text: "10 MB",
+          deadline: format_int(@deadline),
+          deadline_text: format_int(@deadline),
+          max_retry_delay: format_int(@max_retry_delay),
+          max_retry_delay_text: format_int(@max_retry_delay)
         })
       )
 
@@ -156,10 +165,14 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
               "\#{length(missing)} of \#{length(names)} API Connector environment variables are not set:"
             )
 
-            Enum.each(missing, &Mix.shell().error("  " <> &1))
+            Enum.each(missing, &Mix.shell().error("  " <> &1 <> was(&1)))
             exit({:shutdown, 1})
         end
       end
+
+      # Before bubble_ex WTF-533 the same variable had no BUBBLE_API_ prefix.
+      defp was("BUBBLE_API_" <> old), do: " (was " <> old <> ")"
+      defp was(_name), do: ""
     end
     """
   end
@@ -495,8 +508,14 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
   defp auth_expr(%Call{auth: {:basic, user, password}}),
     do: "{:basic, env[#{code(user)}], env[#{code(password)}]}"
 
-  defp wrap_expr(%Call{wrap_errors: true}), do: ",\n      wrap_errors: true"
-  defp wrap_expr(%Call{}), do: ""
+  defp wrap_expr(%Call{} = call) do
+    wrap = if call.wrap_errors, do: ",\n      wrap_errors: true", else: ""
+    # Only a GET Bubble uses as data may be retried (WTF-533).
+    retry =
+      if call.publish_as == "data" and call.method == :get, do: ",\n      retry: true", else: ""
+
+    wrap <> retry
+  end
 
   defp response_expr(%Call{} = call, ctx) do
     case {call.response.kind, typed(call, ctx), map_typed(call, ctx)} do
@@ -998,12 +1017,16 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
 
       alias #{ctx.root}
 
-      defp request(respond, fields \\\\ %{}) do
+      defp request(respond, fields \\\\ %{}, opts \\\\ []) do
         Req.Test.stub(__MODULE__, respond)
+
+        # `retry: nil` leaves the runtime's own retry decision.
+        base = Keyword.merge([plug: {Req.Test, __MODULE__}, retry: false], opts)
+        base = if base[:retry] == nil, do: Keyword.delete(base, :retry), else: base
 
         ApiClients.request(
           __MODULE__,
-          [plug: {Req.Test, __MODULE__}, retry: false],
+          base,
           Map.merge(
             %{
               method: :get,
@@ -1101,6 +1124,107 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
                  request(&Req.Test.transport_error(&1, :timeout), %{wrap_errors: true})
       end
 
+      test "an address the owner did not configure must not be private", %{} do
+        guard = %{trusted: nil, allow?: false}
+
+        for url <- ~w(http://127.0.0.1/x http://localhost/x http://169.254.169.254/latest
+                      http://10.0.0.1/ http://192.168.1.1/ http://[::1]/ http://[fd00:ec2::254]/
+                      http://[::ffff:127.0.0.1]/ http://0.0.0.0/) do
+          assert {:error, {:blocked_address, _}} = ApiClients.check_address(url, guard), url
+        end
+
+        assert :ok = ApiClients.check_address("https://93.184.216.34/x", guard)
+        # The owner's base URL, or the owner's opt-in.
+        trusted = %{guard | trusted: {"http", "127.0.0.1", 4001}}
+        assert :ok = ApiClients.check_address("http://127.0.0.1:4001/x", trusted)
+        assert {:error, _} = ApiClients.check_address("http://127.0.0.1:4002/x", trusted)
+        assert :ok = ApiClients.check_address("http://127.0.0.1/x", %{guard | allow?: true})
+      end
+
+      test "a private address is refused before connecting; the owner's base URL is not" do
+        request = %{
+          method: :get,
+          base: "http://127.0.0.1:9",
+          path: "/x",
+          query: [],
+          headers: [{"x-api-key", "secret"}],
+          body: nil,
+          auth: nil,
+          response: :json
+        }
+
+        assert {:error, {:blocked_address, :private}} =
+                 ApiClients.request(__MODULE__, [retry: false], request)
+
+        # Configured by the owner: it connects (port 9 on localhost refuses).
+        assert {:error, %Req.TransportError{}} =
+                 ApiClients.request(__MODULE__, [retry: false, base_url: "http://127.0.0.1:9"], request)
+      end
+
+      test "a body is read up to :max_body_bytes, decompressed included" do
+        assert {:error, {:body_too_large, 10}} =
+                 request(&Req.Test.text(&1, String.duplicate("a", 11)), %{}, max_body_bytes: 10)
+
+        bomb = :zlib.gzip(:binary.copy(<<0>>, 5_000_000))
+
+        assert {:error, {:body_too_large, 1_000}} =
+                 request(
+                   fn conn ->
+                     conn
+                     |> Plug.Conn.put_resp_header("content-encoding", "gzip")
+                     |> Plug.Conn.send_resp(200, bomb)
+                   end,
+                   %{response: :text},
+                   max_body_bytes: 1_000
+                 )
+
+        assert {:ok, %{"ok" => true}} =
+                 request(fn conn ->
+                   conn
+                   |> Plug.Conn.put_resp_header("content-encoding", "gzip")
+                   |> Plug.Conn.send_resp(200, :zlib.gzip(~s({"ok":true})))
+                 end)
+      end
+
+      test "the whole call has a deadline" do
+        assert {:error, :deadline_exceeded} =
+                 request(
+                   fn conn ->
+                     Process.sleep(300)
+                     Req.Test.json(conn, %{})
+                   end,
+                   %{},
+                   deadline: 50
+                 )
+      end
+
+      test "only data GETs retry, on 429/503, waiting at most :max_retry_delay" do
+        test = self()
+
+        respond = fn conn ->
+          send(test, :attempt)
+
+          conn
+          |> Plug.Conn.put_resp_header("retry-after", "3600")
+          |> Plug.Conn.send_resp(503, "busy")
+        end
+
+        started = System.monotonic_time(:millisecond)
+
+        assert {:error, {:status, 503, "busy"}} =
+                 request(respond, %{retry: true}, retry: nil, max_retry_delay: 10)
+
+        assert System.monotonic_time(:millisecond) - started < 2_000
+        assert_received :attempt
+        assert_received :attempt
+        assert_received :attempt
+
+        # An action (no `retry:`) is never retried.
+        assert {:error, {:status, 503, _}} = request(respond, %{}, retry: nil)
+        assert_received :attempt
+        refute_received :attempt
+      end
+
       test "unknown parameters are refused" do
         assert {:ok, %{a: 1}} = ApiClients.params([a: 1], [:a, :b])
         assert {:error, {:unknown_parameters, [:c]}} = ApiClients.params(%{c: 1}, [:a])
@@ -1176,14 +1300,22 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
         assert ApiClients.header_line("X-Key: abc") == {"X-Key", "abc"}
         assert ApiClients.param_line("key=a=b") == {"key", "a=b"}
         assert ApiClients.segment("a b/c") == "a%20b%2Fc"
+        # A dot segment never moves up the path.
+        assert ApiClients.segment(".") == "%2E"
+        assert ApiClients.segment("..") == "%2E%2E"
         assert ApiClients.at(%{"a" => [%{"b" => 1}]}, ["a", 0, "b"]) == 1
         assert ApiClients.at(%{"a" => 1}, ["a", "b"]) == nil
         assert ApiClients.json_value("[1]") == [1]
         assert ApiClients.json_value("text") == "text"
         # A text pasted into a JSON body outside quotes, as Bubble does.
         assert ApiClients.json_arg("3") == 3
+        assert ApiClients.json_arg("null") == nil
         assert ApiClients.json_arg("hi") == "hi"
         assert ApiClients.json_arg(true) == true
+        # Only scalars: an object or array typed as text stays text.
+        assert ApiClients.json_arg(~s({"$ne":null})) == ~s({"$ne":null})
+        assert ApiClients.json_arg("[1]") == "[1]"
+        assert ApiClients.json_arg([1]) == [1]
       end
     end
     """
@@ -1215,7 +1347,8 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
       end
 
     document = %{
-      "version" => 1,
+      # 2: every variable is under BUBBLE_API_ (WTF-533).
+      "version" => 2,
       "spec_sha256" => Spec.sha256(spec),
       "summary" => Spec.summary(spec),
       "names" => names,

@@ -203,6 +203,75 @@ defmodule BubbleEx.Target.ApiCallsTest do
       assert oauth == %{call: "gOauth.cMe", reasons: [:unsupported_auth]}
     end
 
+    test "a public parameter in the host is residue; a private one comes from the environment",
+         %{app: app} do
+      hosted = fn private? ->
+        app
+        |> put_in(
+          ["settings", "client_safe", "apiconnector2", "gEx", "calls", "cItem", "url"],
+          "https://[region].api.example.test/v1/items/[item_id]"
+        )
+        |> put_in(
+          [
+            "settings",
+            "client_safe",
+            "apiconnector2",
+            "gEx",
+            "calls",
+            "cItem",
+            "url_params",
+            "u2"
+          ],
+          %{"key" => "region", "value" => "eu", "private" => private?}
+        )
+      end
+
+      host = fn private? -> private? |> hosted.() |> Model.build() |> elem(1) end
+
+      # Public: a step or a page could send the API key to any host.
+      model = host.(false)
+      [group] = model.connectors
+      item = Model.Connector.call(group, "cItem")
+      assert :host_parameter in Model.ConnectorSupport.unsupported(group, item)
+      {:ok, spec} = ApiClients.map(model)
+
+      assert %{call: "cItem", reasons: [:host_parameter]} =
+               Enum.find(spec.residue, &(&1.call == "cItem"))
+
+      {:ok, index} = Index.build(hosted.(false), model: model)
+      {:ok, backend} = Backend.build(hosted.(false), model, index)
+
+      assert %{residue: [%{reason: :api_connector_action, detail: %{reasons: [:host_parameter]}}]} =
+               step(backend.workflows, "aItem")
+
+      # A whole-host placeholder too.
+      whole =
+        app
+        |> put_in(
+          ["settings", "client_safe", "apiconnector2", "gEx", "calls", "cItem", "url"],
+          "https://[item_id]/v1"
+        )
+        |> Model.build()
+        |> then(fn {:ok, model} -> model end)
+
+      [g] = whole.connectors
+
+      assert :host_parameter in Model.ConnectorSupport.unsupported(
+               g,
+               Model.Connector.call(g, "cItem")
+             )
+
+      # Private: the owner's environment.
+      model = host.(true)
+      [group] = model.connectors
+      assert Model.ConnectorSupport.unsupported(group, Model.Connector.call(group, "cItem")) == []
+      {:ok, spec} = ApiClients.map(model)
+      item = spec.groups |> hd() |> Map.fetch!(:calls) |> Enum.find(&(&1.id == "cItem"))
+
+      assert [{:env, "BUBBLE_API_EXAMPLE_GET_ITEM_REGION"}, {:literal, ".api.example.test"}] =
+               item.base.host
+    end
+
     test "Result of step N is the call's API type", %{app: app, model: model} do
       raw = app["api"]["wFetch"]
       env = BubbleEx.Expression.Env.new(model, custom_events: %{})
@@ -312,7 +381,7 @@ defmodule BubbleEx.Target.ApiCallsTest do
         Application.delete_env(:wtf_api_calls_rt, @client)
       end)
 
-      Application.put_env(:wtf_api_calls_rt, @client, plug: {Req.Test, @client}, retry_delay: 1)
+      Application.put_env(:wtf_api_calls_rt, @client, plug: {Req.Test, @client})
       Application.put_env(:wtf_api_calls_rt, WtfApiCallsRt.ApiClients, env: @env)
       :ok
     end
@@ -381,14 +450,64 @@ defmodule BubbleEx.Target.ApiCallsTest do
                apply(@client, :post_note, [%{text: "x"}])
     end
 
-    test "timeouts: a GET is retried, a POST never" do
+    test "timeouts: an action call is never retried, a GET included" do
       stub(&Req.Test.transport_error(&1, :timeout))
 
       assert {:error, %Req.TransportError{reason: :timeout}} = apply(@client, :get_item, [%{}])
-      assert count() == 3
+      assert count() == 1
 
       assert {:error, %Req.TransportError{reason: :timeout}} = apply(@client, :post_note, [%{}])
       assert count() == 1
+    end
+
+    test "a host the owner did not configure is refused when it is private" do
+      rt = WtfApiCallsRt.ApiClients
+      # No Req.Test plug here: the address check applies, and refuses
+      # before anything connects.
+      Application.put_env(:wtf_api_calls_rt, @client, retry: false)
+
+      request = fn base ->
+        %{
+          method: :get,
+          base: base,
+          path: "/latest",
+          query: [],
+          headers: [{"x-api-key", "k"}],
+          body: nil,
+          auth: nil,
+          response: :json
+        }
+      end
+
+      for base <- [
+            "http://127.0.0.1:9",
+            "http://169.254.169.254",
+            "http://[::1]:9",
+            "http://10.1.2.3"
+          ] do
+        assert {:error, {:blocked_address, :private}} =
+                 apply(rt, :request, [@client, [], request.(base)]),
+               base
+      end
+
+      # A host that does not resolve is refused too (this fixture's).
+      assert {:error, {:blocked_address, _}} = apply(@client, :get_item, [%{}])
+
+      # The owner's own base URL is trusted (localhost; port 9 refuses).
+      assert {:error, %Req.TransportError{}} =
+               apply(rt, :request, [
+                 @client,
+                 [base_url: "http://127.0.0.1:9"],
+                 request.("https://x.example.test")
+               ])
+    end
+
+    test "a text outside quotes in a JSON body is only ever a scalar" do
+      rt = WtfApiCallsRt.ApiClients
+      assert apply(rt, :json_arg, ["12"]) == 12
+      assert apply(rt, :json_arg, [~s({"$ne":null})]) == ~s({"$ne":null})
+      assert apply(rt, :json_arg, ["[1]"]) == "[1]"
+      assert apply(rt, :segment, [".."]) == "%2E%2E"
     end
   end
 end

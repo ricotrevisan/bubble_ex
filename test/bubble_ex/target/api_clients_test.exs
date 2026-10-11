@@ -44,10 +44,10 @@ defmodule BubbleEx.Target.ApiClientsTest do
              "groups" => 4,
              "calls" => 11,
              "generated" => 8,
-             "generated_env_configured" => 5,
+             "generated_env_configured" => 6,
              "residue" => 3,
              "residue_reasons" => %{"no_host" => 1, "raw_body" => 1, "unsupported_auth" => 1},
-             "env" => %{"auth" => 4, "literal" => 10, "private" => 4, "private_line" => 2},
+             "env" => %{"auth" => 4, "literal" => 10, "private" => 5, "private_line" => 2},
              "typed_responses" => 2
            }
   end
@@ -176,7 +176,8 @@ defmodule BubbleEx.Target.ApiClientsTest do
              {"BUBBLE_API_PAYMENTS_CREATE_CHARGE_LITERAL_5", :literal},
              {"BUBBLE_API_PAYMENTS_CREATE_CHARGE_LITERAL_6", :literal},
              {"BUBBLE_API_PAYMENTS_CREATE_CHARGE_SIGNING", :private},
-             {"BUBBLE_API_PAYMENTS_SHARED_1", :literal}
+             {"BUBBLE_API_PAYMENTS_SHARED_1", :literal},
+             {"BUBBLE_API_TENANTS_TENANT_PING_TENANT", :private}
            ]
   end
 
@@ -188,7 +189,13 @@ defmodule BubbleEx.Target.ApiClientsTest do
     assert remove.path == [[literal: "items"], [arg: "id"], []]
 
     ping = call(spec, "gTenants", "cPing")
-    assert ping.base.host == [arg: "tenant", literal: ".crm.example"]
+    # A private host parameter: the owner's environment, never a value
+    # of a step (a public one makes the call residue, WTF-533).
+    assert ping.base.host == [
+             env: "BUBBLE_API_TENANTS_TENANT_PING_TENANT",
+             literal: ".crm.example"
+           ]
+
     assert ping.response.kind == :empty
   end
 
@@ -245,7 +252,8 @@ defmodule BubbleEx.Target.ApiClientsTest do
 
       runtime = files["lib/acme/api_clients.ex"]
       assert runtime =~ "Req.request(options)"
-      assert runtime =~ "retry: :safe_transient"
+      assert runtime =~ "retry: false"
+      assert runtime =~ "retry_log_level: false"
 
       assert runtime =~
                "`BUBBLE_API_PAYMENTS_CREATE_CHARGE_SIGNING` - private body parameter `signing`"
@@ -391,7 +399,7 @@ defmodule BubbleEx.Target.ApiClientsTest do
 
     test "lists the environment and the residue", %{files: files} do
       document = Jason.decode!(files[".wtf/api_clients.json"])
-      assert length(document["env"]) == 20
+      assert length(document["env"]) == 21
       assert %{"call" => "cRaw", "reasons" => ["raw_body"]} = List.last(document["residue"])
       assert document["names"]["gPay"]["functions"]["cCharge"] == "create_charge"
     end
