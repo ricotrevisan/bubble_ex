@@ -346,29 +346,49 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
 
     test "a field read through a list of things, or an item of one, reads its records first" do
       title = &IR.node(:field, [&1, "task", "title_text"], "text")
+      listed = &(match?(%IR{op: :search}, &1) and Lists.listed?(&1))
 
-      # `list's title`: the list's records (listed, in the list's order).
-      assert %IR{op: :field, args: [%IR{op: :intersect, args: [s, list]}, "task", "title_text"]} =
-               Lists.lower(title.(field_list()))
+      # `list's title`: the list's records, a listed query (in the list's
+      # order, as the user may view them).
+      assert %IR{op: :field, args: [s, "task", "title_text"]} = Lists.lower(title.(field_list()))
+      assert listed.(s)
 
-      assert list == field_list() and Lists.listed?(s)
+      # Through list operators keeping things: `:first item`, `:last
+      # item`, `:unique elements`, `:minus list`, `:merged with` and
+      # `defaulting to` read each list-of-things operand's records.
+      two = IR.node(:literal, [2], "number")
 
-      # `list:first item's title`, through list operators keeping things.
-      for op <- [:first, :last, :unique] do
-        ir = title.(IR.node(op, [field_list()], "custom.task"))
+      for {op, args} <- [
+            {:first, [field_list()]},
+            {:last, [field_list()]},
+            {:item_at, [field_list(), two]},
+            {:limit, [field_list(), two]},
+            {:unique, [field_list()]},
+            {:minus_list, [field_list(), field_list()]},
+            {:minus_item, [field_list(), item()]}
+          ] do
+        assert %IR{op: :field, args: [%IR{op: ^op, args: [s | rest]} | _]} =
+                 Lists.lower(title.(IR.node(op, args, "list.custom.task")))
 
-        assert %IR{
-                 op: :field,
-                 args: [%IR{op: ^op, args: [%IR{op: :intersect, args: [s, list]}]} | _]
-               } =
-                 Lists.lower(ir)
+        assert listed.(s), inspect(op)
+        # Only the list whose things are read: what is subtracted stays.
+        assert rest == tl(args), inspect(op)
+      end
 
-        assert list == field_list() and Lists.listed?(s)
+      for op <- [:merge, :fallback] do
+        assert %IR{op: :field, args: [%IR{op: ^op, args: [a, b]} | _]} =
+                 Lists.lower(
+                   title.(IR.node(op, [field_list(), field_list()], "list.custom.task"))
+                 )
+
+        assert listed.(a) and listed.(b), inspect(op)
       end
 
       # The list itself, counted or tested, is left as stored.
       count = IR.node(:count, [field_list()], "number")
       assert Lists.lower(count) == count
+      member = IR.node(:member, [field_list(), item()], "boolean")
+      assert Lists.lower(member) == member
     end
 
     test "lists of values and predicates are left alone" do
@@ -387,33 +407,40 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
   # WTF-520: fields read through a list of things or one of its items, as
   # data sources and inside a search's constraints (the constraint's value
   # computed first, its records read as the user, and pinned).
-  test "a field through a list, or its first item, reads its records as a listed query", %{
+  test "a field through a list, or its item, reads its records as a listed query", %{
     spec: spec
   } do
-    for element <- ~w(bFirstOfList bFirstParent bParents) do
+    # `:first item` and `:item #2` are the listed query's own take: one
+    # row, an offset; never the whole list (WTF-520).
+    for {element, take, loads} <- [
+          {"bFirstOfList", :first, []},
+          {"bSecondOfList", {:item, 2}, []},
+          {"bFirstParent", :first, [["parent"]]},
+          {"bParents", :all, [["parent"]]}
+        ] do
       assert %{residue: [], read: {:value, %{queries: [q], source: source, bindings: bindings}}} =
                data(spec, element)
 
-      assert q.listed == "q1_pin_1" and q.take == :all
-      assert source =~ "Runtime.intersect(\n"
-      loads = Enum.find(bindings, &(&1.bind == {:query, "1"})).loads
-      assert loads == if(element == "bFirstOfList", do: [], else: [["parent"]]), element
+      assert q.listed == "q1_pin_1" and q.take == take, element
+      refute source =~ "intersect("
+      assert Enum.find(bindings, &(&1.bind == {:query, "1"})).loads == loads, element
     end
 
     assert %{read: {:value, %{source: first}}} = data(spec, "bFirstParent")
-    assert first =~ "List.first("
-    assert first =~ "[Access.key(:parent), Access.key(:title)]"
+    assert first =~ "get_in(query_1, [Access.key(:parent), Access.key(:title)])"
 
-    # Each item's parent, one flat list.
+    # Each item's parent, one flat list; a thing that is no record (an ID)
+    # has no fields.
     assert %{read: {:value, %{source: parents}}} = data(spec, "bParents")
     assert parents =~ "Enum.flat_map("
+    assert parents =~ "when is_map(thing)"
   end
 
   test "a constraint's value through a list is computed first and pinned", %{spec: spec} do
     assert %{residue: [], read: {:query, %{queries: [q], pins: pins}}} = data(spec, "bSiblings")
     assert q.listed == "q1_pin_1"
     assert %{ref: :one, value: %{source: one}} = Enum.find(pins, &(&1.var == "pin_2"))
-    assert one =~ "List.first("
+    assert one == "get_in(query_1, [Access.key(:parent)])" and q.take == :first
 
     assert %{residue: [], read: {:query, %{queries: [_], pins: pins}}} =
              data(spec, "bParentSearch")
@@ -425,7 +452,7 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
   test "the same sources load with enforced privacy" do
     %{spec: spec} = render(app(), :enforced)
 
-    for element <- ~w(bFirstOfList bFirstParent bParents bSiblings bParentSearch) do
+    for element <- ~w(bFirstOfList bSecondOfList bFirstParent bParents bSiblings bParentSearch) do
       assert data(spec, element).residue == [], element
     end
   end

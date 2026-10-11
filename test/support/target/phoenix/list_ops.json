@@ -1636,6 +1636,59 @@
               }
             }
           }
+        },
+        "bSecondOfList": {
+          "id": "bSecondOfList",
+          "type": "Group",
+          "properties": {
+            "order": 27,
+            "width": 300,
+            "height": 40,
+            "group_type": "text",
+            "data_source": {
+              "type": "GetElement",
+              "properties": {
+                "element_id": "bProject"
+              },
+              "next": {
+                "type": "Message",
+                "name": "get_group_data",
+                "next": {
+                  "type": "Message",
+                  "name": "tasks_list_custom_task",
+                  "next": {
+                    "type": "Message",
+                    "name": "specific_item",
+                    "next": {
+                      "type": "Message",
+                      "name": "title_text"
+                    },
+                    "args": 2
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bSecondOfListT": {
+              "id": "bSecondOfListT",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "D: ",
+                    "1": {
+                      "type": "ElementParent"
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

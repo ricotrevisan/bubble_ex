@@ -229,7 +229,7 @@ database sorts and filters lists of things wherever it can:
 | options, texts, numbers or dates `:filtered` | Elixir (`Enum.filter/2`, the constraints per item) |
 | texts, numbers or dates `:sorted` | Elixir (`Runtime.sort_values/2`): empty values first ascending, last descending; a stable sort |
 | `All <option set>` (an option value of `all values`) | every option of the set |
-| a field read through a list-of-things field (`list's a`, `list's a's b`) or through one of its items (`list:first item's a`, `:last item`, `:item #`, also over `:unique elements`, `:items until #`, `:minus`, `:merged with`, `defaulting to`; WTF-520) | a query for the list's records (`id in ^ids`, read as the user may view them), shown in the list's order (`Runtime.intersect/2`), then the field in Elixir: each item's, one flat list (empty values dropped), its relationships loaded on the query as the user |
+| a field read through a list-of-things field (`list's a`, `list's a's b`) or through one of its items (`list:first item's a`, `:last item`, `:item #`, also over `:unique elements`, `:items until #`, `:minus`, `:merged with`, `defaulting to`; WTF-520) | a query for the list's records (`id in ^ids`, read as the user may view them, in the list's order: `BubbleData.listed/2`), then the field in Elixir: each item's, one flat list (empty values dropped), its relationships loaded on the query as the user; `:first item`, `:item #n` and `:items until #n` are the query's own take (one row, an offset, a limit) |
 
 Every query reads as the current user, bounded by `:max_items`, like any
 other search: a merged list reads at most `:max_items` of each search,
@@ -288,10 +288,19 @@ Extended beyond what the replay measured (unverified):
   `:plus item` of a listed thing); numbers, dates and things follow the
   same rules.
 
-A search's constraint value is lowered the same way (WTF-520): a field
-read through a list of things in a constraint (`Unique id is in Project's
-tasks's parent`, `Parent = Project's tasks:first item's parent`) is
-computed first, its records read as the user, and pinned into the query.
+A search's constraint value is lowered the same way (WTF-520), in full:
+every list operator in it is lowered as a source's are (a field read
+through a list of things, but also a sort or a filter of a list of
+things, as queries), then computed first and pinned into the query
+(`Unique id is in Project's tasks's parent`, `Parent = Project's
+tasks:first item's parent`). Before, a constraint value's list
+operators were compiled in Elixir as they were.
+
+Outside a page's data sources (texts, conditions, workflows) a field
+through a list stored as IDs is still not compiled. A chain through a
+list normalized to a join (WTF-406) is read through its relationship's
+load, at most `BubbleData.related_cap/0` (`:max_items`, at most 100)
+related records per record, so a longer list is read in part there.
 
 Not lowered yet: sorting a list of options, or any list by a field of its
 items (residue `elixir:sort`), a list
@@ -1212,7 +1221,7 @@ to list membership before; it now compiles to a substring test.
 | `:page_data_in_cell` residue entries (sources) | 7 | 9 |
 | page workflows native / wired | 881 / 607 | 902 / 627 |
 | workflow `:uncompiled_expression` residue entries | 715 | 674 |
-| expressions compiled to Elixir (of 19,716) | 15,523 | 15,661 |
+| expressions compiled to Elixir (of 19,716) | 15,523 | 15,651 |
 
 Of the 60 sources newly wired, 23 compiled now and 37 read one of them
 (`:unavailable_input` before). Two sources that now compile are in a
@@ -1964,6 +1973,19 @@ and "Display data" over a group's own source.
   thing listed twice, whether it removes duplicate things from the
   result (two tasks with the same parent show the parent twice here),
   and what it shows for a listed thing the user may not view.
+* **Counting and testing a list of things against privacy** (WTF-520):
+  reading through a list (`list's a`, `:first item`, `:item #`) reads
+  only the things the user may view, so with enforced policies `:item
+  #3` skips a hidden thing; `:count` and `contains` on a list-of-things
+  field still read the stored IDs, hidden things and dangling IDs
+  included (a count can tell how many things the user may not view).
+  Bubble is taken to apply privacy before list operators; not lowered
+  here because a visible read also collapses a thing listed twice (a
+  query finds each record once) and drops dangling IDs, neither of which
+  is replayed, and a `contains` outside a page's data (a condition, a
+  workflow) has no query to read through. To replay: `:count` and
+  `contains` of a list holding a hidden thing, a thing twice, a deleted
+  thing.
 * **A list of things `contains` a thing** (WTF-520) when one of its
   things has that thing's unique ID, whether the list holds records or
   IDs; an empty thing (or one the user may not view) is in no list.
@@ -1972,8 +1994,12 @@ and "Display data" over a group's own source.
 * **A text's `contains`** (WTF-520) is a case-sensitive substring test
   (`Runtime.text_contains?/2`, `contains/2` in a search or a privacy
   rule), as the search constraint `text contains string`; an empty text
-  contains nothing. Not replayed: case sensitivity, an empty part (here
-  every non-empty text contains it).
+  contains nothing, and `doesn't contain` with an empty part is false
+  in both (Elixir and the Ash filter agree). On a case-insensitive text
+  (the User's email, `Ash.CiString`) the two may differ: Elixir tests
+  its text with case, the database's `contains/2` on such a column
+  ignores case. Not replayed: case sensitivity, an empty
+  part (here every non-empty text contains `""`).
 * A search's dynamic sort field that is an empty text (the editor keeps
   `{"entries": {"1": ""}}` once it is cleared) is taken to name no field
   (WTF-520): next to a static sort field, that field sorts; with the sort

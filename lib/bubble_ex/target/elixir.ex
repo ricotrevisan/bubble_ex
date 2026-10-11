@@ -692,9 +692,20 @@ defmodule BubbleEx.Target.Elixir do
     end
   end
 
-  defp atom_(%IR{op: op, args: args}, st) when op in [:text_contains, :text_contains_words] do
+  # `doesn't contain` with an empty part is false, as in the Ash filter
+  # (`contains(t, NULL)` is NULL there): only a text that is not empty
+  # can be missing from another.
+  defp atom_(%IR{op: :text_contains, args: args}, st) do
+    {[t, p], st} = Enum.map_reduce(args, st, &value/2)
+    {found, st} = runtime(st, :text_contains?, [t, p])
+    {empty, st} = runtime(st, :empty?, [p])
+    absent = ok(found, &"(not #{empty} and not #{&1})")
+    {all_ok({found, absent, Enum.zip(args, [t, p])}, [found, empty]), st}
+  end
+
+  defp atom_(%IR{op: :text_contains_words, args: args}, st) do
     {parts, st} = Enum.map_reduce(args, st, &value/2)
-    {found, st} = runtime(st, :"#{op}?", parts)
+    {found, st} = runtime(st, :text_contains_words?, parts)
     {all_ok({found, ok(found, &"not #{&1}"), Enum.zip(args, parts)}, [found]), st}
   end
 
@@ -961,7 +972,12 @@ defmodule BubbleEx.Target.Elixir do
           {each, st} = segments_read("thing", segments, list_id_key, 1, st)
           {each, st} = as_list(each, st)
           {items, st} = as_list(source, st)
-          {all_ok("Enum.flat_map(#{items}, fn thing -> #{each} end)", [each, items]), st}
+          # A thing given as its Bubble ID (a custom state's list) is no
+          # record here: its fields read as empty, never a crash (WTF-500).
+          {all_ok(
+             "Enum.flat_map(#{items}, fn thing when is_map(thing) -> #{each}; _ -> [] end)",
+             [each, items]
+           ), st}
         else
           segments_read(source, segments, list_id_key, 1, st)
         end
@@ -983,7 +999,11 @@ defmodule BubbleEx.Target.Elixir do
     {inner, st} = segments_read(var, rest, list_id_key, depth + 1, st)
     {inner, st} = as_list(inner, st)
     {items, st} = as_list("get_in(#{source}, #{access_keys(keys)})", st)
-    {all_ok("Enum.flat_map(#{items}, fn #{var} -> #{inner} end)", [inner, items]), st}
+
+    {all_ok(
+       "Enum.flat_map(#{items}, fn #{var} when is_map(#{var}) -> #{inner}; _ -> [] end)",
+       [inner, items]
+     ), st}
   end
 
   defp access_keys(keys), do: "[" <> Enum.map_join(keys, ", ", &"Access.key(#{atom(&1)})") <> "]"
@@ -1031,8 +1051,14 @@ defmodule BubbleEx.Target.Elixir do
   defp origins(%IR{op: :this, args: [:filter_item]}, _rels, %{item?: true}), do: :error
 
   defp origins(%IR{op: op, type: type} = ir, rels, _st)
-       when op in [:input, :this, :current_user] do
+       when op in [:this, :current_user] do
     if record_type?(type) or thing_list?(type), do: {:ok, [{ir, rels}]}, else: :error
+  end
+
+  defp origins(%IR{op: :input, args: [kind, ref], type: type} = ir, rels, _st) do
+    if records?(kind, ref) and (record_type?(type) or thing_list?(type)),
+      do: {:ok, [{ir, rels}]},
+      else: :error
   end
 
   defp origins(%IR{op: :field} = ir, rels, st) do
@@ -1058,6 +1084,16 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   defp origins(_ir, _rels, _st), do: :error
+
+  # The inputs whose things the page reads as records (through Ash, as
+  # the user): a group's or a list's data (and a reusable element's
+  # property, page data too), a cell's or the page's thing, a query's
+  # records, a database trigger's thing. A custom state, a workflow's
+  # parameter or a step's result may hold Bubble IDs: not an origin.
+  defp records?(:element_state, %{"state" => state}) when is_binary(state),
+    do: state in ["get_group_data", "get_list_data"] or String.starts_with?(state, "param_")
+
+  defp records?(kind, _ref), do: kind in [:cell_thing, :page_thing, :query, :trigger_thing]
 
   defp unchain(%IR{op: :field, args: [base, type, field]}, steps),
     do: unchain(base, [{type, field} | steps])

@@ -26,8 +26,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
       item's a`, `:item #`, `:last item`, also over `:unique elements`,
       `:items until #`, `:minus`, `:merged with`, `defaulting to`), reads
       the list's things as records first (WTF-520): the field holds
-      Bubble IDs, so the list becomes the search for its records
-      intersected with the list, in the list's order, each thing once.
+      Bubble IDs, so the list becomes the search for its records, read
+      as the user may view them in the list's order (`listed`), each
+      thing once; `:first item`, `:item #n` and `:items until #n` over it
+      are taken by the query itself (one row, an offset, a limit).
 
   The list a rewritten search reads is wrapped in `:pinned`: the binding
   computes it first, in Elixir, and passes its things' IDs into the
@@ -99,15 +101,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
   # A list of things a field is read through (`list's a`), or whose item
   # is (`list:first item's a`): a list-of-things field holds Bubble IDs, so
   # its things are read first, as the records the user may view
-  # (`records/1`), kept in the list's order, each once (`:intersect`
-  # follows the second list's order and keeps the search's records).
+  # (`records/1`: a listed query, in the list's order, each thing once).
+  # `:first item`, `:item #n` and `:items until #n` over it are that
+  # query's own take (one row, an offset, a limit), never the whole list.
   # Through list operators that keep their operands' things.
   @keeps_things [:first, :last, :item_at, :unique, :limit, :minus_item, :minus_list]
 
   defp read_through(%IR{op: :field, type: type} = list) do
-    if thing(type),
-      do: IR.node(:intersect, [records(list), list], type) |> Map.put(:path, list.path),
-      else: list
+    if thing(type), do: records(list) |> Map.put(:path, list.path), else: list
   end
 
   defp read_through(%IR{op: op, args: [list | rest]} = ir) when op in @keeps_things,

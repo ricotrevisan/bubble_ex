@@ -253,6 +253,32 @@ defmodule PhxCheckWeb.ListOpsBehaviorTest do
              )
   end
 
+  test ":item # of a list field is taken by its query, after privacy", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/")
+    assert html =~ "D: Bake"
+  end
+
+  # The list's first thing is secret: with enforced policies it is in no
+  # list, so the first item the user may view is the next one, and item
+  # #2 the one after it (privacy before the offset).
+  test "a hidden first item: the first and second items the user may view", %{conn: conn} do
+    Ash.Seed.update!(Ash.get!(PhxCheck.Project, @p1, authorize?: false), %{
+      tasks: [@t5, @t3, @t1]
+    })
+
+    {:ok, _view, html} = live(conn, "/")
+
+    if enforced?() do
+      assert html =~ "A: Clean"
+      assert html =~ "B: Draw"
+      assert html =~ "D: Bake"
+    else
+      assert html =~ "A: Eat"
+      assert html =~ "B: Bake"
+      assert html =~ "D: Clean"
+    end
+  end
+
   test "a constraint's value through a list is computed first, as the user", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/")
     # The tasks whose parent is the first listed task's parent (Draw).

@@ -793,6 +793,47 @@ defmodule BubbleEx.Target.ElixirTest do
                ~s|expr(is_nil(title) or not contains(title, "pl"))|
     end
 
+    test "a custom state may hold IDs: its items' fields never crash", %{
+      project: project,
+      field: field
+    } do
+      state = %{"element" => "bG1", "state" => "custom.picked"}
+      tasks = IR.node(:input, [:element_state, state], "list.custom.task")
+      var = :element_state_bg1_custom_picked
+
+      # `State's first item's title`: a custom state is no record origin
+      # (it may hold IDs): not compiled, residue, never a crash.
+      first = IR.node(:first, [tasks], "custom.task")
+
+      {:ok, %{source: nil, diagnostics: [diag]}} =
+        Target.compile(field.(first, "task", "title_text", "text"), project, runtime: @runtime)
+
+      assert "a field of first" in diag.details.constructs
+
+      # `State's list's title`: each item's, an ID's empty.
+      {:ok, titles} =
+        Target.compile(field.(tasks, "task", "title_text", "list.text"), project,
+          runtime: @runtime
+        )
+
+      assert eval(titles, [{var, ["t1", "t2"]}]) == []
+      assert eval(titles, [{var, [%{title: "A"}, "t2", %{title: "B"}]}]) == ["A", "B"]
+      assert eval(titles, [{var, nil}]) == []
+    end
+
+    test "doesn't contain with an empty part is false, as in the Ash filter", %{project: project} do
+      env = rule_env("task")
+      part = chain(cu(), [msg("name_text")])
+      raw = chain(this(), [msg("title_text"), msg("not_contains", part)])
+      {:ok, %{ir: ir}} = Compiler.compile(parse!(raw, env), env)
+      {:ok, result} = Target.compile(ir, project, runtime: @runtime)
+
+      assert eval(result, this: %{title: "Plan"}, current_user: %{name: "x"})
+      refute eval(result, this: %{title: "Plan"}, current_user: %{name: "la"})
+      refute eval(result, this: %{title: "Plan"}, current_user: %{name: nil})
+      assert eval(result, this: %{title: nil}, current_user: %{name: "x"})
+    end
+
     test "a list normalized to a join is read through, flattened" do
       %{model: model} = BubbleEx.Test.DecidedFixture.build(:join)
       {:ok, project} = BubbleEx.Test.DecidedFixture.project(:join)
