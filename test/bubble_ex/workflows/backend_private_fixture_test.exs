@@ -40,8 +40,19 @@ defmodule BubbleEx.Workflows.BackendPrivateFixtureTest do
     {:ok, index} = Index.build(app, model: model)
     {:ok, backend} = Backend.build(app, model, index)
     {:ok, project} = Ash.map(model, [], privacy: :omit)
-    {:ok, spec} = Workflows.map(backend, project, namespace: "Acme")
-    %{app: app, model: model, index: index, backend: backend, project: project, spec: spec}
+    # API Connector calls bind to the generated clients (WTF-533).
+    {:ok, clients} = BubbleEx.Target.ApiClients.map(model)
+    {:ok, spec} = Workflows.map(backend, project, namespace: "Acme", api_clients: clients)
+
+    %{
+      app: app,
+      model: model,
+      index: index,
+      backend: backend,
+      project: project,
+      spec: spec,
+      clients: clients
+    }
   end
 
   test "matches the recorded count snapshot", %{backend: backend, spec: spec} do
@@ -93,7 +104,15 @@ defmodule BubbleEx.Workflows.BackendPrivateFixtureTest do
   end
 
   test "sample requests of detect-data workflows never reach any output",
-       %{app: app, model: model, index: index, backend: backend, project: project, spec: spec} do
+       %{
+         app: app,
+         model: model,
+         index: index,
+         backend: backend,
+         project: project,
+         spec: spec,
+         clients: clients
+       } do
     samples =
       for {_, w} <- app["api"] || %{},
           is_map(w),
@@ -113,7 +132,9 @@ defmodule BubbleEx.Workflows.BackendPrivateFixtureTest do
       end)
       |> Enum.uniq()
 
-    {:ok, files} = Phoenix.render(project, name: "Acme", module: "Acme", workflows: spec)
+    {:ok, files} =
+      Phoenix.render(project, name: "Acme", module: "Acme", workflows: spec, api_clients: clients)
+
     {:ok, plan} = Plan.build(model, index, nil, [], residue: Backend.residue(backend))
 
     outputs = [
@@ -150,7 +171,8 @@ defmodule BubbleEx.Workflows.BackendPrivateFixtureTest do
   defp bearer("Bearer " <> token) when byte_size(token) >= 8, do: [token]
   defp bearer(_), do: []
 
-  test "deterministic", %{backend: backend, project: project, spec: spec} do
-    assert Workflows.map(backend, project, namespace: "Acme") == {:ok, spec}
+  test "deterministic", %{backend: backend, project: project, spec: spec, clients: clients} do
+    assert Workflows.map(backend, project, namespace: "Acme", api_clients: clients) ==
+             {:ok, spec}
   end
 end

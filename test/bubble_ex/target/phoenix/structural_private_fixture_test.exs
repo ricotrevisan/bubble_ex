@@ -93,7 +93,11 @@ defmodule BubbleEx.Target.Phoenix.StructuralPrivateFixtureTest do
     {:ok, project} = Ash.map(ctx.model, applied, opts)
     {:ok, unverified} = Ash.map(ctx.model, applied, Keyword.put(opts, :privacy, :unverified))
     {:ok, backend} = Backend.build(ctx.app, ctx.model, ctx.index)
-    {:ok, workflows} = Workflows.map(backend, project, namespace: "Private")
+    # API Connector calls bind to the clients the app renders (WTF-533).
+    {:ok, api_clients} = ApiClients.map(ctx.model)
+
+    {:ok, workflows} =
+      Workflows.map(backend, project, namespace: "Private", api_clients: api_clients)
 
     {:ok, lowered} = BubbleEx.Workflows.Frontend.build(ctx.app, ctx.model, ctx.index)
 
@@ -101,7 +105,8 @@ defmodule BubbleEx.Target.Phoenix.StructuralPrivateFixtureTest do
       FrontendWorkflows.map(lowered, project,
         namespace: "Private",
         frontend: ctx.frontend,
-        backend: workflows
+        backend: workflows,
+        api_clients: api_clients
       )
 
     # The plan knows what the lowerings left.
@@ -113,8 +118,6 @@ defmodule BubbleEx.Target.Phoenix.StructuralPrivateFixtureTest do
             FrontendWorkflows.Spec.residue(frontend_workflows),
         decisions_sha256: sha
       )
-
-    {:ok, api_clients} = ApiClients.map(ctx.model)
 
     render = [
       name: "Private",
