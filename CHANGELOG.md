@@ -434,6 +434,11 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **API Connector environment variables are under `BUBBLE_API_`**
+  (WTF-533): `PAYMENTS_API_KEY` is now `BUBBLE_API_PAYMENTS_API_KEY`, and
+  so on. A JSON body's parameter outside quotes (`"n": <n>`) is the JSON
+  its text is when it is text (`3`, `true`), as Bubble pastes it.
+
 - **Bubble behaviours measured by the replay of 2026-10-07** (WTF-509;
   counts and synthetic values only, WTF-387). Each answered question
   leaves the docs' "Unverified Bubble behavior" lists.
@@ -821,6 +826,49 @@ All notable changes to this project are documented here.
   lists only unexpected ones.
 
 ### Added
+
+- **API Connector calls in workflows** (WTF-533, first slice;
+  `docs/api-connector-calls.md`). An API Connector call used as an
+  action in a backend or page workflow is an `:api_call` step
+  (`BubbleEx.Workflows.Lowering.api_call/6`: the call and its non-private
+  parameters, as the action sets them in `headers_<key>`,
+  `params_<key>`, `url_params_<key>` and `body_params_<key>`), bound to
+  the generated Req client with the new `api_clients:` option of
+  `BubbleEx.Target.Ash.Workflows.map/3` and
+  `BubbleEx.Target.Elixir.FrontendWorkflows.map/3`, and printed as
+  `Runtime.api_call/5`. It always runs on the server: a page's step runs
+  in its LiveView process (`BubbleWorkflows.api/2`, not behind the
+  data-access opt-in). Its result is the step's: "Result of step N" of a
+  call has the call's API type (`BubbleEx.Expression.Sites`), and a
+  field of it compiles to a read of the decoded response (a typed
+  struct's attribute, else a typed map's value at the field's Bubble ID;
+  `BubbleEx.Target.Elixir`). A non-2xx response fails the step, unless
+  the call has Bubble's "Include errors in response and allow workflow
+  actions to continue" (`ConnectorCall.wrap_errors`, `Call.wrap_errors`):
+  then the result has `returned_an_error` and `error`'s `status_code`,
+  `status_message` and `body`. GETs (and HEADs) are retried on transient
+  errors, nothing else; a failure is logged with its status or kind,
+  never a body, header or secret. Without the clients, or for a call
+  whose client is not generated, the step stays `:api_connector_action`
+  residue (`detail.reasons`; an unknown call is `[:unresolved]`), and
+  `BubbleEx.Target.Phoenix.render/2` refuses workflows that call clients
+  it is not given. Calls used as data are not lowered yet.
+- **Secrets from `config/runtime.exs` only, failing closed** (WTF-533).
+  The generated `config/runtime.exs` reads every variable the clients
+  need (`config :app, App.ApiClients, env: ...`), and the clients read
+  only that, never the system environment directly or the export. A call
+  whose variables are unset or empty is refused before anything is sent
+  with `App.ApiClients.MissingEnvError` (it was `{:missing_env, names}`):
+  a workflow step making it is refused (`{:api_env_missing, %{step,
+  names}}`, logged by name), and a page shows its "not available"
+  notice. `.env.example` names them, the README says how to set them,
+  and `mix bubble.api_env` lists the missing ones (exit status 1). A
+  private parameter's value an action or page sets is never sent.
+- **A call's own return type is an API type of the Model** (WTF-533).
+  `BubbleEx.Model.build/1` resolves every API Connector call's
+  `ret_value` too (diagnostics only for types data fields reach, as
+  before), so its response decodes into a typed map (`Spec.shapes`, the
+  generated `Decode.map_<n>/1`) when no data field stores the type.
 
 - **Current page width** (WTF-520). A data source, a reusable
   instance's property or a workflow reading the viewport's width was
