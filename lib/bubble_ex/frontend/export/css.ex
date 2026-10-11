@@ -1039,9 +1039,13 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp put_fill_sizing(css, _node, _parent_mode), do: css
 
+  # Fixed parents place children on the authored canvas. Fill flags describe
+  # responsive sizing in flow, not a replacement for these canvas extents.
+  defp put_fill_width(css, true, :fixed), do: css
+
   defp put_fill_width(css, true, :row) do
     css
-    |> Map.put("flex-basis", "0")
+    |> Map.put("flex-basis", css["min-width"] || "0")
     |> Map.put("flex-grow", "1")
     |> Map.put("flex-shrink", "1")
   end
@@ -1050,6 +1054,8 @@ defmodule BubbleEx.Frontend.Export.Css do
     do: put_fill_extent(css, "width", ~w(left right))
 
   defp put_fill_width(css, _fill?, _parent_mode), do: css
+
+  defp put_fill_height(css, true, :fixed), do: css
 
   defp put_fill_height(css, true, :column) do
     css
@@ -1483,9 +1489,16 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp breakpoint_fill(paint, %Node{layout: layout}, parent) when is_map(layout) do
     paint =
-      if margin_variables?(paint, ~w(left right)),
-        do: put_fill_width(paint, layout_value(layout, :fill_width?), parent),
-        else: paint
+      cond do
+        parent == :row and Map.has_key?(paint, "min-width") ->
+          put_fill_width(paint, layout_value(layout, :fill_width?), parent)
+
+        parent != :row and margin_variables?(paint, ~w(left right)) ->
+          put_fill_width(paint, layout_value(layout, :fill_width?), parent)
+
+        true ->
+          paint
+      end
 
     if margin_variables?(paint, ~w(top bottom)),
       do: put_fill_height(paint, layout_value(layout, :fill_height?), parent),
@@ -1598,6 +1611,8 @@ defmodule BubbleEx.Frontend.Export.Css do
   defp css_prop_name("letter_spacing"), do: "letter-spacing"
   defp css_prop_name("line_height"), do: "line-height"
   defp css_prop_name("border_color"), do: "border-color"
+  defp css_prop_name("border_color_left"), do: "border-left-color"
+  defp css_prop_name("border_color_bottom"), do: "border-bottom-color"
   defp css_prop_name("border_width"), do: "border-width"
   defp css_prop_name("border_style"), do: "border-style"
   defp css_prop_name("border_roundness"), do: "border-radius"

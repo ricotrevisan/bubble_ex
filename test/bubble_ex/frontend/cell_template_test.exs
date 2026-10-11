@@ -76,7 +76,7 @@ defmodule BubbleEx.Frontend.CellTemplateTest do
     assert text_entry.node.source.bubble_id == "bTGLz"
 
     assert Map.new(text_entry.declarations) == %{
-             "flex-basis" => "0",
+             "flex-basis" => "0px",
              "flex-grow" => "1",
              "flex-shrink" => "1",
              "min-height" => "0px",
@@ -166,7 +166,7 @@ defmodule BubbleEx.Frontend.CellTemplateTest do
     assert title_entry.node.source.bubble_id == "bTIro"
 
     assert Map.new(title_entry.declarations) == %{
-             "flex-basis" => "0",
+             "flex-basis" => "0px",
              "flex-grow" => "1",
              "flex-shrink" => "1",
              "min-height" => "36px",

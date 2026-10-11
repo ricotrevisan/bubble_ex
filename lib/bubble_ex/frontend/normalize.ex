@@ -1845,8 +1845,18 @@ defmodule BubbleEx.Frontend.Normalize do
       %{}
     else
       Enum.reduce(~w(top right bottom left), %{}, fn side, borders ->
-        put_paint(borders, "border-#{side}", canonical_side_border(raw, side))
+        borders
+        |> put_paint("border-#{side}", canonical_side_border(raw, side))
+        |> dormant_border_color(raw, side)
       end)
+    end
+  end
+
+  defp dormant_border_color(borders, raw, side) do
+    if Payload.prop(raw, "border_style_#{side}") == "none" do
+      put_paint(borders, "border-#{side}-color", Payload.prop(raw, "border_color_#{side}"))
+    else
+      borders
     end
   end
 

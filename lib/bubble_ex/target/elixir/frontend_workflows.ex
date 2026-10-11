@@ -1386,6 +1386,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     end
   end
 
+  defp args(:animate, _args, id, _ctx),
+    do:
+      {%{},
+       [Residue.entry(id, :unsupported_action, %{type: "AnimateElement", target: "phoenix"})]}
+
   defp args(:reset_inputs, %{within: nil}, _id, _ctx), do: {%{within: nil}, []}
 
   defp args(:reset_inputs, %{within: within}, id, ctx) do

@@ -35,6 +35,17 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     assert css =~ "--color_text_default_rgb: 15, 23, 42;"
   end
 
+  test "lowers Bubble condition border color side properties" do
+    declarations =
+      Css.declarations(%{
+        "border_color_left" => "#FF4444",
+        "border_color_bottom" => "#FF4444"
+      })
+
+    assert {"border-left-color", "#FF4444"} in declarations
+    assert {"border-bottom-color", "#FF4444"} in declarations
+  end
+
   test "emits canonical shared typography values" do
     style = %Style{
       exporter_id: "style",
@@ -323,7 +334,7 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     assert rule(css, "row") =~ "align-items: center;"
 
     row_fill_rule = rule(css, "row-fill")
-    assert row_fill_rule =~ "flex-basis: 0;"
+    assert row_fill_rule =~ "flex-basis: 336px;"
     assert row_fill_rule =~ "flex-grow: 1;"
     assert row_fill_rule =~ "flex-shrink: 1;"
     assert row_fill_rule =~ "min-width: 336px;"
@@ -502,6 +513,109 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     assert origin_rule =~ "top: 0px;"
     assert origin_rule =~ "margin: 0px;"
     refute origin_rule =~ "grid-area:"
+  end
+
+  test "fixed canvas children retain authored extents despite fill flags in both payload shapes" do
+    # Geometry from mixxy's index feature cards and interest heading. Bubble's
+    # runtime reports 235/190/348px, not their fixed parents' 257/410px.
+    for geometry <- [:editor, :runtime] do
+      canvas = fn x, y, width, height ->
+        case geometry do
+          :editor -> %{"left" => x, "top" => y, "width" => width, "height" => height}
+          :runtime -> %{"%l" => x, "%t" => y, "%w" => width, "%h" => height}
+        end
+      end
+
+      element = fn type, props, children ->
+        %{"type" => type, "properties" => props, "elements" => children}
+      end
+
+      fill = %{
+        "single_width" => false,
+        "fit_height" => true,
+        "single_height" => false,
+        "min_height_css" => "40px"
+      }
+
+      heading = element.("Text", Map.merge(fill, canvas.(20, 161, 235, 40)), %{})
+      description = element.("Text", Map.merge(fill, canvas.(20, 211, 190, 160)), %{})
+
+      card =
+        element.(
+          "Group",
+          Map.merge(canvas.(0, 0, 257, 400), %{"container_layout" => "fixed"}),
+          %{"heading" => heading, "description" => description}
+        )
+
+      interest = element.("Text", Map.merge(fill, canvas.(30, 13, 348, 45)), %{})
+
+      panel =
+        element.(
+          "Group",
+          Map.merge(canvas.(515, 437, 410, 360), %{"container_layout" => "fixed"}),
+          %{"interest" => interest}
+        )
+
+      page =
+        element.("Page", %{"container_layout" => "fixed"}, %{
+          "card" => card,
+          "panel" => panel
+        })
+
+      {:ok, model} =
+        BubbleEx.Frontend.normalize(%{"pages" => %{"index" => page}}, geometry: geometry)
+
+      entries = Css.lower(hd(model.pages))
+      by_key = Map.new(entries, &{&1.node.map_key, Map.new(&1.declarations)})
+      assert by_key["heading"]["width"] == "235px"
+      assert by_key["description"]["width"] == "190px"
+      assert by_key["interest"]["width"] == "348px"
+      assert by_key["heading"]["left"] == "20px"
+      assert by_key["interest"]["top"] == "13px"
+    end
+  end
+
+  test "fixed canvas fill height does not replace authored height" do
+    child =
+      node("fixed-fill",
+        layout: %{fill_width?: true, fill_height?: true},
+        box: %{width: 235, height: 40}
+      )
+
+    [_, lowered] = Css.lower(node("fixed", layout: %{mode: :fixed}, children: [child]))
+    declarations = Map.new(lowered.declarations)
+    assert declarations["width"] == "235px"
+    assert declarations["height"] == "40px"
+  end
+
+  test "fill row children grow equally from their minimum widths" do
+    # Address Search Box: 356px row, 267px + 15.4px minima, 12px margins.
+    # Bubble assigns the remaining 61.6px equally: 297.8px and 46.2px.
+    street =
+      node("street",
+        layout: %{fill_width?: true},
+        box: %{min_width: "267px"},
+        responsive: [
+          %{
+            "media" => %{"operator" => "<", "width" => 768},
+            "paint" => %{"min-width" => "200px"}
+          }
+        ]
+      )
+
+    number =
+      node("number",
+        layout: %{fill_width?: true},
+        box: %{min_width: "15.4px", margin: "0px 1px 0px 11px"}
+      )
+
+    entries =
+      Css.lower(node("row", layout: %{mode: :row}, children: [street, number]))
+
+    [_, street_css, number_css] = entries
+    assert Map.new(street_css.declarations)["flex-basis"] == "267px"
+    assert Map.new(number_css.declarations)["flex-basis"] == "15.4px"
+    assert street_css.rules =~ "flex-basis: 200px;"
   end
 
   test "matches Bubble's static radio group line box and inset" do

@@ -45,6 +45,7 @@ defmodule BubbleEx.Workflows.Frontend do
   | Bubble action | `Step.op` | `Step.args` |
   |---------------|-----------|-------------|
   | Show / Hide / Toggle an element | `:show` / `:hide` / `:toggle` | `element` |
+  | Animate an element | `:animate` | `element`, `animation`, `duration`, `visibility` (known entrance final state) |
   | Set focus to an element, Scroll to an element | `:focus`, `:scroll_to` | `element` |
   | Reset relevant inputs (`ResetInputs`) | `:reset_inputs` | `within` (the triggering element's container, nil for the surface) |
   | Reset a group / popup (`ResetGroup`) | `:reset_group` | `element` |
@@ -142,6 +143,7 @@ defmodule BubbleEx.Workflows.Frontend do
 
   @ops %{
     "ShowElement" => :show,
+    "AnimateElement" => :animate,
     "HideElement" => :hide,
     "ToggleElement" => :toggle,
     "SetFocusToElement" => :focus,
@@ -169,6 +171,7 @@ defmodule BubbleEx.Workflows.Frontend do
   # (a debugger breakpoint, the editor's display name) are ignored.
   @members %{
     show: ~w(element_id),
+    animate: ~w(element_id animation duration),
     hide: ~w(element_id),
     toggle: ~w(element_id),
     focus: ~w(element_id),
@@ -662,6 +665,30 @@ defmodule BubbleEx.Workflows.Frontend do
        when op in [:show, :hide, :toggle, :focus, :scroll_to, :reset_group] do
     element = text(props["element_id"])
     {%{element: element}, element_ref(id, element, ctx)}
+  end
+
+  defp lower(:animate, props, _path, id, _env, ctx) do
+    element = text(props["element_id"])
+    animation = text(props["animation"])
+
+    visibility =
+      case animation do
+        "transition.slideUpIn" -> :show
+        "transition.slideUpBigIn" -> :show
+        _ -> nil
+      end
+
+    residue = element_ref(id, element, ctx)
+
+    residue =
+      if visibility, do: residue, else: residue ++ Lowering.option_residue(id, ["animation"])
+
+    {%{
+       element: element,
+       animation: animation,
+       duration: props["duration"],
+       visibility: visibility
+     }, residue}
   end
 
   defp lower(:reset_inputs, _props, _path, _id, _env, ctx), do: {%{within: ctx.within}, []}

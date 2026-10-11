@@ -5,6 +5,34 @@ defmodule BubbleEx.Frontend.Export.BbcodeTest do
 
   alias BubbleEx.Frontend.Export.Bbcode
 
+  test "captured alignment, superscript and safe colors render as inert formatting" do
+    assert Bbcode.to_html("[center]More [i]choices[/i][/center]") ==
+             ~s(<div style="text-align: center">More <em>choices</em></div>)
+
+    assert Bbcode.to_html("[sup][color=#808080]@2026[/color][/sup]") ==
+             ~s(<sup><span style="color: #808080">@2026</span></sup>)
+
+    assert Bbcode.to_html("[color=red;position:fixed]x[/color]") == "x"
+
+    assert {nodes, []} =
+             Bbcode.split(["[center][sup]", {:value, "<script>[i]x[/i]"}, "[/sup][/center]"],
+               extended: true
+             )
+
+    assert Bbcode.render_nodes(nodes) ==
+             ~s(<div style="text-align: center"><sup>&lt;script&gt;[i]x[/i]</sup></div>)
+  end
+
+  test "dynamic safe colors wrap values without interpreting their brackets" do
+    assert {nodes, []} =
+             Bbcode.split(["[sup][color=#808080]@", {:value, "[b]<script>"}, "[/color][/sup]"],
+               extended: true
+             )
+
+    assert Bbcode.render_nodes(nodes) ==
+             ~s(<sup><span style="color: #808080">@[b]&lt;script&gt;</span></sup>)
+  end
+
   test "literal tags wrap the values between them" do
     assert {[{:b, ["Title: ", {:value, :x}]}, " and ", {:i, [{:value, :y}]}], []} =
              Bbcode.split(["[b]Title: ", {:value, :x}, "[/b] and [I]", {:value, :y}, "[/i]"])

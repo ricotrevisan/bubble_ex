@@ -1,25 +1,33 @@
 defmodule BubbleEx.Frontend.Export.Bbcode do
   @moduledoc false
 
-  @tags ~w(b i u s ul ol li url)
+  @tags ~w(b i u s ul ol li url center sup color)
 
-  # The tags `split/1` renders around dynamic values (WTF-450): inline
-  # formatting only, a subset of `@tags`.
-  @inline %{"b" => :b, "i" => :i, "u" => :u, "s" => :s}
+  # Default split nodes retain the Phoenix target's inline vocabulary.
+  # Extended nodes opt in to source alignment, superscript and safe colors.
+  @inline %{
+    "b" => :b,
+    "i" => :i,
+    "u" => :u,
+    "s" => :s,
+    "center" => :center,
+    "sup" => :sup,
+    "color" => :color
+  }
 
   # Tags Bubble knows that `split/1` leaves as text.
   @known ~w(url ul ol li color size font center left right justify highlight img youtube indent)
 
   @spec present?(term()) :: boolean()
   def present?(text) when is_binary(text) do
-    Regex.match?(~r/\[(?:\/)?(?:b|i|u|s|ul|ol|li|url)\b/i, text)
+    Regex.match?(~r/\[(?:\/)?(?:b|i|u|s|ul|ol|li|url|center|sup|color)\b/i, text)
   end
 
   def present?(_), do: false
 
   @spec block?(term()) :: boolean()
   def block?(text) when is_binary(text) do
-    Regex.match?(~r/\[(\/)?(?:ul|ol)\b/i, text)
+    Regex.match?(~r/\[(\/)?(?:ul|ol|center)\b/i, text)
   end
 
   def block?(_), do: false
@@ -29,33 +37,70 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
   (binaries, where tags are read) and opaque values (`{:value, term}`,
   never read for tags). Returns `{nodes, unsupported}` or `:none` when no
   literal part has a tag `split/1` renders. A node is a binary, a
-  `{:value, term}` or `{tag, nodes}` for `tag` in `:b`, `:i`, `:u`, `:s`
-  (an opening tag with its closing one later in the same literal level,
-  as `to_html/1` pairs them); any other tag, or an unpaired one, stays
-  text. `unsupported` lists the other known tags found (sorted names).
+  `{:value, term}` or `{tag, nodes}` for inline `:b`, `:i`, `:u`, `:s`.
+  `extended: true` also emits `:center`, `:sup` and `{:color, value}` nodes;
+  use `render_nodes/1` to render those safely. An opening tag pairs with
+  its closing one at the same literal level, as `to_html/1` does.
+  Other tags, or unpaired ones, stay text. `unsupported` lists the other
+  known tags found (sorted names).
   """
-  @spec split([String.t() | {:value, term()}]) :: {list(), [String.t()]} | :none
-  def split(parts) when is_list(parts) do
+  @spec split([String.t() | {:value, term()}], keyword()) :: {list(), [String.t()]} | :none
+  def split(parts, opts \\ []) when is_list(parts) do
     literals = for part <- parts, is_binary(part), do: part
 
-    if Enum.any?(literals, &Regex.match?(inline_tag(), &1)) do
-      nodes = parts |> Enum.flat_map(&tokens/1) |> nest([]) |> merge_text()
-      {nodes, unsupported(literals)}
+    inline =
+      if Keyword.get(opts, :extended, false), do: @inline, else: Map.take(@inline, ~w(b i u s))
+
+    if Enum.any?(literals, &Regex.match?(inline_tag(inline), &1)) do
+      nodes = parts |> Enum.flat_map(&tokens(&1, inline)) |> nest([]) |> merge_text()
+      {nodes, unsupported(literals, inline)}
     else
       :none
     end
   end
 
-  defp inline_tag,
-    do: Regex.compile!("\\[(\\/?)(" <> Enum.join(Map.keys(@inline), "|") <> ")\\]", "i")
+  @doc "Renders split nodes; supplied values stay escaped text, never parsed as tags."
+  def render_nodes(nodes) when is_list(nodes) do
+    Enum.map_join(nodes, fn
+      {:value, value} ->
+        escape(to_string(value || ""))
 
-  defp tokens({:value, _} = value), do: [value]
+      {{:color, color}, children} ->
+        emit_node({:tag, "color", color, Enum.map(children, &split_node/1)})
 
-  defp tokens(text) when is_binary(text) do
-    inline_tag()
+      {tag, children} when tag in [:b, :i, :u, :s, :center, :sup] ->
+        emit_node({:tag, Atom.to_string(tag), nil, Enum.map(children, &split_node/1)})
+
+      text when is_binary(text) ->
+        escape(text)
+    end)
+  end
+
+  defp split_node({:value, value}), do: {:text, to_string(value || "")}
+
+  defp split_node({{:color, color}, children}),
+    do: {:tag, "color", color, Enum.map(children, &split_node/1)}
+
+  defp split_node({tag, children}),
+    do: {:tag, Atom.to_string(tag), nil, Enum.map(children, &split_node/1)}
+
+  defp split_node(text) when is_binary(text), do: {:text, text}
+
+  defp inline_tag(inline),
+    do:
+      Regex.compile!(
+        "\\[(\\/?)(" <> Enum.join(Map.keys(inline), "|") <> ")(?:=([^\\]]*))?\\]",
+        "i"
+      )
+
+  defp tokens({:value, _} = value, _inline), do: [value]
+
+  defp tokens(text, inline) when is_binary(text) do
+    inline_tag(inline)
     |> Regex.split(text, include_captures: true, trim: true)
     |> Enum.map(fn piece ->
-      case Regex.run(inline_tag(), piece) do
+      case Regex.run(inline_tag(inline), piece) do
+        [^piece, "", "color", attr] -> {:open, {"color", attr}, piece}
         [^piece, "", name] -> {:open, String.downcase(name), piece}
         [^piece, "/", name] -> {:close, String.downcase(name), piece}
         _ -> piece
@@ -66,6 +111,13 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
   # Tokens to nodes: an opening tag pairs with its closing tag (same name,
   # counting nested ones); otherwise both stay text.
   defp nest([], acc), do: Enum.reverse(acc)
+
+  defp nest([{:open, {"color", attr}, raw} | rest], acc) do
+    case take_close(rest, "color", 1, []) do
+      {:ok, inner, rest} -> nest(rest, [{{:color, attr}, nest(inner, [])} | acc])
+      :error -> nest(rest, [raw | acc])
+    end
+  end
 
   defp nest([{:open, name, raw} | rest], acc) do
     case take_close(rest, name, 1, []) do
@@ -83,6 +135,9 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
 
   defp take_close([{:close, name, _} = t | rest], name, depth, acc),
     do: take_close(rest, name, depth - 1, [t | acc])
+
+  defp take_close([{:open, {"color", _}, _} = t | rest], "color", depth, acc),
+    do: take_close(rest, "color", depth + 1, [t | acc])
 
   defp take_close([{:open, name, _} = t | rest], name, depth, acc),
     do: take_close(rest, name, depth + 1, [t | acc])
@@ -105,11 +160,11 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
     |> Enum.reject(&(&1 == ""))
   end
 
-  defp unsupported(literals) do
+  defp unsupported(literals, inline) do
     for text <- literals,
         [_, name] <- Regex.scan(~r/\[\/?([a-z0-9]+)(?:=[^\]]*)?\]/i, text),
         name = String.downcase(name),
-        name in @known,
+        name in @known and not Map.has_key?(inline, name),
         uniq: true do
       name
     end
@@ -146,11 +201,11 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
 
   defp take_open_tag(rest) do
     cond do
-      match = Regex.run(~r/\Aurl=([^\]]+)\]/i, rest, capture: :all_but_first) ->
-        [attr] = match
-        {:ok, "url", attr, binary_slice_after(rest, "url=" <> attr <> "]")}
+      match = Regex.run(~r/\A(url|color)=([^\]]+)\]/i, rest, capture: :all_but_first) ->
+        [name, attr] = match
+        {:ok, String.downcase(name), attr, binary_slice_after(rest, name <> "=" <> attr <> "]")}
 
-      match = Regex.run(~r/\A(b|i|u|s|ul|ol|li|url)\]/i, rest, capture: :all_but_first) ->
+      match = Regex.run(~r/\A(b|i|u|s|ul|ol|li|url|center|sup)\]/i, rest, capture: :all_but_first) ->
         [name] = match
         {:ok, String.downcase(name), nil, binary_slice_after(rest, name <> "]")}
 
@@ -215,6 +270,17 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
   defp emit_node({:tag, "ul", _attr, children}), do: wrap("ul", children)
   defp emit_node({:tag, "ol", _attr, children}), do: wrap("ol", children)
   defp emit_node({:tag, "li", _attr, children}), do: wrap("li", children)
+
+  defp emit_node({:tag, "center", _attr, children}),
+    do: ~s(<div style="text-align: center">#{emit(children)}</div>)
+
+  defp emit_node({:tag, "sup", _attr, children}), do: wrap("sup", children)
+
+  defp emit_node({:tag, "color", attr, children}) do
+    if is_binary(attr) and Regex.match?(~r/\A#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})\z/i, attr),
+      do: ~s(<span style="color: #{attr}">#{emit(children)}</span>),
+      else: emit(children)
+  end
 
   defp emit_node({:tag, "url", attr, children}) do
     href = safe_href(attr) || safe_href(plain_text(children))
