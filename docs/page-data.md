@@ -1191,6 +1191,10 @@ texts 1. The 35 image sources that do not compile, the 6 that are not
 one image or file value and the alt text had no `TODO` comment before.
 72 of the texts show their literal parts ("Total: ") with the markers
 on; production renders them empty, as before.
+None of the 35 image sources that do not compile has a static fallback
+(a fixed URL plus `Current page width`, shown as is and not marked):
+an image source is marked by its binding, whether or not its assets
+were fetched.
 
 ### Private fixture app (test version), 2026-10-10, list rows of a reusable element only in cells; buttons (WTF-520)
 

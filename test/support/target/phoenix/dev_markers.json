@@ -1,6 +1,6 @@
 {
   "_id": "dev-markers-fixture",
-  "_comment": "WTF-520: elements whose dynamic value is left out (it reads data the page does not load, or its expression does not compile), all data invented. They render as before, empty or with their literal parts, and with the developer markers on they say so. test/support/target/phoenix/dev_markers_behavior.exs",
+  "_comment": "WTF-520: elements whose dynamic value is left out (it reads data the page does not load, or its expression does not compile), all data invented. In production they render as before, empty; with the developer markers on they say so and a text shows its literal parts. Also: a link whose destination compiles but is not a file, a disabled link, an image whose static fallback is its full value, BBCode in a partial text, partial texts in a repeating group's cell and in a reusable element. test/support/target/phoenix/dev_markers_behavior.exs",
   "user_types": {
     "note": {
       "display": "Note",
@@ -314,6 +314,186 @@
                     "type": "Message",
                     "name": "email"
                   }
+                }
+              }
+            }
+          }
+        },
+        "bLinkUser": {
+          "id": "bLinkUser",
+          "type": "Link",
+          "properties": {
+            "order": 10,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Me"
+              }
+            },
+            "destination": {
+              "type": "TextExpression",
+              "entries": {
+                "0": {
+                  "type": "CurrentUser",
+                  "next": {
+                    "type": "Message",
+                    "name": "email"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bLinkOff": {
+          "id": "bLinkOff",
+          "type": "Link",
+          "properties": {
+            "order": 11,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Off"
+              }
+            },
+            "destination": {
+              "type": "TextExpression",
+              "entries": {
+                "0": {
+                  "type": "NoSuchThing"
+                }
+              }
+            },
+            "disabled": true
+          }
+        },
+        "bWide": {
+          "id": "bWide",
+          "type": "Image",
+          "properties": {
+            "order": 12,
+            "width": 40,
+            "height": 40,
+            "min_height_css": "40px",
+            "src": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "https://example.com/w.png?w=",
+                "1": {
+                  "type": "PageData",
+                  "properties": {
+                    "name": "Current Page Width"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bBold": {
+          "id": "bBold",
+          "type": "Text",
+          "properties": {
+            "order": 13,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "[b]Bold[/b] ",
+                "1": {
+                  "type": "NoSuchThing"
+                }
+              }
+            }
+          }
+        },
+        "bList": {
+          "id": "bList",
+          "type": "RepeatingGroup",
+          "properties": {
+            "order": 14,
+            "width": 300,
+            "height": 120,
+            "min_height_css": "40px",
+            "columns": 1,
+            "rows": 3,
+            "group_type": "custom.note",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.note",
+                "sort_field": "title_text",
+                "descending": false,
+                "ignore_empty_constraints": false
+              }
+            }
+          },
+          "elements": {
+            "bRowPartial": {
+              "id": "bRowPartial",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Row: ",
+                    "1": {
+                      "type": "NoSuchThing"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bCard": {
+          "id": "bCard",
+          "type": "CustomElement",
+          "properties": {
+            "order": 15,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "custom_id": "bCardDef"
+          }
+        }
+      }
+    }
+  },
+  "element_definitions": {
+    "card": {
+      "id": "bCardDef",
+      "name": "Card",
+      "type": "CustomDefinition",
+      "properties": {
+        "width": 300,
+        "height": 40
+      },
+      "elements": {
+        "bCardPartial": {
+          "id": "bCardPartial",
+          "type": "Text",
+          "properties": {
+            "order": 1,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Card: ",
+                "1": {
+                  "type": "NoSuchThing"
                 }
               }
             }

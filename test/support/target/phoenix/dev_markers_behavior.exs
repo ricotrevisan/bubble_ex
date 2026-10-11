@@ -29,8 +29,14 @@ defmodule PhxCheckWeb.DevMarkersBehaviorTest do
     "bLink" => "Link not migrated: expression does not compile",
     "bAvatar" =>
       "Image source not migrated: not one image or file value; " <>
-        "Alt text not migrated: dynamic value not lowered"
+        "Alt text not migrated: dynamic value not lowered",
+    "bLinkUser" => "Link not migrated: dynamic value not lowered",
+    "bBold" => "Text not migrated: expression does not compile",
+    "bCardPartial" => "Text not migrated: expression does not compile"
   }
+
+  # Not marked: nothing is left out of them.
+  @unmarked ~w(bPlain bLinkOff bWide)
 
   setup do
     on_exit(fn ->
@@ -39,8 +45,17 @@ defmodule PhxCheckWeb.DevMarkersBehaviorTest do
     end)
 
     Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: true)
+
+    # Two rows of the repeating group.
+    for {n, title} <- [{1, "Alpha"}, {2, "Beta"}],
+        do:
+          Ash.Seed.seed!(PhxCheck.Note, %{id: "1700000000000x30000000000000000#{n}", title: title})
+
     :ok
   end
+
+  # The repeating group's rows' partial text, every cell.
+  defp rows(html), do: Regex.scan(~r/<p data-bubble-id="bRowPartial"[^>]*>[^<]*<\/p>/, html)
 
   defp markers(on), do: Application.put_env(:phx_check, :bubble_dev_markers, on)
 
@@ -90,12 +105,38 @@ defmodule PhxCheckWeb.DevMarkersBehaviorTest do
     end
 
     assert html(view, "bPlain") =~ ~r/\A<p data-bubble-id="bPlain" class="[^"]*">Plain<\/p>\z/
+    assert html(view, "bBold") =~ ~r/\A<p data-bubble-id="bBold" class="[^"]*"><\/p>\z/
 
-    for id <- ["bPlain" | Map.keys(@marked)] do
+    assert html(view, "bCardPartial") =~
+             ~r/\A<p data-bubble-id="bCardPartial" class="[^"]*"><\/p>\z/
+
+    rows = rows(render(view))
+    assert length(rows) == 2
+
+    assert Enum.all?(rows, fn [row] ->
+             row =~ ~r/\A<p data-bubble-id="bRowPartial" class="[^"]*"><\/p>\z/
+           end)
+
+    for id <- @unmarked ++ Map.keys(@marked) do
       refute tag(view, id) =~ "title=", id
       refute tag(view, id) =~ "data-bubble-dev-marker", id
       refute tag(view, id) =~ "data-bubble-dev-note", id
     end
+  end
+
+  test "markers off: the first render's images keep their line, as on main", %{conn: conn} do
+    markers(false)
+    html = conn |> get("/") |> html_response(200)
+
+    # Their TODO comments follow them and render nothing: each image
+    # starts its own line, indented like its siblings, with only its ID
+    # and class (main's markup). A comment starting the line would eat
+    # its indentation.
+    for id <- ~w(bImage bAvatar) do
+      assert html =~ ~r/\n  <img data-bubble-id="#{id}" class="[^"]*">\n  </, id
+    end
+
+    assert html =~ ~r/\n  <p data-bubble-id="bPlain" class="[^"]*">Plain<\/p>\n/
   end
 
   test "markers on: each element left out is marked and says why; the rest is unchanged", %{
@@ -108,6 +149,15 @@ defmodule PhxCheckWeb.DevMarkersBehaviorTest do
     # A text mixing literal parts shows them, marked: a developer aid.
     assert text(view, "bBoxPartial") == "Title:"
     assert text(view, "bBrokenPartial") == "Hello !"
+    assert text(view, "bCardPartial") == "Card:"
+    # BBCode as a static text renders it.
+    assert html(view, "bBold") =~ ~r/<strong>Bold<\/strong>\s*<\/p>\z/
+    rows = rows(render(view))
+    assert length(rows) == 2
+
+    assert Enum.all?(rows, fn [row] ->
+             row =~ ~r/>Row: <\/p>\z/ and row =~ "data-bubble-dev-marker"
+           end)
 
     for {id, why} <- @marked do
       open = tag(view, id)
@@ -118,7 +168,9 @@ defmodule PhxCheckWeb.DevMarkersBehaviorTest do
       refute open =~ "data-bubble-placeholder", id
     end
 
-    refute tag(view, "bPlain") =~ "data-bubble-dev-marker"
-    refute tag(view, "bPlain") =~ "title="
+    for id <- @unmarked do
+      refute tag(view, id) =~ "data-bubble-dev-marker", id
+      refute tag(view, id) =~ "title=", id
+    end
   end
 end

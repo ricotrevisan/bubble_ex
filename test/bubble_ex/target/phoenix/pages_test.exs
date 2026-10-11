@@ -1031,15 +1031,21 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       ]
 
       {:ok, files} = Phoenix.render(project, opts)
-      %{template: files["lib/shop_web/live/index_live.html.heex"], project: project, opts: opts}
+
+      %{
+        template: files["lib/shop_web/live/index_live.html.heex"],
+        files: files,
+        project: project,
+        opts: opts
+      }
     end
 
-    # The element's markup: its leading TODO comments, its opening tag
-    # and, for a non-void element, its content.
+    # The element's markup: its TODO comments, its opening tag and, for a
+    # non-void element, its content.
     defp marked(template, id) do
       [element] =
         Regex.run(
-          ~r/(?:<%!-- TODO\(bubble:#{id}\)[^\n]*?--%>)*<(\w+)\s+data-bubble-id="#{id}"[^>]*?\/?>(?:.*?<\/\1>)?/s,
+          ~r/(?:<%!-- TODO\(bubble:#{id}\)[^\n]*?--%>)*<(\w+)\s+data-bubble-id="#{id}"[^>]*?\/?>(?:.*?<\/\1>)?(?:<%!-- TODO\(bubble:#{id}\)[^\n]*?--%>)*/s,
           template,
           capture: :first
         )
@@ -1179,11 +1185,103 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       refute plain =~ "dev_marker"
     end
 
+    # What this change adds renders nothing in production: TODO comments
+    # (HEEx comments, placed where they move no whitespace), the marker
+    # attributes (false or nil) and a partial text's
+    # `Bubble.dev_marker/1` (nil). Without them, each template is main's,
+    # byte for byte (rendered from this fixture before the change:
+    # dev_markers.main/), so production's HTML is too.
+    test "without what renders nothing in production, the templates are main's", %{
+      files: files
+    } do
+      strip = fn heex ->
+        heex
+        |> String.replace(~r/<%!-- TODO\(bubble:[^\n]*?--%>/, "")
+        |> String.replace(
+          ~r/\n\s*data-bubble-dev-(marker|note)=\{Bubble\.dev_markers\?\(\)\}/,
+          ""
+        )
+        |> String.replace(
+          ~r/\n\s*title=\{\s*Bubble\.dev_marker\(\s*"(?:[^"\\]|\\.)*"\s*\)\s*\}/,
+          ""
+        )
+        |> String.replace(
+          ~r/\{Bubble\.dev_marker\((?:Phoenix\.HTML\.raw\()?"(?:[^"\\]|\\.)*"\)?\)\}/,
+          ""
+        )
+      end
+
+      for {path, main} <- [
+            {"lib/shop_web/live/index_live.html.heex", "index_live.html.heex"},
+            {"lib/shop_web/components/reusables/card.html.heex", "card.html.heex"}
+          ] do
+        main = File.read!("test/support/target/phoenix/dev_markers.main/" <> main)
+        assert strip.(files[path]) == strip.(main), path
+      end
+
+      # A HEEx comment starting a line eats its indentation: the images'
+      # new TODO comments follow their tags, so each line keeps main's
+      # indentation (dev_markers_behavior.exs checks the rendered HTML).
+      template = files["lib/shop_web/live/index_live.html.heex"]
+
+      for id <- ~w(bImage bAvatar) do
+        assert template =~
+                 ~r/\n  <img\n    data-bubble-id="#{id}"[^>]*\/>(<%!-- TODO\(bubble:#{id}\)[^\n]*?--%>)+\n/
+      end
+    end
+
+    test "a link whose destination compiles but is not a file; a disabled link", %{
+      template: template
+    } do
+      assert_marked(
+        marked(template, "bLinkUser"),
+        "destination: dynamic value not lowered",
+        title("Link not migrated: dynamic value not lowered")
+      )
+
+      # A disabled link never navigates: nothing is left out.
+      off = marked(template, "bLinkOff")
+      refute off =~ "TODO"
+      refute off =~ "dev_marker"
+    end
+
+    test "an image whose static fallback is its full value is not marked", %{
+      template: template
+    } do
+      wide = marked(template, "bWide")
+      assert wide =~ ~s(src="https://example.com/w.png?w=")
+      refute wide =~ "TODO"
+      refute wide =~ "dev_marker"
+    end
+
+    test "a partial text's BBCode renders as a static text's, in dev only", %{
+      template: template
+    } do
+      bold = marked(template, "bBold")
+
+      assert bold =~
+               ~s|{Bubble.dev_marker(Phoenix.HTML.raw("\\x3Cstrong>Bold\\x3C/strong> "))}</p>|
+    end
+
+    test "partial texts in a repeating group's cell and in a reusable element", %{
+      template: template,
+      files: files
+    } do
+      row = marked(template, "bRowPartial")
+      assert row =~ title("Text not migrated: expression does not compile")
+      assert row =~ ~s|{Bubble.dev_marker("Row: ")}</p>|
+
+      card = marked(files["lib/shop_web/components/reusables/card.html.heex"], "bCardPartial")
+      assert card =~ title("Text not migrated: expression does not compile")
+      assert card =~ ~s|{Bubble.dev_marker("Card: ")}</p>|
+    end
+
     test "counted in bindings_marked", %{project: project, opts: opts} do
       {:ok, report} = Phoenix.frontend_report(project, opts)
       # bBoxTitle, bBoxPartial, bBoxPhoto, bBroken, bBrokenPartial, bInput
-      # (2), bButton, bImage, bLink, bAvatar (2).
-      assert report["bindings_marked"] == 12
+      # (2), bButton, bImage, bLink, bAvatar (2), bLinkUser, bBold,
+      # bRowPartial, bCardPartial.
+      assert report["bindings_marked"] == 16
     end
   end
 

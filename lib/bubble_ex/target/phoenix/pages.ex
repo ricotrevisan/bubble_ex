@@ -595,6 +595,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> Map.merge(surface_flows(base, entry.id))
 
     {markup, acc} = emit(page, ctx, new_acc())
+    placed!(acc, entry)
 
     module = "#{base.web}.#{entry.module}"
     dir = "lib/#{base.app}_web/live/"
@@ -640,6 +641,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> Map.merge(surface_flows(base, entry.id))
 
     {children, acc} = children(definition, ctx, new_acc())
+    placed!(acc, entry)
 
     scope_root =
       if base.flows && MapSet.member?(base.scoped, definition.map_key),
@@ -2013,9 +2015,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     {markup, acc}
   end
 
+  # A void element's markers precede it, but those added since WTF-520
+  # follow it (mark_after/3): a HEEx comment starting a line eats that
+  # line's indentation, which would change production's HTML.
   defp void(tag, node, attrs, ctx, acc) do
     {open, acc} = open_tag(tag, node, attrs, ctx, acc, [])
-    {[marker_html(acc, node), open], acc}
+    {[marker_html(acc, node, :markers), open, marker_html(acc, node, :markers_after)], acc}
   end
 
   # Modal Popups are focus traps: Phoenix's focus_wrap is the element.
@@ -2519,8 +2524,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     case partial_text(node, name, binding) do
       "" -> {{:static, ""}, acc}
-      text -> {{:expr, "Bubble.dev_marker(" <> literal(text) <> ")"}, acc}
+      text -> {dev_text(text), acc}
     end
+  end
+
+  # A partial text's literal parts, shown with the markers on only
+  # (`Bubble.dev_marker/1` is nil in production, which renders nothing):
+  # as the static path renders a text (text_html/1: BBCode, line breaks),
+  # its HTML marked safe.
+  defp dev_text(text) do
+    html = text |> text_html() |> IO.iodata_to_binary()
+
+    if html == IO.iodata_to_binary(escape(text)),
+      do: {:expr, "Bubble.dev_marker(" <> literal(text) <> ")"},
+      else: {:expr, "Bubble.dev_marker(Phoenix.HTML.raw(" <> literal(html) <> "))"}
   end
 
   defp residue_why(:unloaded), do: "reads data that is not loaded"
@@ -2550,7 +2567,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
             :unlowered -> "#{name}: dynamic value not lowered"
           end
 
-        {_slot, acc} = residue_slot(node, name, binding, reason, mark(acc, node, note))
+        {_slot, acc} = residue_slot(node, name, binding, reason, mark_after(acc, node, note))
         acc
 
       _ ->
@@ -2613,6 +2630,19 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp add_binding_note(acc, node, note) do
     notes = Map.get(acc, :binding_notes, %{})
     Map.put(acc, :binding_notes, Map.update(notes, bid(node), [note], &(&1 ++ [note])))
+  end
+
+  # Every binding note is taken by its element's opening tag: one left
+  # over would be a marker the page silently drops, a generator bug.
+  defp placed!(acc, entry) do
+    case acc |> Map.get(:binding_notes, %{}) |> Map.keys() do
+      [] ->
+        :ok
+
+      ids ->
+        raise ArgumentError,
+              "developer notes of #{inspect(ids)} were not placed on surface #{inspect(entry.id)}"
+    end
   end
 
   defp take_binding_notes(acc, node) do
@@ -3231,7 +3261,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     alt = resolved(node, "alt") || node.attributes["alt"] || ""
 
     {src, acc} = image_source(node, ctx, acc)
-    acc = mark_image_bindings(node, src, ctx, acc)
+    acc = mark_image_bindings(node, ctx, acc)
 
     variants =
       node
@@ -3263,10 +3293,15 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # A dynamic source that gave no source and is not a file binding (whose
   # residue slot/4 marks), and a dynamic alt text: left out, marked
   # (WTF-520).
-  defp mark_image_bindings(node, src, ctx, acc) do
+  # Decided by the binding, never by whether a source was found (which
+  # depends on fetched assets): a source with the normalizer's static
+  # fallback (a fixed public URL whose only dynamic part is Current page
+  # width, `asset_src`) shows that image, its full value, and is not
+  # marked.
+  defp mark_image_bindings(node, ctx, acc) do
     acc =
-      if src in [nil, ""] and override(node, "src", ctx) == nil and
-           not file_binding?(node, "src", ctx),
+      if override(node, "src", ctx) == nil and not file_binding?(node, "src", ctx) and
+           StaticAssets.image_ref(node) == nil,
          do: unlowered_binding(node, "src", ctx, acc),
          else: acc
 
@@ -4464,8 +4499,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     |> Map.put(:markers, Map.update(markers, id, [note], &(&1 ++ [note])))
   end
 
-  defp marker_html(acc, node) do
-    case get_in(acc, [Access.key(:markers, %{}), bid(node)]) do
+  # A marker placed after a void element (see void/5); inside any other
+  # element, with the others.
+  defp mark_after(acc, node, note) do
+    markers = Map.get(acc, :markers_after, %{})
+
+    %{acc | counts: Map.update!(acc.counts, "markers", &(&1 + 1))}
+    |> Map.put(:markers_after, Map.update(markers, bid(node), [note], &(&1 ++ [note])))
+  end
+
+  defp marker_html(acc, node),
+    do: [marker_html(acc, node, :markers), marker_html(acc, node, :markers_after)]
+
+  defp marker_html(acc, node, key) do
+    case get_in(acc, [Access.key(key, %{}), bid(node)]) do
       nil ->
         ""
 

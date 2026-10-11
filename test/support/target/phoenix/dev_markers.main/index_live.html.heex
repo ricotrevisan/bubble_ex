@@ -1,0 +1,92 @@
+<main data-bubble-id="bHome">
+  <div data-bubble-id="bBox" class="h-[100px] min-h-[40px] relative w-[300px]">
+    <%!-- TODO(bubble:bBox) its data source is not loaded (uncompiled_expression) --%><p
+      data-bubble-id="bBoxTitle"
+      class="bubbleex-text-default h-[40px] min-h-[40px] relative whitespace-pre-wrap w-[300px]"
+      phx-no-format
+    ><%!-- TODO(bubble:bBoxTitle) text: reads page data that is not loaded (element_state:get_group_data) --%></p>
+    <p
+      data-bubble-id="bBoxPartial"
+      class="bubbleex-text-default h-[40px] min-h-[40px] relative whitespace-pre-wrap w-[300px]"
+      phx-no-format
+    ><%!-- TODO(bubble:bBoxPartial) text: reads page data that is not loaded (element_state:get_group_data) --%></p>
+    <%!-- TODO(bubble:bBoxPhoto) src: reads page data that is not loaded (element_state:get_group_data) --%><img
+      data-bubble-id="bBoxPhoto"
+      class="block h-[40px] min-h-[40px] object-fill overflow-hidden relative w-[40px]"
+    />
+  </div>
+  <p
+    data-bubble-id="bBroken"
+    class="bubbleex-text-default h-[40px] min-h-[40px] relative whitespace-pre-wrap w-[300px]"
+    phx-no-format
+  ><%!-- TODO(bubble:bBroken) text: dynamic value not compiled --%></p>
+  <p
+    data-bubble-id="bBrokenPartial"
+    class="bubbleex-text-default h-[40px] min-h-[40px] relative whitespace-pre-wrap w-[300px]"
+    phx-no-format
+  ><%!-- TODO(bubble:bBrokenPartial) text: dynamic value not compiled --%></p>
+  <%!-- TODO(bubble:bInput) placeholder: dynamic value not compiled --%><%!-- TODO(bubble:bInput) value: dynamic value not compiled --%><input
+    data-bubble-id="bInput"
+    class="bubbleex-text-default appearance-none [background:#ffffff] [border:1px_solid_#cccccc] block h-[40px] min-h-[40px] relative w-[300px]"
+    type="text"
+  />
+  <button
+    data-bubble-id="bButton"
+    class="bubbleex-text-default bubbleex-button-default h-[40px] min-h-[40px] relative w-[300px]"
+    type="button"
+  ><%!-- TODO(bubble:bButton) label: dynamic value not compiled --%></button>
+  <img
+    data-bubble-id="bImage"
+    class="block h-[40px] min-h-[40px] object-fill overflow-hidden relative w-[300px]"
+  />
+  <a
+    data-bubble-id="bLink"
+    class="bubbleex-text-default block h-[40px] min-h-[40px] relative [text-decoration:none] w-[300px]"
+  >Docs</a>
+  <p
+    data-bubble-id="bPlain"
+    class="bubbleex-text-default h-[40px] min-h-[40px] relative whitespace-pre-wrap w-[300px]"
+    phx-no-format
+  >Plain</p>
+  <img
+    data-bubble-id="bAvatar"
+    class="block h-[40px] min-h-[40px] object-fill overflow-hidden relative w-[40px]"
+  />
+  <a
+    data-bubble-id="bLinkUser"
+    class="bubbleex-text-default block h-[40px] min-h-[40px] relative [text-decoration:none] w-[300px]"
+  >Me</a>
+  <a
+    data-bubble-id="bLinkOff"
+    class="bubbleex-text-default block h-[40px] min-h-[40px] relative [text-decoration:none] w-[300px]"
+  >Off</a>
+  <img
+    data-bubble-id="bWide"
+    class="block h-[40px] min-h-[40px] object-fill overflow-hidden relative w-[40px]"
+    loading="lazy"
+    referrerpolicy="no-referrer"
+    src="https://example.com/w.png?w="
+  />
+  <p
+    data-bubble-id="bBold"
+    class="bubbleex-text-default h-[40px] min-h-[40px] relative whitespace-pre-wrap w-[300px]"
+    phx-no-format
+  ><%!-- TODO(bubble:bBold) text: dynamic value not compiled --%></p>
+  <div
+    data-bubble-id="bList"
+    class="[color:#000000] grid h-[120px] min-h-[40px] relative w-[300px]"
+  >
+    <div
+      :for={{cell_blist, cell_blist_i} <- Bubble.cells(@bubble_data, "", "bList")}
+      id={Bubble.cell_id("", "bList", cell_blist, cell_blist_i)}
+    >
+      <p
+        data-bubble-id="bRowPartial"
+        class="bubbleex-text-default h-[40px] min-h-[40px] relative whitespace-pre-wrap w-[300px]"
+        phx-no-format
+      ><%!-- TODO(bubble:bRowPartial) text: dynamic value not compiled --%></p>
+    </div>
+  </div>
+  <.card data-bubble-id="bCard" class="[color:#000000] h-[40px] min-h-[40px] relative w-[300px]" />
+</main>
+<Bubble.runtime reads_width={@bubble_reads_width} />
