@@ -24,7 +24,8 @@ defmodule <%= @module %>.ApiClients do
     * any `Req` option (`:plug`, `:retry`, `:receive_timeout`, …) but
       `:redirect`, `:into` and `:decode_body`, which this runtime sets. A
       `:plug` (a `Req.Test` stub) never connects, so no address is checked;
-      `plug: nil` is no plug: the request connects and is checked
+      `plug: nil` or `plug: false` is no plug: the request connects and is
+      checked
 
   Options also come from the application environment, per group module,
   under the call's own options:
@@ -63,10 +64,16 @@ defmodule <%= @module %>.ApiClients do
   The request then connects to the address it checked (an IPv4 one when
   the host has one), never resolving the host again, so a DNS answer that
   changes in between (rebinding) cannot move it: the host stays in the
-  `Host` header, TLS's server name (SNI) and the certificate's hostname
-  verification (Mint's `:hostname`). Each host gets a Finch pool of its
-  own (`connect_options`), closed after a minute idle. The owner's base
-  URL and `allow_private_addresses: true` are neither checked nor pinned.
+  `Host` header (HTTP/2's `:authority`), TLS's server name (SNI) and the
+  certificate's hostname verification (Mint's `:hostname`). Req starts a
+  Finch instance per distinct `connect_options`, so each pinned host has
+  one, and it is never stopped: their number is that of the hosts the app
+  calls, which are Bubble's or the owner's (a redirect to another host is
+  refused, see "Redirects"). Within it, Finch keeps a connection pool per
+  address the host resolved to, never closed either (Req 0.7 takes no
+  idle time for it next to `connect_options`): an API whose addresses
+  rotate adds one per new address. The owner's base URL and
+  `allow_private_addresses: true` are neither checked nor pinned.
 
   **Credentials go wherever the request goes.** The call's secrets (keys,
   private headers and parameters, redacted literals) are sent to the
@@ -77,12 +84,14 @@ defmodule <%= @module %>.ApiClients do
 
   A 3xx response is an error (`{:status, status, body}`) unless
   `follow_redirects: true` is given (in the options or the configuration).
-  Then a redirect to the same origin (scheme, host and port) keeps the
-  request's headers and authentication; a redirect to another origin, or
-  from HTTPS to HTTP, drops **every** header and the authentication
-  (they may hold secrets), and a 307/308 redirect to another origin (which
-  would resend the body) is refused (`{:redirect_refused, status,
-  location}`). 301, 302 and 303 continue as a GET without a body.
+  Then a redirect to another host is refused (`{:redirect_refused,
+  status, location}`): the API never chooses where the call goes next. A
+  redirect to the same origin (scheme, host and port) keeps the request's
+  headers and authentication; one to the same host on another scheme or
+  port, or from HTTPS to HTTP, drops **every** header and the
+  authentication (they may hold secrets), and a 307/308 one (which would
+  resend the body) is refused. 301, 302 and 303 continue as a GET without
+  a body.
 
   A function returns `{:ok, body}` for a 2xx response (decoded JSON, a
   typed struct when the call returns a known API Connector type, text, or
@@ -154,9 +163,7 @@ defmodule <%= @module %>.ApiClients do
     max_retries: <%= @max_retries %>,
     retry_log_level: false,
     redirect: false,
-    compressed: false,
-    # A pool per pinned address (see "Addresses") closes when idle.
-    pool_max_idle_time: 60_000
+    compressed: false
   ]
 
   # This runtime's own options (see the moduledoc), with their defaults.
@@ -287,10 +294,11 @@ defmodule <%= @module %>.ApiClients do
       limit: own[:max_body_bytes],
       # Only what the owner configured may be a private address: the base
       # URL's origin, or every address with :allow_private_addresses (and
-      # a Req.Test plug, which never connects; `plug: nil` is no plug).
+      # a Req.Test plug, which never connects; `plug: nil` or `false` is
+      # no plug, as Req reads it).
       guard: %{
         trusted: owner_base && origin(URI.parse(owner_base)),
-        allow?: own[:allow_private_addresses] == true or Keyword.get(options, :plug) != nil
+        allow?: own[:allow_private_addresses] == true or Keyword.get(options, :plug) not in [nil, false]
       }
     }
 
@@ -465,25 +473,20 @@ defmodule <%= @module %>.ApiClients do
   @doc false
   # The request options connecting to `address`, the one checked, instead
   # of resolving the URL's host again (DNS rebinding): the URL holds the
-  # address, and the host stays in the Host header (unless the call sets
-  # its own), TLS's SNI and the certificate's hostname verification
-  # (Mint's `:hostname` connect option).
+  # address, and Mint's `:hostname` connect option keeps the host for the
+  # Host header (with the port unless it is the scheme's; a Host header
+  # the call sets itself, from Bubble or the owner, wins), HTTP/2's
+  # `:authority` (no Host header there), TLS's SNI and the certificate's
+  # hostname verification. `inet6: true` for an IPv6 address also keeps
+  # Req from setting Host to the address.
   @spec pin(keyword(), :inet.ip_address() | nil) :: keyword()
   def pin(options, nil), do: options
 
   def pin(options, address) do
     uri = options |> Keyword.fetch!(:url) |> URI.parse()
-    host = if uri.port == URI.default_port(uri.scheme), do: uri.host, else: "#{uri.host}:#{uri.port}"
-    headers = Keyword.get(options, :headers, [])
-
-    headers =
-      if Enum.any?(headers, fn {name, _} -> String.downcase(to_string(name)) == "host" end),
-        do: headers,
-        else: headers ++ [{"host", host}]
 
     options
     |> Keyword.put(:url, URI.to_string(%{uri | host: address |> :inet.ntoa() |> to_string()}))
-    |> Keyword.put(:headers, headers)
     |> Keyword.update(:connect_options, [hostname: uri.host], &Keyword.put(&1, :hostname, uri.host))
     |> then(&if(tuple_size(address) == 8, do: Keyword.put(&1, :inet6, true), else: &1))
   end
@@ -575,15 +578,18 @@ defmodule <%= @module %>.ApiClients do
     ArgumentError -> ""
   end
 
-  # The next request of a redirect. Another origin (or a downgrade to
-  # HTTP) gets no headers and no authentication; a 307/308 to another
-  # origin, which would resend the body, is refused.
+  # The next request of a redirect. Another host is refused: the API
+  # never picks the next host (nor a Finch instance per host it names,
+  # see "Addresses"). Another origin on the same host (or a downgrade to
+  # HTTP) gets no headers and no authentication; a 307/308 to it, which
+  # would resend the body, is refused.
   defp redirect(options, %Req.Response{status: status} = resp) do
     case Req.Response.get_header(resp, "location") do
       [location | _] ->
         from = options |> Keyword.fetch!(:url) |> URI.parse()
         to = URI.merge(from, location)
-        same_origin? = {to.scheme, to.host, to.port} == {from.scheme, from.host, from.port}
+        same_origin? = origin(to) == origin(from)
+        same_host? = elem(origin(to), 1) == elem(origin(from), 1)
 
         options =
           options
@@ -597,7 +603,7 @@ defmodule <%= @module %>.ApiClients do
 
         cond do
           same_origin? -> {:ok, options}
-          status in [307, 308] -> {:error, {:redirect_refused, status, URI.to_string(to)}}
+          not same_host? or status in [307, 308] -> {:error, {:redirect_refused, status, URI.to_string(to)}}
           true -> {:ok, options |> Keyword.put(:headers, []) |> Keyword.delete(:auth)}
         end
 

@@ -14,7 +14,7 @@ defmodule BubbleEx.Model.ConnectorSupport do
   | `:unsupported_auth` | its group authenticates with anything but none, `private_key_header`, `private_key_url` or `basic_auth` (OAuth, JWT, custom token, …) |
   | `:method` | its method is not GET, POST, PUT, PATCH or DELETE |
   | `:unnamed_parameter` | a non-private parameter of the call or its group has no usable name |
-  | `:host_parameter` | its URL's host or port has a placeholder (whole or partial) for a non-private parameter: a workflow or page could point the call, and the API's credentials, at any host or port (SSRF, WTF-533, WTF-534). A private parameter's (its value comes from the owner's environment) is not; a port placeholder is `:dynamic_port` either way |
+  | `:host_parameter` | its URL's host or port has a placeholder (whole or partial) for a non-private parameter: a workflow or page could point the call, and the API's credentials, at any host or port (SSRF, WTF-533, WTF-534); so does a non-private `Host` header parameter of the call or its group (the virtual host the request reaches). A private parameter's (its value comes from the owner's environment) is not; a port placeholder is `:dynamic_port` either way |
   | the reasons of `BubbleEx.Model.ConnectorRequest`'s `unsupported` | its request template does not describe the request (`:raw_body`, `:file_parameter`, `:query`, `:no_url`, `:no_host`, …) |
 
   A malformed `types` registry does not stop generation: it only leaves
@@ -54,7 +54,10 @@ defmodule BubbleEx.Model.ConnectorSupport do
        call.request.unsupported ++
        if(method(call), do: [], else: [:method]) ++
        if(unnamed, do: [:unnamed_parameter], else: []) ++
-       if(public_host_parameter?(group, call), do: [:host_parameter], else: []))
+       if(public_host_parameter?(group, call) or public_host_header?(group, call),
+         do: [:host_parameter],
+         else: []
+       ))
     |> Enum.uniq()
     |> Enum.sort()
   end
@@ -74,4 +77,13 @@ defmodule BubbleEx.Model.ConnectorSupport do
   end
 
   defp public_host_parameter?(_group, _call), do: false
+
+  # A `Host` header whose value a step or a page sets.
+  defp public_host_header?(group, call),
+    do:
+      Enum.any?(
+        group.parameters ++ call.parameters,
+        &(&1.in == :header and not &1.private and is_binary(&1.name) and
+            String.downcase(String.trim(&1.name)) == "host")
+      )
 end

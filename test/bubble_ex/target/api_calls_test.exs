@@ -272,6 +272,35 @@ defmodule BubbleEx.Target.ApiCallsTest do
                item.base.host
     end
 
+    test "a Host header a step or a page sets is residue; the owner's is not (WTF-534)", %{
+      app: app
+    } do
+      host_header = fn private? ->
+        {:ok, model} =
+          app
+          |> put_in(
+            [
+              "settings",
+              "client_safe",
+              "apiconnector2",
+              "gEx",
+              "calls",
+              "cItem",
+              "headers",
+              "h2"
+            ],
+            %{"key" => "HOST", "value" => "vhost.example.test", "private" => private?}
+          )
+          |> Model.build()
+
+        [group] = model.connectors
+        Model.ConnectorSupport.unsupported(group, Model.Connector.call(group, "cItem"))
+      end
+
+      assert host_header.(false) == [:host_parameter]
+      assert host_header.(true) == []
+    end
+
     test "a port placeholder is residue; a public one chooses where the call goes (WTF-534)",
          %{app: app} do
       ported = fn url, param ->
@@ -658,7 +687,7 @@ defmodule BubbleEx.Target.ApiCallsTest do
       assert {:ok, nil} = apply(rt, :check_address, ["https://8.8.8.8/x", guard])
     end
 
-    test "plug: nil is no plug: the address is checked, and nothing connects to a private one" do
+    test "plug: nil or false is no plug: the address is checked, nothing connects to a private one" do
       rt = WtfApiCallsRt.ApiClients
       # The group's configuration has a Req.Test plug: the guard is off.
       stub(&Req.Test.json(&1, %{"ok" => true}))
@@ -666,11 +695,13 @@ defmodule BubbleEx.Target.ApiCallsTest do
       assert {:ok, %{"ok" => true}} =
                apply(rt, :request, [@client, [], shape("http://127.0.0.1:9")])
 
-      # `plug: nil` connects: the guard is on, and refuses before connecting.
-      for base <- ["http://127.0.0.1:9", "http://[::1]:9", "http://10.1.2.3"] do
+      # `plug: nil` and `plug: false` connect (Req runs no plug): the guard
+      # is on, and refuses before connecting.
+      for plug <- [nil, false],
+          base <- ["http://127.0.0.1:9", "http://[::1]:9", "http://10.1.2.3"] do
         assert {:error, {:blocked_address, :private}} =
-                 apply(rt, :request, [@client, [plug: nil, retry: false], shape(base)]),
-               base
+                 apply(rt, :request, [@client, [plug: plug, retry: false], shape(base)]),
+               "#{inspect(plug)} #{base}"
       end
 
       assert count() == 1
@@ -679,8 +710,70 @@ defmodule BubbleEx.Target.ApiCallsTest do
       assert {:error, %Req.TransportError{}} =
                apply(rt, :request, [
                  @client,
-                 [plug: nil, retry: false, allow_private_addresses: true],
+                 [plug: false, retry: false, allow_private_addresses: true],
                  shape("http://127.0.0.1:9")
+               ])
+    end
+
+    test "a redirect to another host is refused: the API never picks hosts (nor pools)" do
+      rt = WtfApiCallsRt.ApiClients
+      test = self()
+
+      Req.Test.stub(@client, fn conn ->
+        send(test, {:host, conn.host})
+
+        case conn.request_path do
+          "/latest" ->
+            location = "https://h#{conn.query_string}.example.test/next"
+
+            conn
+            |> Plug.Conn.put_resp_header("location", location)
+            |> Plug.Conn.send_resp(302, "")
+
+          _ ->
+            Req.Test.json(conn, %{"ok" => true})
+        end
+      end)
+
+      redirect = fn i ->
+        apply(rt, :request, [
+          @client,
+          [follow_redirects: true],
+          %{shape("https://api.example.test") | query: [{"i", i}]}
+        ])
+      end
+
+      # Warm up (the first call loads code), then many distinct hosts.
+      redirect.(0)
+      atoms = :erlang.system_info(:atom_count)
+      processes = length(Process.list())
+
+      for i <- 1..300 do
+        location = "https://hi=#{i}.example.test/next"
+        assert {:error, {:redirect_refused, 302, ^location}} = redirect.(i)
+      end
+
+      assert :erlang.system_info(:atom_count) - atoms < 20
+      assert length(Process.list()) - processes < 10
+
+      for _ <- 0..300, do: assert_received({:host, "api.example.test"})
+      refute_received {:host, _}
+
+      # The same host, another path: followed.
+      Req.Test.stub(@client, fn conn ->
+        if conn.request_path == "/latest",
+          do:
+            conn
+            |> Plug.Conn.put_resp_header("location", "/next")
+            |> Plug.Conn.send_resp(302, ""),
+          else: Req.Test.json(conn, %{"ok" => true})
+      end)
+
+      assert {:ok, %{"ok" => true}} =
+               apply(rt, :request, [
+                 @client,
+                 [follow_redirects: true],
+                 shape("https://api.example.test")
                ])
     end
 
@@ -752,15 +845,16 @@ defmodule BubbleEx.Target.ApiCallsTest do
     # A local server for one request on 127.0.0.1 (TLS with `tls`, the
     # server's `[cert:, key:]`): it tells the test the request's head and
     # the TLS server name, and answers `response`.
-    defp serve(response, tls \\ nil) do
+    defp serve(response, tls \\ nil, ip \\ {127, 0, 0, 1}) do
       test = self()
-      spawn(fn -> serve_one(test, response, tls) end)
+      spawn(fn -> serve_one(test, response, tls, ip) end)
       assert_receive {:port, port}, 1_000
       port
     end
 
-    defp serve_one(test, response, tls) do
-      listen_opts = [:binary, active: false, ip: {127, 0, 0, 1}, reuseaddr: true]
+    defp serve_one(test, response, tls, ip) do
+      family = if tuple_size(ip) == 8, do: [:inet6], else: []
+      listen_opts = family ++ [:binary, active: false, ip: ip, reuseaddr: true]
 
       {:ok, listen} =
         if tls,
@@ -851,19 +945,14 @@ defmodule BubbleEx.Target.ApiCallsTest do
       assert head =~ "\r\nhost: api.example.test:#{port}\r\n"
       refute head =~ "127.0.0.1"
 
-      # A Host header the call sets itself is kept; the default port is not
-      # repeated; an IPv6 address goes in brackets, with Req's :inet6.
-      assert [{"Host", "own"}] =
-               apply(rt, :pin, [
-                 [url: "https://a.example.test/", headers: [{"Host", "own"}]],
-                 {8, 8, 8, 8}
-               ])[
-                 :headers
-               ]
+      # Headers are the call's own: Mint's :hostname makes the Host header
+      # (and HTTP/2's :authority, which then has no Host header).
+      assert apply(rt, :pin, [[url: "https://a.example.test/", headers: []], {8, 8, 8, 8}])[
+               :headers
+             ] == []
 
-      assert [{"host", "a.example.test"}] =
-               apply(rt, :pin, [[url: "https://a.example.test/"], {8, 8, 8, 8}])[:headers]
-
+      # An IPv6 address goes in brackets, with Req's :inet6 (so Req does not
+      # set Host to the address).
       v6 =
         apply(rt, :pin, [
           [url: "https://a.example.test:8443/x"],
@@ -872,7 +961,20 @@ defmodule BubbleEx.Target.ApiCallsTest do
 
       assert v6[:url] == "https://[2606:4700::1111]:8443/x"
       assert v6[:inet6] == true
-      assert v6[:headers] == [{"host", "a.example.test:8443"}]
+      refute Keyword.has_key?(v6, :headers)
+
+      port = serve(ok("{}"), nil, {0, 0, 0, 0, 0, 0, 0, 1})
+
+      v6 =
+        apply(rt, :pin, [
+          [url: "http://api.example.test:#{port}/v6", retry: false, connect_options: []],
+          {0, 0, 0, 0, 0, 0, 0, 1}
+        ])
+
+      assert {:ok, %Req.Response{status: 200}} = Req.request(v6)
+      assert_receive {:served, head, nil}, 2_000
+      assert head =~ "\r\nhost: api.example.test:#{port}\r\n"
+      refute head =~ "::1"
 
       # Nothing to pin: unchanged.
       assert apply(rt, :pin, [[url: "https://a.example.test/"], nil]) == [

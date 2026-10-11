@@ -1149,7 +1149,7 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
         assert {:ok, nil} = ApiClients.check_address("http://127.0.0.1/x", %{guard | allow?: true})
       end
 
-      test "plug: nil is no plug: the address is checked before connecting" do
+      test "plug: nil or false is no plug: the address is checked before connecting" do
         request = %{
           method: :get,
           base: "http://127.0.0.1:9",
@@ -1161,27 +1161,50 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
           response: :json
         }
 
-        assert {:error, {:blocked_address, :private}} =
-                 ApiClients.request(__MODULE__, [plug: nil, retry: false], request)
+        for plug <- [nil, false] do
+          assert {:error, {:blocked_address, :private}} =
+                   ApiClients.request(__MODULE__, [plug: plug, retry: false], request)
+        end
       end
 
-      # One response from a local server on 127.0.0.1: the raw headers as
-      # a server sends them, repeated ones included.
-      defp serve(response) do
+      # A local server on 127.0.0.1 answering `count` connections with
+      # `respond.(i)`: the raw headers as a server sends them, repeated
+      # ones included.
+      defp serve(respond, count \\\\ 1) do
         {:ok, listen} =
           :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 1}, reuseaddr: true])
 
         {:ok, port} = :inet.port(listen)
+        respond = if is_binary(respond), do: fn _ -> respond end, else: respond
 
         spawn(fn ->
-          with {:ok, socket} <- :gen_tcp.accept(listen, 5_000),
-               {:ok, _head} <- :gen_tcp.recv(socket, 0, 5_000) do
-            :gen_tcp.send(socket, response)
-            :gen_tcp.close(socket)
+          for i <- 1..count do
+            with {:ok, socket} <- :gen_tcp.accept(listen, 5_000),
+                 {:ok, _head} <- :gen_tcp.recv(socket, 0, 5_000) do
+              :gen_tcp.send(socket, respond.(i))
+              :gen_tcp.close(socket)
+            end
           end
         end)
 
         port
+      end
+
+      defp local(port, opts) do
+        ApiClients.request(
+          __MODULE__,
+          [plug: nil, retry: false, allow_private_addresses: true] ++ opts,
+          %{
+            method: :get,
+            base: "http://127.0.0.1:\#{port}",
+            path: "/x",
+            query: [],
+            headers: [],
+            body: nil,
+            auth: nil,
+            response: :json
+          }
+        )
       end
 
       test "repeated content-encoding headers from a real connection are refused" do
@@ -1195,28 +1218,83 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
                 "content-length: \#{byte_size(body)}\\r\\nconnection: close\\r\\n\\r\\n" <> body
             )
 
-          ApiClients.request(
-            __MODULE__,
-            [plug: nil, retry: false, allow_private_addresses: true],
-            %{
-              method: :get,
-              base: "http://127.0.0.1:\#{port}",
-              path: "/x",
-              query: [],
-              headers: [],
-              body: nil,
-              auth: nil,
-              response: :json
-            }
-          )
+          local(port, [])
         end
 
-        assert {:ok, %{"ok" => true}} = get.(["content-encoding: gzip"])
+        # Req (0.7) warns about nothing these requests set.
+        warnings =
+          ExUnit.CaptureIO.capture_io(:stderr, fn ->
+            assert {:ok, %{"ok" => true}} = get.(["content-encoding: gzip"])
 
-        assert {:error, {:decode, :content_encoding}} =
-                 get.(["content-encoding: gzip", "content-encoding: identity"])
+            assert {:error, {:decode, :content_encoding}} =
+                     get.(["content-encoding: gzip", "content-encoding: identity"])
 
-        assert {:error, {:decode, :content_encoding}} = get.(["content-encoding: gzip, gzip"])
+            assert {:error, {:decode, :content_encoding}} = get.(["content-encoding: gzip, gzip"])
+          end)
+
+        assert warnings == ""
+      end
+
+      test "a pinned request connects to the address checked, the host in Host; Req warns nothing" do
+        test = self()
+
+        {:ok, listen} =
+          :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 1}, reuseaddr: true])
+
+        {:ok, port} = :inet.port(listen)
+
+        spawn(fn ->
+          with {:ok, socket} <- :gen_tcp.accept(listen, 5_000),
+               {:ok, head} <- :gen_tcp.recv(socket, 0, 5_000) do
+            send(test, {:head, head})
+
+            :gen_tcp.send(
+              socket,
+              "HTTP/1.1 200 OK\\r\\ncontent-length: 2\\r\\nconnection: close\\r\\n\\r\\n{}"
+            )
+
+            :gen_tcp.close(socket)
+          end
+        end)
+
+        # api.example.test never resolves: only the pinned address connects.
+        options =
+          ApiClients.pin(
+            [url: "http://api.example.test:\#{port}/x", retry: false, connect_options: [timeout: 2_000]],
+            {127, 0, 0, 1}
+          )
+
+        warnings =
+          ExUnit.CaptureIO.capture_io(:stderr, fn ->
+            assert {:ok, %Req.Response{status: 200}} = Req.request(options)
+          end)
+
+        assert warnings == ""
+        assert_receive {:head, head}, 2_000
+        assert head =~ "\\r\\nhost: api.example.test:\#{port}\\r\\n"
+      end
+
+      test "redirects to other hosts are refused: no Finch instance per host" do
+        count = 200
+
+        port =
+          serve(
+            &("HTTP/1.1 302 Found\\r\\nlocation: https://h\#{&1}.example.test/y\\r\\n" <>
+                "content-length: 0\\r\\nconnection: close\\r\\n\\r\\n"),
+            count + 1
+          )
+
+        assert {:error, {:redirect_refused, 302, _}} = local(port, follow_redirects: true)
+        finch = DynamicSupervisor.count_children(Req.FinchSupervisor)
+
+        for i <- 2..(count + 1) do
+          location = "https://h\#{i}.example.test/y"
+          assert {:error, {:redirect_refused, 302, ^location}} = local(port, follow_redirects: true)
+        end
+
+        # (Process and atom counts are checked in bubble_ex's own suite: this
+        # module is async.)
+        assert DynamicSupervisor.count_children(Req.FinchSupervisor) == finch
       end
 
       test "a private address is refused before connecting; the owner's base URL is not" do
@@ -1369,8 +1447,8 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
         assert {"x-api-key", "secret"} in headers
       end
 
-      test "a cross-origin or downgrading redirect drops every header and the auth" do
-        for location <- ["https://evil.example.com/y", "http://api.example.com/y"] do
+      test "a redirect to the same host on another origin drops every header and the auth" do
+        for location <- ["http://api.example.com/y", "https://api.example.com:8443/y"] do
           assert {:ok, %{"ok" => true}} =
                    secret_request(redirecting(location), follow_redirects: true)
 
@@ -1380,9 +1458,19 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
         end
       end
 
-      test "a 307 redirect to another origin is refused" do
-        assert {:error, {:redirect_refused, 307, "https://evil.example.com/y"}} =
-                 secret_request(redirecting("https://evil.example.com/y", 307),
+      test "a redirect to another host is refused, and a 307 to another origin" do
+        for status <- [301, 302, 303, 307, 308] do
+          assert {:error, {:redirect_refused, ^status, "https://evil.example.com/y"}} =
+                   secret_request(redirecting("https://evil.example.com/y", status),
+                     follow_redirects: true
+                   )
+
+          assert_received {:request, _, "api.example.com", "/x", _}
+          refute_received {:request, _, _, "/y", _}
+        end
+
+        assert {:error, {:redirect_refused, 307, "http://api.example.com/y"}} =
+                 secret_request(redirecting("http://api.example.com/y", 307),
                    follow_redirects: true
                  )
       end
