@@ -3,7 +3,7 @@
     "generated": {
       "by_kind": {
         "click": {
-          "native": 594,
+          "native": 607,
           "total": 1358
         },
         "condition_true": {
@@ -11,7 +11,7 @@
           "total": 102
         },
         "custom_event": {
-          "native": 264,
+          "native": 272,
           "total": 489
         },
         "do_every": {
@@ -49,15 +49,15 @@
       },
       "by_surface": {
         "page": {
-          "native": 298,
+          "native": 300,
           "total": 634
         },
         "reusable": {
-          "native": 604,
+          "native": 623,
           "total": 1636
         }
       },
-      "data": 287,
+      "data": 306,
       "residue_reasons": {
         "api_connector_action": 30,
         "auth_action": 14,
@@ -65,20 +65,20 @@
         "plugin_event": 250,
         "target_not_rendered": 6,
         "trigger_in_runtime_template": 70,
-        "unavailable_input": 386,
-        "uncompiled_expression": 674,
+        "unavailable_input": 389,
+        "uncompiled_expression": 622,
         "unresolved_reference": 41,
         "unsupported_action": 67,
         "unsupported_event": 11,
         "unsupported_option": 11
       },
       "step_ops": {
-        "call": 557,
-        "call_reusable": 127,
-        "create": 31,
+        "call": 571,
+        "call_reusable": 128,
+        "create": 34,
         "delete": 3,
         "display_data": 61,
-        "display_list": 7,
+        "display_list": 12,
         "focus": 32,
         "hide": 163,
         "log_out": 4,
@@ -88,35 +88,35 @@
         "refresh": 5,
         "reset_group": 108,
         "reset_inputs": 61,
-        "schedule": 107,
+        "schedule": 112,
         "schedule_custom": 27,
         "scroll_to": 3,
-        "set_state": 335,
+        "set_state": 337,
         "show": 118,
-        "terminate": 56,
+        "terminate": 58,
         "toggle": 202,
-        "update": 181,
+        "update": 188,
         "update_current_user": 19,
         "update_list": 2
       },
       "steps": {
-        "native": 2531,
-        "residue": 1479,
+        "native": 2570,
+        "residue": 1440,
         "total": 4010
       },
       "workflows": {
         "client": 98,
-        "native": 902,
-        "native_own_body": 1065,
-        "residue": 1368,
+        "native": 923,
+        "native_own_body": 1080,
+        "residue": 1347,
         "total": 2270,
-        "wired": 627
+        "wired": 640
       }
     },
     "ir": {
       "by_kind": {
         "click": {
-          "native": 879,
+          "native": 890,
           "total": 1358
         },
         "condition_true": {
@@ -124,7 +124,7 @@
           "total": 102
         },
         "custom_event": {
-          "native": 317,
+          "native": 326,
           "total": 489
         },
         "do_every": {
@@ -162,11 +162,11 @@
       },
       "by_surface": {
         "page": {
-          "native": 415,
+          "native": 418,
           "total": 634
         },
         "reusable": {
-          "native": 880,
+          "native": 897,
           "total": 1636
         }
       },
@@ -175,50 +175,50 @@
         "auth_action": 14,
         "plugin_action": 619,
         "plugin_event": 250,
-        "uncompiled_expression": 593,
+        "uncompiled_expression": 539,
         "unresolved_reference": 41,
         "unsupported_action": 67,
         "unsupported_event": 2,
         "unsupported_option": 11
       },
       "step_ops": {
-        "call": 630,
-        "call_reusable": 133,
-        "create": 40,
+        "call": 644,
+        "call_reusable": 134,
+        "create": 43,
         "delete": 3,
         "delete_list": 1,
         "display_data": 76,
-        "display_list": 23,
+        "display_list": 28,
         "focus": 32,
         "hide": 163,
         "log_out": 4,
-        "navigate": 282,
+        "navigate": 283,
         "open_url": 23,
         "pause": 46,
         "refresh": 7,
         "reset_group": 108,
         "reset_inputs": 64,
-        "schedule": 141,
+        "schedule": 148,
         "schedule_custom": 27,
-        "schedule_list": 15,
+        "schedule_list": 16,
         "scroll_to": 3,
-        "set_state": 373,
+        "set_state": 375,
         "show": 119,
-        "terminate": 67,
+        "terminate": 69,
         "toggle": 202,
-        "update": 215,
+        "update": 222,
         "update_current_user": 21,
         "update_list": 2
       },
       "steps": {
-        "native": 2820,
-        "residue": 1190,
+        "native": 2863,
+        "residue": 1147,
         "total": 4010
       },
       "workflows": {
         "disabled": 53,
-        "native": 1295,
-        "residue": 975,
+        "native": 1315,
+        "residue": 955,
         "total": 2270
       }
     },
