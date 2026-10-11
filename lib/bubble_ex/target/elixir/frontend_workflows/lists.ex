@@ -20,7 +20,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
     * `:filtered` on any other list of things keeps the list's order: a
       search for its records that meet the constraints intersected with
       the list (`:intersect` follows the second list's order, as Bubble's
-      does, and keeps the search's records).
+      does, and keeps the search's records);
+    * a field read through a list-of-things field (`list's a`, flattened
+      as Bubble's `each item's`), or through an item of one (`list:first
+      item's a`, `:item #`, `:last item`, also over `:unique elements`,
+      `:items until #`, `:minus`, `:merged with`, `defaulting to`), reads
+      the list's things as records first (WTF-520): the field holds
+      Bubble IDs, so the list becomes the search for its records, read
+      as the user may view them in the list's order (`listed`), each
+      thing once; `:first item`, `:item #n` and `:items until #n` over it
+      are taken by the query itself (one row, an offset, a limit).
 
   The list a rewritten search reads is wrapped in `:pinned`: the binding
   computes it first, in Elixir, and passes its things' IDs into the
@@ -76,6 +85,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
     end
   end
 
+  # A field read through a list of things: the things' records first
+  # (WTF-520), read as the user may view them, in the list's order.
+  def lower(%IR{op: :field, args: [base, type, field]} = ir),
+    do: %{ir | args: [read_through(lower(base)), type, field]}
+
   # Predicates are not lists: a search inside one reads its own items.
   def lower(%IR{op: :search} = ir), do: ir
 
@@ -83,6 +97,27 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
 
   defp lower_arg(%IR{} = arg), do: lower(arg)
   defp lower_arg(arg), do: arg
+
+  # A list of things a field is read through (`list's a`), or whose item
+  # is (`list:first item's a`): a list-of-things field holds Bubble IDs, so
+  # its things are read first, as the records the user may view
+  # (`records/1`: a listed query, in the list's order, each thing once).
+  # `:first item`, `:item #n` and `:items until #n` over it are that
+  # query's own take (one row, an offset, a limit), never the whole list.
+  # Through list operators that keep their operands' things.
+  @keeps_things [:first, :last, :item_at, :unique, :limit, :minus_item, :minus_list]
+
+  defp read_through(%IR{op: :field, type: type} = list) do
+    if thing(type), do: records(list) |> Map.put(:path, list.path), else: list
+  end
+
+  defp read_through(%IR{op: op, args: [list | rest]} = ir) when op in @keeps_things,
+    do: %{ir | args: [read_through(list) | rest]}
+
+  defp read_through(%IR{op: op, args: [a, b]} = ir) when op in [:merge, :fallback],
+    do: %{ir | args: [read_through(a), read_through(b)]}
+
+  defp read_through(ir), do: ir
 
   # Searches merged (sorted or not) of one data type as one search.
   defp union(%IR{op: :merge, args: [a, b], type: type}) do

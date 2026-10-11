@@ -648,6 +648,14 @@ defmodule BubbleEx.Expression.Compiler do
   defp list_op(_op, :error, _arg, _type), do: :error
   defp list_op(_op, _subject, :error, _type), do: :error
   defp list_op(:as_list, s, nil, type), do: IR.node(:as_list, [s], type)
+
+  # A text's `contains` is its substring test (WTF-520), not membership.
+  defp list_op(:contains, %IR{type: "text"} = s, a, _type),
+    do: IR.node(:text_contains, [s, a], "boolean")
+
+  defp list_op(:not_contains, %IR{type: "text"} = s, a, _type),
+    do: negate(IR.node(:text_contains, [s, a], "boolean"))
+
   defp list_op(:contains, s, a, _type), do: IR.node(:member, [s, a], "boolean")
   defp list_op(:not_contains, s, a, _type), do: negate(IR.node(:member, [s, a], "boolean"))
   defp list_op(:is_contained_by, s, a, _type), do: IR.node(:member, [a, s], "boolean")

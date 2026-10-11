@@ -6,6 +6,25 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Fields through lists, `contains` on lists of records and a text's
+  `contains` compile** (WTF-520). `list:first item's field` (also
+  `:last item`, `:item #`, and fields of `:unique elements`, `:merged
+  with`, `:items until #`, `:minus`, `:intersect with`, `:plus item`)
+  over records (a repeating group's list, a search read first) is the
+  record's field, its relationships loaded as the current user on the
+  variable the records come from. A page's data source reading a field
+  through a list-of-things field (`Project's tasks's parent`, flattened
+  into one list as Bubble's `each item's`) or through one of its items
+  (`Project's tasks:first item's title`) reads the list's records first,
+  as a query the user may view, in the list's order; a search
+  constraint's value does the same before it is pinned. A chain through
+  a list normalized to a join is flattened in Elixir too. `list contains
+  thing` over a list of records compares Bubble IDs (it did not compile).
+  A text's `contains` is a substring test (`:text_contains`, case
+  sensitive, as the `text contains string` constraint) instead of list
+  membership. Fields through lists of IDs outside a page's data sources
+  (texts, conditions, workflows) still do not compile.
+
 - **A value left out is marked in dev, never a silent gap** (WTF-520).
   A text, label, placeholder, input value, image source or Link
   element's destination whose expression reads data the page does not load, or

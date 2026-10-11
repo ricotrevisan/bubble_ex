@@ -1709,10 +1709,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     compile_pin(IR.node(:keyword_patterns, [input], "list.text"), s, ctx, fns, acc)
   end
 
+  # A constraint's value (not a list a rewritten search reads, already
+  # lowered) has its list operators lowered as the source's are (WTF-520:
+  # a field read through a list of things reads its records first).
   defp pin_value(%{input: {:hoisted, %{"n" => n}}}, hoisted, s, ctx, fns, acc) do
     case Map.fetch!(hoisted, n) do
       %IR{op: :pinned, args: [list]} -> compile_pin(list, s, ctx, fns, acc)
-      ir -> compile_pin(ir, s, ctx, fns, acc)
+      ir -> compile_pin(Lists.lower(ir), s, ctx, fns, acc)
     end
   end
 

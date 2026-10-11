@@ -52,7 +52,7 @@ defmodule BubbleEx.Expression.IR do
   | `:split` | `[text, separator]` | `split by` |
   | `:date_add` | `[date, amount, unit]` | `+(seconds)` … `+(years)`; `unit` is `:second`, `:minute`, `:hour`, `:day`, `:month` or `:year` |
   | `:date_floor`, `:date_part` | `[date, unit, zone]` | `rounded down to`, `extract`; `unit` is Bubble's component name |
-  | `:text_contains` | `[text, text]` | `text contains string` (substring) |
+  | `:text_contains` | `[text, text]` | `text contains string` (substring), also a text's `contains` operator |
   | `:text_contains_words` | `[text, text]` | `text contains` (Bubble's keyword match) |
   | `:search` | `[data_type, predicate \\| nil]` | `Do a search for`; the predicate is over `{:this, [:filter_item]}` |
   | `:filter` | `[list, predicate]` | `:filtered` |

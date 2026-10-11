@@ -43,6 +43,11 @@ defmodule BubbleEx.Target.ElixirTest do
     def id(%{id: id}), do: id
     def id(id) when is_binary(id), do: id
     def id(_x), do: nil
+    def item_at(a, n), do: Enum.at(as_list(a), n - 1)
+    def unique(a), do: a |> as_list() |> Enum.uniq_by(&(id(&1) || &1))
+    def merge(a, b), do: unique(as_list(a) ++ as_list(b))
+    def text_contains?(a, b) when is_binary(a) and is_binary(b), do: String.contains?(a, b)
+    def text_contains?(_a, _b), do: false
   end
 
   @runtime inspect(Runtime)
@@ -626,5 +631,234 @@ defmodule BubbleEx.Target.ElixirTest do
     assert {:ok, _} = Code.string_to_quoted(a.source)
     assert eval(a, cell_thing_br1: %{title: "x"}) == "X"
     assert eval(a, cell_thing_br1: %{title: nil}) == "-"
+  end
+
+  describe "fields through lists and contains on lists of records (WTF-520)" do
+    setup do
+      list = fn element ->
+        IR.node(
+          :input,
+          [:element_state, %{"element" => element, "state" => "get_list_data"}],
+          "list.custom.task"
+        )
+      end
+
+      field = fn base, type, name, t -> IR.node(:field, [base, type, name], t) end
+      %{list: list, field: field}
+    end
+
+    test "a field of a list's first item, last item or item #: the record's, loaded on the list",
+         %{project: project, list: list, field: field} do
+      tasks = list.("bR1")
+
+      for {op, args, at} <- [
+            {:first, [tasks], 0},
+            {:last, [tasks], -1},
+            {:item_at, [tasks, IR.node(:literal, [2], "number")], 1}
+          ] do
+        item = IR.node(op, args, "custom.task")
+
+        name =
+          item |> field.("task", "assignee_user", "user") |> field.("user", "name_text", "text")
+
+        {:ok, result} = Target.compile(name, project, runtime: @runtime)
+
+        assert result.diagnostics == [], inspect(op)
+        assert result.loads == %{"element_state_br1_get_list_data" => [["assignee"]]}
+
+        records = [%{assignee: %{name: "Ann"}}, %{assignee: %{name: "Bo"}}, %{assignee: nil}]
+
+        assert eval(result, element_state_br1_get_list_data: records) ==
+                 Enum.at(["Ann", "Bo", nil], at)
+
+        # An empty list, an empty value: empty, never a crash.
+        assert eval(result, element_state_br1_get_list_data: []) == nil
+        assert eval(result, element_state_br1_get_list_data: nil) == nil
+      end
+    end
+
+    test "a field of list algebra over records is each item's, flattened",
+         %{project: project, list: list, field: field} do
+      merged = IR.node(:merge, [list.("bR1"), list.("bR2")], "list.custom.task")
+
+      titles =
+        field.(
+          IR.node(:unique, [merged], "list.custom.task"),
+          "task",
+          "parent_custom_task",
+          "list.custom.task"
+        )
+
+      titles = field.(titles, "task", "title_text", "list.text")
+      {:ok, result} = Target.compile(titles, project, runtime: @runtime)
+
+      assert result.diagnostics == []
+      # The relationship each list's records are read through.
+      assert result.loads == %{
+               "element_state_br1_get_list_data" => [["parent"]],
+               "element_state_br2_get_list_data" => [["parent"]]
+             }
+
+      a = %{id: "t1", parent: %{title: "One"}}
+      b = %{id: "t2", parent: nil}
+      c = %{id: "t3", parent: %{title: "Three"}}
+
+      assert eval(result,
+               element_state_br1_get_list_data: [a, b],
+               element_state_br2_get_list_data: [a, c]
+             ) ==
+               ["One", "Three"]
+    end
+
+    test "a list of things stored as IDs is not read through in Elixir",
+         %{project: project, field: field} do
+      this = IR.node(:this, [:rule_record], "custom.task")
+      access = field.(this, "task", "access_list_user", "list.user")
+      first = IR.node(:first, [access], "user")
+
+      for {ir, construct} <- [
+            {field.(first, "user", "name_text", "text"), "a field of first"},
+            {field.(access, "user", "name_text", "list.text"), "a path through a list or value"}
+          ] do
+        {:ok, %{source: nil, diagnostics: [diag]}} =
+          Target.compile(ir, project, runtime: @runtime)
+
+        assert construct in diag.details.constructs
+      end
+    end
+
+    test "a list of records contains a thing by its Bubble ID; an empty one is in no list",
+         %{project: project, list: list} do
+      held =
+        IR.node(
+          :input,
+          [:element_state, %{"element" => "bG1", "state" => "get_group_data"}],
+          "custom.task"
+        )
+
+      member = IR.node(:member, [list.("bR1"), held], "boolean")
+      {:ok, result} = Target.compile(member, project, runtime: @runtime)
+
+      {:ok, negated} =
+        Target.compile(IR.node(:not, [member], "boolean"), project, runtime: @runtime)
+
+      records = [%{id: "t1"}, "t2", %Hidden{}]
+
+      for {item, contains} <- [
+            {%{id: "t1"}, true},
+            {%{id: "t2"}, true},
+            {"t1", true},
+            {%{id: "t3"}, false},
+            {nil, false},
+            {%Hidden{}, false}
+          ] do
+        binding = [
+          element_state_br1_get_list_data: records,
+          element_state_bg1_get_group_data: item
+        ]
+
+        assert eval(result, binding) == contains, inspect(item)
+        assert eval(negated, binding) == not contains, inspect(item)
+      end
+
+      refute eval(result,
+               element_state_br1_get_list_data: nil,
+               element_state_bg1_get_group_data: %{id: "t1"}
+             )
+    end
+
+    test "a text's contains is a substring test, in Elixir and in an Ash filter",
+         %{project: project} do
+      raw = chain(this(), [msg("title_text"), msg("contains", text(["pl"]))])
+      env = rule_env("task")
+      {:ok, %{ir: ir}} = Compiler.compile(parse!(raw, env), env)
+      assert %IR{op: :text_contains} = ir
+
+      {:ok, result} = Target.compile(ir, project, runtime: @runtime)
+      assert eval(result, this: %{title: "Plan a plot"})
+      refute eval(result, this: %{title: "Plan"})
+      refute eval(result, this: %{title: nil})
+
+      not_raw = chain(this(), [msg("title_text"), msg("not_contains", text(["pl"]))])
+      {:ok, %{ir: not_ir}} = Compiler.compile(parse!(not_raw, env), env)
+      assert %IR{op: :not, args: [%IR{op: :text_contains}]} = not_ir
+
+      {:ok, %{expr: expr}} = BubbleEx.Target.Ash.Expressions.filter(ir, project, resource: "task")
+      assert BubbleEx.Target.Ash.Source.expr(expr) == ~s|expr(contains(title, "pl"))|
+
+      {:ok, %{expr: expr}} =
+        BubbleEx.Target.Ash.Expressions.filter(not_ir, project, resource: "task")
+
+      assert BubbleEx.Target.Ash.Source.expr(expr) ==
+               ~s|expr(is_nil(title) or not contains(title, "pl"))|
+    end
+
+    test "a custom state may hold IDs: its items' fields never crash", %{
+      project: project,
+      field: field
+    } do
+      state = %{"element" => "bG1", "state" => "custom.picked"}
+      tasks = IR.node(:input, [:element_state, state], "list.custom.task")
+      var = :element_state_bg1_custom_picked
+
+      # `State's first item's title`: a custom state is no record origin
+      # (it may hold IDs): not compiled, residue, never a crash.
+      first = IR.node(:first, [tasks], "custom.task")
+
+      {:ok, %{source: nil, diagnostics: [diag]}} =
+        Target.compile(field.(first, "task", "title_text", "text"), project, runtime: @runtime)
+
+      assert "a field of first" in diag.details.constructs
+
+      # `State's list's title`: each item's, an ID's empty.
+      {:ok, titles} =
+        Target.compile(field.(tasks, "task", "title_text", "list.text"), project,
+          runtime: @runtime
+        )
+
+      assert eval(titles, [{var, ["t1", "t2"]}]) == []
+      assert eval(titles, [{var, [%{title: "A"}, "t2", %{title: "B"}]}]) == ["A", "B"]
+      assert eval(titles, [{var, nil}]) == []
+    end
+
+    test "doesn't contain with an empty part is false, as in the Ash filter", %{project: project} do
+      env = rule_env("task")
+      part = chain(cu(), [msg("name_text")])
+      raw = chain(this(), [msg("title_text"), msg("not_contains", part)])
+      {:ok, %{ir: ir}} = Compiler.compile(parse!(raw, env), env)
+      {:ok, result} = Target.compile(ir, project, runtime: @runtime)
+
+      assert eval(result, this: %{title: "Plan"}, current_user: %{name: "x"})
+      refute eval(result, this: %{title: "Plan"}, current_user: %{name: "la"})
+      refute eval(result, this: %{title: "Plan"}, current_user: %{name: nil})
+      assert eval(result, this: %{title: nil}, current_user: %{name: "x"})
+    end
+
+    test "a list normalized to a join is read through, flattened" do
+      %{model: model} = BubbleEx.Test.DecidedFixture.build(:join)
+      {:ok, project} = BubbleEx.Test.DecidedFixture.project(:join)
+      env = BubbleEx.Expression.Env.new(model, this_type: "custom.project", this_binder: :page)
+
+      raw = chain(this(), [msg("tasks_list_custom_task"), msg("assignee_user"), msg("name_text")])
+      {:ok, %{ir: ir}} = Compiler.compile(parse!(raw, env), env)
+      {:ok, result} = Target.compile(ir, project, runtime: @runtime)
+
+      assert result.diagnostics == []
+      assert result.loads == %{"this" => [["tasks", "assignee"]]}
+
+      this = %{tasks: [%{assignee: %{name: "A"}}, %{assignee: nil}, %{assignee: %{name: "B"}}]}
+      assert eval(result, this: this) == ["A", "B"]
+      assert eval(result, this: %{tasks: nil}) == []
+
+      # By ID: each task's assignee ID, with no load of the assignee.
+      raw =
+        chain(this(), [msg("tasks_list_custom_task"), msg("assignee_user"), msg("contains", cu())])
+
+      {:ok, %{ir: member}} = Compiler.compile(parse!(raw, env), env)
+      {:ok, result} = Target.compile(member, project, runtime: @runtime)
+      assert result.loads == %{"this" => [["tasks"]]}
+      assert eval(result, this: %{tasks: [%{assignee_id: "u1"}]}, current_user: %{id: "u1"})
+      refute eval(result, this: %{tasks: [%{assignee_id: "u2"}]}, current_user: %{id: "u1"})
+    end
   end
 end

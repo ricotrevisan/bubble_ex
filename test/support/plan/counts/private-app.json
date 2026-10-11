@@ -214,7 +214,7 @@
         "runtime_container": 245,
         "style_condition": 14,
         "trigger_in_runtime_template": 206,
-        "uncompiled_expression": 3124,
+        "uncompiled_expression": 3015,
         "unresolved_reference": 84,
         "unsupported_action": 5,
         "unsupported_event": 2
@@ -329,9 +329,9 @@
           "total": 153
         },
         "workflow": {
-          "auto": 1374,
+          "auto": 1382,
           "closed": 0,
-          "open": 1566,
+          "open": 1558,
           "total": 2940
         }
       },
@@ -343,9 +343,9 @@
       },
       "units": {
         "actions": {
-          "generated": 4011,
+          "generated": 4029,
           "removed": 0,
-          "residue": 2458,
+          "residue": 2440,
           "total": 6469
         },
         "api_calls": {
@@ -360,12 +360,12 @@
           "workflow": 3
         },
         "elements": {
-          "generated": 5399,
-          "generated_in_runtime_template": 945,
+          "generated": 5411,
+          "generated_in_runtime_template": 966,
           "in_runtime_template": 1222,
           "not_normalized": 1,
           "not_normalized_with_residue": 0,
-          "residue": 1739,
+          "residue": 1727,
           "total": 8361
         },
         "plugins": {
@@ -378,15 +378,15 @@
           "total": 146
         },
         "workflows_backend": {
-          "auto": 215,
+          "auto": 218,
           "closed": 0,
-          "open": 455,
+          "open": 452,
           "total": 670
         },
         "workflows_frontend": {
-          "auto": 1159,
+          "auto": 1164,
           "closed": 0,
-          "open": 1111,
+          "open": 1106,
           "total": 2270
         },
         "workflows_removed": 0,
