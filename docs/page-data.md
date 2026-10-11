@@ -229,6 +229,7 @@ database sorts and filters lists of things wherever it can:
 | options, texts, numbers or dates `:filtered` | Elixir (`Enum.filter/2`, the constraints per item) |
 | texts, numbers or dates `:sorted` | Elixir (`Runtime.sort_values/2`): empty values first ascending, last descending; a stable sort |
 | `All <option set>` (an option value of `all values`) | every option of the set |
+| a field read through a list-of-things field (`list's a`, `list's a's b`) or through one of its items (`list:first item's a`, `:last item`, `:item #`, also over `:unique elements`, `:items until #`, `:minus`, `:merged with`, `defaulting to`; WTF-520) | a query for the list's records (`id in ^ids`, read as the user may view them), shown in the list's order (`Runtime.intersect/2`), then the field in Elixir: each item's, one flat list (empty values dropped), its relationships loaded on the query as the user |
 
 Every query reads as the current user, bounded by `:max_items`, like any
 other search: a merged list reads at most `:max_items` of each search,
@@ -287,8 +288,13 @@ Extended beyond what the replay measured (unverified):
   `:plus item` of a listed thing); numbers, dates and things follow the
   same rules.
 
+A search's constraint value is lowered the same way (WTF-520): a field
+read through a list of things in a constraint (`Unique id is in Project's
+tasks's parent`, `Parent = Project's tasks:first item's parent`) is
+computed first, its records read as the user, and pinned into the query.
+
 Not lowered yet: sorting a list of options, or any list by a field of its
-items (residue `elixir:sort`), a field of each item of a list, a list
+items (residue `elixir:sort`), a list
 operator over a search inside a repeating group's cell that cannot be
 read for every cell together (`:page_data_in_cell`, `kind: query`; see
 *Searches in cells* below), dynamic sort fields.
@@ -1171,6 +1177,48 @@ and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
 
+### Private fixture app (test version), 2026-10-11, fields through lists, contains on records (WTF-520)
+
+What stopped the expressions that did not compile, ranked by how many
+page data sources, element values, visibility conditionals and page
+workflow steps (and workflows' own conditions) each blocked, before this
+change:
+
+| construct | sources | values | visibility | steps | workflow conditions | total |
+|-----------|--------:|-------:|-----------:|------:|--------------------:|------:|
+| a plugin element's state (unresolved accessor) | 15+ | 15+ | 28+ | 130+ | | 188+ |
+| an untyped previous step's result | | | | 104 | | 104 |
+| an API Connector type's field (unresolved accessor) | 4 | 24 | 38 | 33 | | 99 |
+| contains on a list of records | | 3 | 18 | 12 | 29 | 62 |
+| a search outside page data | | 14 | 9 | 18 | 7 | 48 |
+| a raw source (43 "Generate random string" formulas) | 46 | | | | | 46 |
+| `:filtered` on a list of things outside page data | 2 | 9 | 4 | 19 | 6 | 40 |
+| a sort by a field outside a query | 11 | 1 | 1 | 13 | | 26 |
+| a field of a list's first item (also `:item #`, `:filtered`, ...) | 5 | 6 | 4 | 15 | 4 | 34 |
+| a path through a list | 10 | | 5 | | | 15 |
+
+Fixed here: contains on a list of records (62 to 0), a field of a
+list's first item over records, and in page data over a list-of-things
+field (34 to 22, the rest over lists of IDs outside page data or
+searches), a path through a list in page data (15 to 5, the 5 left are
+visibility conditions over lists of IDs). A text's `contains` compiled
+to list membership before; it now compiles to a substring test.
+
+| | before | after |
+|-|------:|------:|
+| data sources, wired | 2,772 | 2,832 |
+| groups / instances / lists / properties wired | 1,378 / 173 / 173 / 1,014 | 1,388 / 178 / 184 / 1,048 |
+| `:uncompiled_expression` / `:unavailable_input` residue entries (sources) | 169 / 420 | 146 / 378 |
+| `:page_data_in_cell` residue entries (sources) | 7 | 9 |
+| page workflows native / wired | 881 / 607 | 902 / 627 |
+| workflow `:uncompiled_expression` residue entries | 715 | 674 |
+| expressions compiled to Elixir (of 19,716) | 15,523 | 15,661 |
+
+Of the 60 sources newly wired, 23 compiled now and 37 read one of them
+(`:unavailable_input` before). Two sources that now compile are in a
+repeating group's cell, where their new query cannot be read for every
+cell together (`:page_data_in_cell`).
+
 ### Private fixture app (test version), 2026-10-10, values left out marked in dev (WTF-520)
 
 Elements whose value is left out now carry the developer marker (no
@@ -1907,6 +1955,25 @@ and "Display data" over a group's own source.
   open it (here what its workflows set stays unloaded), and the order of
   the popup's workflow and the rest of the workflow that opened it (here
   the popup's runs after it). See `docs/frontend-workflows.md`.
+* **Fields through lists** (WTF-520, above): `list's a` over a list of
+  things is each thing's `a` in the list's order, flattened into one
+  list, empty values dropped, as Bubble's `each item's`; a list holding a
+  thing twice is read through once (its records are read by ID, each
+  once), and a thing the user may not view is skipped (a field the user
+  may not view reads as empty). Not replayed: whether Bubble repeats a
+  thing listed twice, whether it removes duplicate things from the
+  result (two tasks with the same parent show the parent twice here),
+  and what it shows for a listed thing the user may not view.
+* **A list of things `contains` a thing** (WTF-520) when one of its
+  things has that thing's unique ID, whether the list holds records or
+  IDs; an empty thing (or one the user may not view) is in no list.
+  Inferred from Bubble's identity of things, not replayed for lists of
+  records.
+* **A text's `contains`** (WTF-520) is a case-sensitive substring test
+  (`Runtime.text_contains?/2`, `contains/2` in a search or a privacy
+  rule), as the search constraint `text contains string`; an empty text
+  contains nothing. Not replayed: case sensitivity, an empty part (here
+  every non-empty text contains it).
 * A search's dynamic sort field that is an empty text (the editor keeps
   `{"entries": {"1": ""}}` once it is cleared) is taken to name no field
   (WTF-520): next to a static sort field, that field sorts; with the sort

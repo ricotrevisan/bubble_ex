@@ -344,6 +344,33 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
       assert list == field_list() and pred == done() and Lists.listed?(s)
     end
 
+    test "a field read through a list of things, or an item of one, reads its records first" do
+      title = &IR.node(:field, [&1, "task", "title_text"], "text")
+
+      # `list's title`: the list's records (listed, in the list's order).
+      assert %IR{op: :field, args: [%IR{op: :intersect, args: [s, list]}, "task", "title_text"]} =
+               Lists.lower(title.(field_list()))
+
+      assert list == field_list() and Lists.listed?(s)
+
+      # `list:first item's title`, through list operators keeping things.
+      for op <- [:first, :last, :unique] do
+        ir = title.(IR.node(op, [field_list()], "custom.task"))
+
+        assert %IR{
+                 op: :field,
+                 args: [%IR{op: ^op, args: [%IR{op: :intersect, args: [s, list]}]} | _]
+               } =
+                 Lists.lower(ir)
+
+        assert list == field_list() and Lists.listed?(s)
+      end
+
+      # The list itself, counted or tested, is left as stored.
+      count = IR.node(:count, [field_list()], "number")
+      assert Lists.lower(count) == count
+    end
+
     test "lists of values and predicates are left alone" do
       options =
         IR.node(
@@ -355,6 +382,83 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
       assert Lists.lower(options) == options
       assert Lists.lower(search(done())) == search(done())
     end
+  end
+
+  # WTF-520: fields read through a list of things or one of its items, as
+  # data sources and inside a search's constraints (the constraint's value
+  # computed first, its records read as the user, and pinned).
+  test "a field through a list, or its first item, reads its records as a listed query", %{
+    spec: spec
+  } do
+    for element <- ~w(bFirstOfList bFirstParent bParents) do
+      assert %{residue: [], read: {:value, %{queries: [q], source: source, bindings: bindings}}} =
+               data(spec, element)
+
+      assert q.listed == "q1_pin_1" and q.take == :all
+      assert source =~ "Runtime.intersect(\n"
+      loads = Enum.find(bindings, &(&1.bind == {:query, "1"})).loads
+      assert loads == if(element == "bFirstOfList", do: [], else: [["parent"]]), element
+    end
+
+    assert %{read: {:value, %{source: first}}} = data(spec, "bFirstParent")
+    assert first =~ "List.first("
+    assert first =~ "[Access.key(:parent), Access.key(:title)]"
+
+    # Each item's parent, one flat list.
+    assert %{read: {:value, %{source: parents}}} = data(spec, "bParents")
+    assert parents =~ "Enum.flat_map("
+  end
+
+  test "a constraint's value through a list is computed first and pinned", %{spec: spec} do
+    assert %{residue: [], read: {:query, %{queries: [q], pins: pins}}} = data(spec, "bSiblings")
+    assert q.listed == "q1_pin_1"
+    assert %{ref: :one, value: %{source: one}} = Enum.find(pins, &(&1.var == "pin_2"))
+    assert one =~ "List.first("
+
+    assert %{residue: [], read: {:query, %{queries: [_], pins: pins}}} =
+             data(spec, "bParentSearch")
+
+    assert %{ref: :many, value: %{source: many}} = Enum.find(pins, &(&1.var == "pin_2"))
+    assert many =~ "Enum.flat_map("
+  end
+
+  test "the same sources load with enforced privacy" do
+    %{spec: spec} = render(app(), :enforced)
+
+    for element <- ~w(bFirstOfList bFirstParent bParents bSiblings bParentSearch) do
+      assert data(spec, element).residue == [], element
+    end
+  end
+
+  test "element values: a list's first item, contains on records, a text's contains", %{
+    project: project,
+    frontend: frontend
+  } do
+    app = app()
+    {:ok, model} = Model.build(app)
+
+    {:ok, compiled} =
+      BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend, namespace: "Shop")
+
+    nodes =
+      Enum.flat_map(frontend.pages, fn n ->
+        Stream.unfold([n], fn
+          [] -> nil
+          [h | t] -> {h, h.children ++ t}
+        end)
+        |> Enum.to_list()
+      end)
+
+    source = fn element ->
+      node = Enum.find(nodes, &(&1.source && &1.source.bubble_id == element))
+      %{id: id} = node.bindings["text"]
+      compiled[id].source
+    end
+
+    assert source.("bFirstSorted") =~ "List.first("
+    assert source.("bHas") =~ "&Bubble.Runtime.id(&1)"
+    assert source.("bHasNot") =~ "Runtime.id(&1)"
+    assert source.("bSubstring") =~ "text_contains?("
   end
 
   test "Ash: nested sorts are one sort by several keys", %{project: project} do

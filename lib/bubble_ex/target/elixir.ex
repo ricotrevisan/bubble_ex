@@ -73,6 +73,18 @@ defmodule BubbleEx.Target.Elixir do
   items). A field of `x :converted to list` is the field of `x`, converted
   (`(x's a) :converted to list`).
 
+  A field of a list operator's result whose things are records (`:first
+  item`, `:last item`, `:item #`, `:unique elements`, `:merged with`,
+  `:items until #`, `:minus`, `:intersect with`, `:plus item` over
+  context inputs, query results, `This` or the current user, WTF-520) is
+  that record's field, or each of those records', flattened; the
+  relationships it reads are loaded on the variables the records come
+  from. A chain through a list normalized to a join (a `many_to_many`)
+  is each item's next step, flattened into one list (empty values
+  dropped), as Bubble's `list's field`. A list of records `contains` a
+  thing when one of its things has that thing's Bubble ID (the runtime's
+  `id/1`), records and IDs alike; an empty thing is in no list.
+
   Data shapes never raise (WTF-500): every list read (`count`, `:first
   item`, `contains`, `:filtered`, a list of options or files) goes through
   the runtime's `as_list/1`, so an empty value or a field the user may not
@@ -83,8 +95,10 @@ defmodule BubbleEx.Target.Elixir do
   Not compiled yet (diagnosed with `:elixir_expr_unsupported`, stage
   `{:target, :elixir}`): searches, and `:filtered` or sorting of a list of
   things (these become Ash queries, `FrontendWorkflows.Lists`), other
-  sorting by a field, API type fields, fields of the items of a list-of-things field
-  (stored as a list of IDs).
+  sorting by a field, API type fields, fields of the items of a
+  list-of-things field (stored as a list of IDs: `a path through a list
+  or value`, `a field of first`, ...; a page's data sources read such
+  lists' records first, `FrontendWorkflows.Lists`).
 
   A format the runtime only approximates (an unknown number setting, a
   date pattern token or unit it does not implement, see
@@ -130,6 +144,8 @@ defmodule BubbleEx.Target.Elixir do
                     is_email abs round to_text to_number)a
   @arithmetic ~w(add sub mul div mod)a
   @list_ops ~w(as_list unique merge minus_list intersect plus_item minus_item limit item_at)a
+  # List operators whose result's things are their operands' (WTF-520).
+  @through_lists ~w(first last item_at unique limit merge intersect minus_list minus_item plus_item)a
   @conditions ~w(eq neq gt lt gte lte and or not is_empty logged_in member text_contains
                  text_contains_words)a
   @boolean_values [:field, :input, :fallback, :option_attribute, :option_label]
@@ -649,14 +665,30 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   defp atom_(%IR{op: :member, args: [list, item]}, st) do
-    if member_list?(list) do
-      {[l, i], st} = Enum.map_reduce([list, item], st, &id_value/2)
-      {items, st} = as_list(l, st)
-      {items, i, st} = member_texts(list, items, i, st)
-      member = "Enum.member?(#{items}, #{i})"
-      {all_ok({member, "not #{member}", [{list, l}, {item, i}]}, [items, i]), st}
-    else
-      unsupported(st, {"contains on a list of records", nil})
+    cond do
+      member_list?(list) ->
+        {l, st} = list_ids(list, st)
+        {i, st} = id_value(item, st)
+        {items, st} = as_list(l, st)
+        {items, i, st} = member_texts(list, items, i, st)
+        member = "Enum.member?(#{items}, #{i})"
+        {all_ok({member, "not #{member}", [{list, l}, {item, i}]}, [items, i]), st}
+
+      # A list of records (an input's list, a query's records, list
+      # algebra over them) contains a thing when one of its things is that
+      # thing: compared by Bubble ID (the runtime's `id/1`, a record's or
+      # an ID's own; a field the user may not view is no thing), so an
+      # empty item is in no list (WTF-520).
+      thing_list?(list.type) ->
+        {l, st} = value(list, st)
+        {i, st} = id_value(item, st)
+        {items, st} = as_list(l, st)
+        {id, st} = runtime(st, :id, ["&1"])
+        member = "(not is_nil(#{i}) and Enum.member?(Enum.map(#{items}, &#{id}), #{i}))"
+        {all_ok({member, "not #{member}", [{list, l}, {item, i}]}, [items, i]), st}
+
+      true ->
+        unsupported(st, {"contains on a list of records", nil})
     end
   end
 
@@ -764,6 +796,15 @@ defmodule BubbleEx.Target.Elixir do
       value(ir, st)
     end
   end
+
+  # A list-of-things field as its things' IDs: each item's reference
+  # attribute (no load), or a list stored as IDs as it is (WTF-520: also
+  # through a list normalized to a join, read as records).
+  defp list_ids(%IR{op: :field, type: type} = list, st) do
+    if thing_list?(type), do: path(list, [], :id, st), else: id_value(list, st)
+  end
+
+  defp list_ids(list, st), do: id_value(list, st)
 
   # `source`, required to have every operand read from the current user
   # non-empty in Bubble's sense (the runtime's `empty?/1`: nil, `""`, `[]`,
@@ -878,6 +919,9 @@ defmodule BubbleEx.Target.Elixir do
     as_list(v, st)
   end
 
+  defp path(%IR{op: op} = base, steps, mode, st) when op in @through_lists,
+    do: through_list(base, steps, mode, st)
+
   defp path(%IR{op: op}, _steps, _mode, st), do: unsupported(st, {"a field of #{op}", nil})
 
   # `steps` (`{data_type, field}` from the base outwards) over `base`.
@@ -895,34 +939,149 @@ defmodule BubbleEx.Target.Elixir do
 
   defp access(%IR{} = base, var, steps, mode, st) do
     {_, st} = if var in ["this", "current_user"], do: value(base, st), else: {var, st}
-    base_type = type_id(base.type)
+    read(base, var, steps, mode, st, &add_load(&1, var, &2))
+  end
 
-    case keys(steps, base_type, mode, st) do
-      {:ok, [], _loads, _list_id_key} ->
-        {var, st}
+  # `steps` read from `source`, the Elixir of `base`'s value (a record, a
+  # list of records, or nil); `load` adds the relationship paths the read
+  # needs, relative to `base`'s things, to the variables they come from.
+  defp read(%IR{} = base, source, steps, mode, st, load) do
+    case keys(steps, type_id(base.type), mode, st) do
+      {:ok, [[]], _loads, _list_id_key} ->
+        {source, st}
 
-      {:ok, keys, loads, list_id_key} ->
-        st = if loads == [], do: st, else: add_load(st, var, loads)
-        access = "[" <> Enum.map_join(keys, ", ", &"Access.key(#{atom(&1)})") <> "]"
+      {:ok, segments, loads, list_id_key} ->
+        st = if loads == [], do: st, else: load.(st, loads)
 
         # A field of a list of things (a search read first, an input's
         # list) is each item's (WTF-500), as Bubble's `each item's`: one
         # list of every item's values, empty ones dropped. `get_in/2` on
         # the list itself raises.
-        {read, st} =
-          if thing_list?(base.type) do
-            {each, st} = field_value("get_in(thing, #{access})", list_id_key, st)
-            {each, st} = as_list(each, st)
-            {items, st} = as_list(var, st)
-            {"Enum.flat_map(#{items}, fn thing -> #{each} end)", st}
-          else
-            field_value("get_in(#{var}, #{access})", list_id_key, st)
-          end
-
-        {read, st}
+        if thing_list?(base.type) do
+          {each, st} = segments_read("thing", segments, list_id_key, 1, st)
+          {each, st} = as_list(each, st)
+          {items, st} = as_list(source, st)
+          {all_ok("Enum.flat_map(#{items}, fn thing -> #{each} end)", [each, items]), st}
+        else
+          segments_read(source, segments, list_id_key, 1, st)
+        end
 
       {:error, what} ->
         unsupported(st, what)
+    end
+  end
+
+  # A chain read in segments, each ending at a list of things it reads
+  # through (a list normalized to a join): each of its items' next
+  # segment, flattened into one list as Bubble's `list's field` does
+  # (WTF-520), empty values dropped.
+  defp segments_read(source, [keys], list_id_key, _depth, st),
+    do: field_value("get_in(#{source}, #{access_keys(keys)})", list_id_key, st)
+
+  defp segments_read(source, [keys | rest], list_id_key, depth, st) do
+    var = "each_#{depth}"
+    {inner, st} = segments_read(var, rest, list_id_key, depth + 1, st)
+    {inner, st} = as_list(inner, st)
+    {items, st} = as_list("get_in(#{source}, #{access_keys(keys)})", st)
+    {all_ok("Enum.flat_map(#{items}, fn #{var} -> #{inner} end)", [inner, items]), st}
+  end
+
+  defp access_keys(keys), do: "[" <> Enum.map_join(keys, ", ", &"Access.key(#{atom(&1)})") <> "]"
+
+  # A field chain over a list operator's result (WTF-520: `:first item`,
+  # `:item #`, `:last item`, `:unique elements`, `:merged with`, ...) whose
+  # things are records: the chain over that record (or each of those
+  # records), its relationships loaded on the variables the records come
+  # from (`origins/2`). Things stored as Bubble IDs (a list-of-things
+  # field) are not records: their fields are not read here
+  # (`BubbleEx.Target.Elixir.FrontendWorkflows.Lists` reads a page's as
+  # records first).
+  defp through_list(%IR{op: op} = base, steps, mode, st) do
+    case origins(base, [], st) do
+      {:ok, origins} ->
+        {source, st} = value(base, st)
+
+        {vars, st} =
+          Enum.map_reduce(origins, st, fn {origin, prefix}, st ->
+            {var, st} = value(origin, st)
+            {{var, prefix}, st}
+          end)
+
+        load = &add_loads(&1, vars, &2)
+        if source == :error, do: {:error, st}, else: read(base, source, steps, mode, st, load)
+
+      :error ->
+        unsupported(st, {"a field of #{op}", nil})
+    end
+  end
+
+  # `loads` (relative to the things) on each variable they come from,
+  # under its relationship path.
+  defp add_loads(st, vars, loads) do
+    Enum.reduce(vars, st, fn {var, prefix}, st ->
+      add_load(st, var, Enum.map(loads, &(prefix ++ &1)))
+    end)
+  end
+
+  # Where the things of a list operator's result come from: `{:ok, [{ir,
+  # relationships}]}`, each a variable (a context input, a query's
+  # records, `This`, the current user) and the relationship path from it
+  # to the things; `:error` when they may be Bubble IDs (a list-of-things
+  # field) or anything else.
+  defp origins(%IR{op: :this, args: [:filter_item]}, _rels, %{item?: true}), do: :error
+
+  defp origins(%IR{op: op, type: type} = ir, rels, _st)
+       when op in [:input, :this, :current_user] do
+    if record_type?(type) or thing_list?(type), do: {:ok, [{ir, rels}]}, else: :error
+  end
+
+  defp origins(%IR{op: :field} = ir, rels, st) do
+    {base, steps} = unchain(ir, [])
+
+    case relationship_path(steps, st) do
+      {:ok, path} when base.op in [:input, :this, :current_user] ->
+        origins(base, path ++ rels, st)
+
+      _ ->
+        :error
+    end
+  end
+
+  defp origins(%IR{op: op, args: [list | _]}, rels, st)
+       when op in [:first, :last, :item_at, :unique, :limit, :minus_list, :minus_item, :intersect],
+       do: origins(list, rels, st)
+
+  defp origins(%IR{op: op, args: [a, b]}, rels, st) when op in [:merge, :plus_item, :fallback] do
+    with {:ok, x} <- origins(a, rels, st),
+         {:ok, y} <- origins(b, rels, st),
+         do: {:ok, x ++ y}
+  end
+
+  defp origins(_ir, _rels, _st), do: :error
+
+  defp unchain(%IR{op: :field, args: [base, type, field]}, steps),
+    do: unchain(base, [{type, field} | steps])
+
+  defp unchain(base, steps), do: {base, steps}
+
+  # The relationships a chain whose every step is one reads, to records:
+  # its last step not a list normalized to a join (read as its IDs).
+  defp relationship_path(steps, st) do
+    last = List.last(steps)
+
+    Enum.reduce_while(steps, {:ok, []}, fn step, {:ok, rels} ->
+      case relationship_step(step, step == last, st) do
+        {:ok, rel} -> {:cont, {:ok, rels ++ [rel]}}
+        :error -> {:halt, :error}
+      end
+    end)
+  end
+
+  defp relationship_step({type, field}, last?, st) do
+    case field_info(type, field, st) do
+      {:ok, %{list_id_key: _}} when last? -> :error
+      {:ok, %{relationship: rel}} when is_binary(rel) -> {:ok, rel}
+      _ -> :error
     end
   end
 
@@ -935,43 +1094,47 @@ defmodule BubbleEx.Target.Elixir do
     {"Enum.map(#{items}, &Map.get(&1, #{atom(list_id_key)}))", st}
   end
 
-  # Access keys for a field chain. Relationship steps need loading; the
-  # last step is its attribute, or in `:id` mode a reference's `_id`
-  # attribute (no load); in `:value` mode a reference is its relationship.
+  # Access keys for a field chain, in segments (see `segments_read/5`).
+  # Relationship steps need loading; the last step is its attribute, or in
+  # `:id` mode a reference's `_id` attribute (no load); in `:value` mode a
+  # reference is its relationship. A list normalized to a join is its
+  # relationship in either mode, read as its items' IDs (`list_id_key`).
   defp keys([], type, :id, st) do
     case st.lookup.types[type] do
-      %{pk: pk} -> {:ok, [pk], [], nil}
+      %{pk: pk} -> {:ok, [[pk]], [], nil}
       nil -> {:error, {"an unmapped data type", type}}
     end
   end
 
-  defp keys([], _type, :value, _st), do: {:ok, [], [], nil}
+  defp keys([], _type, :value, _st), do: {:ok, [[]], [], nil}
 
   defp keys(steps, _type, mode, st) do
     {init, [{last_type, last_field}]} = Enum.split(steps, -1)
 
-    with {:ok, rels} <- relationships(init, st),
+    with {:ok, segments, rels} <- relationships(init, st),
          {:ok, info} <- field_info(last_type, last_field, st) do
-      last =
-        if mode == :value and info.relationship,
-          do: info.relationship,
-          else: info.attribute
-
-      loads = if mode == :value and info.relationship, do: rels ++ [last], else: rels
-
-      {:ok, rels ++ [last], if(loads == [], do: [], else: [loads]),
-       if(mode == :value, do: info[:list_id_key])}
+      list_id_key = info[:list_id_key]
+      related? = (mode == :value or list_id_key != nil) and is_binary(info.relationship)
+      last = if related?, do: info.relationship, else: info.attribute
+      loads = if related?, do: rels ++ [last], else: rels
+      segments = List.update_at(segments, -1, &(&1 ++ [last]))
+      {:ok, segments, if(loads == [], do: [], else: [loads]), list_id_key}
     end
   end
 
+  # The relationships of a chain's steps but the last, in segments: a list
+  # normalized to a join (`list_id_key`) ends one, read through as a list.
+  # A list of things stored as Bubble IDs, or any other value, has no
+  # relationship to read through here.
   defp relationships(steps, st) do
-    Enum.reduce_while(steps, {:ok, []}, fn {type, field}, {:ok, rels} ->
+    Enum.reduce_while(steps, {:ok, [[]], []}, fn {type, field}, {:ok, segments, rels} ->
       case field_info(type, field, st) do
         {:ok, %{relationship: rel, list_id_key: _}} when is_binary(rel) ->
-          {:halt, {:error, {"a path through a list or value", "#{type}.#{field}"}}}
+          segments = List.update_at(segments, -1, &(&1 ++ [rel])) ++ [[]]
+          {:cont, {:ok, segments, rels ++ [rel]}}
 
         {:ok, %{relationship: rel}} when is_binary(rel) ->
-          {:cont, {:ok, rels ++ [rel]}}
+          {:cont, {:ok, List.update_at(segments, -1, &(&1 ++ [rel])), rels ++ [rel]}}
 
         {:ok, _} ->
           {:halt, {:error, {"a path through a list or value", "#{type}.#{field}"}}}

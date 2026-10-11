@@ -1,6 +1,7 @@
 defmodule PhxCheckWeb.ListOpsBehaviorTest do
   # credo:disable-for-this-file Credo.Check.Warning.WrongTestFilename
-  # Behavior of the list operators of page data sources (WTF-495), lowered
+  # Behavior of the list operators of page data sources (WTF-495; fields
+  # through lists, contains on records and a text's contains: WTF-520), lowered
   # from test/support/target/phoenix/list_ops.json, run by
   # scripts/phoenix_compile_check.sh in the generated project (copied to
   # test/list_ops_behavior_test.exs, with a database), with privacy: :omit
@@ -28,13 +29,15 @@ defmodule PhxCheckWeb.ListOpsBehaviorTest do
       Application.delete_env(:phx_check, PhxCheckWeb.BubbleData)
     end)
 
-    for {id, title, rank, done, secret} <- [
-          {@t1, "Bake", 2, false, false},
-          {@t2, "Answer", 5, true, false},
-          {@t3, "Clean", 2, false, false},
-          {@t4, "Draw", 1, true, false},
-          {@t5, "Eat", 9, false, true},
-          {@t6, "Fig", 7, false, true}
+    # Each task's parent (WTF-520): Clean's is Draw, Bake's Answer,
+    # Answer's Fig (shown), Eat's Bake, Fig's Eat (secret); Draw has none.
+    for {id, title, rank, done, secret, parent} <- [
+          {@t1, "Bake", 2, false, false, @t2},
+          {@t2, "Answer", 5, true, false, @t6},
+          {@t3, "Clean", 2, false, false, @t4},
+          {@t4, "Draw", 1, true, false, nil},
+          {@t5, "Eat", 9, false, true, @t1},
+          {@t6, "Fig", 7, false, true, @t5}
         ],
         do:
           Ash.Seed.seed!(PhxCheck.Task, %{
@@ -43,7 +46,8 @@ defmodule PhxCheckWeb.ListOpsBehaviorTest do
             rank: rank,
             done: done,
             secret: secret,
-            shown: id == @t6
+            shown: id == @t6,
+            parent_id: parent
           })
 
     # A list field holds a thing twice and a secret one.
@@ -230,6 +234,49 @@ defmodule PhxCheckWeb.ListOpsBehaviorTest do
     Process.sleep(200)
     # Eat now ranks below 3: counted when the user may find it.
     assert render(view) =~ if(enforced?(), do: "N: 4", else: "N: 5")
+  end
+
+  # WTF-520: a field read through the project's list of tasks, and through
+  # its first item, reads the tasks as the user may view them (a secret
+  # task is in no list), in the list's order, each once; each task's
+  # parent through the relationship, as the user (a parent the user may
+  # not view, or a hidden parent field, is none).
+  test "a field through a list field and through its first item", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/")
+    assert html =~ "A: Clean"
+    assert html =~ "B: Draw"
+
+    assert shown(html, "P") ==
+             if(enforced?(),
+               do: ["Draw", "Answer", "Fig"],
+               else: ["Draw", "Answer", "Bake", "Eat", "Fig"]
+             )
+  end
+
+  test "a constraint's value through a list is computed first, as the user", %{conn: conn} do
+    {:ok, _view, html} = live(conn, "/")
+    # The tasks whose parent is the first listed task's parent (Draw).
+    assert shown(html, "Z") == ["Clean"]
+    # The tasks that are a listed task's parent, as the user may find them.
+    assert shown(html, "E") ==
+             if(enforced?(),
+               do: ["Answer", "Draw"],
+               else: ["Answer", "Bake", "Draw", "Eat", "Fig"]
+             )
+  end
+
+  test "values: a list's first item, contains on a list of records, a text's contains", %{
+    conn: conn
+  } do
+    {:ok, _view, html} = live(conn, "/")
+    # The first of the sorted search's tasks, as the user may find them.
+    assert html =~ "C: " <> if(enforced?(), do: "Answer", else: "Eat")
+    # Draw (the merged searches' item #2) is in the sorted search, not in
+    # the project's list: compared by Bubble ID.
+    assert html =~ "H: yes"
+    assert html =~ "J: no"
+    # "Apollo" contains "pol".
+    assert html =~ "X: yes"
   end
 
   test "the runtime's list operators" do
