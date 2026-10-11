@@ -249,6 +249,26 @@ defmodule <%= @module %>.Workflows.Runtime do
   @doc "The result of an earlier step (nil when it did not run)."
   def step(ctx, action, loads), do: ctx.steps |> Map.get(action) |> load(loads, ctx)
 
+  @doc """
+  A value the custom event that step `action` triggered returned
+  (`return`, its return ID; nil when the step did not run or the event
+  returned nothing). A thing (or list of things) of `resource` is a
+  record: a Bubble ID is read through Ash as this workflow's actor.
+  """
+  def step_return(ctx, action, return, resource, loads) do
+    value =
+      case Map.get(ctx.steps, action) do
+        %{} = values when not is_struct(values) -> Map.get(values, return)
+        _ -> nil
+      end
+
+    value |> returned(resource, ctx) |> load(loads, ctx)
+  end
+
+  defp returned(value, nil, _ctx), do: value
+  defp returned(values, resource, ctx) when is_list(values), do: get_all(resource, values, ctx)
+  defp returned(value, resource, ctx), do: get(resource, value, ctx)
+
   @doc "A database trigger's record, `:now` (as stored now) or `:before` the change."
   def trigger(%{trigger: nil}, _state, _loads), do: nil
   def trigger(ctx, :now, loads), do: ctx.trigger.now |> load(loads, ctx)

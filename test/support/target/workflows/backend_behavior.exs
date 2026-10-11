@@ -182,6 +182,41 @@ defmodule PhxCheck.WorkflowsBehaviorTest do
     assert Ash.get!(PhxCheck.Task, task.id, authorize?: false).tags == ["closed"]
   end
 
+  # WTF-520: "Result of step N" is the step's own result: a changed
+  # record (step 2 changes step 1's), a custom event's return values (a
+  # text; a thing, read as a record).
+  test "steps read earlier steps' results and custom events' returns", %{
+    conn: conn,
+    project: project
+  } do
+    task = create_task(conn, project)
+
+    assert {:ok, %{status: :returned, data: data}} = Runtime.run("wChain", %{"task" => task.id})
+    assert data == %{"title" => "Chained", "count" => 5.0, "again" => "Chained"}
+
+    task = Ash.get!(PhxCheck.Task, task.id, authorize?: false)
+    assert task.title == "Chained" and task.count == 5.0
+
+    # A returned thing's unique ID is read as a record; anything else is
+    # the value as returned; a step that did not run returns nothing.
+    ctx = %{Runtime.root("wChain", nil) | steps: %{"aCall" => %{"rTask" => task.id}}}
+
+    assert %PhxCheck.Task{title: "Chained"} =
+             Runtime.step_return(ctx, "aCall", "rTask", PhxCheck.Task, [])
+
+    assert [%PhxCheck.Task{}] =
+             Runtime.step_return(
+               %{ctx | steps: %{"aCall" => %{"rTask" => [task.id, nil]}}},
+               "aCall",
+               "rTask",
+               PhxCheck.Task,
+               []
+             )
+
+    assert Runtime.step_return(ctx, "aCall", "rTask", nil, []) == task.id
+    assert Runtime.step_return(ctx, "aOther", "rTask", PhxCheck.Task, []) == nil
+  end
+
   test "a self-scheduling workflow runs until its condition stops it", %{
     conn: conn,
     project: project

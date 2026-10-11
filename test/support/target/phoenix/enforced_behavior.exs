@@ -573,6 +573,21 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
     assert Ash.get!(PhxCheck.Task, id, authorize?: false).title == "From the API"
   end
 
+  # WTF-520: a step's result is a record written as the actor, and what a
+  # later step reads through it (a change of it, a custom event it is
+  # passed to and returns it) is read through Ash as the actor: an
+  # anonymous caller changes the task's Count, but reads back its Title
+  # only (everyone's), never the Count it wrote.
+  test "step results are read as the actor, through changes and custom events" do
+    assert {:ok, %{status: :returned, data: data}} = Runtime.run("wChain", %{"task" => @t1})
+    assert %{"title" => "Chained", "again" => "Chained"} = data
+    # The field policies hid it (the API's response writes it as null).
+    assert %Ash.ForbiddenField{field: :count} = data["count"]
+
+    task = Ash.get!(PhxCheck.Task, @t1, authorize?: false)
+    assert task.title == "Chained" and task.count == 5.0
+  end
+
   # WTF-492: what a "Display data" step shows is read again as the current
   # user: a workflow can never put into a group what the user may not read.
   test "Display data shows only what the current user may read", %{u1: u1} do

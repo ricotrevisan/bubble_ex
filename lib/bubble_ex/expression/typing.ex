@@ -18,7 +18,7 @@ defmodule BubbleEx.Expression.Typing do
   | current cell's thing / index | the enclosing repeating group's (or table row's) content type / number; in a database-trigger workflow, the triggering record |
   | thing before change | the triggering record's type |
   | current page's thing | the page's type (unknown inside a reusable) |
-  | result of step N | the step's result type (`env.steps`) |
+  | result of step N | the step's result type (`env.steps`); for "Trigger a custom event", the custom event's return values, each read by its return ID (`Result of step N's <return>`, its declared type) |
   | workflow / API parameter | its declared `btype_id` |
   | page data, URL parameter | by name (`Current Date/Time` is a date); a URL parameter as its type (text by default; a number, yes/no, date or thing), the path's segments as a list of texts |
   | `field` on a record, option or API type | the field's, option attribute's or external field's type; on a list, a list of it |
@@ -109,6 +109,7 @@ defmodule BubbleEx.Expression.Typing do
   @type context ::
           {:value, input(), String.t() | nil}
           | {:element, Tree.Node.t() | nil}
+          | {:returns, String.t(), [BubbleEx.Workflows.Lowering.Return.t()]}
           | :unknown
 
   @doc """
@@ -136,7 +137,9 @@ defmodule BubbleEx.Expression.Typing do
   context (`{:value, input, type}`, where `input` names it stack-neutrally,
   e.g. `{:element_state, %{"element" => id, "state" => "get_group_data"}}`),
   an element whose states are read by the accessor after it
-  (`{:element, node}`), or `:unknown`.
+  (`{:element, node}`), the return values of a custom event a step
+  triggered, read by the accessor after it (`{:returns, action,
+  returns}`), or `:unknown`.
   """
   @spec context(Scope.t(), Env.t()) :: context()
   def context(%Scope{kind: :element, ref: ref}, env) do
@@ -196,6 +199,7 @@ defmodule BubbleEx.Expression.Typing do
       when is_binary(action) do
     case Map.get(env.steps, action) do
       nil -> :unknown
+      {:returns, returns} -> {:returns, action, returns}
       type -> {:value, {:step_result, %{"action" => action}}, type}
     end
   end
@@ -495,6 +499,10 @@ defmodule BubbleEx.Expression.Typing do
       {:element, %Tree.Node{}} ->
         {n, base, []}
 
+      # Typed by the return its accessor reads.
+      {:returns, _action, _returns} ->
+        {n, base, []}
+
       _ ->
         {n, base, [untyped_scope(n, base)]}
     end
@@ -650,6 +658,7 @@ defmodule BubbleEx.Expression.Typing do
   defp intrinsic?(%Scope{} = scope, env) do
     case context(scope, env) do
       {:element, node} -> node != nil
+      {:returns, _action, _returns} -> true
       _ -> is_binary(scope.type)
     end
   end
@@ -662,6 +671,14 @@ defmodule BubbleEx.Expression.Typing do
         case element_state(node, name, env) do
           {:ok, type} -> {:typed, type}
           :error -> :error
+        end
+
+      # A custom event's return value: its declared type. One without a
+      # type, or a name that is not one of its returns, is unresolved.
+      {:returns, _action, returns} ->
+        case Enum.find(returns, &(&1.id == name)) do
+          %{type: type} when is_binary(type) -> {:typed, type}
+          _ -> :error
         end
 
       _ ->

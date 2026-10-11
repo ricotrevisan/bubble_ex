@@ -30,7 +30,7 @@ defmodule BubbleEx.Workflows.FrontendTest do
   test "every page and reusable-element workflow is lowered, in a stable order", %{
     lowered: lowered
   } do
-    assert length(lowered.workflows) == 29
+    assert length(lowered.workflows) == 33
 
     assert Enum.map(lowered.workflows, &{&1.surface, &1.bubble_id}) ==
              Enum.sort(Enum.map(lowered.workflows, &{&1.surface, &1.bubble_id}))
@@ -330,8 +330,8 @@ defmodule BubbleEx.Workflows.FrontendTest do
     coverage = Frontend.coverage(lowered)
 
     assert coverage["workflows"] == %{
-             "total" => 29,
-             "native" => 26,
+             "total" => 33,
+             "native" => 30,
              "residue" => 3,
              "disabled" => 1
            }
@@ -345,7 +345,7 @@ defmodule BubbleEx.Workflows.FrontendTest do
              "unresolved_reference" => 1
            }
 
-    assert coverage["step_ops"]["set_state"] == 21
+    assert coverage["step_ops"]["set_state"] == 24
     assert coverage["step_ops"]["pause"] == 2
   end
 

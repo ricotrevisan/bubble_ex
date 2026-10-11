@@ -166,6 +166,60 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     assert Enum.count(notes, &(&1.title == "Parent")) == 2
   end
 
+  # WTF-520: "Result of step N" is the step's own result, as the typing
+  # claims: a record for a created or changed thing, a custom event's
+  # return values for "Trigger a custom event".
+  test "a step changes an earlier step's changed result; a state reads it", %{conn: conn} do
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: true)
+    {:ok, view, _html} = live(conn, "/")
+    assert click(view, "bBtnChain") =~ "Label: Draft final"
+    assert [%{title: "Draft final", done: true}] = Ash.read!(PhxCheck.Note, authorize?: false)
+  end
+
+  test "a custom event's return value is its step's result", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/")
+    assert click(view, "bBtnCallRes") =~ "Label: hi!"
+  end
+
+  test "a custom event's returned thing is read as a record, as the user", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/")
+    # It creates a note: a data workflow, refused without the opt-in.
+    click(view, "bBtnCallNote")
+    assert label(view) =~ "Label: start"
+
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: true)
+    assert click(view, "bBtnCallNote") =~ "Label: Made"
+    assert [%{title: "Made"}] = Ash.read!(PhxCheck.Note, authorize?: false)
+  end
+
+  test "a returned thing's unique ID is read as a record; nothing with data access off" do
+    alias PhxCheckWeb.BubbleWorkflows
+    id = "1700000000000x100000000000000010"
+    Ash.Seed.seed!(PhxCheck.Note, %{id: id, title: "Kept"})
+    ctx = %BubbleWorkflows.Ctx{now: DateTime.utc_now(), steps: %{"aStep" => %{"rNote" => id}}}
+
+    assert BubbleWorkflows.step_return(ctx, "aStep", "rNote", PhxCheck.Note, false, []) == nil
+
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: true)
+
+    assert %PhxCheck.Note{id: ^id, title: "Kept"} =
+             BubbleWorkflows.step_return(ctx, "aStep", "rNote", PhxCheck.Note, false, [])
+
+    assert [%PhxCheck.Note{id: ^id}] =
+             BubbleWorkflows.step_return(
+               %{ctx | steps: %{"aStep" => %{"rNote" => [id, "not an id"]}}},
+               "aStep",
+               "rNote",
+               PhxCheck.Note,
+               true,
+               []
+             )
+
+    # A step that did not run, or returned nothing: empty.
+    assert BubbleWorkflows.step_return(ctx, "aOther", "rNote", PhxCheck.Note, false, []) == nil
+    assert BubbleWorkflows.step_return(ctx, "aStep", "rOther", nil, false, []) == nil
+  end
+
   test "with data access off, a load reads nothing, even if a flag is wrong (review H1)" do
     alias PhxCheckWeb.BubbleWorkflows
     note = Ash.Seed.seed!(PhxCheck.Note, %{id: "1700000000000x100000000000000009", title: "x"})

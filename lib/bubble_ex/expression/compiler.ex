@@ -204,6 +204,10 @@ defmodule BubbleEx.Expression.Compiler do
       {:element, %{}} ->
         {:error, base, [uncompiled(base, "an element used as a value", :element)]}
 
+      {:returns, _action, _returns} ->
+        {:error, base,
+         [uncompiled(base, "a custom event's return values used as a value", :step_returns)]}
+
       # Typing reported it.
       _ ->
         {:error, base, []}
@@ -300,6 +304,12 @@ defmodule BubbleEx.Expression.Compiler do
         input = IR.node(:input, [:element_state, %{"element" => id, "state" => name}], type)
         {input, base ++ [link(n)], []}
 
+      # A value the custom event a step triggered returned, by return ID
+      # (its type is the declared one: the binding reads a thing as one).
+      {:returns, action, _returns} ->
+        ref = %{"action" => action, "return" => name, "type" => type}
+        {IR.node(:input, [:step_result, ref], type), base ++ [link(n)], []}
+
       _ ->
         property_operator(n, base, ctx)
     end
@@ -395,6 +405,7 @@ defmodule BubbleEx.Expression.Compiler do
   defp operand(%Scope{} = scope, base, ctx) do
     case Typing.context(scope, ctx.env) do
       {:element, %{}} -> {:error, base, []}
+      {:returns, _action, _returns} -> {:error, base, []}
       _ -> c(scope, base, ctx)
     end
   end

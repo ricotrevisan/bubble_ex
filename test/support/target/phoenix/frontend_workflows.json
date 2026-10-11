@@ -333,6 +333,38 @@
           },
           "type": "Button"
         },
+        "bBtnCallNote": {
+          "id": "bBtnCallNote",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 30,
+            "text": {
+              "entries": {
+                "0": "Call for a note"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnCallRes": {
+          "id": "bBtnCallRes",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 29,
+            "text": {
+              "entries": {
+                "0": "Call for a result"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
         "bBtnCallee": {
           "id": "bBtnCallee",
           "properties": {
@@ -342,6 +374,22 @@
             "text": {
               "entries": {
                 "0": "Callee residue"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnChain": {
+          "id": "bBtnChain",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 28,
+            "text": {
+              "entries": {
+                "0": "Chain"
               },
               "type": "TextExpression"
             },
@@ -857,6 +905,89 @@
           },
           "type": "ButtonClicked"
         },
+        "wCallNote": {
+          "actions": {
+            "0": {
+              "id": "aCallNote1",
+              "properties": {
+                "custom_event": "wEvtNote"
+              },
+              "type": "TriggerCustomEvent"
+            },
+            "1": {
+              "id": "aCallNote2",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "next": {
+                    "name": "rNote",
+                    "next": {
+                      "name": "title_text",
+                      "type": "Message"
+                    },
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "action_id": "aCallNote1"
+                  },
+                  "type": "PreviousStep"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wCallNote",
+          "properties": {
+            "element_id": "bBtnCallNote"
+          },
+          "type": "ButtonClicked"
+        },
+        "wCallRes": {
+          "actions": {
+            "0": {
+              "id": "aCallRes1",
+              "properties": {
+                "arguments": {
+                  "0": {
+                    "arg_value": {
+                      "entries": {
+                        "0": "hi"
+                      },
+                      "type": "TextExpression"
+                    },
+                    "param_id": "pWord"
+                  }
+                },
+                "custom_event": "wEvt"
+              },
+              "type": "TriggerCustomEvent"
+            },
+            "1": {
+              "id": "aCallRes2",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "next": {
+                    "name": "rWord",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "action_id": "aCallRes1"
+                  },
+                  "type": "PreviousStep"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wCallRes",
+          "properties": {
+            "element_id": "bBtnCallRes"
+          },
+          "type": "ButtonClicked"
+        },
         "wCallee": {
           "actions": {
             "0": {
@@ -884,6 +1015,102 @@
           "id": "wCallee",
           "properties": {
             "element_id": "bBtnCallee"
+          },
+          "type": "ButtonClicked"
+        },
+        "wChain": {
+          "actions": {
+            "0": {
+              "id": "aChain1",
+              "properties": {
+                "initial_values": {
+                  "0": {
+                    "key": "title_text",
+                    "value": {
+                      "entries": {
+                        "0": "Draft"
+                      },
+                      "type": "TextExpression"
+                    }
+                  }
+                },
+                "thing_type": "custom.note"
+              },
+              "type": "NewThing"
+            },
+            "1": {
+              "id": "aChain2",
+              "properties": {
+                "changes": {
+                  "0": {
+                    "key": "title_text",
+                    "value": {
+                      "entries": {
+                        "0": {
+                          "next": {
+                            "name": "title_text",
+                            "type": "Message"
+                          },
+                          "properties": {
+                            "action_id": "aChain1"
+                          },
+                          "type": "PreviousStep"
+                        },
+                        "1": " final"
+                      },
+                      "type": "TextExpression"
+                    }
+                  }
+                },
+                "to_change": {
+                  "properties": {
+                    "action_id": "aChain1"
+                  },
+                  "type": "PreviousStep"
+                }
+              },
+              "type": "ChangeThing"
+            },
+            "2": {
+              "id": "aChain3",
+              "properties": {
+                "changes": {
+                  "0": {
+                    "key": "done_boolean",
+                    "value": true
+                  }
+                },
+                "to_change": {
+                  "properties": {
+                    "action_id": "aChain2"
+                  },
+                  "type": "PreviousStep"
+                }
+              },
+              "type": "ChangeThing"
+            },
+            "3": {
+              "id": "aChain4",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "next": {
+                    "name": "title_text",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "action_id": "aChain3"
+                  },
+                  "type": "PreviousStep"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wChain",
+          "properties": {
+            "element_id": "bBtnChain"
           },
           "type": "ButtonClicked"
         },
@@ -1063,6 +1290,58 @@
                 "display": "Result",
                 "is_list": false,
                 "return_id": "rWord"
+              }
+            }
+          },
+          "type": "CustomEvent"
+        },
+        "wEvtNote": {
+          "actions": {
+            "0": {
+              "id": "aEvtNote1",
+              "properties": {
+                "initial_values": {
+                  "0": {
+                    "key": "title_text",
+                    "value": {
+                      "entries": {
+                        "0": "Made"
+                      },
+                      "type": "TextExpression"
+                    }
+                  }
+                },
+                "thing_type": "custom.note"
+              },
+              "type": "NewThing"
+            },
+            "1": {
+              "id": "aEvtNote2",
+              "properties": {
+                "return_values": {
+                  "0": {
+                    "return_id": "rNote",
+                    "return_value": {
+                      "properties": {
+                        "action_id": "aEvtNote1"
+                      },
+                      "type": "PreviousStep"
+                    }
+                  }
+                }
+              },
+              "type": "TerminateWorkflow"
+            }
+          },
+          "id": "wEvtNote",
+          "properties": {
+            "event_name": "make note",
+            "return_types": {
+              "0": {
+                "btype_id": "custom.note",
+                "display": "Note",
+                "is_list": false,
+                "return_id": "rNote"
               }
             }
           },

@@ -27,7 +27,7 @@ defmodule BubbleEx.Target.Ash.WorkflowsTest do
 
     assert Enum.map(spec.resources, &{&1.module, Enum.map(&1.actions, fn a -> a.name end)}) == [
              {"Workflows.FolderFLoop", ["blocked", "fan_out", "note", "ping", "sync", "tick"]},
-             {"Workflows.FolderFTasks", ["close_task", "create_task", "notify"]},
+             {"Workflows.FolderFTasks", ["chain", "close_task", "create_task", "echo", "notify"]},
              {"Workflows.Unfiled", ["task_done"]}
            ]
   end
@@ -37,8 +37,10 @@ defmodule BubbleEx.Target.Ash.WorkflowsTest do
 
     assert Map.new(Spec.actions(spec), &{&1.workflow, &1.authorize}) == %{
              "wBlocked" => true,
+             "wChain" => true,
              "wClose" => false,
              "wCreate" => true,
+             "wEcho" => :inherit,
              "wExternal" => true,
              "wFanOut" => true,
              "wNote" => true,
@@ -119,13 +121,34 @@ defmodule BubbleEx.Target.Ash.WorkflowsTest do
     assert action(spec, "wTick").scheduled?
   end
 
+  # WTF-520: "Result of step N" of a change of a changed result, and of a
+  # custom event's return values (a text as returned; a thing read as a
+  # record of its resource, through Ash as the actor).
+  test "step results bind a chain of changes and a custom event's returns" do
+    chain = action(spec(app()), "wChain")
+    assert chain.residue == [] and Enum.all?(chain.steps, &(&1.residue == []))
+    [_change, change_again, _notify, _echo, return] = chain.steps
+    assert [%{bind: {:step, "aCh1"}}] = change_again.args.target.bindings
+
+    binds =
+      Map.new(return.args.values, fn %{key: key, value: %{bindings: [binding]}} ->
+        {key, binding.bind}
+      end)
+
+    assert binds == %{
+             "title" => {:step_return, %{step: "aCh3", return: "rTitle", resource: nil}},
+             "count" => {:step_return, %{step: "aCh4", return: "rTask", resource: "Acme.Task"}},
+             "again" => {:step, "aCh2"}
+           }
+  end
+
   test "coverage counts generated code" do
     coverage = Spec.coverage(spec(app()))
-    assert coverage["entry_points"] == 10
+    assert coverage["entry_points"] == 12
     # wBlocked's own body lowers, but it schedules wExternal, which does not.
-    assert coverage["workflows"] == %{"total" => 10, "native" => 8, "residue" => 2}
-    assert coverage["native_own_body"] == 9
-    assert coverage["steps"]["native"] == 13
+    assert coverage["workflows"] == %{"total" => 12, "native" => 10, "residue" => 2}
+    assert coverage["native_own_body"] == 11
+    assert coverage["steps"]["native"] == 19
 
     assert coverage["residue_reasons"] == %{
              "api_connector_action" => 1,

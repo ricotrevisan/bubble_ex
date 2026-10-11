@@ -456,6 +456,7 @@ defmodule BubbleEx.Decision.DropTest do
 
       assert Enum.sort(used) == [
                {"wCall", "workflow:wEvt"},
+               {"wCallRes", "workflow:wEvt"},
                {"wNav", "page:bOther"},
                {"wSchedule", "workflow:wApiNote"},
                {"wSeg", "page:bOther"}
