@@ -48,7 +48,9 @@ defmodule BubbleEx.Model.ConnectorRequest do
     * `host` - the host as parts (literals, URL parameters and redacted
       account-specific labels); nil when the call has no plain host
       (`BubbleEx.Model.ConnectorReader.host/1`)
-    * `port` - the URL's explicit port, or nil
+    * `port` - the URL's explicit port, or nil; a `[name]` placeholder
+      port (`host:[port]`) is the placeholder's part (a `:parameter` or
+      `:secret`), and the call is unsupported (`:dynamic_port`)
     * `path` - the path's segments (after the host, split at `/`), each a
       list of parts; a trailing `/` gives a last empty segment
     * `query` - the URL's own query string: `%{name, value}` entries in URL
@@ -104,7 +106,7 @@ defmodule BubbleEx.Model.ConnectorRequest do
   @type t :: %__MODULE__{
           scheme: String.t() | nil,
           host: [part()] | nil,
-          port: non_neg_integer() | nil,
+          port: non_neg_integer() | part() | nil,
           path: [[part()]],
           query: [%{name: String.t(), value: [part()]}],
           body_type: :none | :json | :form | :raw,
@@ -262,7 +264,7 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
         scheme = String.downcase(scheme)
         state = if scheme in ["http", "https"], do: state, else: unsupported(state, :scheme)
 
-        {port, state} = port(host_port, state)
+        {port, state} = port(host_port, named, state)
         {host_parts, state} = host(host, named, state)
         {segments, state} = path(path, named, state)
 
@@ -284,10 +286,27 @@ defmodule BubbleEx.Model.ConnectorRequest.Reader do
 
   defp url(_url, _named, state), do: {%{}, unsupported(state, :no_url)}
 
-  defp port(host_port, state) do
-    case Regex.run(~r/:([^:\]]*)\z/, host_port) do
-      [_, digits] when digits != "" -> port_number(digits, state)
-      _ -> {nil, state}
+  # A placeholder port (`host:[port]`) is never generated (`:dynamic_port`):
+  # it is kept as its part, so `BubbleEx.Model.ConnectorSupport` sees a
+  # public parameter choosing where the call (and its credentials) goes.
+  defp port(host_port, named, state) do
+    cond do
+      match = Regex.run(~r/:\[([^\[\]]{1,128})\]\z/, host_port) ->
+        state = unsupported(state, :dynamic_port)
+
+        case placeholder(Enum.at(match, 1), named) do
+          nil -> {nil, unsupported(state, :unmatched_placeholder)}
+          part -> {part, state}
+        end
+
+      match = Regex.run(~r/:([^:\]]*)\z/, host_port) ->
+        case match do
+          [_, digits] when digits != "" -> port_number(digits, state)
+          _ -> {nil, state}
+        end
+
+      true ->
+        {nil, state}
     end
   end
 

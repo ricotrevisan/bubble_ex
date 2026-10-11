@@ -14,7 +14,7 @@ defmodule BubbleEx.Model.ConnectorSupport do
   | `:unsupported_auth` | its group authenticates with anything but none, `private_key_header`, `private_key_url` or `basic_auth` (OAuth, JWT, custom token, …) |
   | `:method` | its method is not GET, POST, PUT, PATCH or DELETE |
   | `:unnamed_parameter` | a non-private parameter of the call or its group has no usable name |
-  | `:host_parameter` | its URL's host has a placeholder (whole or partial) for a non-private parameter: a workflow or page could point the call, and the API's credentials, at any host (SSRF, WTF-533). A private parameter's (its value comes from the owner's environment) is not |
+  | `:host_parameter` | its URL's host or port has a placeholder (whole or partial) for a non-private parameter: a workflow or page could point the call, and the API's credentials, at any host or port (SSRF, WTF-533, WTF-534). A private parameter's (its value comes from the owner's environment) is not; a port placeholder is `:dynamic_port` either way |
   | the reasons of `BubbleEx.Model.ConnectorRequest`'s `unsupported` | its request template does not describe the request (`:raw_body`, `:file_parameter`, `:query`, `:no_url`, `:no_host`, …) |
 
   A malformed `types` registry does not stop generation: it only leaves
@@ -59,15 +59,15 @@ defmodule BubbleEx.Model.ConnectorSupport do
     |> Enum.sort()
   end
 
-  # A host placeholder naming a parameter that is not private. A secret
-  # placeholder (a private parameter whose key Bubble stripped) and a
-  # redacted label come from the environment.
-  defp public_host_parameter?(group, %ConnectorCall{request: %{host: host}} = call)
+  # A host or port placeholder naming a parameter that is not private. A
+  # secret placeholder (a private parameter whose key Bubble stripped) and
+  # a redacted label come from the environment.
+  defp public_host_parameter?(group, %ConnectorCall{request: %{host: host, port: port}} = call)
        when is_list(host) do
     private =
       for p <- group.parameters ++ call.parameters, p.private, into: MapSet.new(), do: p.id
 
-    Enum.any?(host, fn
+    Enum.any?(if(is_map(port), do: host ++ [port], else: host), fn
       %{kind: :parameter, id: id} -> not MapSet.member?(private, id)
       _ -> false
     end)
