@@ -770,7 +770,8 @@ defmodule BubbleEx.Target.Ash.Workflows do
        when is_binary(return) do
     case returned(ref["type"], ctx) do
       {:ok, resource} ->
-        {:ok, {:step_return, %{step: action, return: return, resource: resource}}}
+        list? = Type.list?(ref["type"])
+        {:ok, {:step_return, %{step: action, return: return, resource: resource, list?: list?}}}
 
       :error ->
         {:error, "elixir:unbound_input:step_return"}

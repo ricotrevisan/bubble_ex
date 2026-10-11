@@ -2142,7 +2142,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   defp bind({:step_result, %{"action" => action, "return" => return} = ref}, ctx)
        when is_binary(return) do
     case returned(ref["type"], ctx) do
-      {:ok, resource, list?} ->
+      {:ok, resource} ->
+        list? = Type.list?(ref["type"])
         {:ok, {:step_return, %{step: action, return: return, resource: resource, list?: list?}}}
 
       :error ->
@@ -2206,20 +2207,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp url_bind(url, _reference, _ctx), do: {:ok, {:url_value, url}}
 
-  # The resource of a returned thing (nil for any other value) and whether
-  # it is a list.
+  # The resource of a returned thing or list of things (nil for any other
+  # value).
   defp returned(type, ctx) do
-    item = Type.list_item(type)
-
-    case Type.reference(item || type) do
+    case Type.reference(Type.list_item(type) || type) do
       {:data_type, id} ->
         case resource_of(id, ctx) do
-          %{module: module} -> {:ok, "#{ctx.namespace}.#{module}", item != nil}
+          %{module: module} -> {:ok, "#{ctx.namespace}.#{module}"}
           nil -> :error
         end
 
       _ ->
-        {:ok, nil, false}
+        {:ok, nil}
     end
   end
 

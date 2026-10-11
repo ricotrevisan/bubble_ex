@@ -181,6 +181,15 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     assert click(view, "bBtnCallRes") =~ "Label: hi!"
   end
 
+  # Its "Terminate this workflow" (the return) is skipped: the result is
+  # empty, never the value the skipped step would have returned.
+  test "a custom event whose return step is skipped returns nothing", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/")
+    html = click(view, "bBtnCallSkip")
+    assert html =~ "Label: skipped:"
+    refute html =~ "never"
+  end
+
   test "a custom event's returned thing is read as a record, as the user", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/")
     # It creates a note: a data workflow, refused without the opt-in.
@@ -214,6 +223,16 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
                true,
                []
              )
+
+    # Shaped as declared (review of #229): a list where one thing was
+    # declared is its first item, one value where a list was declared a
+    # list of it; a field read never meets a list.
+    two = %{ctx | steps: %{"aStep" => %{"rNote" => [id, id], "rText" => "x"}}}
+
+    assert %PhxCheck.Note{id: ^id} =
+             BubbleWorkflows.step_return(two, "aStep", "rNote", PhxCheck.Note, false, [])
+
+    assert BubbleWorkflows.step_return(two, "aStep", "rText", nil, true, []) == ["x"]
 
     # A step that did not run, or returned nothing: empty.
     assert BubbleWorkflows.step_return(ctx, "aOther", "rNote", PhxCheck.Note, false, []) == nil

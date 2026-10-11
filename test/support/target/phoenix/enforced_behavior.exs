@@ -588,6 +588,18 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
     assert task.title == "Chained" and task.count == 5.0
   end
 
+  # A custom event's returned thing that is a Bubble ID is read through
+  # the policies as the actor: what it may not view stays hidden.
+  test "a returned thing's unique ID is read through the policies" do
+    ctx = %{Runtime.root("wChain", nil) | steps: %{"aCall" => %{"rTask" => @t1}}}
+    task = Runtime.step_return(ctx, "aCall", "rTask", PhxCheck.Task, false, [])
+    assert task.title == "Bake"
+    assert %Ash.ForbiddenField{field: :done} = task.done
+
+    [task] = Runtime.step_return(ctx, "aCall", "rTask", PhxCheck.Task, true, [])
+    assert %Ash.ForbiddenField{field: :done} = task.done
+  end
+
   # WTF-492: what a "Display data" step shows is read again as the current
   # user: a workflow can never put into a group what the user may not read.
   test "Display data shows only what the current user may read", %{u1: u1} do

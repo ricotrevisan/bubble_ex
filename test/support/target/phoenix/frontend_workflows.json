@@ -365,6 +365,22 @@
           },
           "type": "Button"
         },
+        "bBtnCallSkip": {
+          "id": "bBtnCallSkip",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 31,
+            "text": {
+              "entries": {
+                "0": "Call, skipped return"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
         "bBtnCallee": {
           "id": "bBtnCallee",
           "properties": {
@@ -988,6 +1004,46 @@
           },
           "type": "ButtonClicked"
         },
+        "wCallSkip": {
+          "actions": {
+            "0": {
+              "id": "aCallSkip1",
+              "properties": {
+                "custom_event": "wEvtSkip"
+              },
+              "type": "TriggerCustomEvent"
+            },
+            "1": {
+              "id": "aCallSkip2",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "entries": {
+                    "0": "skipped:",
+                    "1": {
+                      "next": {
+                        "name": "rSkip",
+                        "type": "Message"
+                      },
+                      "properties": {
+                        "action_id": "aCallSkip1"
+                      },
+                      "type": "PreviousStep"
+                    }
+                  },
+                  "type": "TextExpression"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wCallSkip",
+          "properties": {
+            "element_id": "bBtnCallSkip"
+          },
+          "type": "ButtonClicked"
+        },
         "wCallee": {
           "actions": {
             "0": {
@@ -1404,6 +1460,41 @@
           "id": "wEvtResidue",
           "properties": {
             "event_name": "broken"
+          },
+          "type": "CustomEvent"
+        },
+        "wEvtSkip": {
+          "actions": {
+            "0": {
+              "id": "aEvtSkip1",
+              "properties": {
+                "condition": false,
+                "return_values": {
+                  "0": {
+                    "return_id": "rSkip",
+                    "return_value": {
+                      "entries": {
+                        "0": "never"
+                      },
+                      "type": "TextExpression"
+                    }
+                  }
+                }
+              },
+              "type": "TerminateWorkflow"
+            }
+          },
+          "id": "wEvtSkip",
+          "properties": {
+            "event_name": "skip",
+            "return_types": {
+              "0": {
+                "btype_id": "text",
+                "display": "Skip",
+                "is_list": false,
+                "return_id": "rSkip"
+              }
+            }
           },
           "type": "CustomEvent"
         },

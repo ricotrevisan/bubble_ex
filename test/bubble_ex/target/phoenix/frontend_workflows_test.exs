@@ -534,7 +534,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     # characters and spaces are percent-encoded, not replaced.
     workflows = markers(files)
     # The page and reusable-element workflows and the backend workflow they schedule.
-    assert map_size(workflows) == 34
+    assert map_size(workflows) == 36
     assert Enum.all?(Map.values(workflows), &match?([_], &1))
 
     # The test tags are the plan's subjects, as data.

@@ -136,8 +136,11 @@ defmodule BubbleEx.Target.Ash.WorkflowsTest do
       end)
 
     assert binds == %{
-             "title" => {:step_return, %{step: "aCh3", return: "rTitle", resource: nil}},
-             "count" => {:step_return, %{step: "aCh4", return: "rTask", resource: "Acme.Task"}},
+             "title" =>
+               {:step_return, %{step: "aCh3", return: "rTitle", resource: nil, list?: false}},
+             "count" =>
+               {:step_return,
+                %{step: "aCh4", return: "rTask", resource: "Acme.Task", list?: false}},
              "again" => {:step, "aCh2"}
            }
   end

@@ -507,7 +507,13 @@ steps before it (in Bubble order, so step 10 comes after step 2;
 | Sign up / Create an account, Copy a list of things | a user, the copied list's type (typed, but these steps are not lowered yet: their workflows are residue) |
 | Schedule API workflow, an API Connector call, a plugin action, a custom event that declares no returns (or a return without a type) | none known: an expression reading it does not compile (`expr_untyped_scope`, `expr_unresolved_accessor`) |
 
-The backend runtime does the same (`Runtime.step/3`, `Runtime.step_return/5`):
+A returned value is shaped as the custom event declares it: a list where
+one value was declared is its first item (logged), one value where a list
+was declared a list of it, so a field read never meets a list (WTF-500).
+A list of Bubble IDs is read in one query, in the list's order (on pages
+at most `BubbleData.max_items/0` of it, logged when longer).
+
+The backend runtime does the same (`Runtime.step/3`, `Runtime.step_return/6`):
 a created or changed record is what Ash returned for the write made as the
 workflow's actor, and its relationships are loaded as that actor; a
 custom event's returned thing that is a Bubble ID is read through Ash as

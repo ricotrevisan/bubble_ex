@@ -485,7 +485,7 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
                "lowered" => 1,
                "sites" => %{
                  "authorize_false:scaffold" => 2,
-                 "authorize_unverifiable:scaffold" => 7,
+                 "authorize_unverifiable:scaffold" => 8,
                  "runtime_start:listed" => 1
                }
              }

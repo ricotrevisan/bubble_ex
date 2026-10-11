@@ -331,10 +331,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsTest do
     coverage = FrontendWorkflows.coverage(spec)
 
     assert coverage["workflows"] == %{
-             "total" => 33,
-             "native" => 29,
-             "native_own_body" => 30,
-             "wired" => 23,
+             "total" => 35,
+             "native" => 31,
+             "native_own_body" => 32,
+             "wired" => 24,
              "residue" => 4,
              "client" => 3
            }

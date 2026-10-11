@@ -9,6 +9,7 @@ defmodule BubbleEx.Expression.StepResultsTest do
   alias BubbleEx.Diagnostic
   alias BubbleEx.Expression.{Compiler, IR, Sites, Typing}
   alias BubbleEx.Expression.Ast.{Field, Property, Scope}
+  alias BubbleEx.Workflows.Lowering
   alias BubbleEx.Workflows.Lowering.Return
 
   defp prev(action), do: src("PreviousStep", %{"action_id" => action})
@@ -154,6 +155,11 @@ defmodule BubbleEx.Expression.StepResultsTest do
     {ir, diags} = compiled(prev("a5"))
     assert ir == nil
     assert [%Diagnostic{code: :expr_uncompiled, details: %{construct: :step_returns}}] = diags
+  end
+
+  test "steps are in numeric order; a length member is not a step" do
+    entries = %{"0" => :a, "10" => :c, "2" => :b, "length" => 3}
+    assert Lowering.ordered(entries) == [{"0", :a}, {"2", :b}, {"10", :c}]
   end
 
   test "custom events are found on pages, in reusable elements and in the backend" do
