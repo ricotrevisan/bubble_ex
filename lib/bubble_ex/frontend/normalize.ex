@@ -1109,11 +1109,11 @@ defmodule BubbleEx.Frontend.Normalize do
     sprite? = supported_sprite_icon?(Payload.prop(raw, "icon")) and static_element?(raw)
 
     cond do
-      sprite? and Payload.prop(raw, "show_icon") == true ->
-        {:native, :link, :label_icon}
-
       sprite? and icon_only_link?(raw) ->
         {:native, :link, :icon}
+
+      sprite? and Payload.prop(raw, "show_icon") == true ->
+        {:native, :link, :label_icon}
 
       Payload.prop(raw, "show_icon") == true or icon_only_link?(raw) ->
         {:placeholder, :unsupported_link_variant}
@@ -1270,7 +1270,20 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp icon_only_link?(raw) do
-    Payload.prop(raw, "link_type") in ["icon", "icon_only"]
+    link_type = Payload.prop(raw, "link_type") || Payload.prop(raw, "linktype")
+    icon = Payload.prop(raw, "icon")
+    text = Payload.prop(raw, "text") || Payload.prop(raw, "label")
+
+    link_type in ["icon", "icon_only"] or
+      (is_binary(icon) and String.trim(icon) != "" and empty_link_text?(text, raw))
+  end
+
+  defp empty_link_text?(text, raw) do
+    case literal_or_binding(text, "link", "text", raw) do
+      :empty -> true
+      {:resolved, value} when is_binary(value) -> String.trim(value) == ""
+      _ -> false
+    end
   end
 
   @element_kinds %{
@@ -1314,7 +1327,9 @@ defmodule BubbleEx.Frontend.Normalize do
       align: align_from(raw, mode),
       fill_width?: fill_axis?(raw, :width),
       fit_width?: fit_width?(raw),
-      fill_height?: fill_axis?(raw, :height) || legacy_fixed_fill_height?(raw, mode)
+      fill_height?: fill_axis?(raw, :height) || legacy_fixed_fill_height?(raw, mode),
+      # Keep fit separate from fixed: both have fill_height? false.
+      fit_height?: Payload.prop(raw, "fit_height") == true
     }
 
     Map.reject(base, fn {_k, v} -> is_nil(v) end)
@@ -1639,7 +1654,11 @@ defmodule BubbleEx.Frontend.Normalize do
   defp spacing_part(value), do: to_string(value)
 
   defp box_flags(raw) do
-    %{collapsed?: collapsed?(raw), hidden?: hidden?(raw)}
+    %{
+      collapsed?: collapsed?(raw),
+      hidden?: hidden?(raw),
+      collapse_when_hidden?: Payload.prop(raw, "collapse_when_hidden") == true
+    }
   end
 
   defp responsive_from(raw) do
@@ -1726,7 +1745,10 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp fixed_aliased_dimension(_raw, _key), do: nil
 
-  defp collapsed?(raw), do: Payload.prop(raw, "collapsed") == true
+  defp collapsed?(raw),
+    do:
+      Payload.prop(raw, "collapsed") == true or
+        (hidden?(raw) and Payload.prop(raw, "collapse_when_hidden") == true)
 
   defp hidden?(raw) do
     Payload.prop(raw, "hidden") == true or Payload.prop(raw, "is_visible") == false

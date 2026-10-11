@@ -652,6 +652,281 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     end
   end
 
+  test "flow children ignore editor canvas offsets and fill extents" do
+    for geometry <- [:editor, :runtime] do
+      canvas =
+        if geometry == :editor,
+          do: %{"left" => 129, "top" => 113, "width" => 718, "height" => 1049},
+          else: %{"%l" => 129, "%t" => 113, "%w" => 718, "%h" => 1049}
+
+      payload = %{
+        "_id" => "flow",
+        "pages" => %{
+          "page" => %{
+            "type" => "Page",
+            "properties" => %{"container_layout" => "row"},
+            "elements" => %{
+              "text" => %{
+                "type" => "Text",
+                "properties" =>
+                  Map.merge(canvas, %{
+                    "single_width" => false,
+                    "fit_height" => true,
+                    "min_width_css" => "331px",
+                    "max_width_css" => "862px",
+                    "min_height_css" => "1049px",
+                    "margin_top" => 113,
+                    "margin_left" => 129,
+                    "margin_right" => 133
+                  })
+              }
+            }
+          }
+        }
+      }
+
+      {:ok, model} = BubbleEx.Frontend.Normalize.run(payload)
+      [page] = model.pages
+      [_, child] = Css.lower(page)
+      declarations = Map.new(child.declarations)
+      assert declarations["position"] == "relative"
+      refute Map.has_key?(declarations, "left")
+      refute Map.has_key?(declarations, "top")
+      refute Map.has_key?(declarations, "width")
+      refute Map.has_key?(declarations, "height")
+      assert declarations["flex-basis"] == "331px"
+      assert declarations["min-height"] == "1049px"
+      assert declarations["max-width"] == "862px"
+    end
+  end
+
+  test "expanded reusable root uses instance placement rather than definition canvas" do
+    definition =
+      node("definition",
+        kind: :reusable_definition,
+        layout: %{mode: :fixed},
+        box: %{x: 0, y: 0, width: 980, height: 90}
+      )
+
+    instance =
+      node("instance",
+        kind: :reusable_instance,
+        layout: %{fill_width?: true, fill_height?: false},
+        box: %{margin: "38px 0px 0px 0px", height: "90px", min_width: "0px"}
+      )
+
+    declarations =
+      definition |> Css.lower_root(instance) |> Map.fetch!(:declarations) |> Map.new()
+
+    refute Map.has_key?(declarations, "left")
+    refute Map.has_key?(declarations, "top")
+    assert declarations["position"] == "relative"
+    assert declarations["margin"] == "38px 0px 0px 0px"
+  end
+
+  test "fixed parent groups use Bubble canvas defaults and fixed pages center without mobile negative offsets" do
+    group =
+      node("row",
+        layout: %{mode: :row, fill_width?: true, fill_height?: false},
+        box: %{min_width: "0px", min_height: "0px"}
+      )
+
+    page =
+      node("page",
+        kind: :page,
+        layout: %{mode: :fixed},
+        box: %{x: 0, y: 0, width: 980, height: 1290},
+        children: [group]
+      )
+
+    css = Css.page(page)
+    assert rule(css, "row") =~ "width: 400px;"
+    assert rule(css, "row") =~ "height: 250px;"
+    assert rule(css, "page") =~ "position: relative;"
+    assert rule(css, "page") =~ "margin-left: auto;"
+    refute rule(css, "page") =~ "
+  left:"
+  end
+
+  test "source fit-height metadata does not discard fixed text height" do
+    for fit? <- [true, false] do
+      payload = %{
+        "_id" => "height",
+        "pages" => %{
+          "page" => %{
+            "type" => "Page",
+            "properties" => %{"container_layout" => "row"},
+            "elements" => %{
+              "text" => %{
+                "type" => "Text",
+                "properties" => %{
+                  "height" => 1049,
+                  "min_height_css" => "1049px",
+                  "fit_height" => fit?,
+                  "single_height" => !fit?
+                }
+              }
+            }
+          }
+        }
+      }
+
+      {:ok, model} = BubbleEx.Frontend.Normalize.run(payload)
+      [page] = model.pages
+      [text] = page.children
+      assert text.layout.fit_height? == fit?
+      [_, lowered] = Css.lower(page)
+      declarations = Map.new(lowered.declarations)
+
+      if fit? do
+        refute Map.has_key?(declarations, "height")
+      else
+        assert declarations["height"] == "1049px"
+      end
+
+      assert declarations["min-height"] == "1049px"
+    end
+  end
+
+  test "fixed reusable definitions retain canvas bounds when a flow instance only requests fill" do
+    definition =
+      node("definition",
+        kind: :reusable_definition,
+        layout: %{mode: :fixed},
+        box: %{width: 980, min_width: 0, max_width: 980, height: 90}
+      )
+
+    instance =
+      node("instance",
+        kind: :reusable_instance,
+        layout: %{fill_width?: true},
+        box: %{min_width: "0px"}
+      )
+
+    declarations =
+      definition |> Css.lower_root(instance) |> Map.fetch!(:declarations) |> Map.new()
+
+    assert declarations["width"] == "980px"
+    assert declarations["min-width"] == "980px"
+    assert declarations["max-width"] == "980px"
+
+    explicit = %{instance | box: %{width: "1200px", min_width: "0px"}}
+
+    declarations =
+      definition |> Css.lower_root(explicit) |> Map.fetch!(:declarations) |> Map.new()
+
+    assert declarations["width"] == "1200px"
+    assert declarations["min-width"] == "0px"
+    refute Map.has_key?(declarations, "max-width")
+  end
+
+  test "reusable roots keep the caller's parent placement context" do
+    definition =
+      node("definition",
+        kind: :reusable_definition,
+        layout: %{mode: :fixed},
+        box: %{width: 980, height: 90}
+      )
+
+    for {box, left} <- [{%{height: 90}, "0px"}, {%{x: 12, y: 18, height: 90}, "12px"}] do
+      instance = node("instance", kind: :reusable_instance, box: box)
+      lowered = Css.lower_root(definition, instance, parent_mode: :fixed)
+      declarations = Map.new(lowered.declarations)
+      assert declarations["position"] == "absolute"
+      assert declarations["left"] == left
+    end
+
+    instance = node("instance", kind: :reusable_instance, box: %{height: 90})
+    lowered = Css.lower_root(definition, instance, parent_mode: :row)
+    assert Map.new(lowered.declarations)["position"] == "relative"
+    refute Map.has_key?(Map.new(lowered.declarations), "left")
+  end
+
+  test "hidden source links keep row space unless collapse when hidden is enabled" do
+    for collapse? <- [false, true] do
+      payload = %{
+        "_id" => "hidden",
+        "pages" => %{
+          "page" => %{
+            "type" => "Page",
+            "properties" => %{"container_layout" => "row"},
+            "elements" => %{
+              "link" => %{
+                "type" => "Link",
+                "properties" => %{
+                  "is_visible" => false,
+                  "collapse_when_hidden" => collapse?,
+                  "fit_height" => true,
+                  "min_height_css" => "15px",
+                  "single_width" => false,
+                  "min_width_css" => "42px"
+                }
+              }
+            }
+          }
+        }
+      }
+
+      {:ok, model} = BubbleEx.Frontend.Normalize.run(payload)
+      [page] = model.pages
+      [_, lowered] = Css.lower(page)
+      declarations = Map.new(lowered.declarations)
+
+      if collapse? do
+        assert declarations["display"] == "none"
+      else
+        assert declarations["visibility"] == "hidden"
+        assert declarations["display"] == "block"
+        assert declarations["min-height"] == "15px"
+      end
+    end
+  end
+
+  test "responsive showing restores visibility for a hidden non-collapsing node" do
+    hidden =
+      node("hidden",
+        kind: :link,
+        box: %{hidden?: true},
+        responsive: [
+          %{"media" => %{"operator" => "<=", "width" => 768}, "paint" => %{"display" => "revert"}}
+        ]
+      )
+
+    css = Css.page(hidden)
+    [base, responsive] = String.split(css, "@media")
+    assert base =~ "visibility: hidden;"
+    assert responsive =~ "visibility: visible;"
+    assert responsive =~ "display: block;"
+  end
+
+  test "source collapse behavior survives while an element is currently visible" do
+    payload = %{
+      "_id" => "collapse",
+      "pages" => %{
+        "page" => %{
+          "type" => "Page",
+          "properties" => %{"container_layout" => "row"},
+          "elements" => %{
+            "link" => %{
+              "type" => "Link",
+              "properties" => %{
+                "is_visible" => true,
+                "collapse_when_hidden" => true
+              }
+            }
+          }
+        }
+      }
+    }
+
+    {:ok, model} = BubbleEx.Frontend.Normalize.run(payload)
+    [page] = model.pages
+    [link] = page.children
+    assert link.box.collapse_when_hidden?
+    refute Map.get(link.box, :collapsed?, false)
+    refute Map.get(link.box, :hidden?, false)
+  end
+
   defp node(id, opts) do
     %Node{
       exporter_id: id,

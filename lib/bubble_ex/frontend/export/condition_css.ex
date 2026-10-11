@@ -14,11 +14,23 @@ defmodule BubbleEx.Frontend.Export.ConditionCss do
     "border_color_top" => "border-top-color"
   }
 
-  def declarations(properties) when is_map(properties) do
+  def declarations(properties, opts \\ []) when is_map(properties) do
     properties
     |> Enum.flat_map(fn
       {"is_visible", visible} when is_boolean(visible) ->
-        [{"display", if(visible, do: "block", else: "none")}]
+        visibility = {"visibility", if(visible, do: "visible", else: "hidden")}
+
+        if Keyword.get(opts, :collapse_when_hidden?, false) do
+          [
+            visibility,
+            {"display", if(visible, do: Keyword.get(opts, :display, "block"), else: "none")}
+          ]
+        else
+          [visibility]
+        end
+
+      {name, value} when name in ["margin_left", "margin_right"] and is_number(value) ->
+        [{String.replace(name, "_", "-"), "#{value}px"}]
 
       {name, value} ->
         case @properties[name] do

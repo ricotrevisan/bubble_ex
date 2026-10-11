@@ -1,0 +1,161 @@
+{
+  "_id": "legacy_footer_links",
+  "pages": {
+    "index": {
+      "type": "Page",
+      "name": "index",
+      "elements": {
+        "ALH0": {
+          "properties": {
+            "height": 32,
+            "left": 150,
+            "top": 16,
+            "width": 32,
+            "zindex": 24,
+            "linktype": "url",
+            "icon": "fa fa-facebook",
+            "open_in_new_tab": true,
+            "url": {
+              "entries": {
+                "0": "https://www.facebook.com/SmartFiber.io/"
+              },
+              "type": "TextExpression"
+            },
+            "fit_height": true,
+            "single_width": false,
+            "max_width_css": "38px",
+            "min_width_css": "26px",
+            "single_height": false,
+            "min_height_css": "32px"
+          },
+          "type": "Link",
+          "id": "ALH0",
+          "default_name": "Link G",
+          "name": "Link Facebook",
+          "style": "Link_social_link_"
+        },
+        "ALM0": {
+          "properties": {
+            "height": 32,
+            "left": 191,
+            "top": 16,
+            "width": 32,
+            "zindex": 25,
+            "linktype": "url",
+            "icon": "fa fa-twitter",
+            "open_in_new_tab": true,
+            "url": {
+              "entries": {
+                "0": "https://twitter.com/smartfiberIO"
+              },
+              "type": "TextExpression"
+            },
+            "fit_height": true,
+            "single_width": false,
+            "max_width_css": "38px",
+            "min_width_css": "26px",
+            "single_height": false,
+            "min_height_css": "32px"
+          },
+          "type": "Link",
+          "id": "ALM0",
+          "current_parent": "AFm.elements",
+          "default_name": "Link H",
+          "name": "Link Twitter",
+          "style": "Link_social_link_"
+        },
+        "bTGSE1": {
+          "properties": {
+            "height": 32,
+            "left": 107,
+            "top": 16,
+            "width": 32,
+            "zindex": 27,
+            "linktype": "url",
+            "icon": "fa fa-envelope-open",
+            "open_in_new_tab": true,
+            "url": {
+              "entries": {
+                "0": "mailto:info@smartfiber.io"
+              },
+              "type": "TextExpression"
+            },
+            "fit_height": true,
+            "single_width": false,
+            "max_width_css": "38px",
+            "min_width_css": "26px",
+            "single_height": false,
+            "min_height_css": "32px"
+          },
+          "type": "Link",
+          "id": "bTGSE1",
+          "current_parent": "AQZ.elements",
+          "default_name": "Link F",
+          "name": "Link Mail",
+          "style": "Link_social_link_"
+        },
+        "bTHnY0": {
+          "properties": {
+            "height": 25,
+            "left": 207,
+            "top": 0,
+            "width": 25,
+            "zindex": 24,
+            "linktype": "url",
+            "icon": "fa fa-facebook",
+            "open_in_new_tab": true,
+            "url": {
+              "entries": {
+                "0": "https://www.facebook.com/SmartFiber.io/"
+              },
+              "type": "TextExpression"
+            },
+            "fit_height": true,
+            "single_width": false,
+            "max_width_css": "30px",
+            "min_width_css": "20px",
+            "single_height": false,
+            "min_height_css": "25px",
+            "responsive_alignment": "left"
+          },
+          "type": "Link",
+          "id": "bTHnY0",
+          "default_name": "Link G",
+          "name": "Link Facebook",
+          "style": "Link_alt_social_link_"
+        },
+        "bTHnZ0": {
+          "properties": {
+            "height": 25,
+            "left": 250,
+            "top": 0,
+            "width": 25,
+            "zindex": 25,
+            "linktype": "url",
+            "icon": "fa fa-twitter",
+            "open_in_new_tab": true,
+            "url": {
+              "entries": {
+                "0": "https://twitter.com/smartfiberIO"
+              },
+              "type": "TextExpression"
+            },
+            "fit_height": true,
+            "single_width": false,
+            "max_width_css": "30px",
+            "min_width_css": "20px",
+            "single_height": false,
+            "min_height_css": "25px",
+            "responsive_alignment": "left"
+          },
+          "type": "Link",
+          "id": "bTHnZ0",
+          "current_parent": "AFm.elements",
+          "default_name": "Link H",
+          "name": "Link Twitter",
+          "style": "Link_alt_social_link_"
+        }
+      }
+    }
+  }
+}

@@ -56,7 +56,14 @@ defmodule BubbleEx.Frontend.StaticRepeating do
   # A repeating group cell carries the container layout its content shares
   # (mode, alignment, gaps, wrap) and its own minimum height on the box, never
   # the outer list's fill flags or cell grid values (`cell_min_*`, `columns`).
-  @cell_layout_drops [:fill_width?, :fill_height?, :cell_min_width, :cell_min_height, :columns]
+  @cell_layout_drops [
+    :fill_width?,
+    :fill_height?,
+    :fit_height?,
+    :cell_min_width,
+    :cell_min_height,
+    :columns
+  ]
 
   @spec cell_layout(map()) :: map()
   def cell_layout(layout), do: Map.drop(layout, @cell_layout_drops)

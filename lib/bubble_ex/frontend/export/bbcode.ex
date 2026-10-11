@@ -1,7 +1,7 @@
 defmodule BubbleEx.Frontend.Export.Bbcode do
   @moduledoc false
 
-  @tags ~w(b i u s ul ol li url center sup color)
+  @tags ~w(b i u s ul ol li url center sup color size)
 
   # Default split nodes retain the Phoenix target's inline vocabulary.
   # Extended nodes opt in to source alignment, superscript and safe colors.
@@ -12,7 +12,8 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
     "s" => :s,
     "center" => :center,
     "sup" => :sup,
-    "color" => :color
+    "color" => :color,
+    "size" => :size
   }
 
   # Tags Bubble knows that `split/1` leaves as text.
@@ -20,7 +21,7 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
 
   @spec present?(term()) :: boolean()
   def present?(text) when is_binary(text) do
-    Regex.match?(~r/\[(?:\/)?(?:b|i|u|s|ul|ol|li|url|center|sup|color)\b/i, text)
+    Regex.match?(~r/\[(?:\/)?(?:b|i|u|s|ul|ol|li|url|center|sup|color|size)\b/i, text)
   end
 
   def present?(_), do: false
@@ -60,26 +61,12 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
   end
 
   @doc "Renders split nodes; supplied values stay escaped text, never parsed as tags."
-  def render_nodes(nodes) when is_list(nodes) do
-    Enum.map_join(nodes, fn
-      {:value, value} ->
-        escape(to_string(value || ""))
+  def render_nodes(nodes) when is_list(nodes), do: nodes |> Enum.map(&split_node/1) |> emit()
 
-      {{:color, color}, children} ->
-        emit_node({:tag, "color", color, Enum.map(children, &split_node/1)})
+  defp split_node({:value, value}), do: {:value, to_string(value || "")}
 
-      {tag, children} when tag in [:b, :i, :u, :s, :center, :sup] ->
-        emit_node({:tag, Atom.to_string(tag), nil, Enum.map(children, &split_node/1)})
-
-      text when is_binary(text) ->
-        escape(text)
-    end)
-  end
-
-  defp split_node({:value, value}), do: {:text, to_string(value || "")}
-
-  defp split_node({{:color, color}, children}),
-    do: {:tag, "color", color, Enum.map(children, &split_node/1)}
+  defp split_node({{name, attr}, children}) when name in [:color, :size],
+    do: {:tag, Atom.to_string(name), attr, Enum.map(children, &split_node/1)}
 
   defp split_node({tag, children}),
     do: {:tag, Atom.to_string(tag), nil, Enum.map(children, &split_node/1)}
@@ -100,7 +87,7 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
     |> Regex.split(text, include_captures: true, trim: true)
     |> Enum.map(fn piece ->
       case Regex.run(inline_tag(inline), piece) do
-        [^piece, "", "color", attr] -> {:open, {"color", attr}, piece}
+        [^piece, "", name, attr] when name in ["color", "size"] -> {:open, {name, attr}, piece}
         [^piece, "", name] -> {:open, String.downcase(name), piece}
         [^piece, "/", name] -> {:close, String.downcase(name), piece}
         _ -> piece
@@ -112,10 +99,13 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
   # counting nested ones); otherwise both stay text.
   defp nest([], acc), do: Enum.reverse(acc)
 
-  defp nest([{:open, {"color", attr}, raw} | rest], acc) do
-    case take_close(rest, "color", 1, []) do
-      {:ok, inner, rest} -> nest(rest, [{{:color, attr}, nest(inner, [])} | acc])
-      :error -> nest(rest, [raw | acc])
+  defp nest([{:open, {name, attr}, raw} | rest], acc) when name in ["color", "size"] do
+    case take_close(rest, name, 1, []) do
+      {:ok, inner, rest} ->
+        nest(rest, [{{Map.fetch!(@inline, name), attr}, nest(inner, [])} | acc])
+
+      :error ->
+        nest(rest, [raw | acc])
     end
   end
 
@@ -136,8 +126,8 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
   defp take_close([{:close, name, _} = t | rest], name, depth, acc),
     do: take_close(rest, name, depth - 1, [t | acc])
 
-  defp take_close([{:open, {"color", _}, _} = t | rest], "color", depth, acc),
-    do: take_close(rest, "color", depth + 1, [t | acc])
+  defp take_close([{:open, {name, _}, _} = t | rest], name, depth, acc),
+    do: take_close(rest, name, depth + 1, [t | acc])
 
   defp take_close([{:open, name, _} = t | rest], name, depth, acc),
     do: take_close(rest, name, depth + 1, [t | acc])
@@ -201,7 +191,7 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
 
   defp take_open_tag(rest) do
     cond do
-      match = Regex.run(~r/\A(url|color)=([^\]]+)\]/i, rest, capture: :all_but_first) ->
+      match = Regex.run(~r/\A(url|color|size)=([^\]]+)\]/i, rest, capture: :all_but_first) ->
         [name, attr] = match
         {:ok, String.downcase(name), attr, binary_slice_after(rest, name <> "=" <> attr <> "]")}
 
@@ -259,9 +249,46 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
     take_until_close(rest, name, depth, [<<cp::utf8>> | acc])
   end
 
-  defp emit(nodes) when is_list(nodes), do: Enum.map_join(nodes, &emit_node/1)
+  defp emit([]), do: ""
 
-  defp emit_node({:text, text}), do: escape(text)
+  # A trailing line inside an aligned block and the following blank line
+  # are block boundaries in Bubble's HTML, not three inline line breaks.
+  defp emit([{:tag, "center", _attr, children} = node, {:text, "\n\n" <> rest} | tail]) do
+    case terminal_block_line(children) do
+      {:ok, children} ->
+        ~s(<div align="center">#{emit(children)}<br></div><div></div>\n) <>
+          emit([{:text, rest} | tail])
+
+      :none ->
+        emit_node(node) <> emit([{:text, "\n\n" <> rest} | tail])
+    end
+  end
+
+  defp emit([node | rest]), do: emit_node(node) <> emit(rest)
+
+  defp terminal_block_line(nodes) do
+    case List.pop_at(nodes, -1) do
+      {{:text, text}, before} ->
+        if String.ends_with?(text, "\n") do
+          {:ok, before ++ [{:text, String.slice(text, 0..-2//1)}, :block_line]}
+        else
+          :none
+        end
+
+      {{:tag, name, attr, children}, before} ->
+        case terminal_block_line(children) do
+          {:ok, children} -> {:ok, before ++ [{:tag, name, attr, children}]}
+          :none -> :none
+        end
+
+      _ ->
+        :none
+    end
+  end
+
+  defp emit_node(:block_line), do: "<div></div>\n"
+  defp emit_node({:value, value}), do: escape(value)
+  defp emit_node({:text, text}), do: text |> escape() |> line_breaks()
 
   defp emit_node({:tag, "b", _attr, children}), do: wrap("strong", children)
   defp emit_node({:tag, "i", _attr, children}), do: wrap("em", children)
@@ -279,6 +306,12 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
   defp emit_node({:tag, "color", attr, children}) do
     if is_binary(attr) and Regex.match?(~r/\A#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})\z/i, attr),
       do: ~s(<span style="color: #{attr}">#{emit(children)}</span>),
+      else: emit(children)
+  end
+
+  defp emit_node({:tag, "size", size, children}) do
+    if size in ~w(1 2 3 4 5 6 7),
+      do: ~s(<font size="#{size}">#{emit(children)}</font>),
       else: emit(children)
   end
 
@@ -316,6 +349,8 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
         nil
     end
   end
+
+  defp line_breaks(text), do: String.replace(text, ~r/\r\n|\r|\n/, "<br>")
 
   defp escape(text) do
     text

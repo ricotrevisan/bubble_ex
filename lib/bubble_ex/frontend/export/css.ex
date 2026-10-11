@@ -144,7 +144,7 @@ defmodule BubbleEx.Frontend.Export.Css do
       |> instance_dimensions(instance)
       |> drop_instance_root_alignment()
 
-    lower_entry({root, nil}, opts)
+    lower_entry({root, Keyword.get(opts, :parent_mode)}, opts)
   end
 
   @doc """
@@ -182,6 +182,7 @@ defmodule BubbleEx.Frontend.Export.Css do
 
     %{
       node: node,
+      parent_mode: elem(entry, 1),
       declarations: node |> css_map(elem(entry, 1)) |> Map.merge(anchor_name) |> declarations(),
       rules: rules
     }
@@ -346,33 +347,64 @@ defmodule BubbleEx.Frontend.Export.Css do
     }
   end
 
+  defp instance_position(definition, %Node{} = instance) do
+    placement = [:x, :y, :margin, :placement, :align_self, :z_index]
+
+    %{
+      definition
+      | box:
+          definition.box
+          |> Map.drop(placement ++ Enum.map(placement, &Atom.to_string/1))
+          |> Map.merge(
+            Map.take(instance.box, placement ++ Enum.map(placement, &Atom.to_string/1))
+          )
+    }
+  end
+
   defp instance_position(definition, _instance), do: definition
 
   defp instance_dimensions(definition, %Node{} = instance) do
+    fixed? = layout_value(definition.layout || %{}, :mode) == :fixed
+
     Enum.reduce(
       [
         {:width, :fill_width?, [:width, :min_width, :max_width]},
         {:height, :fill_height?, [:height, :min_height, :max_height]}
       ],
       definition,
-      fn {axis, fill, keys}, current ->
-        layout = instance.layout || %{}
-
-        if Map.has_key?(layout, fill) or Map.has_key?(layout, Atom.to_string(fill)) or
-             Map.has_key?(instance.box, axis) do
-          %{
-            current
-            | box: current.box |> Map.drop(keys) |> Map.merge(Map.take(instance.box, keys)),
-              layout: instance_fill(current, layout, fill)
-          }
-        else
-          current
-        end
-      end
+      &instance_axis_dimensions(&2, instance, &1, fixed?)
     )
   end
 
   defp instance_dimensions(definition, _instance), do: definition
+
+  defp instance_axis_dimensions(current, instance, {axis, fill, keys}, fixed?) do
+    layout = instance.layout || %{}
+    explicit? = has_layout_key?(instance.box, axis)
+    override? = explicit? or (!fixed? and has_layout_key?(layout, fill))
+
+    if override? do
+      %{
+        current
+        | box: current.box |> Map.drop(keys) |> Map.merge(Map.take(instance.box, keys)),
+          layout: instance_fill(current, layout, fill)
+      }
+    else
+      intrinsic_canvas_width(current, axis, fixed?)
+    end
+  end
+
+  defp intrinsic_canvas_width(current, :width, true) do
+    case box_get(current.box, :width) do
+      nil -> current
+      width -> %{current | box: Map.put(current.box, :min_width, width)}
+    end
+  end
+
+  defp intrinsic_canvas_width(current, _axis, _fixed?), do: current
+
+  defp has_layout_key?(map, key),
+    do: Map.has_key?(map, key) or Map.has_key?(map, Atom.to_string(key))
 
   # The instance sizes the root: a Floating Group root keeps the instance's
   # width flags, which place it (`floating_css/1`); otherwise the
@@ -645,7 +677,7 @@ defmodule BubbleEx.Frontend.Export.Css do
     %{}
     |> Map.merge(layout_css(node))
     |> Map.merge(native_position_css(node))
-    |> Map.merge(box_css(node))
+    |> Map.merge(context_box_css(node, parent_mode))
     |> Map.merge(paint_css(node))
     |> Map.merge(runtime_boundary_css(node))
     |> Map.merge(placement_css(node, parent_mode))
@@ -838,6 +870,48 @@ defmodule BubbleEx.Frontend.Export.Css do
     {"left", :x},
     {"top", :y}
   ]
+
+  # Readable editor boxes can retain canvas coordinates in flow. Their
+  # margins and responsive bounds, not the canvas, size and place the item.
+  defp context_box_css(node, parent) when parent in [:row, :column] do
+    box = Map.drop(node.box, [:x, :y, "x", "y"])
+
+    box =
+      if layout_value(node.layout || %{}, :fill_width?),
+        do: Map.drop(box, [:width, "width"]),
+        else: box
+
+    fit_height? = layout_value(node.layout || %{}, :fit_height?) == true
+
+    box =
+      if fit_height? or layout_value(node.layout || %{}, :fill_height?),
+        do: Map.drop(box, [:height, "height"]),
+        else: box
+
+    box_css(%{node | box: box})
+  end
+
+  defp context_box_css(%Node{kind: :group} = node, :fixed) do
+    box_css(node)
+    |> Map.put_new("width", "400px")
+    |> Map.put_new("height", "250px")
+  end
+
+  defp context_box_css(%Node{kind: :page, layout: layout} = node, _parent) do
+    css = box_css(node)
+
+    if layout_value(layout || %{}, :mode) == :fixed do
+      css
+      |> Map.drop(["left", "top"])
+      |> Map.put("position", "relative")
+      |> Map.put("margin-left", "auto")
+      |> Map.put("margin-right", "auto")
+    else
+      css
+    end
+  end
+
+  defp context_box_css(node, _parent), do: box_css(node)
 
   defp box_css(%Node{box: box}) when is_map(box) do
     @box_css_keys
@@ -1482,7 +1556,10 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   defp restore_visible_display(%{"display" => "revert"} = paint, node, parent) do
     visible = %{node | box: Map.drop(node.box, [:hidden?, :collapsed?, "hidden?", "collapsed?"])}
-    Map.put(paint, "display", css_map(visible, parent)["display"] || "revert")
+
+    paint
+    |> Map.put("display", css_map(visible, parent)["display"] || "revert")
+    |> Map.put("visibility", "visible")
   end
 
   defp restore_visible_display(paint, _node, _parent), do: paint
@@ -1530,10 +1607,10 @@ defmodule BubbleEx.Frontend.Export.Css do
   end
 
   defp put_collapse(css, %Node{box: box}) when is_map(box) do
-    if box[:collapsed?] || box["collapsed?"] || box[:hidden?] || box["hidden?"] do
-      Map.put(css, "display", "none")
-    else
-      css
+    cond do
+      box[:collapsed?] || box["collapsed?"] -> Map.put(css, "display", "none")
+      box[:hidden?] || box["hidden?"] -> Map.put(css, "visibility", "hidden")
+      true -> css
     end
   end
 
