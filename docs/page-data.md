@@ -1140,6 +1140,11 @@ Nothing is dropped silently:
 * a binding that reads page data the page does not load is not rendered
   as an empty value but as a `TODO(bubble:<id>) <slot>: reads page data
   that is not loaded (<kind>)` marker (counted in `bindings_marked`);
+  with the developer markers on, its element is outlined with a tooltip
+  ("Text not migrated: reads data that is not loaded"; a binding that
+  does not compile says "expression does not compile", WTF-520), and a
+  Text shows the literal parts of its expression; production renders
+  exactly what it did;
 * a workflow that reads it is `:unavailable_input` residue and refuses to
   start, as before;
 * a reusable instance whose own source is not loaded, while its reusable
@@ -1165,6 +1170,31 @@ The frontend workflow metrics (`docs/frontend-workflows.md`, *native*
 and *wired* workflows) also move: a workflow reading a page's thing, a
 group's or instance's thing or a repeating group's list is no longer
 `:unavailable_input` when the page loads it.
+
+### Private fixture app (test version), 2026-10-10, values left out marked in dev (WTF-520)
+
+Elements whose value is left out now carry the developer marker (no
+count snapshot moved: none records the template markers). 312
+elements are marked, one with two reasons:
+
+| reason | elements |
+|-|------:|
+| reads data that is not loaded | 155 |
+| expression does not compile | 151 |
+| image source not one image or file value | 6 |
+| dynamic alt text not lowered | 1 |
+
+By what is left out: texts 249 (140 not loaded, 109 not compiled),
+image sources 47 (35 not compiled, 6 not loaded, 6 not one image or
+file value), input values 7, button labels 8, placeholders 1, alt
+texts 1. The 35 image sources that do not compile, the 6 that are not
+one image or file value and the alt text had no `TODO` comment before.
+72 of the texts show their literal parts ("Total: ") with the markers
+on; production renders them empty, as before.
+None of the 35 image sources that do not compile has a static fallback
+(a fixed URL plus `Current page width`, shown as is and not marked):
+an image source is marked by its binding, whether or not its assets
+were fetched.
 
 ### Private fixture app (test version), 2026-10-10, list rows of a reusable element only in cells; buttons (WTF-520)
 
