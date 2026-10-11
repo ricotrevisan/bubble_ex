@@ -2,8 +2,8 @@ defmodule BubbleEx.Model.External.Resolver do
   @moduledoc false
 
   # The one reading of API Connector (`api.apiconnector2.…`) types. Given the
-  # `api.` descriptors of data-type fields and option-set attributes (the
-  # roots), it resolves each against the call's `types` registry in the app
+  # `api.` descriptors of data-type fields, option-set attributes and API
+  # Connector calls' return types (the roots), it resolves each against the call's `types` registry in the app
   # JSON (the Model's `BubbleEx.Model.Connector` calls), depth-first, and returns the external-type nodes reached and one
   # `BubbleEx.Diagnostic` (stage `:read`) per occurrence it could not read
   # faithfully. `BubbleEx.Model.External` converts the result into Model
@@ -22,7 +22,7 @@ defmodule BubbleEx.Model.External.Resolver do
   alias BubbleEx.Diagnostic
   alias BubbleEx.Model.{Connector, ConnectorCall}
 
-  @type group :: :custom | :option
+  @type group :: :custom | :option | :call
   @type root :: %{group: group(), owner: String.t(), field: String.t(), descriptor: term()}
   @type value ::
           %{type: :scalar, scalar: atom(), cardinality: :one | :many, raw: String.t()}
@@ -314,6 +314,11 @@ defmodule BubbleEx.Model.External.Resolver do
   # (`details.root`) and every hop from there (`details.via`, ending at the
   # subject). Definition-level codes are about the external type itself.
   @definition_codes [:empty_definition, :call_metadata_inconsistent]
+
+  # A call's own return type (WTF-533, resolved after every field) only
+  # types the call's result: what it cannot read leaves that result
+  # untyped, which `BubbleEx.Target.ApiClients` reports. No diagnostic.
+  defp warn(state, _code, _target, %{root: %{table_group: :call}}), do: state
 
   defp warn(state, code, target, occurrence) do
     {subject, path, located} = locate(code, target, occurrence, state)

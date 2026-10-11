@@ -40,8 +40,14 @@ defmodule BubbleEx.Workflows.FrontendPrivateFixtureTest do
     {:ok, lowered} = Frontend.build(app, model, index)
     {:ok, backend_lowered} = BubbleEx.Workflows.Backend.build(app, model, index)
 
+    # API Connector calls bind to the generated clients (WTF-533).
+    {:ok, clients} = BubbleEx.Target.ApiClients.map(model)
+
     {:ok, backend} =
-      BubbleEx.Target.Ash.Workflows.map(backend_lowered, project, namespace: "Private")
+      BubbleEx.Target.Ash.Workflows.map(backend_lowered, project,
+        namespace: "Private",
+        api_clients: clients
+      )
 
     # The pages' data (WTF-420).
     {:ok, page_data} = BubbleEx.PageData.build(app, model)
@@ -51,7 +57,8 @@ defmodule BubbleEx.Workflows.FrontendPrivateFixtureTest do
         namespace: "Private",
         frontend: frontend,
         backend: backend,
-        page_data: page_data
+        page_data: page_data,
+        api_clients: clients
       )
 
     %{
@@ -63,7 +70,8 @@ defmodule BubbleEx.Workflows.FrontendPrivateFixtureTest do
       lowered: lowered,
       backend: backend,
       page_data: page_data,
-      spec: spec
+      spec: spec,
+      clients: clients
     }
   end
 
@@ -122,14 +130,16 @@ defmodule BubbleEx.Workflows.FrontendPrivateFixtureTest do
     project: project,
     frontend: frontend,
     backend: backend,
-    spec: spec
+    spec: spec,
+    clients: clients
   } do
     opts = [
       name: "Private",
       module: "Private",
       frontend: frontend,
       workflows: backend,
-      frontend_workflows: spec
+      frontend_workflows: spec,
+      api_clients: clients
     ]
 
     {:ok, files} = Phoenix.render(project, opts)

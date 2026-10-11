@@ -3,8 +3,9 @@ defmodule BubbleEx.Model.External do
 
   # API Connector types for the Model: runs `BubbleEx.Model.External.Resolver`
   # over every `api.` field and attribute, deleted ones included (the Model
-  # keeps them), converts its nodes into Model structs and marks the edges
-  # that close cycles.
+  # keeps them), and every API Connector call's own return type (`ret_value`,
+  # WTF-533: what "Result of step N" of a call is), converts its nodes into
+  # Model structs and marks the edges that close cycles.
 
   alias BubbleEx.Model.{DataType, ExternalField, ExternalType, OptionSet, Type}
   alias BubbleEx.Model.External.Resolver
@@ -14,7 +15,8 @@ defmodule BubbleEx.Model.External do
   def resolve(data_types, option_sets, app, connectors) do
     roots =
       Enum.flat_map(data_types, &roots(:custom, &1.id, &1.fields)) ++
-        Enum.flat_map(option_sets, &roots(:option, &1.id, &1.attributes))
+        Enum.flat_map(option_sets, &roots(:option, &1.id, &1.attributes)) ++
+        call_roots(connectors)
 
     {values, nodes, diagnostics} = Resolver.resolve(roots, resolver_source(app), connectors)
 
@@ -38,6 +40,15 @@ defmodule BubbleEx.Model.External do
   defp roots(group, owner, fields) do
     for %{type: %Type{kind: :external, source: source}} = field <- fields do
       %{group: group, owner: owner, field: field.id, descriptor: source}
+    end
+  end
+
+  # A call's return type (`ret_value`) when it is an `api.` descriptor; the
+  # owner is its group and the "field" the call.
+  defp call_roots(connectors) do
+    for %BubbleEx.Model.Connector{id: group, calls: calls} <- connectors,
+        %BubbleEx.Model.ConnectorCall{raw: nil, returns: "api." <> _ = returns} = call <- calls do
+      %{group: :call, owner: group, field: call.id, descriptor: returns}
     end
   end
 

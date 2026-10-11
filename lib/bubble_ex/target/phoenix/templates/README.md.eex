@@ -19,7 +19,21 @@ checkout: `mix wtf.task audit --root /path/to/this/project`) run tests
 only on a database you name (`WTF_TASK_TEST_DB` or `--test-db URL`: a
 throwaway PostgreSQL; see `mix help wtf.task` there).
 
-## Generated and owned files
+<%= if @api_env_count > 0 do %>## API Connector secrets
+
+The Bubble app's API Connector calls are generated as Req clients
+(`<%= @module %>.ApiClients.*`). Their keys, tokens and private parameters were
+never copied from Bubble: they come from <%= @api_env_count %> environment variables,
+which `config/runtime.exs` reads. `.env.example` names them all (no values).
+Until they are set, a call is refused before anything is sent (a workflow
+step that makes it is refused, and a page shows its "not available" notice).
+
+    mix bubble.api_env     # lists the ones that are not set; exits 1 if any
+
+Every call runs on the server: no secret, private parameter or API
+response is sent to the browser unless a page shows it.
+
+<% end %>## Generated and owned files
 
 `.wtf/generated.json` lists the **generated** files with their SHA-256.
 They are derived from the Bubble app (the Ash resources, enums and types,

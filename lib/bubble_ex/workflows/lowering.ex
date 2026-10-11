@@ -25,11 +25,26 @@ defmodule BubbleEx.Workflows.Lowering do
 
   A change sets a field or edits a list field (`:set`, `:add`, `:remove`,
   `:add_list`, `:remove_list`, `:set_list`, `:clear_list`).
+
+  ## API Connector calls
+
+  An API Connector action (`apiconnector2-<group>.<call>`, WTF-533) is
+  `:api_call` (`api_call/6`) with `group`, `call` (Bubble IDs) and
+  `params`: `%{parameter, in, key, value}` for each of the call's
+  non-private parameters the action sets (`headers_<key>`,
+  `params_<key>`, `url_params_<key>`, `body_params_<key>`), in the call's
+  parameter order. A private parameter is never a value of the action: a
+  target reads it from the environment. An action member naming no
+  non-private parameter of the call (a private one, or one since removed)
+  is not sent, as in Bubble, and counted in `ignored`. A call that does
+  not resolve (`reasons` `[:unresolved]`), or whose client cannot be
+  generated (`BubbleEx.Model.ConnectorSupport.unsupported/2`'s reasons), is
+  `:api_connector_action` residue.
   """
 
   alias BubbleEx.{Expression, Index, Model}
   alias BubbleEx.Expression.{Compiler, Env, IR}
-  alias BubbleEx.Model.Type
+  alias BubbleEx.Model.{Connector, ConnectorSupport, Type}
   alias BubbleEx.Plan.Residue
   alias BubbleEx.Workflows.Lowering.{Change, Expr, Param, Return}
   alias BubbleEx.Workflows.Source
@@ -311,11 +326,97 @@ defmodule BubbleEx.Workflows.Lowering do
     {Enum.reject(returns, &is_nil/1), Enum.uniq(residue)}
   end
 
+  # --- API Connector calls ---------------------------------------------------------
+
+  # Action members setting a call's parameters, longest prefix first: the
+  # locations they set.
+  @api_members [
+    {"body_params_", [:body]},
+    {"url_params_", [:url]},
+    {"headers_", [:header]},
+    {"params_", [:query, :param]}
+  ]
+
+  @doc "Whether `type` is an API Connector action type (`apiconnector2-...`)."
+  @spec api_call?(term()) :: boolean()
+  def api_call?("apiconnector2-" <> _), do: true
+  def api_call?(_type), do: false
+
+  @doc """
+  Whether `key` is a member an API Connector action may hold: a parameter
+  value (`api_call/6`), its condition, or a debugger breakpoint.
+  """
+  @spec api_member?(String.t()) :: boolean()
+  def api_member?(key) when key in ["condition", "breakpoint"], do: true
+
+  def api_member?(key) when is_binary(key),
+    do: Enum.any?(@api_members, fn {prefix, _} -> String.starts_with?(key, prefix) end)
+
+  def api_member?(_key), do: false
+
+  @doc """
+  Lowers an API Connector action of `type` (`apiconnector2-<group>.<call>`)
+  from its `props` (at `path`). `ctx` has the `:model`. Returns `{args,
+  residue}`; see the moduledoc, "API Connector calls".
+  """
+  @spec api_call(String.t(), map(), list(), String.t(), Env.t(), map()) ::
+          {map(), [Residue.t()]}
+  def api_call("apiconnector2-" <> ref = _type, props, path, id, env, ctx) do
+    {group_id, call_id} =
+      case String.split(ref, ".", parts: 2) do
+        [group, call] -> {group, call}
+        _ -> {ref, nil}
+      end
+
+    group = Enum.find(ctx.model.connectors, &(&1.id == group_id))
+    call = group && call_id && Connector.call(group, call_id)
+    args = %{group: group_id, call: call_id, params: [], ignored: 0}
+
+    cond do
+      call == nil ->
+        {args, [Residue.entry(id, :api_connector_action, %{call: ref, reasons: [:unresolved]})]}
+
+      (reasons = ConnectorSupport.unsupported(group, call)) != [] ->
+        {args, [Residue.entry(id, :api_connector_action, %{call: ref, reasons: reasons})]}
+
+      true ->
+        {params, ignored} = api_params(call, props, path, env)
+        {%{args | params: params, ignored: ignored}, []}
+    end
+  end
+
+  defp api_params(call, props, path, env) do
+    set =
+      for {key, value} <- props,
+          is_binary(key),
+          {prefix, locations} = api_prefix(key),
+          prefix != nil,
+          do: {String.replace_prefix(key, prefix, ""), locations, key, value}
+
+    params =
+      for p <- call.parameters,
+          not p.private,
+          is_binary(p.name),
+          {_name, _locations, key, value} <-
+            [Enum.find(set, fn {name, locs, _, _} -> name == p.name and p.in in locs end)],
+          do:
+            {key,
+             %{parameter: p.id, in: p.in, key: p.name, value: expr(value, path ++ [key], env)}}
+
+    used = MapSet.new(params, &elem(&1, 0))
+    {Enum.map(params, &elem(&1, 1)), Enum.count(set, fn {_, _, key, _} -> key not in used end)}
+  end
+
+  defp api_prefix(key) do
+    Enum.find(@api_members, {nil, []}, fn {prefix, _} -> String.starts_with?(key, prefix) end)
+  end
+
   # --- residue ---------------------------------------------------------------------
 
   @doc """
-  Residue of an action type with no lowering: an API Connector call, a
-  plugin action, an auth action, or an unsupported type.
+  Residue of an action type with no lowering: an API Connector call (when
+  not lowered with `api_call/6`), a plugin action, an auth action, or an
+  unsupported type.
   """
   @spec type_residue(String.t(), term()) :: [Residue.t()]
   def type_residue(id, "apiconnector2-" <> call),

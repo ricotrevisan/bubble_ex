@@ -21,6 +21,7 @@ defmodule BubbleEx.Target.Ash.Workflows do
   | database trigger | an Ash change on the data type's resource inserting a scheduler job in the same transaction, with the record's ID and its values before the change |
   | exposed API workflow | `/api/1.1/wf/<name>` through the generated `WorkflowApiController` |
   | call cycle | a depth guard: a scheduled job carries its chain depth and a direct call its call depth; beyond the configured limits the step fails |
+  | an API Connector call (WTF-533) | a call of its generated Req client (`ApiClients.<Group>.<call>`, with `:api_clients`) on the server; its result is the step's result. Only non-private parameters are values of the step: secrets come from `config/runtime.exs`. Unset secrets refuse the step (nothing is sent, the workflow stops); any other error fails it, unless the call includes errors in its response |
 
   Values are compiled by `BubbleEx.Target.Elixir` against `project`; an
   IR that does not compile there, or reads a context input a backend
@@ -105,6 +106,10 @@ defmodule BubbleEx.Target.Ash.Workflows do
       the generated enum and runtime modules)
     * `:names` - a name map from an earlier run (`Spec.names`): its names
       are kept for the same Bubble IDs
+    * `:api_clients` - the `BubbleEx.Target.ApiClients.Spec` the app
+      renders (WTF-533): an API Connector step calls its client. Without
+      it (or for a call it does not generate) the step is
+      `:api_connector_action` residue
   """
   @spec map(Backend.t(), Project.t(), keyword()) :: {:ok, Spec.t()} | {:error, Error.t()}
   def map(backend, project, opts \\ [])
@@ -128,6 +133,7 @@ defmodule BubbleEx.Target.Ash.Workflows do
         project: project,
         lookup: lookup,
         dropped: dropped,
+        api_calls: api_calls(Keyword.get(opts, :api_clients)),
         workflows: Map.new(backend.workflows, &{&1.id, &1})
       }
 
@@ -635,6 +641,9 @@ defmodule BubbleEx.Target.Ash.Workflows do
     {%{text: text, content_type: content_type}, r1 ++ r2}
   end
 
+  defp step_args(:api_call, args, id, ctx),
+    do: api_step(args, id, ctx.api_calls, &compile(&1, &2, ctx))
+
   defp callee(id), do: id
 
   defp values(entries, key, id, ctx) do
@@ -814,6 +823,61 @@ defmodule BubbleEx.Target.Ash.Workflows do
   end
 
   # --- lookups -------------------------------------------------------------------------
+
+  # The generated API clients' functions (WTF-533): `{group, call}` =>
+  # `%{module, function, args}`, `args` a parameter's Bubble ID => its key.
+  @doc false
+  @spec api_calls(BubbleEx.Target.ApiClients.Spec.t() | nil) :: map()
+  def api_calls(%BubbleEx.Target.ApiClients.Spec{groups: groups}) do
+    for g <- groups, c <- g.calls, into: %{} do
+      {{g.id, c.id},
+       %{
+         module: "ApiClients." <> g.module,
+         function: c.function,
+         args: Map.new(c.args, &{&1.parameter, &1.key})
+       }}
+    end
+  end
+
+  def api_calls(_), do: %{}
+
+  @doc false
+  # An API Connector step bound to its client (shared with the page
+  # workflows' binding): `{args, residue}`. `compile` compiles a value for
+  # step `id`. A parameter the client does not send (a body or URL
+  # parameter its template does not use) is left out: Bubble does not send
+  # it either.
+  @spec api_step(map(), String.t(), map(), (term(), String.t() -> {term(), list()})) ::
+          {map(), list()}
+  def api_step(args, id, api_calls, compile) do
+    case Map.get(api_calls, {args.group, args.call}) do
+      nil ->
+        {%{},
+         [
+           Residue.entry(id, :api_connector_action, %{
+             call: "#{args.group}.#{args.call}",
+             target: "phoenix"
+           })
+         ]}
+
+      client ->
+        {params, residue} =
+          Enum.flat_map_reduce(args.params, [], &api_param(&1, &2, client, id, compile))
+
+        {%{module: client.module, function: client.function, params: params}, residue}
+    end
+  end
+
+  defp api_param(p, acc, client, id, compile) do
+    case client.args[p.parameter] do
+      nil ->
+        {[], acc}
+
+      key ->
+        {value, residue} = compile.(p.value, id)
+        {[%{key: key, value: value}], acc ++ residue}
+    end
+  end
 
   defp lookup(%Project{} = project) do
     types =

@@ -9,12 +9,20 @@ defmodule <%= @module %>.ApiClients do
   `""` inside a string and `null` as a value), and `opts`:
 
     * `:env` - a map of environment variables that takes precedence over
-      the system environment (tests pass stubs here)
+      the configured ones (tests pass stubs here)
     * `:base_url` - replaces the call's scheme, host and port
     * `:follow_redirects` - follow redirects (default `false`; see
       "Redirects"), at most `:max_redirects` (default 5)
+    * `:max_body_bytes` - the largest response body read, decompressed
+      (default <%= @max_body_bytes_text %>); a longer one is `{:body_too_large, limit}`
+    * `:deadline` - the whole call, retries and redirects included, in
+      milliseconds (default <%= @deadline_text %>); then `:deadline_exceeded`
+    * `:max_retry_delay` - the longest wait before a retry, whatever a
+      `retry-after` header asks (default <%= @max_retry_delay_text %> ms)
+    * `:allow_private_addresses` - allow loopback, private and link-local
+      addresses (default `false`; see "Addresses")
     * any `Req` option (`:plug`, `:retry`, `:receive_timeout`, …) but
-      `:redirect`, which is always `false`
+      `:redirect`, `:into` and `:decode_body`, which this runtime sets
 
   Options also come from the application environment, per group module,
   under the call's own options:
@@ -24,8 +32,27 @@ defmodule <%= @module %>.ApiClients do
         receive_timeout: 10_000
 
   The defaults are a <%= @receive_timeout %> ms receive timeout, a <%= @connect_timeout %> ms
-  connect timeout and up to <%= @max_retries %> retries of safe (GET/HEAD)
-  requests on transient errors. Redirects are not followed.
+  connect timeout and a <%= @deadline_text %> ms deadline for the whole call. A call
+  Bubble uses as an action (every workflow step) is **never retried**; a
+  GET Bubble uses as data is retried (at most <%= @max_retries %> times) only on a
+  refused connection, a 429 or a 503, waiting what `retry-after` asks, at
+  most `:max_retry_delay`. A `:retry` in the configuration replaces this
+  (do not set `:retry_delay` with it). Redirects are not followed. No
+  request is compressed on the way back unless the server insists: a
+  gzip or deflate body is inflated to at most `:max_body_bytes`.
+
+  ## Addresses
+
+  The host of a call is Bubble's, or an environment variable's, never a
+  step's or a page's value (a call whose host has a public parameter is
+  not generated). Even so, before each request (and each redirect) the
+  host is resolved and refused (`{:blocked_address, _}`) when any address
+  is loopback, private, link-local (cloud metadata), carrier-grade NAT,
+  multicast or reserved, unless the owner allows it: the `:base_url`'s
+  origin (e.g. `http://localhost:4001` configured for development), or
+  `allow_private_addresses: true`. The address is checked, then Req
+  resolves it again to connect: a DNS answer that changes in between
+  (rebinding) is not caught.
 
   **Credentials go wherever the request goes.** The call's secrets (keys,
   private headers and parameters, redacted literals) are sent to the
@@ -46,15 +73,37 @@ defmodule <%= @module %>.ApiClients do
   A function returns `{:ok, body}` for a 2xx response (decoded JSON, a
   typed struct when the call returns a known API Connector type, text, or
   nil for an empty response), or `{:error, reason}`: `{:status, status,
-  body}`, `{:missing_env, names}`, `{:unknown_parameters, keys}`,
+  body}`, a `<%= @module %>.ApiClients.MissingEnvError` (a secret it needs is
+  not set: nothing was sent), `{:unknown_parameters, keys}`,
   `:invalid_parameters` (params neither a map nor a keyword list),
   `{:decode, reason}` or a transport exception.
+
+  A call with Bubble's "Include errors in response and allow workflow
+  actions to continue" returns `{:ok, result}` for any response: on a 2xx
+  its body with `returned_an_error` false, otherwise `returned_an_error`
+  true and `error`'s `status_code`, `status_message` and `body` (the
+  response body as text), as Bubble's result has them. A transport error
+  (a timeout, a refused connection) is still `{:error, exception}`.
+
+  The clients never log (`retry_log_level: false`). An error never holds
+  the request's headers, authentication or secrets; with "Include errors
+  in response" the error body is the result, as in Bubble, and an API
+  that echoes a request's secrets in its error body puts them there.
+  Finch's telemetry events carry each request's headers: do not attach
+  handlers that record them. There is no rate limiting (Bubble has none).
 
   ## Secrets
 
   Bubble's private values, and every literal of a request that is not
-  structure (path words, versions, media types), are never in the code: they are read from these environment
-  variables when a call is made (`.wtf/api_clients.json` lists them too).
+  structure (path words, versions, media types), are never in the code:
+  they are read from these environment variables, which
+  `config/runtime.exs` reads into the application environment
+  (`config :<%= @app %>, <%= @module %>.ApiClients, env: %{name => value}`) when the
+  app boots. A call whose variables are not set (or empty) is refused with
+  a `<%= @module %>.ApiClients.MissingEnvError` naming them, before anything is
+  sent: a migrated app fails closed until its owner sets them.
+  `mix bubble.api_env` lists the ones that are missing, `.env.example`
+  names them all (`.wtf/api_clients.json` lists them too).
   A variable holding a header or parameter whose name Bubble does not send
   holds `Name: value` (a header) or `name=value` (a parameter). A host
   variable (`<GROUP>_HOST`) holds an API host, or part of one, that is
@@ -66,12 +115,42 @@ defmodule <%= @module %>.ApiClients do
 
   @app :<%= @app %>
 
+  defmodule MissingEnvError do
+    @moduledoc """
+    A call needs environment variables that are not set (or are empty):
+    it was refused before anything was sent. `names` are the variables,
+    never their values. Set them where the app runs (`config/runtime.exs`
+    reads them); `mix bubble.api_env` lists every missing one.
+    """
+    defexception names: []
+
+    @impl true
+    def message(%__MODULE__{names: names}),
+      do:
+        "API Connector call refused: set the environment variable(s) " <>
+          Enum.join(names, ", ") <> " (read in config/runtime.exs)"
+  end
+
+  @env_names <%= @env_names %>
+
   @defaults [
     receive_timeout: <%= @receive_timeout %>,
     connect_options: [timeout: <%= @connect_timeout %>],
-    retry: :safe_transient,
+    retry: false,
     max_retries: <%= @max_retries %>,
-    redirect: false
+    retry_log_level: false,
+    redirect: false,
+    compressed: false
+  ]
+
+  # This runtime's own options (see the moduledoc), with their defaults.
+  @own [
+    follow_redirects: false,
+    max_redirects: 5,
+    max_body_bytes: <%= @max_body_bytes %>,
+    deadline: <%= @deadline %>,
+    max_retry_delay: <%= @max_retry_delay %>,
+    allow_private_addresses: false
   ]
 
   @doc false
@@ -92,6 +171,7 @@ defmodule <%= @module %>.ApiClients do
           {:ok, %{String.t() => String.t()}} | {:error, term()}
   def env(opts, names, group \\ nil, hosts \\ []) do
     overrides = Keyword.get(opts, :env, %{})
+    configured = configured_env()
 
     # Host variables are needed only without a configured base URL.
     base_url? =
@@ -101,58 +181,316 @@ defmodule <%= @module %>.ApiClients do
     names = if base_url?, do: names, else: names ++ hosts
 
     values =
-      Map.new(names, fn name -> {name, Map.get(overrides, name) || System.get_env(name)} end)
+      Map.new(names, fn name ->
+        {name, present(Map.get(overrides, name)) || present(Map.get(configured, name))}
+      end)
 
     case for({name, nil} <- values, do: name) do
       [] -> {:ok, values}
-      missing -> {:error, {:missing_env, Enum.sort(missing)}}
+      missing -> {:error, %MissingEnvError{names: Enum.sort(missing)}}
     end
   end
+
+  @doc """
+  The environment variables every generated call may read, by name (from
+  `config/runtime.exs`); `missing_env/0` those not set.
+  """
+  @spec env_names() :: [String.t()]
+  def env_names, do: @env_names
+
+  @doc "The environment variables that are not set (or empty), sorted."
+  @spec missing_env() :: [String.t()]
+  def missing_env do
+    configured = configured_env()
+    for name <- @env_names, present(Map.get(configured, name)) == nil, do: name
+  end
+
+  # Only what config/runtime.exs put in the application environment: never
+  # the system environment directly, never the export.
+  defp configured_env do
+    case Application.fetch_env(@app, __MODULE__) do
+      {:ok, config} when is_list(config) ->
+        case Keyword.get(config, :env) do
+          env when is_map(env) -> env
+          env when is_list(env) -> Map.new(env)
+          _ -> %{}
+        end
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp present(value) when is_binary(value) and value != "", do: value
+  defp present(_), do: nil
 
   @doc false
   @spec request(module(), keyword(), map()) :: {:ok, term()} | {:error, term()}
   def request(group, opts, request) do
-    {config_base, config} = Keyword.pop(Application.get_env(@app, group, []), :base_url)
+    config = Application.get_env(@app, group, [])
+    {config_base, config} = Keyword.pop(config, :base_url)
     {opts_base, opts} = opts |> Keyword.delete(:env) |> Keyword.pop(:base_url)
-    base = opts_base || config_base || request.base
+    owner_base = opts_base || config_base
+    base = owner_base || request.base
+    chosen = Keyword.merge(config, opts)
+
+    {own, options} =
+      @defaults
+      |> Keyword.merge(@own)
+      |> Keyword.merge(chosen)
+      |> Keyword.split(Keyword.keys(@own))
+
+    own = Keyword.merge(@own, own)
+
+    # A call Bubble uses as data (a GET) is retried on a refused
+    # connection, a 429 or a 503, waiting at most :max_retry_delay; an
+    # action never, unless the configuration says so.
+    retry =
+      if Map.get(request, :retry, false) and not Keyword.has_key?(chosen, :retry),
+        do: [retry: retry_fun(own[:max_retry_delay])],
+        else: []
 
     options =
-      @defaults
-      |> Keyword.merge(config)
-      |> Keyword.merge(opts)
+      options
+      |> Keyword.merge(retry)
       |> Keyword.merge(
         method: request.method,
         url: String.trim_trailing(base, "/") <> request.path,
         params: entries(request.query),
         headers: entries(request.headers),
         decode_body: false,
-        redirect: false
+        redirect: false,
+        into: collect(own[:max_body_bytes])
       )
       |> Keyword.merge(body(request.body))
       |> Keyword.merge(auth(request.auth))
 
-    {follow?, options} = Keyword.pop(options, :follow_redirects, false)
-    {max, options} = Keyword.pop(options, :max_redirects, 5)
-    send_request(options, if(follow?, do: max, else: 0), request.response)
+    ctx = %{
+      response: request.response,
+      wrap?: Map.get(request, :wrap_errors, false),
+      limit: own[:max_body_bytes],
+      # Only what the owner configured may be a private address: the base
+      # URL's origin, or every address with :allow_private_addresses (and
+      # a Req.Test plug, which never connects).
+      guard: %{
+        trusted: owner_base && origin(URI.parse(owner_base)),
+        allow?: own[:allow_private_addresses] == true or Keyword.has_key?(options, :plug)
+      }
+    }
+
+    redirects = if own[:follow_redirects], do: own[:max_redirects], else: 0
+    within(own[:deadline], fn -> send_request(options, redirects, ctx) end)
   end
 
   @redirects [301, 302, 303, 307, 308]
 
-  defp send_request(options, redirects, response) do
-    case Req.request(options) do
-      {:ok, %Req.Response{status: status} = resp} when status in @redirects and redirects > 0 ->
-        with {:ok, options} <- redirect(options, resp),
-             do: send_request(options, redirects - 1, response)
+  defp send_request(options, redirects, ctx) do
+    with :ok <- check_address(Keyword.fetch!(options, :url), ctx.guard) do
+      case Req.request(options) do
+        {:ok, %Req.Response{body: {:too_large, limit}}} ->
+          {:error, {:body_too_large, limit}}
 
-      {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
-        decode(body, response)
+        {:ok, %Req.Response{status: status} = resp} when status in @redirects and redirects > 0 ->
+          with {:ok, options} <- redirect(options, resp),
+               do: send_request(options, redirects - 1, ctx)
 
-      {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, {:status, status, body}}
+        {:ok, %Req.Response{} = resp} ->
+          with {:ok, body} <- content(resp, ctx.limit), do: respond(resp.status, body, ctx)
 
-      {:error, exception} ->
-        {:error, exception}
+        {:error, exception} ->
+          {:error, exception}
+      end
     end
+  end
+
+  defp respond(status, body, ctx) when status in 200..299,
+    do: decode(body, ctx.response, if(ctx.wrap?, do: %{"returned_an_error" => false}, else: %{}))
+
+  defp respond(status, body, %{wrap?: true} = ctx), do: wrapped_error(status, body, ctx.response)
+  defp respond(status, body, _ctx), do: {:error, {:status, status, body}}
+
+  # The whole call, retries and redirects included, within `ms`.
+  defp within(ms, fun) do
+    task =
+      Task.async(fn ->
+        try do
+          fun.()
+        catch
+          _kind, _reason -> {:error, :crashed}
+        end
+      end)
+
+    case Task.yield(task, ms) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} -> result
+      {:exit, _reason} -> {:error, :crashed}
+      nil -> {:error, :deadline_exceeded}
+    end
+  end
+
+  defp retry_fun(max_delay) do
+    fn _request, response_or_exception ->
+      case response_or_exception do
+        %Req.Response{status: status} = resp when status in [429, 503] ->
+          {:delay, min(Req.Response.get_retry_after(resp) || 1_000, max_delay)}
+
+        %Req.TransportError{reason: :econnrefused} ->
+          {:delay, min(1_000, max_delay)}
+
+        _ ->
+          false
+      end
+    end
+  end
+
+  # The response body, at most `limit` bytes: anything longer is dropped
+  # as it arrives (`{:too_large, limit}`).
+  defp collect(limit) do
+    fn {:data, data}, {req, resp} ->
+      case resp.body do
+        {:too_large, _} = too_large ->
+          {:halt, {req, %{resp | body: too_large}}}
+
+        body when byte_size(body) + byte_size(data) > limit ->
+          {:halt, {req, %{resp | body: {:too_large, limit}}}}
+
+        body ->
+          {:cont, {req, %{resp | body: body <> data}}}
+      end
+    end
+  end
+
+  # The body as sent, decompressed (gzip, deflate) to at most `limit`
+  # bytes; another encoding is an error.
+  defp content(%Req.Response{body: body} = resp, limit) do
+    case Enum.map(Req.Response.get_header(resp, "content-encoding"), &String.downcase/1) do
+      encoding when encoding in [[], ["identity"]] -> {:ok, body}
+      [gzip] when gzip in ["gzip", "x-gzip"] -> inflate(body, 31, limit)
+      ["deflate"] -> inflate(body, 15, limit)
+      _ -> {:error, {:decode, :content_encoding}}
+    end
+  end
+
+  @doc false
+  # Inflates `data` (`window` 31: gzip, 15: zlib) to at most `limit` bytes.
+  @spec inflate(binary(), integer(), non_neg_integer()) :: {:ok, binary()} | {:error, term()}
+  def inflate(data, window, limit) do
+    z = :zlib.open()
+
+    try do
+      :ok = :zlib.inflateInit(z, window)
+      inflate_loop(z, :zlib.safeInflate(z, data), [], 0, limit)
+    rescue
+      ErlangError -> {:error, {:decode, :content_encoding}}
+    after
+      :zlib.close(z)
+    end
+  end
+
+  defp inflate_loop(z, {status, out}, acc, size, limit) do
+    size = size + IO.iodata_length(out)
+
+    cond do
+      size > limit -> {:error, {:body_too_large, limit}}
+      status == :finished -> {:ok, IO.iodata_to_binary(Enum.reverse([out | acc]))}
+      true -> inflate_loop(z, :zlib.safeInflate(z, []), [out | acc], size, limit)
+    end
+  end
+
+  # --- addresses ----------------------------------------------------------------------
+
+  @doc false
+  # Refuses an address the owner did not configure that is loopback,
+  # private, link-local (cloud metadata included), carrier-grade NAT,
+  # multicast or reserved, after resolving the host: a call never reaches
+  # the app's own network unless its base URL says so.
+  @spec check_address(String.t(), map()) :: :ok | {:error, term()}
+  def check_address(url, guard) do
+    uri = URI.parse(url)
+
+    cond do
+      guard.allow? ->
+        :ok
+
+      guard.trusted != nil and origin(uri) == guard.trusted ->
+        :ok
+
+      true ->
+        case resolve(uri.host) do
+          {:ok, addresses} ->
+            if Enum.any?(addresses, &blocked?/1),
+              do: {:error, {:blocked_address, :private}},
+              else: :ok
+
+          :error ->
+            {:error, {:blocked_address, :unresolved}}
+        end
+    end
+  end
+
+  defp origin(%URI{scheme: scheme, host: host, port: port}),
+    do: {scheme, host && String.downcase(host), port}
+
+  defp resolve(nil), do: :error
+
+  defp resolve(host) do
+    name = String.to_charlist(host)
+
+    case :inet.parse_address(name) do
+      {:ok, address} ->
+        {:ok, [address]}
+
+      {:error, _} ->
+        addresses =
+          for family <- [:inet, :inet6],
+              {:ok, found} <- [:inet.getaddrs(name, family)],
+              address <- found,
+              do: address
+
+        if addresses == [], do: :error, else: {:ok, addresses}
+    end
+  end
+
+  @doc false
+  @spec blocked?(:inet.ip_address()) :: boolean()
+  def blocked?({a, b, c, _}) do
+    a in [0, 10, 127] or a >= 224 or (a == 100 and b in 64..127) or (a == 169 and b == 254) or
+      (a == 172 and b in 16..31) or (a == 192 and b == 168) or {a, b, c} == {192, 0, 0} or
+      (a == 198 and b in 18..19)
+  end
+
+  # IPv4-mapped, -compatible and NAT64 addresses are their IPv4 address.
+  def blocked?({0, 0, 0, 0, 0, prefix, x, y}) when prefix in [0, 0xFFFF],
+    do: x == 0 or blocked?(v4(x, y))
+
+  def blocked?({0x64, 0xFF9B, 0, 0, 0, 0, x, y}), do: blocked?(v4(x, y))
+
+  def blocked?({first, _, _, _, _, _, _, _}),
+    do: Bitwise.band(first, 0xFE00) == 0xFC00 or Bitwise.band(first, 0xFFC0) == 0xFE80 or
+          Bitwise.band(first, 0xFF00) == 0xFF00
+
+  defp v4(x, y), do: {Bitwise.bsr(x, 8), Bitwise.band(x, 0xFF), Bitwise.bsr(y, 8), Bitwise.band(y, 0xFF)}
+
+  # Bubble's result of a call that includes errors in its response.
+  defp wrapped_error(status, body, response) do
+    term = %{
+      "returned_an_error" => true,
+      "error" => %{
+        "status_code" => status,
+        "status_message" => status_message(status),
+        "body" => if(is_binary(body), do: body, else: "")
+      }
+    }
+
+    case response do
+      {:json, decoder, _list?} -> decoder.(term)
+      _ -> {:ok, term}
+    end
+  end
+
+  defp status_message(status) do
+    Plug.Conn.Status.reason_phrase(status)
+  rescue
+    ArgumentError -> ""
   end
 
   # The next request of a redirect. Another origin (or a downgrade to
@@ -195,19 +533,26 @@ defmodule <%= @module %>.ApiClients do
   defp auth(nil), do: []
   defp auth({:basic, user, password}), do: [auth: {:basic, user <> ":" <> password}]
 
-  defp decode(_body, :empty), do: {:ok, nil}
-  defp decode(body, :text), do: {:ok, body}
-  defp decode(body, :json), do: json(body)
+  # `extra` (Bubble's `returned_an_error`) goes into a JSON object.
+  defp decode(_body, :empty, extra), do: {:ok, if(extra == %{}, do: nil, else: extra)}
+  defp decode(body, :text, _extra), do: {:ok, body}
 
-  defp decode(body, {:json, decoder, list?}) do
+  defp decode(body, :json, extra) do
+    with {:ok, term} <- json(body), do: {:ok, merge(term, extra)}
+  end
+
+  defp decode(body, {:json, decoder, list?}, extra) do
     with {:ok, term} <- json(body) do
       cond do
-        is_nil(term) -> {:ok, nil}
+        is_nil(term) and extra == %{} -> {:ok, nil}
         list? and is_list(term) -> each(term, decoder)
-        true -> decoder.(term)
+        true -> decoder.(merge(term || %{}, extra))
       end
     end
   end
+
+  defp merge(term, extra) when is_map(term), do: Map.merge(term, extra)
+  defp merge(term, _extra), do: term
 
   defp json(""), do: {:ok, nil}
 
@@ -253,7 +598,14 @@ defmodule <%= @module %>.ApiClients do
   @doc false
   # A value in a URL path segment, percent-encoded.
   @spec segment(term()) :: String.t()
-  def segment(value), do: URI.encode(text(value) || "", &URI.char_unreserved?/1)
+  def segment(value) do
+    case URI.encode(text(value) || "", &URI.char_unreserved?/1) do
+      # `.` and `..` would move up the path (WTF-533).
+      "." -> "%2E"
+      ".." -> "%2E%2E"
+      encoded -> encoded
+    end
+  end
 
   @doc false
   # A value in a host name.
@@ -269,6 +621,22 @@ defmodule <%= @module %>.ApiClients do
       {:error, _} -> text
     end
   end
+
+  @doc false
+  # A parameter in a JSON body outside quotes (`"n": <n>`). Bubble pastes
+  # its text into the body: a text that is a JSON number, yes/no or null
+  # is that value; any other text (an object or array included, so a
+  # page cannot send `{"$ne": null}`) is a JSON string. A list (the step's
+  # value is a list) is a JSON array, any other value itself (WTF-533).
+  @spec json_arg(term()) :: term()
+  def json_arg(value) when is_binary(value) do
+    case Jason.decode(value) do
+      {:ok, scalar} when is_number(scalar) or is_boolean(scalar) or is_nil(scalar) -> scalar
+      _ -> value
+    end
+  end
+
+  def json_arg(value), do: value
 
   @doc false
   # A `Name: value` header line from an environment variable.
@@ -306,6 +674,40 @@ defmodule <%= @module %>.ApiClients do
   @spec map_list(term(), (term() -> term())) :: term()
   def map_list(list, fun) when is_list(list), do: Enum.map(list, fun)
   def map_list(value, _fun), do: value
+
+  @doc false
+  # A response value as its API type's field type (a typed map, WTF-533):
+  # Bubble's text, number and yes/no; a date from ISO 8601 text. Anything
+  # it cannot read as that type is nil; other types stay as decoded.
+  @spec cast_value(term(), atom() | {:list, atom()}) :: term()
+  def cast_value(nil, _type), do: nil
+  def cast_value(values, {:list, type}) when is_list(values), do: Enum.map(values, &cast_value(&1, type))
+  def cast_value(_value, {:list, _type}), do: nil
+  def cast_value(value, :text) when is_binary(value), do: value
+  def cast_value(value, :text) when is_number(value) or is_boolean(value), do: to_string(value)
+  def cast_value(value, :text), do: Jason.encode!(value)
+  def cast_value(value, :number) when is_number(value), do: value
+
+  def cast_value(value, :number) when is_binary(value) do
+    case Float.parse(String.trim(value)) do
+      {number, ""} -> number
+      _ -> nil
+    end
+  end
+
+  def cast_value(value, :boolean) when is_boolean(value), do: value
+  def cast_value("true", :boolean), do: true
+  def cast_value("false", :boolean), do: false
+
+  def cast_value(value, :date) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, date, _offset} -> date
+      {:error, _} -> nil
+    end
+  end
+
+  def cast_value(_value, type) when type in [:number, :boolean, :date], do: nil
+  def cast_value(value, _type), do: value
 
   @doc false
   # A typed struct from its fields.

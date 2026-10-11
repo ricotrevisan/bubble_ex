@@ -116,6 +116,7 @@ defmodule BubbleEx.Model.ConnectorReader do
       parameters: parameters,
       request: RequestReader.read(call, parameters),
       returns: first_text(call, ["ret_value"]),
+      wrap_errors: Map.get(call, "wrap_error") == true,
       registry: registry,
       types: if(is_nil(registry) and types not in [nil, ""], do: :malformed),
       placement: placement,

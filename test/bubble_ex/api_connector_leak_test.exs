@@ -202,7 +202,9 @@ defmodule BubbleEx.ApiConnectorLeakTest do
     end
 
     # The private values and redacted literals are environment variables.
-    assert generated["lib/leak/api_clients.ex"] =~ "`MAIL_SEND_EMAIL_X_API_KEY`"
-    assert generated["lib/leak/api_clients/mail.ex"] =~ ~s(env["MAIL_SEND_EMAIL_LITERAL_2"])
+    assert generated["lib/leak/api_clients.ex"] =~ "`BUBBLE_API_MAIL_SEND_EMAIL_X_API_KEY`"
+
+    assert generated["lib/leak/api_clients/mail.ex"] =~
+             ~s(env["BUBBLE_API_MAIL_SEND_EMAIL_LITERAL_2"])
   end
 end

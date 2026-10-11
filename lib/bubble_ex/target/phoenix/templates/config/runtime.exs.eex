@@ -32,7 +32,7 @@ config :<%= @app %>, <%= @web %>.Uploads,
   public_url: System.get_env("UPLOADS_PUBLIC_URL"),
   uploads_host: uploads_host,
   private: false
-
+<%= @api_runtime_config %>
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

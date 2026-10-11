@@ -86,6 +86,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   alias BubbleEx.Model.Type
   alias BubbleEx.Plan.Residue
   alias BubbleEx.Target.Ash.{Naming, Project, Resource}
+  alias BubbleEx.Target.Ash.Workflows, as: BackendWorkflows
   alias BubbleEx.Target.Ash.Workflows.Spec, as: BackendSpec
   alias BubbleEx.Target.Elixir, as: ElixirTarget
   alias BubbleEx.Target.Elixir.FrontendWorkflows.{Data, Spec}
@@ -155,6 +156,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       page loads its data sources (`BubbleEx.Target.Elixir.FrontendWorkflows.Data`)
       and its workflows read what it loads; without it, they are
       `:unavailable_input` residue
+    * `:api_clients` - the `BubbleEx.Target.ApiClients.Spec` the app
+      renders (WTF-533): an API Connector step calls its generated client
+      on the server, in the LiveView process (only the step's non-private
+      parameters are values from the page; secrets come from
+      `config/runtime.exs`); without it, or for a call it does not
+      generate, the step is `:api_connector_action` residue
   """
   @spec map(Frontend.t(), Project.t(), keyword()) :: {:ok, Spec.t()} | {:error, Error.t()}
   def map(lowered, project, opts \\ [])
@@ -186,6 +193,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
       ctx = %{
         backend: backend_actions(Keyword.get(opts, :backend)),
+        api_calls: BackendWorkflows.api_calls(Keyword.get(opts, :api_clients)),
         dropped: dropped,
         namespace: namespace,
         runtime: namespace <> ".Bubble.Runtime",
@@ -1406,6 +1414,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       {%{}, [Residue.entry(id, :unresolved_reference, %{reference: "workflow", target: "ash"})]}
     end
   end
+
+  defp args(:api_call, args, id, ctx),
+    do: BackendWorkflows.api_step(args, id, ctx.api_calls, &compile(&1, &2, ctx))
 
   defp args(:pause, args, id, ctx) do
     {length, residue} = compile(args.length, id, ctx)

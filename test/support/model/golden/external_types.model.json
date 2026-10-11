@@ -80,7 +80,8 @@
             ]
           },
           "returns": "api.apiconnector2.geo.lookup.Address",
-          "types": null
+          "types": null,
+          "wrap_errors": false
         }
       ],
       "id": "geo",
@@ -141,7 +142,8 @@
             ]
           },
           "returns": "api.apiconnector2.graph.ping.A",
-          "types": null
+          "types": null,
+          "wrap_errors": false
         },
         {
           "host": null,
@@ -190,7 +192,8 @@
             ]
           },
           "returns": "api.apiconnector2.graph.pong.B",
-          "types": null
+          "types": null,
+          "wrap_errors": false
         }
       ],
       "id": "graph",
@@ -236,7 +239,8 @@
             ]
           },
           "returns": "api.apiconnector2.misc.blank.Empty",
-          "types": null
+          "types": null,
+          "wrap_errors": false
         }
       ],
       "id": "misc",
@@ -297,7 +301,8 @@
             ]
           },
           "returns": "api.apiconnector2.tree.walk.Node",
-          "types": null
+          "types": null,
+          "wrap_errors": false
         }
       ],
       "id": "tree",

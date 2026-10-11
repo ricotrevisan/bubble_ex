@@ -386,7 +386,7 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
       op when op in [:schedule, :schedule_list] ->
         [args.at, args.list, args.interval | Enum.map(args.params, & &1.value)]
 
-      :call ->
+      op when op in [:call, :api_call] ->
         Enum.map(args.params, & &1.value)
 
       :terminate ->
@@ -437,6 +437,8 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
   defp op(:call, args, id, _ns),
     do: "Runtime.call(ctx, #{id}, #{inspect(args.workflow)}, #{keyed(args.params, :param)})"
 
+  defp op(:api_call, args, id, ns), do: api_call(args, id, ns)
+
   defp op(:terminate, args, _id, _ns),
     do: "Runtime.terminate(ctx, #{keyed(args.returns, :return)})"
 
@@ -445,6 +447,27 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
 
   defp op(:return, args, _id, _ns),
     do: "Runtime.return_text(ctx, #{src(args.content_type)}, #{src(args.text)})"
+
+  @doc false
+  # An API Connector call (WTF-533): the generated client's function, with
+  # the step's non-private parameters (keyed by the client's argument
+  # names). Shared with the page workflows' printer.
+  @spec api_call(map(), String.t(), String.t(), String.t()) :: String.t()
+  def api_call(args, id, ns, ctx \\ "ctx") do
+    params =
+      "%{" <>
+        Enum.map_join(args.params, ", ", fn p -> "#{atom(p.key)} => #{src(p.value)}" end) <>
+        "}"
+
+    "Runtime.api_call(#{ctx}, #{id}, #{ns}.#{module!(args.module)}, #{atom(args.function)}, " <>
+      "#{params})"
+  end
+
+  defp module!(module) do
+    if Regex.match?(@module_name, module),
+      do: module,
+      else: raise(ArgumentError, "invalid module")
+  end
 
   defp changes(changes) do
     "[" <>

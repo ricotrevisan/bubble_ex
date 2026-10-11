@@ -42,7 +42,7 @@ privacy = fn -> Process.get(:phoenix_check_privacy, :omit) end
 # bindings (WTF-370) and its page and reusable-element workflows (WTF-372,
 # which schedule the backend workflows of `backend`), when the app JSON has
 # one.
-frontend = fn app, model, project, backend ->
+frontend = fn app, model, project, backend, clients ->
   case BubbleEx.Frontend.normalize(app) do
     {:ok, frontend} ->
       {:ok, expressions} =
@@ -61,7 +61,8 @@ frontend = fn app, model, project, backend ->
           namespace: "PhxCheck",
           frontend: frontend,
           backend: backend,
-          page_data: page_data
+          page_data: page_data,
+          api_clients: clients
         )
 
       [frontend: frontend, expressions: expressions, frontend_workflows: workflows]
@@ -94,11 +95,15 @@ end
 # The backend workflows of an app (WTF-373), bound to its project for the
 # PhxCheck module; nil when the app has none, unless `always` (its frontend
 # workflows run their data steps on the backend workflow runtime, WTF-372).
-workflows = fn app, model, project, always ->
+workflows = fn app, model, project, always, clients ->
   with {:ok, index} <- BubbleEx.Index.build(app, model: model),
        {:ok, backend} <- BubbleEx.Workflows.Backend.build(app, model, index),
        true <- always or backend.workflows != [],
-       {:ok, spec} <- BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "PhxCheck") do
+       {:ok, spec} <-
+         BubbleEx.Target.Ash.Workflows.map(backend, project,
+           namespace: "PhxCheck",
+           api_clients: clients
+         ) do
     spec
   else
     _ -> nil
@@ -115,10 +120,10 @@ app_fixture = fn app ->
   {:ok, clients} = BubbleEx.Target.ApiClients.map(model)
 
   frontend? = match?({:ok, _}, BubbleEx.Frontend.normalize(app))
-  backend = workflows.(app, model, project, frontend?)
+  backend = workflows.(app, model, project, frontend?, clients)
 
   {:ok, project,
-   [api_clients: clients, workflows: backend] ++ frontend.(app, model, project, backend)}
+   [api_clients: clients, workflows: backend] ++ frontend.(app, model, project, backend, clients)}
 end
 
 fixtures =
@@ -228,8 +233,8 @@ fixtures =
       app = BubbleEx.Test.DecidedFixture.app(:drop)
       {:ok, model} = BubbleEx.Model.build(app)
       {:ok, project} = BubbleEx.Test.DecidedFixture.project(:drop, privacy: privacy.())
-      backend = workflows.(app, model, project, true)
-      {:ok, project, [workflows: backend] ++ frontend.(app, model, project, backend)}
+      backend = workflows.(app, model, project, true, nil)
+      {:ok, project, [workflows: backend] ++ frontend.(app, model, project, backend, nil)}
     end,
     # The frontend workflows fixture with every ID hostile and a page, a
     # page workflow (a custom event another one triggers) and a backend
@@ -250,8 +255,8 @@ fixtures =
           BubbleEx.Index.Symbol.id(:workflow, hostile.("wApiNote"))
         ], privacy: privacy.())
 
-      backend = workflows.(app, model, project, true)
-      {:ok, project, [workflows: backend] ++ frontend.(app, model, project, backend)}
+      backend = workflows.(app, model, project, true, nil)
+      {:ok, project, [workflows: backend] ++ frontend.(app, model, project, backend, nil)}
     end,
     "decided_combined" => fn ->
       {:ok, project} = BubbleEx.Test.DecidedFixture.project(:combined, privacy: privacy.())
@@ -281,8 +286,8 @@ fixtures =
 
       {:ok, model} = BubbleEx.Model.build(app)
       {:ok, project} = BubbleEx.Test.DecidedFixture.project(:cut3, privacy: privacy.())
-      backend = workflows.(app, model, project, true)
-      {:ok, project, [workflows: backend] ++ frontend.(app, model, project, backend)}
+      backend = workflows.(app, model, project, true, nil)
+      {:ok, project, [workflows: backend] ++ frontend.(app, model, project, backend, nil)}
     end
   })
   |> Map.merge(

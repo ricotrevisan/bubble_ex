@@ -129,14 +129,18 @@ defmodule BubbleEx.Workflows.BackendTest do
     external = workflow(backend, "wExternal")
 
     assert [
-             %Step{index: 1, op: nil, residue: [%{reason: :api_connector_action}]},
+             %Step{index: 1, op: :api_call, residue: [%{reason: :api_connector_action}]},
              %Step{index: 2, op: nil, residue: [%{reason: :unsupported_action}]}
            ] = external.steps
 
     refute Workflow.native?(external)
 
     assert Backend.residue(backend) == [
-             %{subject: "action:aCall", reason: :api_connector_action, detail: %{call: "gA.cB"}},
+             %{
+               subject: "action:aCall",
+               reason: :api_connector_action,
+               detail: %{call: "gA.cB", reasons: [:unresolved]}
+             },
              %{subject: "action:aMail", reason: :unsupported_action, detail: %{type: "SendEmail"}}
            ]
 

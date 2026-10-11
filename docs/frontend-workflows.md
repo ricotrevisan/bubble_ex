@@ -187,6 +187,7 @@ another element, is `:unsupported_event` residue.
 | Trigger a custom event (also from a reusable element) | a call in the same process, counted in the backend runtime's call budget; its return values are the step's result |
 | Schedule a custom event | `Process.send_after` to the page |
 | Schedule API workflow (on a list) | the backend runtime's `schedule/5` (`schedule_list/7`): an Oban job, from the event's job budget (data-access opt-in); without the backend spec, `:backend_workflow` residue |
+| an API Connector call (WTF-533) | the backend runtime's `api_call/5` in the LiveView process (`BubbleWorkflows.api/2`, not behind the data-access opt-in): the generated Req client is called on the server with the step's non-private parameters; secrets only from `config/runtime.exs`; the result is the step's; unset secrets refuse the workflow with the page's notice (`docs/api-connector-calls.md`) |
 | Terminate this workflow | ends it (with a custom event's return values) |
 | Add a pause before next action | ends the event; the rest of the workflow (and of the custom events waiting on it) runs after the pause in a `Process.send_after` message to the page (WTF-451, below) |
 
@@ -227,11 +228,12 @@ it.
 `:formatted as JSON-safe` is text on pages, as typed: a yes/no is `"true"`
 or `"false"`, a number its text and a date ISO 8601, so comparing it with a
 text (`Admin? :formatted as JSON-safe is "true"`) holds as in Bubble.
-**API calls are not lowered yet** (plugin and API Connector actions are
-residue). When they are, a request body must insert a value's raw JSON
-(`true`, `3`, a quoted and escaped string), never this text form: the
-runtime's `json_encode/1` (`TODO(bubble:api-body)`) must not be reused
-for bodies as is.
+API Connector actions are lowered (WTF-533, `docs/api-connector-calls.md`);
+plugin actions are residue. A request body inserts a parameter's value as
+Bubble pastes its text: inside quotes as a JSON string (escaped), outside
+quotes as the JSON the text is (`3`, `true`), never through this text form:
+the runtime's `json_encode/1` (`TODO(bubble:api-body)`) is not used for
+bodies.
 
 ### Display data (WTF-492)
 
@@ -505,7 +507,8 @@ steps before it (in Bubble order, so step 10 comes after step 2;
 | Make changes to a list of things | the list of changed records |
 | Trigger a custom event (also from a reusable element) | the custom event's return values, each read by return ID with its declared type (`Result of step N's <return>`); a returned thing or list of things is read as records of its resource: a Bubble ID (a custom state's, say) through Ash as the current user (`BubbleData.records/5`), so a workflow reading one is a data workflow, and reads nothing with data access off |
 | Sign up / Create an account, Copy a list of things | a user, the copied list's type (typed, but these steps are not lowered yet: their workflows are residue) |
-| Schedule API workflow, an API Connector call, a plugin action, a custom event that declares no returns (or a return without a type) | none known: an expression reading it does not compile (`expr_untyped_scope`, `expr_unresolved_accessor`) |
+| an API Connector call (WTF-533) | the call's API type (a list of it for a list response): `Result of step N's <field>` reads the response the generated client decoded, a typed struct's attribute when a data field stores the type, else the typed map's value at the field's Bubble ID (`docs/api-connector-calls.md`); an API type the Model cannot read leaves it untyped |
+| Schedule API workflow, a plugin action, a custom event that declares no returns (or a return without a type) | none known: an expression reading it does not compile (`expr_untyped_scope`, `expr_unresolved_accessor`) |
 
 A returned value is shaped as the custom event declares it: a list where
 one value was declared is its first item (logged), one value where a list
@@ -615,6 +618,15 @@ mobile views):
 
   Steps are counted the same way. Residue reasons are counted per entry (a
   workflow can have several).
+
+### Private fixture app (test version), 2026-10-11, API Connector calls
+
+API Connector actions lowered (WTF-533, `docs/api-connector-calls.md`):
+of the 30 page steps calling one, 6 call a generated client and are
+lowered (3 compile at IR level, 1 is generated whole); 24 stay
+`:api_connector_action` residue, mostly calls with a public parameter in
+their host (`:host_parameter`). 2,863 → 2,866 native IR steps, 1,315 →
+1,316 native IR workflows, 2,570 → 2,571 generated steps.
 
 ### Private fixture app (test version), 2026-10-11
 

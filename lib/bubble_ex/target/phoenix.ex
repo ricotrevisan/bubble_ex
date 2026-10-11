@@ -440,6 +440,7 @@ defmodule BubbleEx.Target.Phoenix do
          :ok <- asset_store(opts),
          frontend = without_dropped_pages(frontend, project),
          :ok <- frontend_workflows(opts, frontend),
+         :ok <- api_calls_bound(opts, clients),
          {:ok, workflows} <- workflow_files(Keyword.get(opts, :workflows), ctx),
          ctx =
            Map.merge(ctx, %{
@@ -749,6 +750,31 @@ defmodule BubbleEx.Target.Phoenix do
       _ ->
         invalid("frontend_workflows: must be a BubbleEx.Target.Elixir.FrontendWorkflows.Spec")
     end
+  end
+
+  # A workflow step calling an API Connector client (WTF-533) needs the
+  # clients rendered with it.
+  defp api_calls_bound(_opts, %Spec{}), do: :ok
+
+  defp api_calls_bound(opts, nil) do
+    backend =
+      case Keyword.get(opts, :workflows) do
+        %WorkflowSpec{} = spec -> for a <- WorkflowSpec.actions(spec), s <- a.steps, do: s
+        _ -> []
+      end
+
+    pages =
+      case Keyword.get(opts, :frontend_workflows) do
+        %FlowSpec{} = spec ->
+          for w <- FlowSpec.workflows(spec), step <- w.steps, do: step
+
+        _ ->
+          []
+      end
+
+    if Enum.any?(backend ++ pages, &(&1.op == :api_call and &1.residue == [])),
+      do: invalid("workflows call API Connector clients: pass api_clients: (the same Spec)"),
+      else: :ok
   end
 
   defp asset_store(opts) do
@@ -1139,6 +1165,9 @@ defmodule BubbleEx.Target.Phoenix do
   defp assigns(ctx) do
     Map.merge(ctx, %{
       workflows?: Map.get(ctx, :workflows) != nil,
+      api_clients?: Map.get(ctx, :api_clients) != nil,
+      api_runtime_config: ApiClients.runtime_config(Map.get(ctx, :api_clients), ctx),
+      api_env_count: api_env_count(Map.get(ctx, :api_clients)),
       deps: deps_source(ctx.privacy),
       tailwind: @tailwind,
       esbuild: @esbuild,
@@ -1150,6 +1179,9 @@ defmodule BubbleEx.Target.Phoenix do
       test_secrets: secrets(ctx.app, "test")
     })
   end
+
+  defp api_env_count(%Spec{env: env}), do: length(env)
+  defp api_env_count(_), do: 0
 
   defp deps_source(privacy) do
     privacy

@@ -202,7 +202,12 @@ defmodule BubbleEx.ApiConnectorProbeTest do
     [group] = spec.groups
     values = Enum.find(group.calls, &(&1.id == "cValues"))
 
-    assert values.path == [[literal: "v1"], [env: "PROBE_VALUES_LITERAL_1"], [literal: "users"]]
+    assert values.path == [
+             [literal: "v1"],
+             [env: "BUBBLE_API_PROBE_VALUES_LITERAL_1"],
+             [literal: "users"]
+           ]
+
     assert Enum.map(values.query, & &1.name) == ["pin", "q"]
     assert Enum.all?(values.query, &match?([env: _], &1.value))
 
@@ -214,10 +219,13 @@ defmodule BubbleEx.ApiConnectorProbeTest do
              Map.new(values.headers, &{&1.name, &1.value})
 
     host = Enum.find(group.calls, &(&1.id == "cRandomHost"))
-    assert host.base.host == [env: "PROBE_HOST"]
-    assert %{kind: :host, call: nil} = Enum.find(spec.env, &(&1.name == "PROBE_HOST"))
+    assert host.base.host == [env: "BUBBLE_API_PROBE_HOST"]
+    assert %{kind: :host, call: nil} = Enum.find(spec.env, &(&1.name == "BUBBLE_API_PROBE_HOST"))
     # One variable per host in the group, shared by its calls.
-    assert Enum.find(group.calls, &(&1.id == "cRandomHost2")).base.host == [env: "PROBE_HOST"]
+    assert Enum.find(group.calls, &(&1.id == "cRandomHost2")).base.host == [
+             env: "BUBBLE_API_PROBE_HOST"
+           ]
+
     assert Enum.count(spec.env, &(&1.kind == :host)) == 1
 
     key_path = Enum.find(group.calls, &(&1.id == "cKeyPath"))

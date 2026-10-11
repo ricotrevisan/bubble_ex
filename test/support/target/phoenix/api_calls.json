@@ -1,0 +1,359 @@
+{
+ "_id": "api-calls-fixture",
+ "_comment": "WTF-533: API Connector calls lowered to Req clients, all data invented (host api.example.test, stubbed in test/support/target/phoenix/api_calls_behavior.exs; never a real API). An API (Example, key in a header) with two calls: Get item (GET, a URL parameter, a query parameter, a private header; returns an Item) and Post note (POST JSON with a private body parameter, errors included in the response). A backend workflow fetches an item and returns its name; page buttons fetch an item and post a note, showing the result in a label.",
+ "user_types": {
+  "user": {
+   "display": "User",
+   "fields": {
+    "email": {
+     "display": "email",
+     "value": "text"
+    }
+   }
+  },
+  "note": {
+   "display": "Note",
+   "fields": {
+    "title_text": {
+     "display": "Title",
+     "value": "text"
+    }
+   }
+  }
+ },
+ "settings": {
+  "client_safe": {
+   "apiconnector2": {
+    "gEx": {
+     "human": "Example",
+     "auth": "private_key_header",
+     "token_param_name": "X-Api-Key",
+     "calls": {
+      "cItem": {
+       "name": "Get item",
+       "method": "get",
+       "publish_as": "action",
+       "url": "https://api.example.test/v1/items/[item_id]",
+       "url_params": {
+        "u1": {
+         "key": "item_id",
+         "value": "1",
+         "private": false
+        }
+       },
+       "params": {
+        "p1": {
+         "key": "lang",
+         "value": "en",
+         "private": false,
+         "querystring": true
+        }
+       },
+       "headers": {
+        "h1": {
+         "key": "X-Tenant",
+         "value": "tenant",
+         "private": true
+        }
+       },
+       "ret_value": "api.apiconnector2.gEx.cItem.Item",
+       "types": "{\"api.apiconnector2.gEx.cItem.Item\": {\"caption\": \"Item\", \"fields\": {\"_api_c2_id\": {\"caption\": \"id\", \"path\": [\"id\"], \"ret_btype\": \"text\"}, \"_api_c2_name\": {\"caption\": \"name\", \"path\": [\"name\"], \"ret_btype\": \"text\"}, \"_api_c2_price\": {\"caption\": \"price\", \"path\": [\"price\"], \"ret_btype\": \"number\"}}}}"
+      },
+      "cNote": {
+       "name": "Post note",
+       "method": "post",
+       "publish_as": "action",
+       "url": "https://api.example.test/v1/notes",
+       "body": "{\"text\": \"<text>\", \"signature\": \"<signing>\"}",
+       "body_params": {
+        "b1": {
+         "key": "text",
+         "value": "x",
+         "private": false
+        },
+        "b2": {
+         "key": "signing",
+         "value": "s",
+         "private": true
+        }
+       },
+       "wrap_error": true,
+       "ret_value": "api.apiconnector2.gEx.cNote.Receipt",
+       "types": "{\"api.apiconnector2.gEx.cNote.Receipt\": {\"caption\": \"Receipt\", \"fields\": {\"_api_c2_id\": {\"caption\": \"id\", \"path\": [\"id\"], \"ret_btype\": \"text\"}, \"_api_c2_returned_an_error\": {\"caption\": \"returned an error\", \"path\": [\"returned_an_error\"], \"ret_btype\": \"boolean\"}, \"_api_c2_error.status_code\": {\"caption\": \"error status_code\", \"path\": [\"error\", \"status_code\"], \"ret_btype\": \"number\"}, \"_api_c2_error.status_message\": {\"caption\": \"error status_message\", \"path\": [\"error\", \"status_message\"], \"ret_btype\": \"text\"}, \"_api_c2_error.body\": {\"caption\": \"error body\", \"path\": [\"error\", \"body\"], \"ret_btype\": \"text\"}}}}"
+      }
+     }
+    }
+   }
+  }
+ },
+ "api": {
+  "wFetch": {
+   "id": "wFetch",
+   "type": "APIEvent",
+   "properties": {
+    "wf_name": "fetch item",
+    "parameters": {
+     "0": {
+      "key": "item",
+      "value": "text"
+     }
+    }
+   },
+   "actions": {
+    "0": {
+     "id": "aItem",
+     "type": "apiconnector2-gEx.cItem",
+     "properties": {
+      "url_params_item_id": {
+       "type": "APIEventParameter",
+       "properties": {
+        "btype_id": "text",
+        "param_id": "item"
+       }
+      },
+      "params_lang": {
+       "type": "TextExpression",
+       "entries": {
+        "0": "en"
+       }
+      },
+      "headers_X-Tenant": {
+       "type": "TextExpression",
+       "entries": {
+        "0": "must never be sent"
+       }
+      }
+     }
+    },
+    "1": {
+     "id": "aRet",
+     "type": "APIReturnData",
+     "properties": {
+      "parameters_actions": {
+       "0": {
+        "key": "name",
+        "value": "text",
+        "content": {
+         "type": "PreviousStep",
+         "properties": {
+          "action_id": "aItem"
+         },
+         "next": {
+          "type": "Message",
+          "name": "_api_c2_name"
+         }
+        }
+       },
+       "1": {
+        "key": "price",
+        "value": "number",
+        "content": {
+         "type": "PreviousStep",
+         "properties": {
+          "action_id": "aItem"
+         },
+         "next": {
+          "type": "Message",
+          "name": "_api_c2_price"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "pages": {
+  "index": {
+   "id": "bHome",
+   "name": "index",
+   "type": "Page",
+   "properties": {
+    "title": "Home"
+   },
+   "custom_states": {
+    "label_": {
+     "default_val": "start",
+     "display": "Label",
+     "value": "text"
+    }
+   },
+   "elements": {
+    "bFetch": {
+     "id": "bFetch",
+     "type": "Button",
+     "properties": {
+      "order": 1,
+      "width": 120,
+      "height": 40,
+      "min_height_css": "40px",
+      "text": {
+       "type": "TextExpression",
+       "entries": {
+        "0": "Fetch"
+       }
+      }
+     }
+    },
+    "bPost": {
+     "id": "bPost",
+     "type": "Button",
+     "properties": {
+      "order": 2,
+      "width": 120,
+      "height": 40,
+      "min_height_css": "40px",
+      "text": {
+       "type": "TextExpression",
+       "entries": {
+        "0": "Post"
+       }
+      }
+     }
+    },
+    "bLabel": {
+     "id": "bLabel",
+     "type": "Text",
+     "properties": {
+      "order": 3,
+      "width": 300,
+      "height": 40,
+      "min_height_css": "40px",
+      "text": {
+       "type": "TextExpression",
+       "entries": {
+        "0": "Label: ",
+        "1": {
+         "type": "GetElement",
+         "properties": {
+          "element_id": "bHome"
+         },
+         "next": {
+          "type": "Message",
+          "name": "custom.label_"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "workflows": {
+    "wFetchClick": {
+     "id": "wFetchClick",
+     "type": "ButtonClicked",
+     "properties": {
+      "element_id": "bFetch"
+     },
+     "actions": {
+      "0": {
+       "id": "aPageItem",
+       "type": "apiconnector2-gEx.cItem",
+       "properties": {
+        "url_params_item_id": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "42"
+         }
+        },
+        "params_lang": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "fr"
+         }
+        }
+       }
+      },
+      "1": {
+       "id": "aPageLabel",
+       "type": "SetCustomState",
+       "properties": {
+        "custom_state": "custom.label_",
+        "element_id": "bHome",
+        "value": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "item ",
+          "1": {
+           "type": "PreviousStep",
+           "properties": {
+            "action_id": "aPageItem"
+           },
+           "next": {
+            "type": "Message",
+            "name": "_api_c2_name"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "wPostClick": {
+     "id": "wPostClick",
+     "type": "ButtonClicked",
+     "properties": {
+      "element_id": "bPost"
+     },
+     "actions": {
+      "0": {
+       "id": "aPageNote",
+       "type": "apiconnector2-gEx.cNote",
+       "properties": {
+        "body_params_text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "hello"
+         }
+        },
+        "body_params_signing": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "page-private-value"
+         }
+        }
+       }
+      },
+      "1": {
+       "id": "aPageStatus",
+       "type": "SetCustomState",
+       "properties": {
+        "custom_state": "custom.label_",
+        "element_id": "bHome",
+        "value": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "status ",
+          "1": {
+           "type": "PreviousStep",
+           "properties": {
+            "action_id": "aPageNote"
+           },
+           "next": {
+            "type": "Message",
+            "name": "_api_c2_error.status_code"
+           }
+          },
+          "2": " ",
+          "3": {
+           "type": "PreviousStep",
+           "properties": {
+            "action_id": "aPageNote"
+           },
+           "next": {
+            "type": "Message",
+            "name": "_api_c2_error.status_message"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

@@ -59,20 +59,21 @@
       },
       "data": 306,
       "residue_reasons": {
-        "api_connector_action": 30,
+        "api_connector_action": 24,
         "auth_action": 14,
         "plugin_action": 619,
         "plugin_event": 250,
         "target_not_rendered": 6,
         "trigger_in_runtime_template": 70,
-        "unavailable_input": 389,
-        "uncompiled_expression": 622,
+        "unavailable_input": 391,
+        "uncompiled_expression": 623,
         "unresolved_reference": 41,
         "unsupported_action": 67,
         "unsupported_event": 11,
         "unsupported_option": 11
       },
       "step_ops": {
+        "api_call": 1,
         "call": 571,
         "call_reusable": 128,
         "create": 34,
@@ -100,8 +101,8 @@
         "update_list": 2
       },
       "steps": {
-        "native": 2570,
-        "residue": 1440,
+        "native": 2571,
+        "residue": 1439,
         "total": 4010
       },
       "workflows": {
@@ -124,7 +125,7 @@
           "total": 102
         },
         "custom_event": {
-          "native": 326,
+          "native": 327,
           "total": 489
         },
         "do_every": {
@@ -162,7 +163,7 @@
       },
       "by_surface": {
         "page": {
-          "native": 418,
+          "native": 419,
           "total": 634
         },
         "reusable": {
@@ -171,17 +172,18 @@
         }
       },
       "residue_reasons": {
-        "api_connector_action": 30,
+        "api_connector_action": 24,
         "auth_action": 14,
         "plugin_action": 619,
         "plugin_event": 250,
-        "uncompiled_expression": 539,
+        "uncompiled_expression": 540,
         "unresolved_reference": 41,
         "unsupported_action": 67,
         "unsupported_event": 2,
         "unsupported_option": 11
       },
       "step_ops": {
+        "api_call": 3,
         "call": 644,
         "call_reusable": 134,
         "create": 43,
@@ -211,14 +213,14 @@
         "update_list": 2
       },
       "steps": {
-        "native": 2863,
-        "residue": 1147,
+        "native": 2866,
+        "residue": 1144,
         "total": 4010
       },
       "workflows": {
         "disabled": 53,
-        "native": 1315,
-        "residue": 955,
+        "native": 1316,
+        "residue": 954,
         "total": 2270
       }
     },

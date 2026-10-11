@@ -8,7 +8,7 @@
       "residue": {
         "auth_action": 21,
         "no_native_lowering": 320,
-        "not_generated": 5,
+        "not_generated": 52,
         "plugin_action": 633,
         "plugin_element": 710,
         "plugin_event": 250,
@@ -29,9 +29,9 @@
           "total": 153
         },
         "api_call": {
-          "auto": 84,
+          "auto": 55,
           "closed": 0,
-          "open": 4,
+          "open": 33,
           "total": 88
         },
         "api_clients_residue": {
@@ -41,9 +41,9 @@
           "total": 1
         },
         "api_group": {
-          "auto": 17,
+          "auto": 11,
           "closed": 0,
-          "open": 3,
+          "open": 9,
           "total": 20
         },
         "auth": {
@@ -138,9 +138,9 @@
         }
       },
       "top_level": {
-        "auto": 55,
+        "auto": 49,
         "closed": 0,
-        "open": 415,
+        "open": 421,
         "total": 470
       },
       "units": {
@@ -151,9 +151,9 @@
           "total": 6469
         },
         "api_calls": {
-          "generated": 84,
+          "generated": 55,
           "referenced": 88,
-          "residue": 4,
+          "residue": 33,
           "total": 172
         },
         "cycles": {
@@ -206,7 +206,7 @@
       "residue": {
         "auth_action": 21,
         "no_native_lowering": 320,
-        "not_generated": 5,
+        "not_generated": 52,
         "plugin_action": 633,
         "plugin_element": 710,
         "plugin_event": 250,
@@ -227,9 +227,9 @@
           "total": 153
         },
         "api_call": {
-          "auto": 84,
+          "auto": 55,
           "closed": 0,
-          "open": 4,
+          "open": 33,
           "total": 88
         },
         "api_clients_residue": {
@@ -239,9 +239,9 @@
           "total": 1
         },
         "api_group": {
-          "auto": 17,
+          "auto": 11,
           "closed": 0,
-          "open": 3,
+          "open": 9,
           "total": 20
         },
         "auth": {
@@ -336,9 +336,9 @@
         }
       },
       "top_level": {
-        "auto": 47,
+        "auto": 41,
         "closed": 0,
-        "open": 423,
+        "open": 429,
         "total": 470
       },
       "units": {
@@ -349,9 +349,9 @@
           "total": 6469
         },
         "api_calls": {
-          "generated": 84,
+          "generated": 55,
           "referenced": 88,
-          "residue": 4,
+          "residue": 33,
           "total": 172
         },
         "cycles": {
@@ -402,7 +402,7 @@
       "residue": {
         "auth_action": 21,
         "no_native_lowering": 320,
-        "not_generated": 5,
+        "not_generated": 52,
         "plugin_action": 633,
         "plugin_element": 710,
         "plugin_event": 250,
@@ -423,9 +423,9 @@
           "total": 153
         },
         "api_call": {
-          "auto": 84,
+          "auto": 55,
           "closed": 0,
-          "open": 4,
+          "open": 33,
           "total": 88
         },
         "api_clients_residue": {
@@ -435,9 +435,9 @@
           "total": 1
         },
         "api_group": {
-          "auto": 17,
+          "auto": 11,
           "closed": 0,
-          "open": 3,
+          "open": 9,
           "total": 20
         },
         "auth": {
@@ -532,9 +532,9 @@
         }
       },
       "top_level": {
-        "auto": 55,
+        "auto": 49,
         "closed": 0,
-        "open": 415,
+        "open": 421,
         "total": 470
       },
       "units": {
@@ -545,9 +545,9 @@
           "total": 6469
         },
         "api_calls": {
-          "generated": 84,
+          "generated": 55,
           "referenced": 88,
-          "residue": 4,
+          "residue": 33,
           "total": 172
         },
         "cycles": {

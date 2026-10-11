@@ -92,7 +92,9 @@ defmodule VerticalSlice.Pipeline do
 
     {:ok, clients} = ApiClients.map(model)
     {:ok, backend_lowered} = Backend.build(app, model, index)
-    {:ok, backend} = AshTarget.Workflows.map(backend_lowered, project, namespace: module)
+    {:ok, backend} =
+      AshTarget.Workflows.map(backend_lowered, project, namespace: module, api_clients: clients)
+
     {:ok, frontend} = BubbleEx.Frontend.normalize(app)
 
     {:ok, expressions} =
@@ -109,7 +111,8 @@ defmodule VerticalSlice.Pipeline do
         namespace: module,
         frontend: frontend,
         backend: backend,
-        page_data: page_data
+        page_data: page_data,
+        api_clients: clients
       )
 
     # The plan knows what the lowerings and their bindings left.

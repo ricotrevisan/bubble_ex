@@ -196,7 +196,7 @@
                 "t1": {
                   "key": "tenant",
                   "value": "acme",
-                  "private": false
+                  "private": true
                 }
               }
             },
