@@ -272,6 +272,124 @@ defmodule BubbleEx.Target.ApiCallsTest do
                item.base.host
     end
 
+    test "a Host header a step or a page sets is residue; the owner's is not (WTF-534)", %{
+      app: app
+    } do
+      host_header = fn private? ->
+        {:ok, model} =
+          app
+          |> put_in(
+            [
+              "settings",
+              "client_safe",
+              "apiconnector2",
+              "gEx",
+              "calls",
+              "cItem",
+              "headers",
+              "h2"
+            ],
+            %{"key" => "HOST", "value" => "vhost.example.test", "private" => private?}
+          )
+          |> Model.build()
+
+        [group] = model.connectors
+        Model.ConnectorSupport.unsupported(group, Model.Connector.call(group, "cItem"))
+      end
+
+      assert host_header.(false) == [:host_parameter]
+      assert host_header.(true) == []
+    end
+
+    test "a port placeholder is residue; a public one chooses where the call goes (WTF-534)",
+         %{app: app} do
+      ported = fn url, param ->
+        app
+        |> put_in(
+          ["settings", "client_safe", "apiconnector2", "gEx", "calls", "cItem", "url"],
+          url
+        )
+        |> put_in(
+          [
+            "settings",
+            "client_safe",
+            "apiconnector2",
+            "gEx",
+            "calls",
+            "cItem",
+            "url_params",
+            "u2"
+          ],
+          param
+        )
+      end
+
+      reasons = fn app ->
+        {:ok, model} = Model.build(app)
+        [group] = model.connectors
+        item = Model.Connector.call(group, "cItem")
+        {:ok, spec} = ApiClients.map(model)
+        refute Enum.any?(hd(spec.groups).calls, &(&1.id == "cItem"))
+        {item.request, Model.ConnectorSupport.unsupported(group, item)}
+      end
+
+      url = "https://api.example.test:[port]/v1/items/[item_id]"
+
+      # Public: a step or a page could send the call (and its key) to any
+      # port, as with a host parameter.
+      {request, why} =
+        reasons.(ported.(url, %{"key" => "port", "value" => "8443", "private" => false}))
+
+      assert request.port == %{kind: :parameter, id: "u2"}
+      assert request.host == [%{kind: :literal, text: "api.example.test"}]
+      assert :dynamic_port in why
+      assert :host_parameter in why
+
+      public = ported.(url, %{"key" => "port", "value" => "8443", "private" => false})
+      {:ok, model} = Model.build(public)
+      {:ok, index} = Index.build(public, model: model)
+      {:ok, backend} = Backend.build(public, model, index)
+
+      assert %{residue: [%{reason: :api_connector_action, detail: %{reasons: reasons_of_step}}]} =
+               step(backend.workflows, "aItem")
+
+      assert :host_parameter in reasons_of_step
+
+      # Private: its value is the owner's, but a port from the environment
+      # is not generated: residue all the same.
+      {request, why} =
+        reasons.(ported.(url, %{"key" => "port", "value" => "8443", "private" => true}))
+
+      assert request.port == %{kind: :parameter, id: "u2"}
+      assert why == [:dynamic_port]
+
+      # A placeholder naming nothing, and a port that is not a number.
+      {_request, why} =
+        reasons.(
+          ported.("https://api.example.test:[nothing]/v1", %{"key" => "x", "private" => false})
+        )
+
+      assert :dynamic_port in why
+
+      {request, why} =
+        reasons.(ported.("https://api.example.test:80a/v1", %{"key" => "x", "private" => false}))
+
+      assert request.port == nil
+      assert why == [:no_host]
+
+      # A literal port is still structure.
+      {:ok, model} =
+        Model.build(
+          ported.("https://api.example.test:8443/v1/items/[item_id]", %{
+            "key" => "x",
+            "private" => false
+          })
+        )
+
+      [group] = model.connectors
+      assert Model.Connector.call(group, "cItem").request.port == 8443
+    end
+
     test "Result of step N is the call's API type", %{app: app, model: model} do
       raw = app["api"]["wFetch"]
       env = BubbleEx.Expression.Env.new(model, custom_events: %{})
@@ -508,6 +626,387 @@ defmodule BubbleEx.Target.ApiCallsTest do
       assert apply(rt, :json_arg, [~s({"$ne":null})]) == ~s({"$ne":null})
       assert apply(rt, :json_arg, ["[1]"]) == "[1]"
       assert apply(rt, :segment, [".."]) == "%2E%2E"
+    end
+
+    # --- WTF-534: hardening -------------------------------------------------------------
+
+    defp shape(base, response \\ :json) do
+      %{
+        method: :get,
+        base: base,
+        path: "/latest",
+        query: [],
+        headers: [{"x-api-key", "k"}],
+        body: nil,
+        auth: nil,
+        response: response
+      }
+    end
+
+    test "reserved, documentation and translated addresses are refused" do
+      rt = WtfApiCallsRt.ApiClients
+      blocked? = &apply(rt, :blocked?, [&1])
+      ip = fn text -> text |> String.to_charlist() |> :inet.parse_address() |> elem(1) end
+
+      for text <- ~w(
+            0.0.0.0 10.1.2.3 100.64.0.1 127.0.0.1 169.254.169.254 172.16.0.1 192.168.1.1
+            192.0.0.8 192.0.2.10 198.51.100.7 203.0.113.200 192.88.99.1 198.18.0.1 198.19.255.255
+            224.0.0.1 240.0.0.1 255.255.255.255
+            :: ::1 ::127.0.0.1 ::8.8.8.8
+            ::ffff:0:0 ::ffff:127.0.0.1 ::ffff:8.8.8.8 ::ffff:0:8.8.8.8 ::ffff:0:127.0.0.1
+            64:ff9b::127.0.0.1 64:ff9b::10.0.0.1 64:ff9b:1::8.8.8.8 64:ff9b:1:ffff::1
+            2002:7f00:1:: 2002:a00:1::1 2002:c000:201:: 2002:a9fe:a9fe::
+            fec0::1 feff::1 fe80::1 fc00::1 fd00:ec2::254 ff02::1
+            100::1 2001::1 2001:0:4136:e378:8000:63bf:3fff:fdd2 2001:2::1 2001:db8::1 3fff::1
+          ) do
+        assert blocked?.(ip.(text)), text
+      end
+
+      # Public addresses (from the ranges around the blocked ones; nothing
+      # here connects).
+      for text <- ~w(
+            1.1.1.1 8.8.8.8 100.63.255.255 100.128.0.1 172.15.255.255 172.32.0.1 192.0.1.1
+            192.0.3.1 192.88.98.1 198.17.255.255 198.20.0.1 198.51.99.1 198.51.101.1
+            203.0.112.1 203.0.114.1 223.255.255.255
+            64:ff9b::8.8.8.8 2002:808:808::1 2001:4860::8888 2001:3::1 2001:db9::1
+            2606:4700::1111 3ff0::1 3fff:1000::1 4000::1 fbff::1
+          ) do
+        refute blocked?.(ip.(text)), text
+      end
+
+      # Through the address check, before anything connects.
+      guard = %{trusted: nil, allow?: false}
+
+      for url <- ~w(http://192.0.2.1/ https://[2002:a00:1::1]/ https://[::ffff:0:a00:1]/
+                    http://[64:ff9b:1::1]/ http://[fec0::1]/ http://203.0.113.9:8443/) do
+        assert {:error, {:blocked_address, :private}} = apply(rt, :check_address, [url, guard]),
+               url
+      end
+
+      # An IP address has nothing to pin.
+      assert {:ok, nil} = apply(rt, :check_address, ["https://8.8.8.8/x", guard])
+    end
+
+    test "plug: nil or false is no plug: the address is checked, nothing connects to a private one" do
+      rt = WtfApiCallsRt.ApiClients
+      # The group's configuration has a Req.Test plug: the guard is off.
+      stub(&Req.Test.json(&1, %{"ok" => true}))
+
+      assert {:ok, %{"ok" => true}} =
+               apply(rt, :request, [@client, [], shape("http://127.0.0.1:9")])
+
+      # `plug: nil` and `plug: false` connect (Req runs no plug): the guard
+      # is on, and refuses before connecting.
+      for plug <- [nil, false],
+          base <- ["http://127.0.0.1:9", "http://[::1]:9", "http://10.1.2.3"] do
+        assert {:error, {:blocked_address, :private}} =
+                 apply(rt, :request, [@client, [plug: plug, retry: false], shape(base)]),
+               "#{inspect(plug)} #{base}"
+      end
+
+      assert count() == 1
+
+      # The owner's opt-in still allows it (port 9 refuses).
+      assert {:error, %Req.TransportError{}} =
+               apply(rt, :request, [
+                 @client,
+                 [plug: false, retry: false, allow_private_addresses: true],
+                 shape("http://127.0.0.1:9")
+               ])
+    end
+
+    test "a redirect to another host is refused: the API never picks hosts (nor pools)" do
+      rt = WtfApiCallsRt.ApiClients
+      test = self()
+
+      Req.Test.stub(@client, fn conn ->
+        send(test, {:host, conn.host})
+
+        case conn.request_path do
+          "/latest" ->
+            location = "https://h#{conn.query_string}.example.test/next"
+
+            conn
+            |> Plug.Conn.put_resp_header("location", location)
+            |> Plug.Conn.send_resp(302, "")
+
+          _ ->
+            Req.Test.json(conn, %{"ok" => true})
+        end
+      end)
+
+      redirect = fn i ->
+        apply(rt, :request, [
+          @client,
+          [follow_redirects: true],
+          %{shape("https://api.example.test") | query: [{"i", i}]}
+        ])
+      end
+
+      # Warm up (the first call loads code), then many distinct hosts.
+      redirect.(0)
+      atoms = :erlang.system_info(:atom_count)
+      processes = length(Process.list())
+
+      for i <- 1..300 do
+        location = "https://hi=#{i}.example.test/next"
+        assert {:error, {:redirect_refused, 302, ^location}} = redirect.(i)
+      end
+
+      assert :erlang.system_info(:atom_count) - atoms < 20
+      assert length(Process.list()) - processes < 10
+
+      for _ <- 0..300, do: assert_received({:host, "api.example.test"})
+      refute_received {:host, _}
+
+      # The same host, another path: followed.
+      Req.Test.stub(@client, fn conn ->
+        if conn.request_path == "/latest",
+          do:
+            conn
+            |> Plug.Conn.put_resp_header("location", "/next")
+            |> Plug.Conn.send_resp(302, ""),
+          else: Req.Test.json(conn, %{"ok" => true})
+      end)
+
+      assert {:ok, %{"ok" => true}} =
+               apply(rt, :request, [
+                 @client,
+                 [follow_redirects: true],
+                 shape("https://api.example.test")
+               ])
+    end
+
+    test "more than one content encoding, in one header or several, is refused" do
+      rt = WtfApiCallsRt.ApiClients
+      json = ~s({"ok":true})
+
+      respond = fn encodings, body ->
+        Req.Test.stub(@client, fn conn ->
+          conn
+          |> Plug.Conn.prepend_resp_headers(Enum.map(encodings, &{"content-encoding", &1}))
+          |> Plug.Conn.send_resp(200, body)
+        end)
+
+        apply(rt, :request, [@client, [], shape("https://api.example.test")])
+      end
+
+      for {encodings, body} <- [
+            {["gzip", "identity"], :zlib.gzip(json)},
+            {["identity", "gzip"], :zlib.gzip(json)},
+            {["gzip", "gzip"], :zlib.gzip(:zlib.gzip(json))},
+            {["gzip, gzip"], :zlib.gzip(:zlib.gzip(json))},
+            {["deflate", "identity"], :zlib.compress(json)},
+            {["identity", "identity"], json},
+            {["br"], json}
+          ] do
+        assert {:error, {:decode, :content_encoding}} = respond.(encodings, body),
+               inspect(encodings)
+      end
+
+      # One encoding, in any case and spacing, is inflated.
+      assert {:ok, %{"ok" => true}} = respond.([" GZip "], :zlib.gzip(json))
+      assert {:ok, %{"ok" => true}} = respond.(["deflate"], :zlib.compress(json))
+      assert {:ok, %{"ok" => true}} = respond.(["identity"], json)
+      assert {:ok, %{"ok" => true}} = respond.([], json)
+    end
+
+    test "a truncated gzip or deflate body is a decode error, never the text so far" do
+      rt = WtfApiCallsRt.ApiClients
+      text = String.duplicate("the quick brown fox ", 2_000)
+      gzip = :zlib.gzip(text)
+      deflate = :zlib.compress(text)
+
+      assert {:ok, ^text} = apply(rt, :inflate, [gzip, 31, 1_000_000])
+      assert {:ok, ^text} = apply(rt, :inflate, [deflate, 15, 1_000_000])
+
+      for {data, window} <- [
+            {binary_part(gzip, 0, byte_size(gzip) - 4), 31},
+            {binary_part(gzip, 0, div(byte_size(gzip), 2)), 31},
+            {binary_part(gzip, 0, 12), 31},
+            {binary_part(deflate, 0, byte_size(deflate) - 2), 15},
+            {"", 31}
+          ] do
+        assert {:error, {:decode, :content_encoding}} =
+                 apply(rt, :inflate, [data, window, 1_000_000]),
+               "#{byte_size(data)} bytes"
+      end
+
+      Req.Test.stub(@client, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_header("content-encoding", "gzip")
+        |> Plug.Conn.send_resp(200, binary_part(gzip, 0, byte_size(gzip) - 8))
+      end)
+
+      assert {:error, {:decode, :content_encoding}} =
+               apply(rt, :request, [@client, [], shape("https://api.example.test", :text)])
+    end
+
+    # A local server for one request on 127.0.0.1 (TLS with `tls`, the
+    # server's `[cert:, key:]`): it tells the test the request's head and
+    # the TLS server name, and answers `response`.
+    defp serve(response, tls \\ nil, ip \\ {127, 0, 0, 1}) do
+      test = self()
+      spawn(fn -> serve_one(test, response, tls, ip) end)
+      assert_receive {:port, port}, 1_000
+      port
+    end
+
+    defp serve_one(test, response, tls, ip) do
+      family = if tuple_size(ip) == 8, do: [:inet6], else: []
+      listen_opts = family ++ [:binary, active: false, ip: ip, reuseaddr: true]
+
+      {:ok, listen} =
+        if tls,
+          do: :ssl.listen(0, listen_opts ++ [certs_keys: [Map.new(tls)]]),
+          else: :gen_tcp.listen(0, listen_opts)
+
+      {:ok, {_, port}} = if tls, do: :ssl.sockname(listen), else: :inet.sockname(listen)
+      send(test, {:port, port})
+
+      with {:ok, socket, sni} <- accept(listen, tls),
+           {:ok, head} <- head(socket, tls, "") do
+        send(test, {:served, head, sni})
+        reply(socket, tls, response)
+      else
+        error -> send(test, {:refused, error})
+      end
+    end
+
+    defp reply(socket, nil, response) do
+      :gen_tcp.send(socket, response)
+      :gen_tcp.close(socket)
+    end
+
+    defp reply(socket, _tls, response) do
+      :ssl.send(socket, response)
+      :ssl.close(socket)
+    end
+
+    defp accept(listen, nil) do
+      with {:ok, socket} <- :gen_tcp.accept(listen, 5_000), do: {:ok, socket, nil}
+    end
+
+    defp accept(listen, _tls) do
+      with {:ok, socket} <- :ssl.transport_accept(listen, 5_000),
+           {:ok, socket} <- :ssl.handshake(socket, 5_000),
+           {:ok, info} <- :ssl.connection_information(socket, [:sni_hostname]),
+           do: {:ok, socket, info[:sni_hostname]}
+    end
+
+    defp head(socket, tls, acc) do
+      if String.contains?(acc, "\r\n\r\n") do
+        {:ok, acc}
+      else
+        recv = if tls, do: :ssl.recv(socket, 0, 5_000), else: :gen_tcp.recv(socket, 0, 5_000)
+        with {:ok, data} <- recv, do: head(socket, tls, acc <> data)
+      end
+    end
+
+    defp ok(body),
+      do:
+        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: " <>
+          "#{byte_size(body)}\r\nconnection: close\r\n\r\n" <> body
+
+    defp tls_chain(name) do
+      san = {:Extension, {2, 5, 29, 17}, false, [dNSName: String.to_charlist(name)]}
+      key = {:namedCurve, {1, 2, 840, 10_045, 3, 1, 7}}
+      conf = [key: key, digest: :sha256]
+      data = :public_key.pkix_test_data(%{root: conf, peer: [extensions: [san]] ++ conf})
+      {[cert: data[:cert], key: data[:key]], data[:cacerts]}
+    end
+
+    # The failed handshake logs TLS alerts.
+    @tag capture_log: true
+    test "the request connects to the address checked, the host in Host, SNI and verification" do
+      rt = WtfApiCallsRt.ApiClients
+      {:ok, _} = Application.ensure_all_started(:ssl)
+
+      # api.example.test never resolves: only the pinned address connects.
+      port = serve(ok(~s({"ok":true})))
+
+      options =
+        apply(rt, :pin, [
+          [
+            url: "http://api.example.test:#{port}/v1/x?a=1",
+            headers: [{"x-api-key", "k"}],
+            connect_options: [timeout: 2_000],
+            retry: false
+          ],
+          {127, 0, 0, 1}
+        ])
+
+      assert options[:url] == "http://127.0.0.1:#{port}/v1/x?a=1"
+      assert options[:connect_options][:hostname] == "api.example.test"
+      assert options[:connect_options][:timeout] == 2_000
+      assert {:ok, %Req.Response{status: 200}} = Req.request(options)
+      assert_receive {:served, head, nil}, 2_000
+      assert head =~ ~r{\AGET /v1/x\?a=1 HTTP/1.1\r\n}
+      assert head =~ "\r\nhost: api.example.test:#{port}\r\n"
+      refute head =~ "127.0.0.1"
+
+      # Headers are the call's own: Mint's :hostname makes the Host header
+      # (and HTTP/2's :authority, which then has no Host header).
+      assert apply(rt, :pin, [[url: "https://a.example.test/", headers: []], {8, 8, 8, 8}])[
+               :headers
+             ] == []
+
+      # An IPv6 address goes in brackets, with Req's :inet6 (so Req does not
+      # set Host to the address).
+      v6 =
+        apply(rt, :pin, [
+          [url: "https://a.example.test:8443/x"],
+          {0x2606, 0x4700, 0, 0, 0, 0, 0, 0x1111}
+        ])
+
+      assert v6[:url] == "https://[2606:4700::1111]:8443/x"
+      assert v6[:inet6] == true
+      refute Keyword.has_key?(v6, :headers)
+
+      port = serve(ok("{}"), nil, {0, 0, 0, 0, 0, 0, 0, 1})
+
+      v6 =
+        apply(rt, :pin, [
+          [url: "http://api.example.test:#{port}/v6", retry: false, connect_options: []],
+          {0, 0, 0, 0, 0, 0, 0, 1}
+        ])
+
+      assert {:ok, %Req.Response{status: 200}} = Req.request(v6)
+      assert_receive {:served, head, nil}, 2_000
+      assert head =~ "\r\nhost: api.example.test:#{port}\r\n"
+      refute head =~ "::1"
+
+      # Nothing to pin: unchanged.
+      assert apply(rt, :pin, [[url: "https://a.example.test/"], nil]) == [
+               url: "https://a.example.test/"
+             ]
+
+      # TLS: the server name and the certificate's hostname are the host's.
+      {server, cacerts} = tls_chain("api.example.test")
+      port = serve(ok(~s({"ok":true})), server)
+
+      tls = fn port, cacerts ->
+        apply(rt, :pin, [
+          [
+            url: "https://api.example.test:#{port}/v1/x",
+            connect_options: [timeout: 2_000, transport_opts: [cacerts: cacerts]],
+            retry: false
+          ],
+          {127, 0, 0, 1}
+        ])
+      end
+
+      assert {:ok, %Req.Response{status: 200}} = Req.request(tls.(port, cacerts))
+      assert_receive {:served, head, ~c"api.example.test"}, 2_000
+      assert head =~ "\r\nhost: api.example.test:#{port}\r\n"
+
+      # A certificate for another host fails verification: pinning never
+      # turns it off.
+      {server, cacerts} = tls_chain("other.example.test")
+      port = serve(ok("{}"), server)
+      assert {:error, %Req.TransportError{reason: reason}} = Req.request(tls.(port, cacerts))
+      assert inspect(reason) =~ "hostname"
+      assert_receive {:refused, _}, 2_000
     end
   end
 end

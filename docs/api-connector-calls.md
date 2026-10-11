@@ -70,10 +70,10 @@ debugger breakpoint are the action's other members; anything else is
 | a transport error (timeout, refused connection) | the step fails, with or without "Include errors in response" |
 | timeouts | 30 s to receive, 10 s to connect, and a 30 s deadline for the whole call, retries and redirects included (`:deadline`; then `:deadline_exceeded`), per API in the configuration |
 | retries | **none for an action** (every workflow step), whatever its method. A GET Bubble uses as data (for the data calls to come) is retried at most twice, only on a refused connection, a 429 or a 503, waiting what `retry-after` asks but at most 5 s (`:max_retry_delay`) |
-| response size | at most 10 MB read (`:max_body_bytes`), decompressed included: the clients ask for no compression, and inflate a gzip or deflate body only up to the limit (`{:body_too_large, limit}`); another encoding is an error |
-| addresses | the host is Bubble's or the owner's (an environment variable), never a step's or a page's value: a call whose host has a public parameter is residue (`:host_parameter`). Before each request and redirect the host is resolved and refused (`{:blocked_address, _}`) when an address is loopback, private, link-local (cloud metadata), carrier-grade NAT, multicast or reserved, unless the owner configured it (the `:base_url`'s origin, e.g. a development `localhost`, or `allow_private_addresses: true`) |
+| response size | at most 10 MB read (`:max_body_bytes`), decompressed included: the clients ask for no compression, and inflate a gzip or deflate body only up to the limit (`{:body_too_large, limit}`); a truncated body, more than one encoding (in one `content-encoding` header or several: the app needs Req 0.7.4, which keeps them all) or another encoding is an error (`{:decode, :content_encoding}`) |
+| addresses | the host is Bubble's or the owner's (an environment variable), never a step's or a page's value: a call whose host or port has a public parameter, or whose `Host` header is a public parameter, is residue (`:host_parameter`; any port placeholder is `:dynamic_port`). Before each request and redirect the host is resolved and refused (`{:blocked_address, _}`) when an address is loopback, private, link-local (cloud metadata), carrier-grade NAT, multicast or reserved (documentation and benchmarking ranges, IPv4-mapped and -translated IPv6, local-use NAT64, Teredo, site-local, and 6to4 or well-known NAT64 of a refused IPv4 address), unless the owner configured it (the `:base_url`'s origin, e.g. a development `localhost`, or `allow_private_addresses: true`). The request then connects to the address checked (DNS rebinding cannot move it), the host kept in the `Host` header, TLS's SNI and certificate verification. Each pinned host gets a Finch instance, and each address it resolves to a pool in it, none ever stopped: bounded by the hosts Bubble and the owner define (redirects to other hosts are refused) and the addresses they resolve to. A `plug: nil` or `plug: false` is no plug: the request is checked |
 | path segments | percent-encoded; a value that is exactly `.` or `..` is `%2E` / `%2E%2E`, never a step up the path |
-| redirects | not followed (an error) unless configured: see `<App>.ApiClients` |
+| redirects | not followed (an error) unless configured, and never to another host (`{:redirect_refused, status, location}`): see `<App>.ApiClients` |
 | logging | the clients never log (`retry_log_level: false`); a failed step logs the status or the error's kind, never a body, a header or a secret |
 | rate limiting | none, as in Bubble |
 
@@ -104,9 +104,11 @@ debugger breakpoint are the action's other members; anything else is
   public parameter (`https://[tenant].example.com`, or `https://[host]/`)
   is not generated: a step or a page could send the API's key to any host
   (SSRF). A private parameter in the host is the owner's environment
-  variable. The address check above is defence in depth; it checks the
-  resolved address before Req resolves it again to connect, so a DNS
-  answer that changes in between (rebinding) is not caught.
+  variable. A port placeholder (`https://api.example.com:[port]/`) is
+  never generated (`:dynamic_port`, and `:host_parameter` when public).
+  The address check above is defence in depth; the request connects to
+  the address it checked rather than resolving the host again (WTF-534),
+  so a DNS answer that changes in between (rebinding) cannot move it.
 * **What can still carry them.** With "Include errors in response", an
   API that echoes a request's secrets in its error body puts them in the
   step's result, as in Bubble. Finch's telemetry events carry each

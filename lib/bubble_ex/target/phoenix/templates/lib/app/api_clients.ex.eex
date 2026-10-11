@@ -22,7 +22,10 @@ defmodule <%= @module %>.ApiClients do
     * `:allow_private_addresses` - allow loopback, private and link-local
       addresses (default `false`; see "Addresses")
     * any `Req` option (`:plug`, `:retry`, `:receive_timeout`, …) but
-      `:redirect`, `:into` and `:decode_body`, which this runtime sets
+      `:redirect`, `:into` and `:decode_body`, which this runtime sets. A
+      `:plug` (a `Req.Test` stub) never connects, so no address is checked;
+      `plug: nil` or `plug: false` is no plug: the request connects and is
+      checked
 
   Options also come from the application environment, per group module,
   under the call's own options:
@@ -39,7 +42,11 @@ defmodule <%= @module %>.ApiClients do
   most `:max_retry_delay`. A `:retry` in the configuration replaces this
   (do not set `:retry_delay` with it). Redirects are not followed. No
   request is compressed on the way back unless the server insists: a
-  gzip or deflate body is inflated to at most `:max_body_bytes`.
+  gzip or deflate body is inflated to at most `:max_body_bytes`; a
+  truncated one, a response with more than one encoding (in one
+  `content-encoding` header or several) or any other encoding is a
+  `{:decode, :content_encoding}` error. The app needs Req 0.7 or later,
+  which keeps every `content-encoding` header a server sends.
 
   ## Addresses
 
@@ -48,11 +55,25 @@ defmodule <%= @module %>.ApiClients do
   not generated). Even so, before each request (and each redirect) the
   host is resolved and refused (`{:blocked_address, _}`) when any address
   is loopback, private, link-local (cloud metadata), carrier-grade NAT,
-  multicast or reserved, unless the owner allows it: the `:base_url`'s
-  origin (e.g. `http://localhost:4001` configured for development), or
-  `allow_private_addresses: true`. The address is checked, then Req
-  resolves it again to connect: a DNS answer that changes in between
-  (rebinding) is not caught.
+  multicast or reserved (documentation, benchmarking, IPv4-mapped and
+  -translated IPv6, local NAT64, Teredo, 6to4 of such an IPv4 address,
+  site-local), unless the owner allows it: the `:base_url`'s origin
+  (e.g. `http://localhost:4001` configured for development), or
+  `allow_private_addresses: true`.
+
+  The request then connects to the address it checked (an IPv4 one when
+  the host has one), never resolving the host again, so a DNS answer that
+  changes in between (rebinding) cannot move it: the host stays in the
+  `Host` header (HTTP/2's `:authority`), TLS's server name (SNI) and the
+  certificate's hostname verification (Mint's `:hostname`). Req starts a
+  Finch instance per distinct `connect_options`, so each pinned host has
+  one, and it is never stopped: their number is that of the hosts the app
+  calls, which are Bubble's or the owner's (a redirect to another host is
+  refused, see "Redirects"). Within it, Finch keeps a connection pool per
+  address the host resolved to, never closed either (Req 0.7 takes no
+  idle time for it next to `connect_options`): an API whose addresses
+  rotate adds one per new address. The owner's base URL and
+  `allow_private_addresses: true` are neither checked nor pinned.
 
   **Credentials go wherever the request goes.** The call's secrets (keys,
   private headers and parameters, redacted literals) are sent to the
@@ -63,12 +84,14 @@ defmodule <%= @module %>.ApiClients do
 
   A 3xx response is an error (`{:status, status, body}`) unless
   `follow_redirects: true` is given (in the options or the configuration).
-  Then a redirect to the same origin (scheme, host and port) keeps the
-  request's headers and authentication; a redirect to another origin, or
-  from HTTPS to HTTP, drops **every** header and the authentication
-  (they may hold secrets), and a 307/308 redirect to another origin (which
-  would resend the body) is refused (`{:redirect_refused, status,
-  location}`). 301, 302 and 303 continue as a GET without a body.
+  Then a redirect to another host is refused (`{:redirect_refused,
+  status, location}`): the API never chooses where the call goes next. A
+  redirect to the same origin (scheme, host and port) keeps the request's
+  headers and authentication; one to the same host on another scheme or
+  port, or from HTTPS to HTTP, drops **every** header and the
+  authentication (they may hold secrets), and a 307/308 one (which would
+  resend the body) is refused. 301, 302 and 303 continue as a GET without
+  a body.
 
   A function returns `{:ok, body}` for a 2xx response (decoded JSON, a
   typed struct when the call returns a known API Connector type, text, or
@@ -271,10 +294,11 @@ defmodule <%= @module %>.ApiClients do
       limit: own[:max_body_bytes],
       # Only what the owner configured may be a private address: the base
       # URL's origin, or every address with :allow_private_addresses (and
-      # a Req.Test plug, which never connects).
+      # a Req.Test plug, which never connects; `plug: nil` or `false` is
+      # no plug, as Req reads it).
       guard: %{
         trusted: owner_base && origin(URI.parse(owner_base)),
-        allow?: own[:allow_private_addresses] == true or Keyword.has_key?(options, :plug)
+        allow?: own[:allow_private_addresses] == true or Keyword.get(options, :plug) not in [nil, false]
       }
     }
 
@@ -285,8 +309,10 @@ defmodule <%= @module %>.ApiClients do
   @redirects [301, 302, 303, 307, 308]
 
   defp send_request(options, redirects, ctx) do
-    with :ok <- check_address(Keyword.fetch!(options, :url), ctx.guard) do
-      case Req.request(options) do
+    with {:ok, address} <- check_address(Keyword.fetch!(options, :url), ctx.guard) do
+      # Only this request goes to the pinned address: a redirect is
+      # checked (and pinned) again from its own URL.
+      case Req.request(pin(options, address)) do
         {:ok, %Req.Response{body: {:too_large, limit}}} ->
           {:error, {:body_too_large, limit}}
 
@@ -360,9 +386,17 @@ defmodule <%= @module %>.ApiClients do
   end
 
   # The body as sent, decompressed (gzip, deflate) to at most `limit`
-  # bytes; another encoding is an error.
+  # bytes. The encodings are every `content-encoding` header's, each
+  # split at commas: more than one, or another one, is an error.
   defp content(%Req.Response{body: body} = resp, limit) do
-    case Enum.map(Req.Response.get_header(resp, "content-encoding"), &String.downcase/1) do
+    encodings =
+      for value <- Req.Response.get_header(resp, "content-encoding"),
+          encoding <- String.split(value, ","),
+          encoding = encoding |> String.trim() |> String.downcase(),
+          encoding != "",
+          do: encoding
+
+    case encodings do
       encoding when encoding in [[], ["identity"]] -> {:ok, body}
       [gzip] when gzip in ["gzip", "x-gzip"] -> inflate(body, 31, limit)
       ["deflate"] -> inflate(body, 15, limit)
@@ -372,6 +406,8 @@ defmodule <%= @module %>.ApiClients do
 
   @doc false
   # Inflates `data` (`window` 31: gzip, 15: zlib) to at most `limit` bytes.
+  # A stream that does not end (a truncated body) is an error, never the
+  # text inflated so far.
   @spec inflate(binary(), integer(), non_neg_integer()) :: {:ok, binary()} | {:error, term()}
   def inflate(data, window, limit) do
     z = :zlib.open()
@@ -391,7 +427,10 @@ defmodule <%= @module %>.ApiClients do
 
     cond do
       size > limit -> {:error, {:body_too_large, limit}}
-      status == :finished -> {:ok, IO.iodata_to_binary(Enum.reverse([out | acc]))}
+      # All the input is inflated; inflateEnd raises unless the stream ended.
+      status == :finished and :zlib.inflateEnd(z) == :ok ->
+        {:ok, IO.iodata_to_binary(Enum.reverse([out | acc]))}
+
       true -> inflate_loop(z, :zlib.safeInflate(z, []), [out | acc], size, limit)
     end
   end
@@ -402,29 +441,54 @@ defmodule <%= @module %>.ApiClients do
   # Refuses an address the owner did not configure that is loopback,
   # private, link-local (cloud metadata included), carrier-grade NAT,
   # multicast or reserved, after resolving the host: a call never reaches
-  # the app's own network unless its base URL says so.
-  @spec check_address(String.t(), map()) :: :ok | {:error, term()}
+  # the app's own network unless its base URL says so. `{:ok, address}`
+  # is the address to connect to (`pin/2`), nil when there is nothing to
+  # pin (an IP address, the owner's base URL, allowed addresses).
+  @spec check_address(String.t(), map()) :: {:ok, :inet.ip_address() | nil} | {:error, term()}
   def check_address(url, guard) do
     uri = URI.parse(url)
 
     cond do
       guard.allow? ->
-        :ok
+        {:ok, nil}
 
       guard.trusted != nil and origin(uri) == guard.trusted ->
-        :ok
+        {:ok, nil}
 
       true ->
         case resolve(uri.host) do
-          {:ok, addresses} ->
-            if Enum.any?(addresses, &blocked?/1),
-              do: {:error, {:blocked_address, :private}},
-              else: :ok
+          {kind, addresses} when kind in [:literal, :resolved] ->
+            cond do
+              Enum.any?(addresses, &blocked?/1) -> {:error, {:blocked_address, :private}}
+              kind == :literal -> {:ok, nil}
+              true -> {:ok, Enum.find(addresses, hd(addresses), &(tuple_size(&1) == 4))}
+            end
 
           :error ->
             {:error, {:blocked_address, :unresolved}}
         end
     end
+  end
+
+  @doc false
+  # The request options connecting to `address`, the one checked, instead
+  # of resolving the URL's host again (DNS rebinding): the URL holds the
+  # address, and Mint's `:hostname` connect option keeps the host for the
+  # Host header (with the port unless it is the scheme's; a Host header
+  # the call sets itself, from Bubble or the owner, wins), HTTP/2's
+  # `:authority` (no Host header there), TLS's SNI and the certificate's
+  # hostname verification. `inet6: true` for an IPv6 address also keeps
+  # Req from setting Host to the address.
+  @spec pin(keyword(), :inet.ip_address() | nil) :: keyword()
+  def pin(options, nil), do: options
+
+  def pin(options, address) do
+    uri = options |> Keyword.fetch!(:url) |> URI.parse()
+
+    options
+    |> Keyword.put(:url, URI.to_string(%{uri | host: address |> :inet.ntoa() |> to_string()}))
+    |> Keyword.update(:connect_options, [hostname: uri.host], &Keyword.put(&1, :hostname, uri.host))
+    |> then(&if(tuple_size(address) == 8, do: Keyword.put(&1, :inet6, true), else: &1))
   end
 
   defp origin(%URI{scheme: scheme, host: host, port: port}),
@@ -437,7 +501,7 @@ defmodule <%= @module %>.ApiClients do
 
     case :inet.parse_address(name) do
       {:ok, address} ->
-        {:ok, [address]}
+        {:literal, [address]}
 
       {:error, _} ->
         addresses =
@@ -446,27 +510,48 @@ defmodule <%= @module %>.ApiClients do
               address <- found,
               do: address
 
-        if addresses == [], do: :error, else: {:ok, addresses}
+        if addresses == [], do: :error, else: {:resolved, addresses}
     end
   end
 
   @doc false
+  # IPv4: this network (0/8), private (10/8, 172.16/12, 192.168/16),
+  # carrier-grade NAT (100.64/10), loopback (127/8), link-local
+  # (169.254/16), IETF protocol assignments (192.0.0/24), documentation
+  # (192.0.2/24, 198.51.100/24, 203.0.113/24), the 6to4 relay (192.88.99/24),
+  # benchmarking (198.18/15), multicast (224/4), reserved (240/4) and
+  # broadcast.
   @spec blocked?(:inet.ip_address()) :: boolean()
   def blocked?({a, b, c, _}) do
     a in [0, 10, 127] or a >= 224 or (a == 100 and b in 64..127) or (a == 169 and b == 254) or
-      (a == 172 and b in 16..31) or (a == 192 and b == 168) or {a, b, c} == {192, 0, 0} or
-      (a == 198 and b in 18..19)
+      (a == 172 and b in 16..31) or (a == 192 and b == 168) or (a == 198 and b in 18..19) or
+      {a, b, c} in [{192, 0, 0}, {192, 0, 2}, {192, 88, 99}, {198, 51, 100}, {203, 0, 113}]
   end
 
-  # IPv4-mapped, -compatible and NAT64 addresses are their IPv4 address.
-  def blocked?({0, 0, 0, 0, 0, prefix, x, y}) when prefix in [0, 0xFFFF],
-    do: x == 0 or blocked?(v4(x, y))
-
+  # IPv4-compatible (::/96, the unspecified and loopback addresses
+  # included), IPv4-mapped (::ffff:0:0/96) and IPv4-translated
+  # (::ffff:0:0:0/96) addresses: never a public API's.
+  def blocked?({0, 0, 0, 0, 0, prefix, _, _}) when prefix in [0, 0xFFFF], do: true
+  def blocked?({0, 0, 0, 0, 0xFFFF, 0, _, _}), do: true
+  # NAT64's well-known prefix (64:ff9b::/96) is its IPv4 address; the
+  # local-use one (64:ff9b:1::/48) is the local network's.
   def blocked?({0x64, 0xFF9B, 0, 0, 0, 0, x, y}), do: blocked?(v4(x, y))
+  def blocked?({0x64, 0xFF9B, 1, _, _, _, _, _}), do: true
+  # 6to4 (2002::/16) is its IPv4 address.
+  def blocked?({0x2002, x, y, _, _, _, _, _}), do: blocked?(v4(x, y))
+  # Discard-only (100::/64), Teredo (2001::/32), benchmarking
+  # (2001:2::/48), documentation (2001:db8::/32, 3fff::/20).
+  def blocked?({0x100, 0, 0, 0, _, _, _, _}), do: true
+  def blocked?({0x2001, second, _, _, _, _, _, _}) when second in [0, 0xDB8], do: true
+  def blocked?({0x2001, 2, 0, _, _, _, _, _}), do: true
+  def blocked?({0x3FFF, second, _, _, _, _, _, _}) when second < 0x1000, do: true
 
+  # Unique local (fc00::/7), link-local (fe80::/10), site-local
+  # (fec0::/10) and multicast (ff00::/8).
   def blocked?({first, _, _, _, _, _, _, _}),
-    do: Bitwise.band(first, 0xFE00) == 0xFC00 or Bitwise.band(first, 0xFFC0) == 0xFE80 or
-          Bitwise.band(first, 0xFF00) == 0xFF00
+    do:
+      Bitwise.band(first, 0xFE00) == 0xFC00 or Bitwise.band(first, 0xFFC0) in [0xFE80, 0xFEC0] or
+        Bitwise.band(first, 0xFF00) == 0xFF00
 
   defp v4(x, y), do: {Bitwise.bsr(x, 8), Bitwise.band(x, 0xFF), Bitwise.bsr(y, 8), Bitwise.band(y, 0xFF)}
 
@@ -493,15 +578,18 @@ defmodule <%= @module %>.ApiClients do
     ArgumentError -> ""
   end
 
-  # The next request of a redirect. Another origin (or a downgrade to
-  # HTTP) gets no headers and no authentication; a 307/308 to another
-  # origin, which would resend the body, is refused.
+  # The next request of a redirect. Another host is refused: the API
+  # never picks the next host (nor a Finch instance per host it names,
+  # see "Addresses"). Another origin on the same host (or a downgrade to
+  # HTTP) gets no headers and no authentication; a 307/308 to it, which
+  # would resend the body, is refused.
   defp redirect(options, %Req.Response{status: status} = resp) do
     case Req.Response.get_header(resp, "location") do
       [location | _] ->
         from = options |> Keyword.fetch!(:url) |> URI.parse()
         to = URI.merge(from, location)
-        same_origin? = {to.scheme, to.host, to.port} == {from.scheme, from.host, from.port}
+        same_origin? = origin(to) == origin(from)
+        same_host? = elem(origin(to), 1) == elem(origin(from), 1)
 
         options =
           options
@@ -515,7 +603,7 @@ defmodule <%= @module %>.ApiClients do
 
         cond do
           same_origin? -> {:ok, options}
-          status in [307, 308] -> {:error, {:redirect_refused, status, URI.to_string(to)}}
+          not same_host? or status in [307, 308] -> {:error, {:redirect_refused, status, URI.to_string(to)}}
           true -> {:ok, options |> Keyword.put(:headers, []) |> Keyword.delete(:auth)}
         end
 

@@ -6,6 +6,24 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **API Connector clients: hardening follow-ups** (WTF-534). The address
+  check also refuses the documentation (192.0.2/24, 198.51.100/24,
+  203.0.113/24, 2001:db8::/32, 3fff::/20), benchmarking, 6to4 relay,
+  IPv4-mapped and -translated, local-use NAT64 (64:ff9b:1::/48), Teredo,
+  discard-only and site-local (fec0::/10) ranges, and 6to4 (2002::/16) of
+  a refused IPv4 address. The request connects to the address it checked
+  (the host kept in `Host`, TLS SNI and hostname verification), so DNS
+  rebinding cannot move it. A followed redirect to another host is
+  refused (each pinned host gets a Finch instance, so the API must not
+  pick hosts). `plug: nil` and `plug: false` no longer turn the check off.
+  A response with more than one content encoding (several headers, or one
+  listing several) or a truncated gzip/deflate body is a decode error;
+  generated apps need Req 0.7.4 (`{:req, "~> 0.7.4"}`), which keeps
+  repeated headers. A port
+  placeholder (`https://host:[port]/`) is no longer dropped: the call is
+  residue (`:dynamic_port`, and `:host_parameter` when the parameter is
+  public), as is a call whose `Host` header is a public parameter.
+
 - **"Result of step N" compiles for more kinds of steps** (WTF-520).
   A step is typed with the steps before it, in Bubble order (numeric, so
   step 10 comes after step 2): "Make changes to a thing" whose thing is an

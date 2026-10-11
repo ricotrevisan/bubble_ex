@@ -294,7 +294,9 @@ defmodule BubbleEx.Target.Phoenix do
     {:esbuild, "~> 0.10", runtime: false},
     {:tailwind, "~> 0.5", runtime: false},
     {:swoosh, "~> 1.16"},
-    {:req, "~> 0.5"},
+    # 0.7.4: keeps every repeated response header (the API clients refuse
+    # more than one content-encoding).
+    {:req, "~> 0.7.4"},
     {:telemetry_metrics, "~> 1.0"},
     {:telemetry_poller, "~> 1.0"},
     {:jason, "~> 1.2"},

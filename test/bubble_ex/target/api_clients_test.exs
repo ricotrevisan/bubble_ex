@@ -251,7 +251,7 @@ defmodule BubbleEx.Target.ApiClientsTest do
       assert payments =~ "&Acme.ApiClients.Decode.customer/1"
 
       runtime = files["lib/acme/api_clients.ex"]
-      assert runtime =~ "Req.request(options)"
+      assert runtime =~ "Req.request(pin(options, address))"
       assert runtime =~ "retry: false"
       assert runtime =~ "retry_log_level: false"
 
