@@ -59,13 +59,14 @@
       },
       "data": 306,
       "residue_reasons": {
+        "api_connector_action": 24,
         "auth_action": 14,
         "plugin_action": 619,
         "plugin_event": 250,
         "target_not_rendered": 6,
         "trigger_in_runtime_template": 70,
-        "unavailable_input": 406,
-        "uncompiled_expression": 632,
+        "unavailable_input": 391,
+        "uncompiled_expression": 623,
         "unresolved_reference": 41,
         "unsupported_action": 67,
         "unsupported_event": 11,
@@ -124,7 +125,7 @@
           "total": 102
         },
         "custom_event": {
-          "native": 329,
+          "native": 327,
           "total": 489
         },
         "do_every": {
@@ -162,26 +163,27 @@
       },
       "by_surface": {
         "page": {
-          "native": 420,
+          "native": 419,
           "total": 634
         },
         "reusable": {
-          "native": 898,
+          "native": 897,
           "total": 1636
         }
       },
       "residue_reasons": {
+        "api_connector_action": 24,
         "auth_action": 14,
         "plugin_action": 619,
         "plugin_event": 250,
-        "uncompiled_expression": 549,
+        "uncompiled_expression": 540,
         "unresolved_reference": 41,
         "unsupported_action": 67,
         "unsupported_event": 2,
         "unsupported_option": 11
       },
       "step_ops": {
-        "api_call": 17,
+        "api_call": 3,
         "call": 644,
         "call_reusable": 134,
         "create": 43,
@@ -211,14 +213,14 @@
         "update_list": 2
       },
       "steps": {
-        "native": 2880,
-        "residue": 1130,
+        "native": 2866,
+        "residue": 1144,
         "total": 4010
       },
       "workflows": {
         "disabled": 53,
-        "native": 1318,
-        "residue": 952,
+        "native": 1316,
+        "residue": 954,
         "total": 2270
       }
     },

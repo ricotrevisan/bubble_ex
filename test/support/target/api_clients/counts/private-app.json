@@ -2,18 +2,19 @@
   "counts": {
     "calls": 172,
     "env": {
-      "auth": 16,
-      "host": 17,
-      "literal": 754,
-      "private": 62,
+      "auth": 12,
+      "host": 10,
+      "literal": 665,
+      "private": 59,
       "private_line": 1
     },
-    "generated": 167,
-    "generated_env_configured": 163,
-    "groups": 29,
-    "residue": 5,
+    "generated": 120,
+    "generated_env_configured": 116,
+    "groups": 24,
+    "residue": 52,
     "residue_reasons": {
       "file_parameter": 1,
+      "host_parameter": 47,
       "no_url": 1,
       "query": 1,
       "raw_body": 2

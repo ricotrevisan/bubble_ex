@@ -68,10 +68,14 @@ debugger breakpoint are the action's other members; anything else is
 | a non-2xx response | the step fails and the workflow stops, as in Bubble: `{:api_call, {:status, status}}` |
 | with "Include errors in response" | the step succeeds whatever the status: on a 2xx `returned_an_error` is no, otherwise yes with `error`'s `status_code`, `status_message` (the HTTP reason phrase) and `body` (the response text), Bubble's own result fields |
 | a transport error (timeout, refused connection) | the step fails, with or without "Include errors in response" |
-| timeouts | 30 s to receive, 10 s to connect (per API in the configuration) |
-| retries | GET and HEAD only, up to 2, on transport errors and transient statuses (408, 429, 500, 502, 503, 504); never a POST, PUT, PATCH or DELETE |
+| timeouts | 30 s to receive, 10 s to connect, and a 30 s deadline for the whole call, retries and redirects included (`:deadline`; then `:deadline_exceeded`), per API in the configuration |
+| retries | **none for an action** (every workflow step), whatever its method. A GET Bubble uses as data (for the data calls to come) is retried at most twice, only on a refused connection, a 429 or a 503, waiting what `retry-after` asks but at most 5 s (`:max_retry_delay`) |
+| response size | at most 10 MB read (`:max_body_bytes`), decompressed included: the clients ask for no compression, and inflate a gzip or deflate body only up to the limit (`{:body_too_large, limit}`); another encoding is an error |
+| addresses | the host is Bubble's or the owner's (an environment variable), never a step's or a page's value: a call whose host has a public parameter is residue (`:host_parameter`). Before each request and redirect the host is resolved and refused (`{:blocked_address, _}`) when an address is loopback, private, link-local (cloud metadata), carrier-grade NAT, multicast or reserved, unless the owner configured it (the `:base_url`'s origin, e.g. a development `localhost`, or `allow_private_addresses: true`) |
+| path segments | percent-encoded; a value that is exactly `.` or `..` is `%2E` / `%2E%2E`, never a step up the path |
 | redirects | not followed (an error) unless configured: see `<App>.ApiClients` |
-| logging | the clients never log; a failed step logs the status or the error's kind, never a body, a header or a secret |
+| logging | the clients never log (`retry_log_level: false`); a failed step logs the status or the error's kind, never a body, a header or a secret |
+| rate limiting | none, as in Bubble |
 
 ## Secrets
 
@@ -96,6 +100,20 @@ debugger breakpoint are the action's other members; anything else is
   that are not set (exit status 1 when any is: usable as a boot check).
 * **Private parameters never reach the browser**: they are not values of a
   step, the page never holds them, and the call runs on the server.
+* **Secrets go only where the owner points them.** A call whose host has a
+  public parameter (`https://[tenant].example.com`, or `https://[host]/`)
+  is not generated: a step or a page could send the API's key to any host
+  (SSRF). A private parameter in the host is the owner's environment
+  variable. The address check above is defence in depth; it checks the
+  resolved address before Req resolves it again to connect, so a DNS
+  answer that changes in between (rebinding) is not caught.
+* **What can still carry them.** With "Include errors in response", an
+  API that echoes a request's secrets in its error body puts them in the
+  step's result, as in Bubble. Finch's telemetry events carry each
+  request's headers: do not attach handlers that record them.
+* **Renamed in WTF-533.** The variables gained the `BUBBLE_API_` prefix
+  (`.wtf/api_clients.json` version 2); `mix bubble.api_env` prints each
+  missing one with its old name (`was PAYMENTS_API_KEY`).
 
 ## Unverified Bubble behavior
 
@@ -106,8 +124,13 @@ debugger breakpoint are the action's other members; anything else is
   they may be credentials. Not replayed.
 * **Parameter text in a body.** Bubble pastes a parameter's text into the
   body. Here a value inside quotes is a JSON string (escaped: a quote in it
-  cannot break the body, which it can in Bubble), and outside quotes the
-  JSON its text is (`3`, `true`), else a string.
+  cannot break the body, which it can in Bubble). Outside quotes, a text
+  that is a JSON number, yes/no or null is that value; any other text, an
+  object or array included (`{"$ne": null}`), is a JSON string; a list
+  value (an expression of a list type) is a JSON array.
+* **Redirects.** Whether Bubble follows a redirect, and with which
+  headers, is not known: here none is followed unless the owner
+  configures it.
 * **"Include errors in response".** The result's fields (`returned_an_error`,
   `error`'s `status_code`, `status_message`, `body`) are read from the
   types registry Bubble initializes for such calls; `status_message` is
@@ -129,7 +152,8 @@ debugger breakpoint are the action's other members; anything else is
   the client when the page loads (and caches it per page), with the same
   secrets model; their parameters may read page values.
 * **Calls whose client is not generated** stay `:api_connector_action`
-  residue with the generator's reasons (`detail.reasons`: OAuth and other
+  residue with the generator's reasons (`detail.reasons`: a public
+  parameter in the URL's host (`:host_parameter`), OAuth and other
   authentications, file parameters, raw bodies, query strings in the URL,
   unresolved calls).
 * **Defaults and "Allow blank"** of non-private parameters (above).
@@ -147,22 +171,28 @@ Counts only (`test/support/target/workflows/counts/private-app.json`,
 
 | | before | after |
 |-|--------|-------|
-| backend steps that are API Connector calls | 113 residue | 7 residue (their clients are not generated: 5 file parameters, 1 query string in the URL, 1 raw body), 106 lowered: 64 with every value compiled to IR, 35 generated whole |
-| page steps that are API Connector calls | 30 residue | 0 `:api_connector_action`; 17 with every value compiled to IR, 1 generated whole |
-| backend steps: native IR / generated whole | 1,758 / 1,210 | 1,822 / 1,245 |
-| backend workflows: native IR / generated whole | 343 / 123 | 357 / 129 |
-| page steps: native IR / generated whole | 2,863 / 2,570 | 2,880 / 2,571 |
-| page workflows: native IR / generated whole | 1,315 / 923 | 1,318 / 923 |
-| structural: generated subjects | 807 | 813 (`residue:api_connector_action` 40 → 2) |
+| API Connector calls with a generated client | 167 of 172 | 120 (47 have a public parameter in their URL's host: `:host_parameter`, below) |
+| backend steps that are API Connector calls | 113 residue | 35 residue (28 call a host-parameter API, 7 other calls not generated: file parameters, a URL query string, a raw body), 78 lowered: 46 with every value compiled to IR, 25 generated whole |
+| page steps that are API Connector calls | 30 residue | 24 residue (their calls are not generated, mostly host parameters), 6 lowered: 3 with every value compiled to IR, 1 generated whole |
+| backend steps: native IR / generated whole | 1,758 / 1,210 | 1,804 / 1,235 |
+| backend workflows: native IR / generated whole | 343 / 123 | 352 / 127 |
+| page steps: native IR / generated whole | 2,863 / 2,570 | 2,866 / 2,571 |
+| page workflows: native IR / generated whole | 1,315 / 923 | 1,316 / 923 |
+| structural: generated subjects | 807 | 811 (`residue:api_connector_action` 40 → 18) |
+
+The 47 host-parameter calls put an account- or tenant-specific value in
+the host (`https://[tenant].example.com/...`) from a non-private
+parameter. They lower once the owner makes that parameter private in
+Bubble (its value is then an environment variable), or edits the
+generated code; until then a workflow calling one stays residue.
 
 What still stops the lowered calls is their values, not the calls: on
 the backend, page data other than the current date and the app version
-(`elixir:unbound_input:page_data`, 22 steps), fields of `:first item`
-(12), uncompiled expressions (`expr_uncompiled:raw` and others, about
-30), and "Result of step N" of a step whose result is still not typed (a
-plugin action, a call whose API type the Model cannot read: 11); on pages,
-inputs the page does not track (`unavailable_input`, 17) and the same
-expression gaps (13). 28 calls' actions set a member no non-private
+(`elixir:unbound_input:page_data`), fields of `:first item`, uncompiled
+expressions (`expr_uncompiled:raw` and others) and "Result of step N" of
+a step whose result is still not typed (a plugin action, a call whose
+API type the Model cannot read); on pages, inputs the page does not
+track (`unavailable_input`) and the same expression gaps. 28 calls' actions set a member no non-private
 parameter of the call has (a private parameter, or one since removed):
 not sent. Calls used as data (the 99 field reads of `docs/page-data.md`
 and 13 data sources) are not lowered yet.

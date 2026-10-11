@@ -436,8 +436,22 @@ All notable changes to this project are documented here.
 
 - **API Connector environment variables are under `BUBBLE_API_`**
   (WTF-533): `PAYMENTS_API_KEY` is now `BUBBLE_API_PAYMENTS_API_KEY`, and
-  so on. A JSON body's parameter outside quotes (`"n": <n>`) is the JSON
-  its text is when it is text (`3`, `true`), as Bubble pastes it.
+  so on (`.wtf/api_clients.json` and the Spec are version 2; `mix
+  bubble.api_env` prints each missing variable's old name). A JSON
+  body's parameter outside quotes (`"n": <n>`) is the number, yes/no or
+  null its text is (`3`, `true`), as Bubble pastes it; any other text is
+  a string.
+- **API Connector clients are hardened** (WTF-533 security review). A
+  call whose URL host has a public parameter is not generated
+  (`:host_parameter`: a workflow or page could send the API's key to any
+  host); a private one is the owner's environment variable. The clients
+  refuse loopback, private, link-local (cloud metadata) and reserved
+  addresses after resolving the host unless the owner configured them
+  (`:base_url`, `allow_private_addresses: true`), read at most 10 MB
+  (`:max_body_bytes`, decompression bounded), end a call after 30 s in
+  all (`:deadline`), never retry an action (a data GET only on a refused
+  connection, 429 or 503, waiting at most 5 s), encode a `.` or `..` path
+  segment, and never log a retry.
 
 - **Bubble behaviours measured by the replay of 2026-10-07** (WTF-509;
   counts and synthetic values only, WTF-387). Each answered question

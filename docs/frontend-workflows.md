@@ -622,11 +622,11 @@ mobile views):
 ### Private fixture app (test version), 2026-10-11, API Connector calls
 
 API Connector actions lowered (WTF-533, `docs/api-connector-calls.md`):
-the 30 page steps calling one are no longer `:api_connector_action`
-residue; 17 compile at IR level (2,863 → 2,880 native steps, 1,315 →
-1,318 native workflows), but only 1 is generated whole (2,570 → 2,571):
-the others read inputs the page does not track (`unavailable_input`
-389 → 406) or values that do not compile.
+of the 30 page steps calling one, 6 call a generated client and are
+lowered (3 compile at IR level, 1 is generated whole); 24 stay
+`:api_connector_action` residue, mostly calls with a public parameter in
+their host (`:host_parameter`). 2,863 → 2,866 native IR steps, 1,315 →
+1,316 native IR workflows, 2,570 → 2,571 generated steps.
 
 ### Private fixture app (test version), 2026-10-11
 
