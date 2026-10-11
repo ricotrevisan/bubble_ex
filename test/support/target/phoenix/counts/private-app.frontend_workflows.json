@@ -3,15 +3,15 @@
     "generated": {
       "by_kind": {
         "click": {
-          "native": 575,
+          "native": 594,
           "total": 1358
         },
         "condition_true": {
-          "native": 12,
+          "native": 13,
           "total": 102
         },
         "custom_event": {
-          "native": 263,
+          "native": 264,
           "total": 489
         },
         "do_every": {
@@ -49,31 +49,31 @@
       },
       "by_surface": {
         "page": {
-          "native": 291,
+          "native": 298,
           "total": 634
         },
         "reusable": {
-          "native": 590,
+          "native": 604,
           "total": 1636
         }
       },
-      "data": 266,
+      "data": 287,
       "residue_reasons": {
         "api_connector_action": 30,
         "auth_action": 14,
         "plugin_action": 619,
         "plugin_event": 250,
         "target_not_rendered": 6,
-        "trigger_in_runtime_template": 72,
-        "unavailable_input": 368,
-        "uncompiled_expression": 715,
+        "trigger_in_runtime_template": 70,
+        "unavailable_input": 386,
+        "uncompiled_expression": 674,
         "unresolved_reference": 41,
         "unsupported_action": 67,
         "unsupported_event": 11,
         "unsupported_option": 11
       },
       "step_ops": {
-        "call": 560,
+        "call": 557,
         "call_reusable": 127,
         "create": 31,
         "delete": 3,
@@ -82,35 +82,35 @@
         "focus": 32,
         "hide": 163,
         "log_out": 4,
-        "navigate": 258,
+        "navigate": 260,
         "open_url": 16,
         "pause": 46,
         "refresh": 5,
         "reset_group": 108,
         "reset_inputs": 61,
-        "schedule": 106,
+        "schedule": 107,
         "schedule_custom": 27,
         "scroll_to": 3,
         "set_state": 335,
         "show": 118,
-        "terminate": 55,
+        "terminate": 56,
         "toggle": 202,
-        "update": 179,
+        "update": 181,
         "update_current_user": 19,
         "update_list": 2
       },
       "steps": {
-        "native": 2528,
-        "residue": 1482,
+        "native": 2531,
+        "residue": 1479,
         "total": 4010
       },
       "workflows": {
         "client": 98,
-        "native": 881,
-        "native_own_body": 1046,
-        "residue": 1389,
+        "native": 902,
+        "native_own_body": 1065,
+        "residue": 1368,
         "total": 2270,
-        "wired": 607
+        "wired": 627
       }
     },
     "ir": {
@@ -226,7 +226,7 @@
       "by_kind": {
         "group": {
           "total": 1662,
-          "wired": 1378
+          "wired": 1388
         },
         "input": {
           "total": 32,
@@ -234,11 +234,11 @@
         },
         "instance": {
           "total": 214,
-          "wired": 173
+          "wired": 178
         },
         "list": {
           "total": 249,
-          "wired": 173
+          "wired": 184
         },
         "page_thing": {
           "total": 2,
@@ -246,27 +246,27 @@
         },
         "param": {
           "total": 1202,
-          "wired": 1014
+          "wired": 1048
         }
       },
       "reads": {
         "displayed": 136,
-        "query": 174,
-        "switch": 78,
+        "query": 176,
+        "switch": 83,
         "url_thing": 2,
-        "value": 2382
+        "value": 2435
       },
       "residue_reasons": {
-        "page_data_in_cell": 7,
-        "unavailable_input": 420,
-        "uncompiled_expression": 169,
+        "page_data_in_cell": 9,
+        "unavailable_input": 378,
+        "uncompiled_expression": 146,
         "unresolved_reference": 2,
         "unsupported_option": 26
       },
       "sources": {
-        "residue": 589,
+        "residue": 529,
         "total": 3361,
-        "wired": 2772
+        "wired": 2832
       }
     },
     "page_data_ir": {
