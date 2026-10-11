@@ -16,7 +16,13 @@ defmodule BubbleEx.Expression.Env do
     * `trigger_type` - in a database-trigger workflow, the type of the
       record it fired for (`Thing now` / `Thing before change`)
     * `steps` - result types of the workflow's steps by action Bubble ID
-      (`Result of step N`)
+      (`Result of step N`): a type descriptor, or `{:returns, returns}`
+      for a "Trigger a custom event" step, whose result is the custom
+      event's return values (`BubbleEx.Workflows.Lowering.Return`s), read
+      by return ID (`Result of step N's <return>`)
+    * `custom_events` - the declared return values of the app's custom
+      events (page, reusable element and backend), by the event's Bubble
+      ID; `BubbleEx.Expression.Sites.custom_events/1` builds it
     * `subject` / `path` - the diagnostic subject (Bubble IDs) and the
       expression's source path, prefixed to diagnostic pointers
     * `searches` - where the expression's searches run, which decides what
@@ -40,6 +46,7 @@ defmodule BubbleEx.Expression.Env do
 
   alias BubbleEx.Expression.{Ast, Tree}
   alias BubbleEx.Model
+  alias BubbleEx.Workflows.Lowering.Return
 
   defstruct model: nil,
             schema: %{},
@@ -49,6 +56,7 @@ defmodule BubbleEx.Expression.Env do
             host: nil,
             trigger_type: nil,
             steps: %{},
+            custom_events: %{},
             subject: %{},
             path: [],
             searches: nil,
@@ -62,7 +70,8 @@ defmodule BubbleEx.Expression.Env do
           this_binder: Ast.ThisThing.binder(),
           host: String.t() | nil,
           trigger_type: String.t() | nil,
-          steps: %{String.t() => String.t()},
+          steps: %{String.t() => String.t() | {:returns, [Return.t()]}},
+          custom_events: %{String.t() => [Return.t()]},
           subject: BubbleEx.Diagnostic.subject(),
           path: [String.t() | integer()],
           searches: searches(),
@@ -78,6 +87,7 @@ defmodule BubbleEx.Expression.Env do
           | {:host, String.t() | nil}
           | {:trigger_type, String.t() | nil}
           | {:steps, map()}
+          | {:custom_events, map()}
           | {:subject, map()}
           | {:path, list()}
           | {:searches, searches()}

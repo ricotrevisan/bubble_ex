@@ -76,6 +76,7 @@ defmodule <%= @module %>.Workflows.Runtime do
   workflow without a GET/POST setting answers POST only.
   """
 
+  require Ash.Query
   require Logger
 
   alias <%= @module %>.Workflows.{Registry, Scheduler}
@@ -248,6 +249,72 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   @doc "The result of an earlier step (nil when it did not run)."
   def step(ctx, action, loads), do: ctx.steps |> Map.get(action) |> load(loads, ctx)
+
+  @doc """
+  A value the custom event that step `action` triggered returned
+  (`return`, its return ID; nil when the step did not run or the event
+  returned nothing), shaped as declared (`list?`): a list where one value
+  was declared is its first item (logged), one value where a list was
+  declared a list of it. A thing (or list of things) of `resource` is a
+  record: Bubble IDs are read through Ash as this workflow's actor, a
+  list's in one read, in the list's order.
+  """
+  def step_return(ctx, action, return, resource, list?, loads) do
+    value =
+      case Map.get(ctx.steps, action) do
+        %{} = values when not is_struct(values) -> Map.get(values, return)
+        _ -> nil
+      end
+
+    value
+    |> shaped(list?, ctx, return)
+    |> returned(resource, ctx)
+    |> load(loads, ctx)
+  end
+
+  defp shaped(nil, true, _ctx, _return), do: []
+  defp shaped(values, true, _ctx, _return) when is_list(values), do: values
+  defp shaped(value, true, _ctx, _return), do: [value]
+  defp shaped([], false, _ctx, _return), do: nil
+  defp shaped([one], false, _ctx, _return), do: one
+
+  defp shaped([first | _], false, ctx, return) do
+    Logger.warning("bubble workflow #{inspect(ctx.workflow)}: return #{inspect(return)} is a list where one value was declared; its first item is read")
+    first
+  end
+
+  defp shaped(value, false, _ctx, _return), do: value
+
+  defp returned(value, nil, _ctx), do: value
+  defp returned(values, resource, ctx) when is_list(values), do: read_all(resource, values, ctx)
+  defp returned(value, resource, ctx), do: get(resource, value, ctx)
+
+  # Records pass; Bubble IDs are read in one query, as the actor; in order.
+  defp read_all(resource, values, ctx) do
+    ids = values |> Enum.filter(&is_binary/1) |> Enum.uniq()
+    found = if ids == [], do: %{}, else: read_ids(resource, ids, ctx)
+
+    values
+    |> Enum.map(fn
+      %{__struct__: _} = record -> record
+      id when is_binary(id) -> Map.get(found, id)
+      _ -> nil
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp read_ids(resource, ids, ctx) do
+    [pk] = Ash.Resource.Info.primary_key(resource)
+    filter = [{pk, [in: ids]}]
+
+    query = resource |> Ash.Query.new() |> Ash.Query.filter(^filter)
+
+    # bubble:ignores_privacy scaffold:workflow_authorize
+    case Ash.read(query, actor: ctx.actor, authorize?: ctx.authorize?) do
+      {:ok, records} -> Map.new(records, &{Map.get(&1, pk), &1})
+      _ -> %{}
+    end
+  end
 
   @doc "A database trigger's record, `:now` (as stored now) or `:before` the change."
   def trigger(%{trigger: nil}, _state, _loads), do: nil

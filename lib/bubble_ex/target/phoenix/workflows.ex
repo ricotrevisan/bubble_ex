@@ -488,6 +488,11 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
   defp binding({:param, id}, loads), do: "Runtime.param(ctx, #{inspect(id)}, #{inspect(loads)})"
   defp binding({:step, id}, loads), do: "Runtime.step(ctx, #{inspect(id)}, #{inspect(loads)})"
 
+  defp binding({:step_return, r}, loads),
+    do:
+      "Runtime.step_return(ctx, #{inspect(r.step)}, #{inspect(r.return)}, " <>
+        "#{r.resource || "nil"}, #{r.list?}, #{inspect(loads)})"
+
   defp binding({:trigger, state}, loads),
     do: "Runtime.trigger(ctx, #{inspect(state)}, #{inspect(loads)})"
 

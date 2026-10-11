@@ -1251,7 +1251,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
           {kind, _} when kind in [:data, :cell, :cell_data, :outer_cell, :outer_cell_data],
           &1.bind
         )
-      )
+      ) or Enum.any?(bindings, &match?({:step_return, %{resource: r}} when r != nil, &1.bind))
 
   defp args(op, %{element: element}, id, ctx)
        when op in [:show, :hide, :toggle, :focus, :scroll_to] do
@@ -2137,6 +2137,20 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     end
   end
 
+  # A value the custom event a step triggered returned (WTF-520): a thing
+  # is read as a record of its resource, through Ash as the current user.
+  defp bind({:step_result, %{"action" => action, "return" => return} = ref}, ctx)
+       when is_binary(return) do
+    case returned(ref["type"], ctx) do
+      {:ok, resource} ->
+        list? = Type.list?(ref["type"])
+        {:ok, {:step_return, %{step: action, return: return, resource: resource, list?: list?}}}
+
+      :error ->
+        {:error, "step_return"}
+    end
+  end
+
   defp bind({:step_result, %{"action" => action}}, _ctx), do: {:ok, {:step, action}}
 
   # A URL input (`Spec.url/1`): a thing is read by its unique ID through
@@ -2192,6 +2206,21 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   end
 
   defp url_bind(url, _reference, _ctx), do: {:ok, {:url_value, url}}
+
+  # The resource of a returned thing or list of things (nil for any other
+  # value).
+  defp returned(type, ctx) do
+    case Type.reference(Type.list_item(type) || type) do
+      {:data_type, id} ->
+        case resource_of(id, ctx) do
+          %{module: module} -> {:ok, "#{ctx.namespace}.#{module}"}
+          nil -> :error
+        end
+
+      _ ->
+        {:ok, nil}
+    end
+  end
 
   # Built-in element state names are Bubble's (no app IDs); a custom state
   # or a reusable element's parameter carries one, so it is named by kind.

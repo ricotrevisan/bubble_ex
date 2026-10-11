@@ -423,7 +423,9 @@ defmodule BubbleEx.Workflows.Lowering do
   """
   @spec ordered(term()) :: [{term(), term()}]
   def ordered(map) when is_map(map) do
-    entries = Enum.to_list(map)
+    # Bubble's array-like `length` member is metadata, not an entry (as in
+    # `Source.entries/1`).
+    entries = Enum.reject(map, &match?({"length", n} when is_integer(n) and n >= 0, &1))
 
     if Enum.all?(entries, fn {k, _} -> match?({_, ""}, Integer.parse(to_string(k))) end),
       do: Enum.sort_by(entries, fn {k, _} -> String.to_integer(to_string(k)) end),

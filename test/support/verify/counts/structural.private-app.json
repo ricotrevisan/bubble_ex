@@ -6,7 +6,7 @@
         "lowered": 186,
         "sites": {
           "authorize_false:scaffold": 2,
-          "authorize_unverifiable:scaffold": 7,
+          "authorize_unverifiable:scaffold": 8,
           "runtime_start:listed": 186
         }
       },
@@ -109,22 +109,22 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 793,
+          "generated": 807,
           "reasons": {
-            "residue:api_connector_action": 39,
+            "residue:api_connector_action": 40,
             "residue:auth_action": 8,
-            "residue:blocked_by_callee": 135,
-            "residue:plugin_action": 331,
+            "residue:blocked_by_callee": 140,
+            "residue:plugin_action": 334,
             "residue:plugin_event": 250,
             "residue:trigger_in_runtime_template": 194,
-            "residue:unavailable_input": 402,
-            "residue:uncompiled_expression": 692,
+            "residue:unavailable_input": 404,
+            "residue:uncompiled_expression": 666,
             "residue:unresolved_reference": 19,
             "residue:unsupported_action": 33,
             "residue:unsupported_event": 11,
-            "residue:unsupported_option": 33
+            "residue:unsupported_option": 34
           },
-          "residue": 2147,
+          "residue": 2133,
           "total": 2940,
           "uncovered": 0
         }
@@ -173,7 +173,7 @@
         "lowered": 186,
         "sites": {
           "authorize_false:scaffold": 2,
-          "authorize_unverifiable:scaffold": 7,
+          "authorize_unverifiable:scaffold": 8,
           "runtime_start:listed": 186
         }
       },
@@ -276,22 +276,22 @@
           "decision": 0,
           "diagnosed": 0,
           "excluded": 0,
-          "generated": 793,
+          "generated": 807,
           "reasons": {
-            "residue:api_connector_action": 39,
+            "residue:api_connector_action": 40,
             "residue:auth_action": 8,
-            "residue:blocked_by_callee": 135,
-            "residue:plugin_action": 331,
+            "residue:blocked_by_callee": 140,
+            "residue:plugin_action": 334,
             "residue:plugin_event": 250,
             "residue:trigger_in_runtime_template": 194,
-            "residue:unavailable_input": 402,
-            "residue:uncompiled_expression": 692,
+            "residue:unavailable_input": 404,
+            "residue:uncompiled_expression": 666,
             "residue:unresolved_reference": 19,
             "residue:unsupported_action": 33,
             "residue:unsupported_event": 11,
-            "residue:unsupported_option": 33
+            "residue:unsupported_option": 34
           },
-          "residue": 2147,
+          "residue": 2133,
           "total": 2940,
           "uncovered": 0
         }

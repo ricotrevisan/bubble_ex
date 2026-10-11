@@ -6,6 +6,21 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **"Result of step N" compiles for more kinds of steps** (WTF-520).
+  A step is typed with the steps before it, in Bubble order (numeric, so
+  step 10 comes after step 2): "Make changes to a thing" whose thing is an
+  earlier step's result is a thing of that type, so a chain of changes
+  types. "Trigger a custom event" (also from a reusable element) has the
+  custom event's return values as its result: `Result of step N's
+  <return>` has the return's declared type and reads the value the event
+  returned; a returned thing (or list of things) is read as a record of
+  its resource, a Bubble ID read through Ash as the actor, so a later
+  read of it goes through the policies (on a page it is a data read,
+  behind the data-access opt-in). An API Connector call, a plugin
+  action, "Schedule API workflow" and a custom event that declares no
+  returns still have no typed result: they are not lowered, or what they
+  return is not known.
+
 - **Fields through lists, `contains` on lists of records and a text's
   `contains` compile** (WTF-520). `list:first item's field` (also
   `:last item`, `:item #`, and fields of `:unique elements`, `:merged

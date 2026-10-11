@@ -22,7 +22,10 @@ defmodule BubbleEx.Expression.Sites do
       event is attached to, else the workflow's page or reusable; a
       database trigger's workflow knows the triggering type
       (`trigger_type`), and every step knows the result types of the
-      workflow's data steps (`steps`)
+      workflow's earlier steps (`steps`): a created or changed thing, a
+      changed list, a signed-up user, or a custom event's return values
+      (`custom_events`); in Bubble order, so a step that changes an
+      earlier step's result has that result's type
     * searches run on a page (`Env.searches: :page`) except in a backend
       workflow and in a page workflow's server-side action (`:backend`,
       `action_env/2`)
@@ -35,7 +38,7 @@ defmodule BubbleEx.Expression.Sites do
   alias BubbleEx.Expression.{Env, Tree, Typing}
   alias BubbleEx.Index.WorkflowAnalysis
   alias BubbleEx.Model
-  alias BubbleEx.Workflows.Source
+  alias BubbleEx.Workflows.{Lowering, Source}
 
   @enforce_keys [:raw, :path, :env, :kind]
   defstruct [:raw, :path, :env, :kind]
@@ -58,7 +61,7 @@ defmodule BubbleEx.Expression.Sites do
   def collect(app, model, tree \\ nil)
 
   def collect(app, %Model{} = model, tree) when is_map(app) and not is_struct(app) do
-    env = Env.new(model, tree: tree || Tree.build(app))
+    env = Env.new(model, tree: tree || Tree.build(app), custom_events: custom_events(app))
 
     owners =
       for {sections, _kind} <- @sections,
@@ -182,25 +185,31 @@ defmodule BubbleEx.Expression.Sites do
 
     actions =
       case Source.get(raw, ~w(actions %a)) do
-        {_key, actions} -> Source.entries(actions)
+        {_key, actions} -> Lowering.ordered(actions)
         nil -> []
       end
 
     %{env | steps: steps(actions, env)}
   end
 
-  # Result types of data steps, by action Bubble ID.
+  # Result types of the steps, by action Bubble ID, in Bubble order: a
+  # step's own expressions (what "Make changes to a thing" changes) are
+  # typed with the steps before it.
   defp steps(actions, env) do
-    for {_key, action} <- actions,
-        is_map(action),
-        id = text(Source.value(action, ~w(id %id))),
-        id != nil,
-        type = step_type(action, env),
-        type != nil,
-        into: %{},
-        do: {id, type}
+    Enum.reduce(actions, %{}, fn {_key, action}, acc ->
+      with true <- is_map(action),
+           id when id != nil <- text(Source.value(action, ~w(id %id))),
+           type when type != nil <- step_type(action, %{env | steps: acc}) do
+        Map.put(acc, id, type)
+      else
+        _ -> acc
+      end
+    end)
   end
 
+  # What a step's result is, from its own definition; nil when that is
+  # not known (an API Connector call, a plugin action, "Schedule API
+  # workflow", ...): never guessed.
   defp step_type(action, env) do
     props =
       case Source.value(action, ~w(properties %p)) do
@@ -208,14 +217,86 @@ defmodule BubbleEx.Expression.Sites do
         _ -> %{}
       end
 
-    case Source.value(action, ~w(type %x)) do
-      "NewThing" -> text(props["thing_type"])
-      "ChangeThing" -> expression_type(props["to_change"], env)
-      "ChangeListOfThings" -> listed(text(props["type_to_change"]))
-      "CopyListOfThings" -> expression_type(props["to_copy"], env)
-      type when type in ~w(CreateUserAccount SignUp) -> "user"
+    step_type(Source.value(action, ~w(type %x)), props, env)
+  end
+
+  defp step_type("NewThing", props, _env), do: text(props["thing_type"])
+  defp step_type("ChangeThing", props, env), do: expression_type(props["to_change"], env)
+  defp step_type("ChangeListOfThings", props, _env), do: listed(text(props["type_to_change"]))
+  defp step_type("CopyListOfThings", props, env), do: expression_type(props["to_copy"], env)
+  defp step_type(type, _props, _env) when type in ~w(CreateUserAccount SignUp), do: "user"
+
+  defp step_type(type, props, env)
+       when type in ~w(TriggerCustomEvent TriggerCustomEventFromReusable),
+       do: returns(props, env)
+
+  defp step_type(_type, _props, _env), do: nil
+
+  # A custom event's return values: the step's result is read by return
+  # ID. A custom event that declares none, or is not found, has no result.
+  defp returns(props, env) do
+    case Map.get(env.custom_events, text(props["custom_event"])) do
+      [_ | _] = returns -> {:returns, returns}
       _ -> nil
     end
+  end
+
+  @doc """
+  The declared return values (`BubbleEx.Workflows.Lowering.Return`s) of
+  every custom event of decoded app JSON, on its pages, reusable elements
+  and backend, by the event's Bubble ID (`Env.custom_events`).
+  """
+  @spec custom_events(map()) :: %{String.t() => [Lowering.Return.t()]}
+  def custom_events(app) when is_map(app) do
+    owners =
+      for {sections, _kind} <- @sections,
+          section <- sections,
+          owners = Map.get(app, section),
+          is_map(owners),
+          {_key, owner} <- owners,
+          is_map(owner),
+          workflow <- node_workflows(owner),
+          do: workflow
+
+    api =
+      case Map.get(app, "api") do
+        workflows when is_map(workflows) or is_list(workflows) ->
+          for {key, w} <- Source.entries(workflows), is_map(w), do: {key, w}
+
+        _ ->
+          []
+      end
+
+    for {key, raw} <- owners ++ api,
+        Source.value(raw, ~w(type %x)) == "CustomEvent",
+        id = text(Source.value(raw, ~w(id %id))) || text(to_string(key)),
+        id != nil,
+        into: %{},
+        do: {id, Lowering.returns(raw)}
+  end
+
+  def custom_events(_app), do: %{}
+
+  defp node_workflows(raw) do
+    own =
+      case Source.get(raw, @workflows) do
+        {_key, workflows} -> for {k, w} <- Source.entries(workflows), is_map(w), do: {k, w}
+        nil -> []
+      end
+
+    children =
+      case Source.get(raw, @children) do
+        {_key, children} ->
+          for {_k, child} <- Source.entries(children),
+              is_map(child),
+              w <- node_workflows(child),
+              do: w
+
+        nil ->
+          []
+      end
+
+    own ++ children
   end
 
   defp expression_type(raw, env) when is_map(raw) do

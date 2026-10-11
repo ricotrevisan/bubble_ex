@@ -1967,6 +1967,59 @@ defmodule <%= @web %>.BubbleWorkflows do
   def step(ctx, action, loads), do: ctx.steps |> Map.get(action) |> load(loads, ctx)
 
   @doc """
+  A value the custom event that step `action` triggered returned
+  (`return`, its return ID; nil when the step did not run), shaped as
+  declared (`list?`): a list where one value was declared is its first
+  item (logged), one value where a list was declared a list of it. A
+  thing (or list of things) of `resource` is a record: Bubble IDs (from
+  a custom state, say) are read through Ash as the current user
+  (`BubbleData.records/5`, a list in one read, at most
+  `BubbleData.max_items/0` of it, logged), so the privacy policies apply;
+  nil with data access off.
+  """
+  def step_return(ctx, action, return, resource, list?, loads) do
+    returned =
+      case Map.get(ctx.steps, action) do
+        %{} = values when not is_struct(values) -> Map.get(values, return)
+        _ -> nil
+      end
+
+    value = shaped(returned, list?, ctx, return)
+
+    cond do
+      resource == nil ->
+        load(value, loads, ctx)
+
+      data_access?() ->
+        if list? and length(value) > BubbleData.max_items() do
+          Logger.warning("bubble workflow #{inspect(ctx.workflow)}: return #{inspect(return)} has #{length(value)} things; the first #{BubbleData.max_items()} are read")
+        end
+
+        ctx
+        |> Map.put(:batch, false)
+        |> BubbleData.records(resource, value, list?, nil)
+        |> load(loads, ctx)
+
+      true ->
+        Logger.error("bubble workflow #{inspect(ctx.workflow)}: a thing returned with data access off; nothing read")
+        nil
+    end
+  end
+
+  defp shaped(nil, true, _ctx, _return), do: []
+  defp shaped(values, true, _ctx, _return) when is_list(values), do: values
+  defp shaped(value, true, _ctx, _return), do: [value]
+  defp shaped([], false, _ctx, _return), do: nil
+  defp shaped([one], false, _ctx, _return), do: one
+
+  defp shaped([first | _], false, ctx, return) do
+    Logger.warning("bubble workflow #{inspect(ctx.workflow)}: return #{inspect(return)} is a list where one value was declared; its first item is read")
+    first
+  end
+
+  defp shaped(value, false, _ctx, _return), do: value
+
+  @doc """
   The current user, with `loads`. While the page checks its conditions
   (`settle/4`, nothing written meanwhile) the same loads are read once
   for all of them (`BubbleData.once/3`, WTF-501).

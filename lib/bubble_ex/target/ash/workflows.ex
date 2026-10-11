@@ -764,6 +764,20 @@ defmodule BubbleEx.Target.Ash.Workflows do
     end
   end
 
+  # A value the custom event a step triggered returned (WTF-520): a thing
+  # is read as a record of its resource (by ID, through Ash as the actor).
+  defp bind({:step_result, %{"action" => action, "return" => return} = ref}, ctx)
+       when is_binary(return) do
+    case returned(ref["type"], ctx) do
+      {:ok, resource} ->
+        list? = Type.list?(ref["type"])
+        {:ok, {:step_return, %{step: action, return: return, resource: resource, list?: list?}}}
+
+      :error ->
+        {:error, "elixir:unbound_input:step_return"}
+    end
+  end
+
   defp bind({:step_result, %{"action" => action}}, _ctx), do: {:ok, {:step, action}}
 
   defp bind({:trigger_thing, %{"state" => state}}, ctx) when state in ["now", "before"] do
@@ -783,6 +797,21 @@ defmodule BubbleEx.Target.Ash.Workflows do
     do: {:error, "elixir:unbound_input:#{kind}"}
 
   defp bind(_input, _ctx), do: {:error, "elixir:unbound_input"}
+
+  # The resource of a returned thing or list of things; nil for any other
+  # value.
+  defp returned(type, ctx) do
+    case Type.reference(Type.list_item(type) || type) do
+      {:data_type, id} ->
+        case resource_of(id, ctx) do
+          %{module: module} -> {:ok, "#{ctx.namespace}.#{module}"}
+          nil -> :error
+        end
+
+      _ ->
+        {:ok, nil}
+    end
+  end
 
   # --- lookups -------------------------------------------------------------------------
 

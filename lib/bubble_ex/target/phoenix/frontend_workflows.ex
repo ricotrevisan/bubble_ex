@@ -674,6 +674,11 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp binding({:step, id}, loads),
     do: "BubbleWorkflows.step(ctx, #{literal(id)}, #{loads_source(loads)})"
 
+  defp binding({:step_return, r}, loads),
+    do:
+      "BubbleWorkflows.step_return(ctx, #{literal(r.step)}, #{literal(r.return)}, " <>
+        "#{r.resource || "nil"}, #{r.list?}, #{loads_source(loads)})"
+
   defp binding({:url, name}, _loads), do: "BubbleWorkflows.url(ctx, #{literal(name)})"
 
   defp binding({:url_value, u}, _loads),

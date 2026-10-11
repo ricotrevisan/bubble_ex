@@ -35,10 +35,12 @@ defmodule BubbleEx.Workflows.BackendTest do
     backend = build(app())
 
     assert Enum.map(backend.workflows, & &1.bubble_id) ==
-             ~w(wBlocked wClose wCreate wExternal wFanOut wNote wNotify wOnDone wPing wTick)
+             ~w(wBlocked wChain wClose wCreate wEcho wExternal wFanOut wNote wNotify wOnDone wPing
+                wTick)
 
     assert Enum.map(backend.workflows, & &1.kind) ==
-             [:api, :api, :api, :api, :api, :api, :custom_event, :database_trigger, :api, :api]
+             [:api, :api, :api, :api, :custom_event, :api, :api, :api, :custom_event] ++
+               [:database_trigger, :api, :api]
   end
 
   test "the entry point: exposure, authentication, parameters, returns" do
@@ -70,7 +72,11 @@ defmodule BubbleEx.Workflows.BackendTest do
     backend = build(app())
 
     assert for(w <- backend.workflows, w.ignores_privacy?, do: w.bubble_id) == ["wClose"]
-    assert for(w <- backend.workflows, w.inherits_privacy?, do: w.bubble_id) == ["wNotify"]
+
+    assert for(w <- backend.workflows, w.inherits_privacy?, do: w.bubble_id) == [
+             "wEcho",
+             "wNotify"
+           ]
 
     assert [%{code: :workflow_privacy_bypass, subject: %{workflow: "wClose"}}] =
              Enum.filter(backend.diagnostics, &(&1.code == :workflow_privacy_bypass))
@@ -149,8 +155,8 @@ defmodule BubbleEx.Workflows.BackendTest do
   test "coverage counts native workflows and steps" do
     coverage = Backend.coverage(build(app()))
 
-    assert coverage["workflows"] == %{"total" => 10, "native" => 9, "residue" => 1}
-    assert coverage["steps"] == %{"total" => 15, "native" => 13, "residue" => 2}
+    assert coverage["workflows"] == %{"total" => 12, "native" => 11, "residue" => 1}
+    assert coverage["steps"] == %{"total" => 21, "native" => 19, "residue" => 2}
     assert coverage["privacy_bypasses"] == 1
     assert coverage["exposed"] == 2
     assert coverage["cycles"] == 1

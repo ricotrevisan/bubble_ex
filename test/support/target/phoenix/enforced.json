@@ -576,6 +576,197 @@
         "wf_name": "tick"
       },
       "type": "APIEvent"
+    },
+    "wChain": {
+      "actions": {
+        "0": {
+          "id": "aCh1",
+          "properties": {
+            "changes": {
+              "0": {
+                "key": "count_number",
+                "value": 5
+              }
+            },
+            "to_change": {
+              "properties": {
+                "btype_id": "custom.task",
+                "param_id": "task"
+              },
+              "type": "APIEventParameter"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "1": {
+          "id": "aCh2",
+          "properties": {
+            "changes": {
+              "0": {
+                "key": "title_text",
+                "value": {
+                  "entries": {
+                    "0": "Chained"
+                  },
+                  "type": "TextExpression"
+                }
+              }
+            },
+            "to_change": {
+              "properties": {
+                "action_id": "aCh1"
+              },
+              "type": "PreviousStep"
+            }
+          },
+          "type": "ChangeThing"
+        },
+        "2": {
+          "id": "aCh3",
+          "properties": {
+            "arguments": {
+              "0": {
+                "arg_value": {
+                  "properties": {
+                    "action_id": "aCh2"
+                  },
+                  "type": "PreviousStep"
+                },
+                "param_id": "pTask"
+              }
+            },
+            "custom_event": "wNotify"
+          },
+          "type": "TriggerCustomEvent"
+        },
+        "3": {
+          "id": "aCh4",
+          "properties": {
+            "arguments": {
+              "0": {
+                "arg_value": {
+                  "properties": {
+                    "action_id": "aCh2"
+                  },
+                  "type": "PreviousStep"
+                },
+                "param_id": "pTask"
+              }
+            },
+            "custom_event": "wEcho"
+          },
+          "type": "TriggerCustomEvent"
+        },
+        "4": {
+          "id": "aCh5",
+          "properties": {
+            "parameters_actions": {
+              "0": {
+                "content": {
+                  "properties": {
+                    "action_id": "aCh3"
+                  },
+                  "type": "PreviousStep",
+                  "next": {
+                    "name": "rTitle",
+                    "type": "Message"
+                  }
+                },
+                "key": "title",
+                "value": "text"
+              },
+              "1": {
+                "content": {
+                  "properties": {
+                    "action_id": "aCh4"
+                  },
+                  "type": "PreviousStep",
+                  "next": {
+                    "name": "rTask",
+                    "type": "Message",
+                    "next": {
+                      "name": "count_number",
+                      "type": "Message"
+                    }
+                  }
+                },
+                "key": "count",
+                "value": "number"
+              },
+              "2": {
+                "content": {
+                  "properties": {
+                    "action_id": "aCh2"
+                  },
+                  "type": "PreviousStep",
+                  "next": {
+                    "name": "title_text",
+                    "type": "Message"
+                  }
+                },
+                "key": "again",
+                "value": "text"
+              }
+            }
+          },
+          "type": "APIReturnData"
+        }
+      },
+      "id": "wChain",
+      "properties": {
+        "parameters": {
+          "0": {
+            "key": "task",
+            "value": "custom.task"
+          }
+        },
+        "wf_folder": "fTasks",
+        "wf_name": "chain"
+      },
+      "type": "APIEvent"
+    },
+    "wEcho": {
+      "actions": {
+        "0": {
+          "id": "aEcho",
+          "properties": {
+            "return_values": {
+              "0": {
+                "return_id": "rTask",
+                "return_value": {
+                  "properties": {
+                    "btype_id": "custom.task",
+                    "param_id": "pTask",
+                    "param_name": "task"
+                  },
+                  "type": "CurrentWorkflowItem"
+                }
+              }
+            }
+          },
+          "type": "TerminateWorkflow"
+        }
+      },
+      "id": "wEcho",
+      "properties": {
+        "event_name": "echo",
+        "parameters": {
+          "0": {
+            "btype_id": "custom.task",
+            "param_id": "pTask",
+            "param_name": "task"
+          }
+        },
+        "return_types": {
+          "0": {
+            "btype_id": "custom.task",
+            "display": "task",
+            "return_id": "rTask"
+          }
+        },
+        "wf_folder": "fTasks"
+      },
+      "type": "CustomEvent"
     }
   },
   "element_definitions": {

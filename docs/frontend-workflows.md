@@ -492,6 +492,35 @@ page reloads. A LiveView reconnect mounts the page again (custom states
 and inputs start over); its render is compared with the last one like
 any other.
 
+### Step results (WTF-520)
+
+"Result of step N" is typed from step N's own definition, with the
+steps before it (in Bubble order, so step 10 comes after step 2;
+`BubbleEx.Expression.Sites`):
+
+| Step N | Its result |
+|--------|------------|
+| Create a new thing | the thing: the record as written, as the actor |
+| Make changes to a thing (the current user included) | the changed record; its thing may itself be an earlier step's result |
+| Make changes to a list of things | the list of changed records |
+| Trigger a custom event (also from a reusable element) | the custom event's return values, each read by return ID with its declared type (`Result of step N's <return>`); a returned thing or list of things is read as records of its resource: a Bubble ID (a custom state's, say) through Ash as the current user (`BubbleData.records/5`), so a workflow reading one is a data workflow, and reads nothing with data access off |
+| Sign up / Create an account, Copy a list of things | a user, the copied list's type (typed, but these steps are not lowered yet: their workflows are residue) |
+| Schedule API workflow, an API Connector call, a plugin action, a custom event that declares no returns (or a return without a type) | none known: an expression reading it does not compile (`expr_untyped_scope`, `expr_unresolved_accessor`) |
+
+A returned value is shaped as the custom event declares it: a list where
+one value was declared is its first item (logged), one value where a list
+was declared a list of it, so a field read never meets a list (WTF-500).
+A list of Bubble IDs is read in one query, in the list's order (on pages
+at most `BubbleData.max_items/0` of it, logged when longer).
+
+The backend runtime does the same (`Runtime.step/3`, `Runtime.step_return/6`):
+a created or changed record is what Ash returned for the write made as the
+workflow's actor, and its relationships are loaded as that actor; a
+custom event's returned thing that is a Bubble ID is read through Ash as
+the actor (a record passes: the custom event ran in its caller's privacy
+context). A read of a field the actor may not view, through any of
+them, is empty.
+
 ## Known differences from Bubble
 
 * **"Go to page" with a list as the data to send.** Bubble sends the
@@ -586,6 +615,19 @@ mobile views):
 
   Steps are counted the same way. Residue reasons are counted per entry (a
   workflow can have several).
+
+### Private fixture app (test version), 2026-10-11
+
+Step results typed (WTF-520): page workflow steps blocked by an untyped
+"Result of step N" 104 → 49 (the 55 read a custom event's return values
+or a change of an earlier result; the 49 left read an API Connector
+call, a plugin action or "Schedule API workflow"). Generated code:
+902 → 923 native workflows, 627 → 640 wired, 2,531 → 2,570 native
+steps; `uncompiled_expression` residue 674 → 622, while
+`unavailable_input` 386 → 389 (steps that now compile and stop at a
+value the page does not provide). Backend workflows: 882 → 1,210
+native steps, 120 → 123 native workflows (most still call an API
+Connector or plugin action).
 
 ### Private fixture app (test version), 2026-10-04
 

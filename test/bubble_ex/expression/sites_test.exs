@@ -32,7 +32,9 @@ defmodule BubbleEx.Expression.SitesTest do
   test "workflow sites know their element, steps, trigger and subject", %{sites: sites} do
     %{env: env, kind: :workflow} = site(sites, "/pages/task/workflows/bW1/properties/condition")
     assert env.host == "bB1"
-    assert env.steps == %{"bA1" => "custom.task"}
+    # Each step is typed with the ones before it: bA2 and bA4 change bA1's
+    # result; bA3 triggers a custom event that returns nothing (WTF-520).
+    assert env.steps == %{"bA1" => "custom.task", "bA2" => "custom.task", "bA4" => "custom.task"}
     assert env.subject == %{workflow: "bW1"}
 
     %{env: trigger} = site(sites, "/api/bW8/properties/condition")

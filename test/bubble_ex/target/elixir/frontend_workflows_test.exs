@@ -150,6 +150,48 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsTest do
     refute Spec.native?(workflow(spec, "wCallee"))
   end
 
+  # WTF-520: "Result of step N" of a changed result (step 3 changes step
+  # 2's, which changes step 1's) and of a custom event's return values.
+  test "step results: a chain of changes, a custom event's returns", %{spec: spec} do
+    chain = workflow(spec, "wChain")
+    assert Spec.native?(chain) and chain.data?
+    [_create, change, change_again, set] = chain.steps
+    assert [%{bind: {:step, "aChain1"}}] = change.args.target.bindings
+    assert [%{bind: {:step, "aChain2"}}] = change_again.args.target.bindings
+    assert [%{value: %{bindings: [%{bind: {:step, "aChain3"}}]}}] = set.args.states
+
+    # A text: the value as returned.
+    call = workflow(spec, "wCallRes")
+    assert Spec.native?(call)
+    refute call.data?
+    [_call, set] = call.steps
+
+    assert [
+             %{
+               value: %{
+                 bindings: [
+                   %{
+                     bind:
+                       {:step_return,
+                        %{step: "aCallRes1", return: "rWord", resource: nil, list?: false}}
+                   }
+                 ]
+               }
+             }
+           ] = set.args.states
+
+    # A thing: read as a record of its resource, as the user (a data read).
+    note = workflow(spec, "wCallNote")
+    assert Spec.native?(note) and note.data?
+    [_call, set] = note.steps
+    [%{value: %{bindings: [binding]}}] = set.args.states
+
+    assert %{bind: {:step_return, %{step: "aCallNote1", return: "rNote", resource: "Shop.Note"}}} =
+             binding
+
+    assert Spec.native?(workflow(spec, "wEvtNote"))
+  end
+
   test "a load in a step's condition alone makes the workflow a data workflow (review H1)" do
     relation = %{
       "type" => "CurrentUser",
@@ -289,15 +331,15 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsTest do
     coverage = FrontendWorkflows.coverage(spec)
 
     assert coverage["workflows"] == %{
-             "total" => 29,
-             "native" => 25,
-             "native_own_body" => 26,
-             "wired" => 20,
+             "total" => 35,
+             "native" => 31,
+             "native_own_body" => 32,
+             "wired" => 24,
              "residue" => 4,
              "client" => 3
            }
 
-    assert coverage["data"] == 3
+    assert coverage["data"] == 6
 
     assert coverage["residue_reasons"] == %{
              "unsupported_action" => 1,
