@@ -489,7 +489,6 @@ defmodule BubbleEx.Target.ApiCallsTest do
 
   describe "data calls (WTF-533, slice 2)" do
     @row "api.apiconnector2.gEx.cList.Row"
-    @price "api.apiconnector2.gEx.cPrice.Price"
 
     defp catalog(pages), do: FrontendWorkflows.Spec.data(pages, "bCatalog")
     defp source(pages, id), do: Enum.find(catalog(pages), &(&1.element == id))
