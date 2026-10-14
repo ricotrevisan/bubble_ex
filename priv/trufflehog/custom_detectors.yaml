@@ -4,12 +4,17 @@
 # name and a DetectorType id of its own (`@custom_detectors` there). Add a
 # detector in both places together.
 detectors:
-  # Elastic App Search private API key (WTF-538). TruffleHog has no detector
-  # for it. Public search keys (`search-...`) are meant for browsers and are
-  # not matched.
+  # Elastic App Search private API key (WTF-538): `private-` and 24
+  # lowercase letters and digits. TruffleHog has no detector for it. Public
+  # search keys (`search-...`) are meant for browsers and are not matched.
+  # Excluded: 24 hex characters (Pusher/Ably private channels named after a
+  # Mongo ObjectId) and 24 letters (words run together). A random key is all
+  # letters about once in 2,500 and all hex practically never.
   - name: ElasticAppSearch
     keywords:
       - private-
     regex:
       key: '\b(private-[a-z0-9]{24})\b'
-    entropy: 3
+    exclude_regexes_match:
+      - '^private-[a-f0-9]{24}$'
+      - '^private-[a-z]{24}$'

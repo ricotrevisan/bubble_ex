@@ -210,11 +210,13 @@ defmodule BubbleEx.Secrets.Trufflehog do
     remaining = max(deadline - System.monotonic_time(:millisecond), 0)
     verify = Keyword.get(opts, :verify, true)
 
+    # Rejected results are dropped before `enhance_result/3`, whose payload
+    # searches read the whole file.
     enhance =
       &(&1
-        |> enhance_result(file, deadline)
         |> name_custom_detector()
-        |> mark_verification(verify))
+        |> mark_verification(verify)
+        |> enhance_result(file, deadline))
 
     if remaining == 0 do
       budget_error(:scan_timeout)
@@ -276,6 +278,7 @@ defmodule BubbleEx.Secrets.Trufflehog do
     ArgumentError -> :ok
   end
 
+  defp enhance_result(nil, _file, _deadline), do: nil
   defp enhance_result(%{"InvalidResult" => true}, _file, _deadline), do: nil
 
   # A BASE64 finding whose encoded form is not in the payload is a decoder
@@ -329,7 +332,6 @@ defmodule BubbleEx.Secrets.Trufflehog do
   # In verify mode a result is kept when the provider accepted it, when it
   # could not be asked (a verification error: unknown), or when it was never
   # meant to be asked (a custom detector); one the provider rejected is not.
-  defp mark_verification(nil, _verify), do: nil
   defp mark_verification(%{"Verification" => "skipped"} = finding, _verify), do: finding
   defp mark_verification(%{"Verified" => true} = finding, true), do: finding
 

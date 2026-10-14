@@ -25,7 +25,11 @@ All notable changes to this project are documented here.
   (`Trufflehog.custom_detectors/0`) instead of TruffleHog's `"CustomRegex"`
   (904), and is marked `"Verification" => "skipped"`, also in verify mode.
   Verify mode therefore asks TruffleHog for unverified results too and drops
-  the ones a provider rejected itself.
+  the ones a provider rejected itself, before any payload search; only
+  retained findings count toward `:max_findings`. The App Search detector
+  (`private-` and 24 lowercase letters and digits) skips 24 hex characters
+  (Pusher/Ably private channels named after a Mongo ObjectId) and 24
+  letters.
 
 - **API Connector clients: hardening follow-ups** (WTF-534). The address
   check also refuses the documentation (192.0.2/24, 198.51.100/24,

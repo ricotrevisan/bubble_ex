@@ -307,6 +307,35 @@ defmodule BubbleEx.Secrets.TrufflehogTest do
       assert %{"DetectorType" => 1_000_001, "Raw" => ^app_search_key} =
                Enum.find(results, &(&1["DetectorName"] == "ElasticAppSearch"))
     end
+
+    test "the App Search detector skips hex ObjectId channels and run-together words" do
+      payload = %{
+        "_id" => "synthetic",
+        # A Pusher/Ably private channel named after a Mongo ObjectId.
+        "channel" => "private-" <> "507f1f77bcf86cd799439011",
+        "css" => "private-" <> "messagingpanelheaderwrap"
+      }
+
+      assert {:ok, results} = Trufflehog.scan(payload, verify: false, log_level: "0")
+      refute Enum.any?(results, &(&1["DetectorName"] == "ElasticAppSearch"))
+    end
+
+    # Verify mode with only a custom detector's key in the payload: no
+    # built-in detector matches, so no provider is contacted.
+    test "verify mode keeps an App Search key, never verified" do
+      app_search_key = "private-" <> "q8wz3kv1mx7pt2r9hn5yc4bd"
+      payload = %{"_id" => "synthetic", "header" => "Bearer " <> app_search_key}
+
+      assert {:ok, [finding]} = Trufflehog.scan(payload, log_level: "0")
+
+      assert %{
+               "DetectorName" => "ElasticAppSearch",
+               "DetectorType" => 1_000_001,
+               "Raw" => ^app_search_key,
+               "Verified" => false,
+               "Verification" => "skipped"
+             } = finding
+    end
   end
 
   defp trufflehog_temp_dirs do

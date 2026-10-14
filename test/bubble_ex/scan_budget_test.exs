@@ -43,6 +43,17 @@ defmodule BubbleEx.ScanBudgetTest do
     assert {:error, :findings_limit} = BubbleEx.Secrets.Output.push(state, line, & &1)
   end
 
+  test "dropped findings do not count toward the finding budget" do
+    line = Jason.encode!(%{"DecoderName" => "PLAIN", "Raw" => "synthetic"}) <> "\n"
+    drop = fn _finding -> nil end
+    state = BubbleEx.Secrets.Output.new(max_findings: 1)
+
+    assert {:ok, state} = BubbleEx.Secrets.Output.push(state, line <> line, drop)
+    assert {:ok, state} = BubbleEx.Secrets.Output.push(state, line, & &1)
+    assert {:ok, [_kept]} = BubbleEx.Secrets.Output.finish(state, & &1)
+    assert {:error, :findings_limit} = BubbleEx.Secrets.Output.push(state, line, & &1)
+  end
+
   test "file adapter preserves valid findings across fragments and final unterminated line", %{
     root: root
   } do
