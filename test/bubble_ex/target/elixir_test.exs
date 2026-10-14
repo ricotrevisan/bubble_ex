@@ -185,6 +185,40 @@ defmodule BubbleEx.Target.ElixirTest do
     end
   end
 
+  # Replay 2026-10-14 (WTF-387): an empty yes/no read as a value shown as
+  # text, `x is yes`, shows empty, not "no"; `x is no` shows yes. As a
+  # condition, `x is yes` still does not hold on it.
+  test "an empty yes/no's `is yes` shown as text is empty", %{project: project} do
+    this = IR.node(:this, [:rule_record], "custom.task")
+    public = IR.node(:field, [this, "task", "public_boolean"], "boolean")
+    lit = &IR.node(:literal, [&1], &2)
+    shown = &IR.node(:concat, [lit.("X: ", "text"), &1], "text")
+
+    for {condition, expected} <- [
+          {IR.node(:eq, [public, lit.(true, "boolean")], "boolean"),
+           %{nil => "X: ", false => "X: no", true => "X: yes"}},
+          {IR.node(:eq, [lit.(true, "boolean"), public], "boolean"),
+           %{nil => "X: ", false => "X: no", true => "X: yes"}},
+          {IR.node(:eq, [public, lit.(false, "boolean")], "boolean"),
+           %{nil => "X: yes", false => "X: yes", true => "X: no"}}
+        ],
+        {value, text} <- expected do
+      {:ok, as_text} = Target.compile(shown.(condition), project, runtime: @runtime)
+      assert eval(as_text, this: %{public: value}) == text, inspect({condition.args, value})
+
+      {:ok, displayed} = Target.compile(condition, project, runtime: @runtime, display: true)
+
+      assert eval(displayed, this: %{public: value}) ==
+               if(text == "X: ", do: nil, else: value_of(text))
+
+      {:ok, as_condition} = Target.compile(condition, project, runtime: @runtime)
+      assert eval(as_condition, this: %{public: value}) == (text == "X: yes")
+    end
+  end
+
+  defp value_of("X: yes"), do: true
+  defp value_of("X: no"), do: false
+
   # WTF-520: an input's initial content with a conditional state: the
   # state's value while its condition holds, else the content; an empty
   # condition (a yes/no field with no value) does not hold.

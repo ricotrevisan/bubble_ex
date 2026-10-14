@@ -303,7 +303,19 @@ may run (WTF-520):
   opens (closes) the popup, or one calling it, shows data in an element
   the popup's "is opened" ("is closed") workflow resets (it or a group
   around it, the popup included) or shows data in too, that element is
-  unloaded: which runs last is not replayed.
+  unloaded: which runs last is not replayed. Replayed (2026-10-14,
+  WTF-387): a workflow that shows the popup and then displays data in an
+  element its "is opened" workflow resets ("Show popup; Display data in
+  popup", the popup's own source or none) shows the displayed value. The
+  page keeps that display through the reset: the opening run passes what
+  it showed after opening the popup with the report it expects
+  (`kept`), and `BubbleWorkflows.reset/5` leaves it. Only the popup and
+  the elements inside it are loaded so. An element outside the popup, a
+  display before the step that opens the popup, one through a custom
+  event that opens it, or against an "is closed" workflow, keeps the old
+  rule (unloaded). A show of a popup already open fires nothing; the
+  hook reports it as `skipped`, and the page forgets the report it
+  expected and what it kept (likewise a hide of a closed one).
 * **As the page loads.** A step in a page-load or condition-true
   workflow, one whose event this target does not lower or wire (a
   plugin's event, "User is logged in / out", which may fire as the page
@@ -576,7 +588,9 @@ the popup's workflow runs relative to the rest of the workflow whose
 step opened it (here after it, and after the page re-rendered: a later
 step of that workflow does not see what the popup's workflow set, and
 what the popup's workflow resets or shows wins over what that workflow
-showed: such elements are not loaded until a replay says which wins).
+showed: such elements are not loaded until a replay says which wins),
+but for what the opening workflow displays after opening the popup,
+which wins over the popup's "is opened" reset (replayed 2026-10-14).
 
 To confirm by replay (WTF-358): what "Go to page" appends when the data
 sent to a page with no type of content is a value

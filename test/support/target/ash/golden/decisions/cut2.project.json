@@ -1264,9 +1264,9 @@
           "columns": [
             "title"
           ],
-          "expression": "to_tsvector('simple'::regconfig, coalesce(\"title\", ''))",
+          "expression": "to_tsvector('english'::regconfig, coalesce(\"title\", ''))",
           "fields": [
-            "to_tsvector('simple'::regconfig, coalesce(\"title\", ''))"
+            "to_tsvector('english'::regconfig, coalesce(\"title\", ''))"
           ],
           "method": "full_text",
           "name": "card_title_fts_index",

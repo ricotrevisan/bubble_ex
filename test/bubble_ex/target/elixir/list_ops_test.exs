@@ -353,16 +353,46 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
       assert %IR{op: :field, args: [s, "task", "title_text"]} = Lists.lower(title.(field_list()))
       assert listed.(s)
 
-      # Through list operators keeping things: `:first item`, `:last
-      # item`, `:unique elements`, `:minus list`, `:merged with` and
-      # `defaulting to` read each list-of-things operand's records.
       two = IR.node(:literal, [2], "number")
 
+      # `:first item`, `:last item` and `:item #` of the field pick by
+      # position in the list as stored (replay 2026-10-14: a hidden thing
+      # is not skipped), then read only the thing picked: the first of a
+      # listed query over the pick, computed first.
       for {op, args} <- [
             {:first, [field_list()]},
             {:last, [field_list()]},
-            {:item_at, [field_list(), two]},
-            {:limit, [field_list(), two]},
+            {:item_at, [field_list(), two]}
+          ] do
+        pick = IR.node(op, args, "custom.task")
+
+        # A thing the read does not return (hidden) is put back in the
+        # pick's place, carrying only its stored ID (`:picked`).
+        assert %IR{op: :field, args: [%IR{op: :picked, args: [read, ^pick]} | _]} =
+                 Lists.lower(title.(pick))
+
+        assert %IR{op: :first, args: [s]} = read
+        assert listed.(s), inspect(op)
+
+        assert %IR{args: [_, %IR{op: :member, args: [%IR{op: :pinned, args: [pinned]}, _]}]} =
+                 s
+
+        assert pinned == IR.node(:as_list, [pick], "list.custom.task"), inspect(op)
+      end
+
+      # `:items until #` of the field: the things it picks, as stored.
+      limit = IR.node(:limit, [field_list(), two], "list.custom.task")
+
+      assert %IR{op: :field, args: [%IR{op: :picked, args: [s, ^limit]} | _]} =
+               Lists.lower(title.(limit))
+
+      assert listed.(s)
+      assert %IR{args: [_, %IR{op: :member, args: [%IR{op: :pinned, args: [^limit]}, _]}]} = s
+
+      # Through list operators keeping things: `:unique elements`, `:minus
+      # list`, `:merged with` and `defaulting to` read each list-of-things
+      # operand's records.
+      for {op, args} <- [
             {:unique, [field_list()]},
             {:minus_list, [field_list(), field_list()]},
             {:minus_item, [field_list(), item()]}
@@ -410,11 +440,12 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
   test "a field through a list, or its item, reads its records as a listed query", %{
     spec: spec
   } do
-    # `:first item` and `:item #2` are the listed query's own take: one
-    # row, an offset; never the whole list (WTF-520).
+    # `:first item` and `:item #2` pick by position in the stored list,
+    # in Elixir (replay 2026-10-14: a hidden thing is not skipped); the
+    # listed query reads the thing picked, one row (WTF-520).
     for {element, take, loads} <- [
           {"bFirstOfList", :first, []},
-          {"bSecondOfList", {:item, 2}, []},
+          {"bSecondOfList", :first, []},
           {"bFirstParent", :first, [["parent"]]},
           {"bParents", :all, [["parent"]]}
         ] do
@@ -427,7 +458,15 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
     end
 
     assert %{read: {:value, %{source: first}}} = data(spec, "bFirstParent")
-    assert first =~ "get_in(query_1, [Access.key(:parent), Access.key(:title)])"
+    assert first =~ "Runtime.picked(\n    query_1,"
+    assert first =~ "[Access.key(:parent), Access.key(:title)]"
+
+    # The pick runs over the IDs the list stores, before the read.
+    for {element, fun} <- [{"bFirstOfList", "List.first("}, {"bSecondOfList", "item_at("}] do
+      assert %{read: {:value, %{queries: [%{pins: pins}]}}} = data(spec, element)
+      assert [%{ref: :listed, value: %{source: pick}}] = pins
+      assert pick =~ fun, element
+    end
 
     # Each item's parent, one flat list; a thing that is no record (an ID)
     # has no fields.
@@ -440,7 +479,7 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
     assert %{residue: [], read: {:query, %{queries: [q], pins: pins}}} = data(spec, "bSiblings")
     assert q.listed == "q1_pin_1"
     assert %{ref: :one, value: %{source: one}} = Enum.find(pins, &(&1.var == "pin_2"))
-    assert one == "get_in(query_1, [Access.key(:parent)])" and q.take == :first
+    assert one =~ "Runtime.picked(" and one =~ "[Access.key(:parent)]" and q.take == :first
 
     assert %{residue: [], read: {:query, %{queries: [_], pins: pins}}} =
              data(spec, "bParentSearch")
@@ -554,13 +593,15 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
 
     setup do
       unless Code.ensure_loaded?(@runtime) do
-        "lib/app/bubble/runtime.ex"
-        |> Phoenix.Templates.render(%{
-          module: "ListOpsCheck",
-          app: :list_ops_check,
-          enforced?: false
-        })
-        |> Code.compile_string()
+        for template <- ["lib/app/bubble/keywords.ex", "lib/app/bubble/runtime.ex"] do
+          template
+          |> Phoenix.Templates.render(%{
+            module: "ListOpsCheck",
+            app: :list_ops_check,
+            enforced?: false
+          })
+          |> Code.compile_string()
+        end
       end
 
       # A variable, not a literal module: it is compiled at run time.
@@ -570,10 +611,12 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
     @a ~w(b a b c)
     @b ~w(c d a)
 
-    # WTF-520: a keyword search's words, as the searches bind them
+    # WTF-520: a keyword search's input, as the searches bind it
     # (BubbleEx.Target.Keywords), and the in-memory keyword match on the
-    # same reading, so a search and a condition agree.
-    test "keywords: the generator's words and patterns; the in-memory match", %{rt: rt} do
+    # same reading, so a search and a condition agree. Replay 2026-10-14
+    # (WTF-387): whole words, case and punctuation ignored, every word in
+    # any order, a hyphen splitting words, stems, stop words dropped.
+    test "keywords: the generator's words and query; the in-memory match", %{rt: rt} do
       long = Enum.map_join(1..2_000, " ", &"w#{&1}")
 
       for text <- [
@@ -586,18 +629,100 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
             String.duplicate("x", 300)
           ] do
         assert rt.keywords(text) == BubbleEx.Target.Keywords.words(text), inspect(text)
-        assert rt.keyword_patterns(text) == BubbleEx.Target.Keywords.patterns(text), inspect(text)
+        assert rt.keyword_query(text) == BubbleEx.Target.Keywords.query(text), inspect(text)
       end
 
-      assert rt.text_contains_words?("Bake", "ake")
+      # Whole words, not substrings.
+      refute rt.text_contains_words?("Bake", "ake")
+      refute rt.text_contains_words?("alphabet soup", "alpha")
+      refute rt.text_contains_words?("alpha beta", "alp")
+      # Case and punctuation ignored.
       assert rt.text_contains_words?("Bake the bread", "BREAD bake")
+      assert rt.text_contains_words?("alpha beta", "alpha!")
+      assert rt.text_contains_words?("Alpha, beta.", "(beta)")
+      # Every word, in any order.
       refute rt.text_contains_words?("Bake a cake", "bread bake")
+      assert rt.text_contains_words?("alpha beta", "beta alpha")
+      refute rt.text_contains_words?("alpha beta", "alpha gamma")
+      # A hyphen splits words; a hyphenated input needs the hyphenated word.
+      assert rt.text_contains_words?("beta-test", "test")
+      assert rt.text_contains_words?("BETA-gamma", "beta-gamma")
+      refute rt.text_contains_words?("beta gamma", "beta-gamma")
+      # Stemming.
+      assert rt.text_contains_words?("beta", "betas")
+      assert rt.text_contains_words?("Running late", "runs")
+      assert rt.text_contains_words?("the generalization", "generalized")
+      # A stop word alone, or spaces only, matches nothing.
+      refute rt.text_contains_words?("the beta", "the")
+      refute rt.text_contains_words?("Bake", "   ")
+      # A stop word next to another word is dropped.
+      assert rt.text_contains_words?("beta", "the beta")
+      # Numbers are words as they are.
       assert rt.text_contains_words?("100% rye", "100%")
       refute rt.text_contains_words?("1000 rye", "100%")
-      assert rt.text_contains_words?(~S"back\slash", "\\")
-      refute rt.text_contains_words?("Bake", "   ")
+      refute rt.text_contains_words?(~S"back\slash", "\\")
       refute rt.text_contains_words?("", "a")
       refute rt.text_contains_words?(nil, "a")
+    end
+
+    # The generated stemmer is Snowball's English (Porter2), as
+    # PostgreSQL's `english_stem` (compared on 63,748 dictionary words when
+    # it was written; these are a sample of PostgreSQL's own stems).
+    test "keywords: Porter2 stems as PostgreSQL's english_stem" do
+      keywords = Module.concat(["ListOpsCheck", Bubble, Keywords])
+
+      for {word, stem} <- [
+            {"betas", "beta"},
+            {"running", "run"},
+            {"generalization", "general"},
+            {"generously", "generous"},
+            {"communities", "communiti"},
+            {"skies", "sky"},
+            {"dying", "die"},
+            {"succeeded", "succeed"},
+            {"hopping", "hop"},
+            {"hoping", "hope"},
+            {"cries", "cri"},
+            {"ties", "tie"},
+            {"happily", "happili"},
+            {"relational", "relat"},
+            {"conditional", "condit"},
+            {"electricity", "electr"},
+            {"caresses", "caress"},
+            {"yearly", "year"},
+            {"enjoying", "enjoy"},
+            {"crying", "cri"},
+            {"sensational", "sensat"},
+            {"gas", "gas"},
+            {"kiwis", "kiwi"},
+            {"beta-gamma", "beta-gamma"},
+            {"news", "news"},
+            {"ugly", "ugli"}
+          ] do
+        assert keywords.stem(word) == stem, word
+      end
+
+      assert keywords.lexemes("The BETA-test, alphabet soup!") ==
+               ["beta-test", "beta", "test", "alphabet", "soup"]
+
+      # PostgreSQL reads `-19` as a signed number; here a hyphenated word
+      # with digits is only its parts.
+      assert keywords.lexemes("covid-19 in 2024") == ["covid", "19", "2024"]
+      assert keywords.lexemes(nil) == []
+    end
+
+    # Replay 2026-10-14: a hidden thing picked by position is not skipped;
+    # it is a thing carrying only its stored ID.
+    test ":picked puts back a thing the read did not return, by its ID", %{rt: rt} do
+      a = %{id: "1x1", title: "A"}
+      assert rt.picked(a, "1x1") == a
+      assert rt.picked(nil, "1x2") == %{id: "1x2"}
+      assert rt.picked(a, "1x2") == %{id: "1x2"}
+      assert rt.picked(nil, nil) == nil
+      assert rt.picked([a], ["1x2", "1x1", "1x2"]) == [%{id: "1x2"}, a, %{id: "1x2"}]
+      assert rt.picked([], []) == []
+      assert rt.id(rt.picked(nil, "1x2")) == "1x2"
+      refute rt.empty?(rt.picked(nil, "1x2"))
     end
 
     test "duplicates, merges and intersections", %{rt: rt} do

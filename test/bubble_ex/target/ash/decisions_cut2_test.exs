@@ -460,7 +460,7 @@ defmodule BubbleEx.Target.Ash.DecisionsCut2Test do
                %Index{method: :trigram, columns: ["title"], fields: [~s("title" gin_trgm_ops)]}
              ] = card.indexes
 
-      assert fts.expression == ~s[to_tsvector('simple'::regconfig, coalesce("title", ''))]
+      assert fts.expression == ~s[to_tsvector('english'::regconfig, coalesce("title", ''))]
       assert project.extensions == ["pg_trgm"]
 
       assert Enum.all?(project.resources, fn r ->

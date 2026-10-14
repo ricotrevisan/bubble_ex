@@ -255,7 +255,11 @@ No email reaches a real person.
   grant it a record with no creator (0 of 12 agreed with the empty
   reading).
 - **An empty yes/no reads as no**: `x is no` holds on a record whose x
-  is empty (0 of 5 agreed otherwise, after 0 of 2 on 2026-09-29).
+  is empty (0 of 5 agreed otherwise, after 0 of 2 on 2026-09-29). A
+  targeted replay on 2026-10-14 (WTF-387) found the same outside privacy
+  rules: page searches, `:filtered`, expressions, a page workflow's
+  `Only when` and the current user's fields (`docs/page-data.md`, "Empty
+  yes/no values").
 - With these four flipped, the interpreter agrees with 1,354 of the
   run's 1,392 ops (97.3%); the generated policies keep the stricter
   reading of each, as intended differences (`BubbleEx.Verify.Difference`).

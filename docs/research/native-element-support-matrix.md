@@ -96,10 +96,12 @@ See the [overlay audit](overlay-runtime-audit.md) for the reproduction and resul
   bases, authenticated assets, and the unsupported native kinds remain gaps.
   Overlay opening is evidenced only by revealing the exported markup the way a
   runtime would (removing `hidden`); workflows are not executed.
-- Unverified (WTF-516): a Floating Group pinned to "both" horizontal edges, or
-  with no horizontal reference, at a fixed or fit width is assumed to sit at the
-  left edge at that width. One Bubble capture of such a group is needed to
-  confirm it; only a right-pinned fit-width group (`bpgwgmpz`) is captured.
+- Verified (WTF-516, replay 2026-10-14, WTF-387/WTF-517): a Floating Group
+  pinned to "both" horizontal edges, or with no horizontal reference, at a
+  fixed or fit width sits at the left edge (left 0) at that width, at 1440 and
+  390 px viewports: a fixed width is kept (300), a fit width fits its content;
+  a centered one is centered. Only a right-pinned fit-width group (`bpgwgmpz`)
+  is a frozen fidelity case; the replay recorded positions, not pixels.
 - Existing controlled cases do not establish exhaustive theme/style precedence,
   accessibility, browser, or responsive coverage for arbitrary apps.
 - Shared reusable icon IDs need instance-scoped source geometry correlation.

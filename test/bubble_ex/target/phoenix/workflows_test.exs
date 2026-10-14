@@ -42,7 +42,7 @@ defmodule BubbleEx.Target.Phoenix.WorkflowsTest do
 
     for path <-
           ~w(lib/acme/workflows/folder_f_tasks/bodies.ex lib/acme/bubble/runtime.ex
-                   test/acme/bubble_workflows_test.exs test/acme_web/bubble_workflow_api_test.exs),
+                   lib/acme/bubble/keywords.ex test/acme/bubble_workflows_test.exs test/acme_web/bubble_workflow_api_test.exs),
         do: assert(path in owned, path)
 
     assert manifest["inputs"]["workflows_sha256"] ==

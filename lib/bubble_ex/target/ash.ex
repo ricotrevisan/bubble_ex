@@ -351,7 +351,7 @@ defmodule BubbleEx.Target.Ash do
   |--------|-------|
   | `equality`, `range`, `sort` (one or more columns, in order) | btree over the columns |
   | `substring` (text contains string) | GIN trigram, `"<col>" gin_trgm_ops`: needs the `pg_trgm` extension, listed in `project.extensions` (the repo's `installed_extensions/0` must include it) |
-  | `full_text` (text contains, Bubble's keyword search) | GIN over `to_tsvector('simple'::regconfig, coalesce("<col>", ''))` (`Index.expression`: a search uses it only through that exact expression) |
+  | `full_text` (text contains, Bubble's keyword search) | GIN over `to_tsvector('english'::regconfig, coalesce("<col>", ''))` (`Index.expression`: a search uses it only through that exact expression) |
   | `membership` (a list contains) | GIN over the array column |
   | `geo` | none: geographic addresses are JSON and the project has no PostGIS; deferred |
 

@@ -116,7 +116,8 @@ defmodule BubbleEx.MixProject do
         "README.md",
         "CHANGELOG.md",
         "CONTRIBUTING.md",
-        "SECURITY.md"
+        "SECURITY.md",
+        "THIRD_PARTY_NOTICES.md"
       ],
       licenses: ["MIT"],
       maintainers: ["Rico Trevisan"],

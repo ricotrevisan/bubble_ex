@@ -64,6 +64,9 @@ try {
 
   const take = () => page.evaluate(() => window.__pushed.splice(0));
   const report = (scope, element, event) => ["bubble:popup", { scope, element, event }];
+  // A show of an open popup (a hide of a closed one): the server forgets
+  // what a step of its own expected (replay 2026-10-14).
+  const skipped = (scope, element, event) => ["bubble:popup", { scope, element, event, skipped: true }];
 
   // The viewport's width (WTF-520): reported once mounted.
   const width = (w) => ["bubble:page_width", { width: w }];
@@ -72,12 +75,12 @@ try {
   await step("P", "bubble:show");
   assert.deepEqual(await take(), [report("", "P", "opened")], "a step opens it");
   await step("P", "bubble:show");
-  assert.deepEqual(await take(), [], "showing an open popup reports nothing");
+  assert.deepEqual(await take(), [skipped("", "P", "opened")], "showing an open popup runs nothing");
 
   await page.keyboard.press("Escape");
   assert.deepEqual(await take(), [report("", "P", "closed")], "Escape closes it");
   await step("P", "bubble:hide");
-  assert.deepEqual(await take(), [], "hiding a closed popup reports nothing");
+  assert.deepEqual(await take(), [skipped("", "P", "closed")], "hiding a closed popup runs nothing");
 
   await step("P", "bubble:toggle");
   await step("P", "bubble:toggle");
