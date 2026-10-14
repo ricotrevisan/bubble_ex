@@ -1825,6 +1825,13 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     # Opened by the user's report alone (no run kept anything for it):
     # the reset forgets the display, and the own source shows again.
     assert shown(popup(view, "bPopKeep", "opened"), "Keep popup") == ["Answer"]
+
+    # The click again, but the popup is already open: the hook reports
+    # the show as skipped, and the page forgets what it expected. A later
+    # opening by the user resets the display.
+    assert shown(click(view, "bOpenPopKeep"), "Keep popup") == ["Eat"]
+    assert shown(popup(view, "bPopKeep", "opened", %{"skipped" => true}), "Keep popup") == ["Eat"]
+    assert shown(popup(view, "bPopKeep", "opened"), "Keep popup") == ["Answer"]
   end
 
   test "only the popup events the page lists run, in a scope it renders", %{conn: conn} do

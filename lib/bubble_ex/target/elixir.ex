@@ -149,7 +149,7 @@ defmodule BubbleEx.Target.Elixir do
   @arithmetic ~w(add sub mul div mod)a
   @list_ops ~w(as_list unique merge minus_list intersect plus_item minus_item limit item_at)a
   # List operators whose result's things are their operands' (WTF-520).
-  @through_lists ~w(first last item_at unique limit merge intersect minus_list minus_item plus_item)a
+  @through_lists ~w(first last item_at unique limit merge intersect minus_list minus_item plus_item picked)a
   @conditions ~w(eq neq gt lt gte lte and or not is_empty logged_in member text_contains
                  text_contains_words)a
   @boolean_values [:field, :input, :fallback, :option_attribute, :option_label, :external_field]
@@ -379,6 +379,15 @@ defmodule BubbleEx.Target.Elixir do
   defp value(%IR{op: :keyword_query, args: [text]}, st) do
     {t, st} = value(text, st)
     runtime(st, :keyword_query, [t])
+  end
+
+  # Things picked by position from a list of stored IDs, read as the user
+  # may view them (`FrontendWorkflows.Lists`, replay 2026-10-14): one the
+  # read did not return is a thing carrying only its stored ID
+  # (`picked/2`).
+  defp value(%IR{op: :picked, args: [read, pick]}, st) do
+    {[r, p], st} = Enum.map_reduce([read, pick], st, &value/2)
+    runtime(st, :picked, [r, p])
   end
 
   defp value(%IR{op: :count, args: [list]}, st) do
@@ -1180,6 +1189,10 @@ defmodule BubbleEx.Target.Elixir do
   defp origins(%IR{op: op, args: [list | _]}, rels, st)
        when op in [:first, :last, :item_at, :unique, :limit, :minus_list, :minus_item, :intersect],
        do: origins(list, rels, st)
+
+  # The records the read returned; a thing carrying only its ID has no
+  # relationship to load.
+  defp origins(%IR{op: :picked, args: [read, _pick]}, rels, st), do: origins(read, rels, st)
 
   defp origins(%IR{op: op, args: [a, b]}, rels, st) when op in [:merge, :plus_item, :fallback] do
     with {:ok, x} <- origins(a, rels, st),

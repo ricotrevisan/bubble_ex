@@ -366,9 +366,12 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
           ] do
         pick = IR.node(op, args, "custom.task")
 
-        assert %IR{op: :field, args: [%IR{op: :first, args: [s]} | _]} =
+        # A thing the read does not return (hidden) is put back in the
+        # pick's place, carrying only its stored ID (`:picked`).
+        assert %IR{op: :field, args: [%IR{op: :picked, args: [read, ^pick]} | _]} =
                  Lists.lower(title.(pick))
 
+        assert %IR{op: :first, args: [s]} = read
         assert listed.(s), inspect(op)
 
         assert %IR{args: [_, %IR{op: :member, args: [%IR{op: :pinned, args: [pinned]}, _]}]} =
@@ -379,7 +382,10 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
 
       # `:items until #` of the field: the things it picks, as stored.
       limit = IR.node(:limit, [field_list(), two], "list.custom.task")
-      assert %IR{op: :field, args: [s | _]} = Lists.lower(title.(limit))
+
+      assert %IR{op: :field, args: [%IR{op: :picked, args: [s, ^limit]} | _]} =
+               Lists.lower(title.(limit))
+
       assert listed.(s)
       assert %IR{args: [_, %IR{op: :member, args: [%IR{op: :pinned, args: [^limit]}, _]}]} = s
 
@@ -452,7 +458,8 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
     end
 
     assert %{read: {:value, %{source: first}}} = data(spec, "bFirstParent")
-    assert first =~ "get_in(query_1, [Access.key(:parent), Access.key(:title)])"
+    assert first =~ "Runtime.picked(\n    query_1,"
+    assert first =~ "[Access.key(:parent), Access.key(:title)]"
 
     # The pick runs over the IDs the list stores, before the read.
     for {element, fun} <- [{"bFirstOfList", "List.first("}, {"bSecondOfList", "item_at("}] do
@@ -472,7 +479,7 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
     assert %{residue: [], read: {:query, %{queries: [q], pins: pins}}} = data(spec, "bSiblings")
     assert q.listed == "q1_pin_1"
     assert %{ref: :one, value: %{source: one}} = Enum.find(pins, &(&1.var == "pin_2"))
-    assert one == "get_in(query_1, [Access.key(:parent)])" and q.take == :first
+    assert one =~ "Runtime.picked(" and one =~ "[Access.key(:parent)]" and q.take == :first
 
     assert %{residue: [], read: {:query, %{queries: [_], pins: pins}}} =
              data(spec, "bParentSearch")
@@ -702,6 +709,20 @@ defmodule BubbleEx.Target.Elixir.ListOpsTest do
       # with digits is only its parts.
       assert keywords.lexemes("covid-19 in 2024") == ["covid", "19", "2024"]
       assert keywords.lexemes(nil) == []
+    end
+
+    # Replay 2026-10-14: a hidden thing picked by position is not skipped;
+    # it is a thing carrying only its stored ID.
+    test ":picked puts back a thing the read did not return, by its ID", %{rt: rt} do
+      a = %{id: "1x1", title: "A"}
+      assert rt.picked(a, "1x1") == a
+      assert rt.picked(nil, "1x2") == %{id: "1x2"}
+      assert rt.picked(a, "1x2") == %{id: "1x2"}
+      assert rt.picked(nil, nil) == nil
+      assert rt.picked([a], ["1x2", "1x1", "1x2"]) == [%{id: "1x2"}, a, %{id: "1x2"}]
+      assert rt.picked([], []) == []
+      assert rt.id(rt.picked(nil, "1x2")) == "1x2"
+      refute rt.empty?(rt.picked(nil, "1x2"))
     end
 
     test "duplicates, merges and intersections", %{rt: rt} do

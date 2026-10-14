@@ -229,7 +229,7 @@ database sorts and filters lists of things wherever it can:
 | options, texts, numbers or dates `:filtered` | Elixir (`Enum.filter/2`, the constraints per item) |
 | texts, numbers or dates `:sorted` | Elixir (`Runtime.sort_values/2`): empty values first ascending, last descending; a stable sort |
 | `All <option set>` (an option value of `all values`) | every option of the set |
-| a field read through a list-of-things field (`list's a`, `list's a's b`) or through one of its items (`list:first item's a`, `:last item`, `:item #`, also over `:unique elements`, `:items until #`, `:minus`, `:merged with`, `defaulting to`; WTF-520) | a query for the list's records (`id in ^ids`, read as the user may view them, in the list's order: `BubbleData.listed/2`), then the field in Elixir: each item's, one flat list (empty values dropped), its relationships loaded on the query as the user. `:first item`, `:last item`, `:item #n` and `:items until #n` directly over the field pick by position in the list as stored, hidden things included, in Elixir over the stored IDs, and the query reads only the things picked: a thing the user may not view is the item, its fields empty (replay 2026-10-14, WTF-387) |
+| a field read through a list-of-things field (`list's a`, `list's a's b`) or through one of its items (`list:first item's a`, `:last item`, `:item #`, also over `:unique elements`, `:items until #`, `:minus`, `:merged with`, `defaulting to`; WTF-520) | a query for the list's records (`id in ^ids`, read as the user may view them, in the list's order: `BubbleData.listed/2`), then the field in Elixir: each item's, one flat list (empty values dropped), its relationships loaded on the query as the user. `:first item`, `:last item`, `:item #n` and `:items until #n` directly over the field pick by position in the list as stored, hidden things included, in Elixir over the stored IDs, and the query reads only the things picked: a thing the user may not view is the item, carrying only its stored ID, every other field empty (`picked/2`; replay 2026-10-14, WTF-387) |
 
 Every query reads as the current user, bounded by `:max_items`, like any
 other search: a merged list reads at most `:max_items` of each search,
@@ -1880,7 +1880,9 @@ Unchanged, and noted:
 * **`x is yes` shown as a value** (a dynamic text's part, a value shown
   on a page) on an empty x is empty, not "no" (replay 2026-10-14):
   `BubbleEx.Target.Elixir` shows it so; `x is no` there shows yes, and as
-  a condition `x is yes` does not hold.
+  a condition `x is yes` does not hold. A dynamic text a condition reads
+  is the same text: a condition comparing `"flag: " <> (x is yes)` sees
+  `"flag: "` on an empty x (it saw `"flag: no"` before).
 * **A list of yes/no values** (`contains`, `:filtered` with `This item`)
   compares its items as stored: an empty item is not no.
 
@@ -1931,7 +1933,10 @@ generated `Bubble.Keywords` (`lib/<app>/bubble/keywords.ex`) splits words of let
 hyphenated word of letters gives itself and its parts), lowercases them,
 drops PostgreSQL's English stop words and stems words of letters with
 Snowball's English (Porter2) stemmer, PostgreSQL's `english_stem`
-(compared on 63,748 dictionary words, no difference). It approximates
+(compared on 63,748 dictionary words, no difference; CI keeps it so:
+`test/bubble_ex/target/keywords_postgres_test.exs`, tagged
+`ddl_postgres`, compares a word sample with `ts_lexize('english_stem',
+...)` and plain sentences with `to_tsvector('english', ...)`). It approximates
 PostgreSQL's parser for e-mail addresses, URLs, hosts, file paths and
 decimal or signed numbers, which PostgreSQL reads as one word each.
 Before (WTF-520, #216), every word was a case-insensitive substring
@@ -2048,8 +2053,12 @@ redirects (no synthetic redirecting call).
   (and dangling IDs) included. `:first item`, `:item #` and `:last item`
   do not skip a hidden thing: it is the item, its fields empty; here
   they pick by position in the stored list and read only the thing
-  picked, as the user may view it (above), so its fields are empty and
-  no ID the list does not hold is read. `:filtered` on a field drops the
+  picked, as the user may view it (above). One the read does not return
+  is a thing carrying only its stored ID (the runtime's `picked/2`): its
+  unique ID shows, every other field is empty, it is not empty, and no
+  ID the list does not hold is read. `:items until #n` keeps such
+  things in their places the same way. A deleted thing the list still
+  holds reads the same (here indistinguishable from a hidden one). `:filtered` on a field drops the
   things the user may not view (0 logged out, 1 logged in): here a
   filtered list of things is a listed query, read as the user may view
   its records. **Known difference, stricter:** Bubble's page search by

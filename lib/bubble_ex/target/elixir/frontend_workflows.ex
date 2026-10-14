@@ -1541,9 +1541,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # too. Which runs last is not replayed (here the popup's, after the
   # page re-rendered): what the element shows then is not known, so it is
   # not kept, loudly. Replayed (2026-10-14): a workflow that shows the
-  # popup and then displays data in it wins over a reset in the popup's
-  # "is opened" workflow; the page keeps that display through the reset
-  # (`BubbleWorkflows.reset/5`, `kept`), so it is no race.
+  # popup and then displays data in it (the popup or an element inside
+  # it) wins over a reset in the popup's "is opened" workflow; the page
+  # keeps that display through the reset (`BubbleWorkflows.reset/5`,
+  # `kept`), so it is no race. (The page keeps any display made after the
+  # opening step so; an element outside the popup that such a reset
+  # reaches stays unloaded here, so nothing reads what it keeps.)
   defp popup_races(workflows, callers, ctx) do
     active = Enum.reject(workflows, & &1.disabled?)
     by_id = Map.new(active, &{&1.bubble_id, &1})
@@ -1557,17 +1560,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         shown <- displays(opener),
         shown in own or
           (Enum.any?(resets, &within?(shown, &1, ctx)) and
-             not shown_after_opening?(kind, opener, popup, shown)),
+             not shown_after_opening?(kind, opener, popup, shown, ctx)),
         into: MapSet.new(),
         do: shown
   end
 
-  # Whether `opener` itself shows (or toggles) `popup` and every step of
-  # it displaying data in `shown` comes after that step: what the popup's
-  # "is opened" workflow resets then shows the displayed value (replay
-  # 2026-10-14). Through a custom event that opens the popup, or before
-  # the popup opens, the order is not replayed.
-  defp shown_after_opening?(:popup_opened, opener, popup, shown) do
+  # Whether `shown` is the popup or inside it, `opener` itself shows (or
+  # toggles) `popup` and every step of it displaying data in `shown` comes
+  # after that step: what the popup's "is opened" workflow resets then
+  # shows the displayed value (replay 2026-10-14). An element outside the
+  # popup, a display through a custom event that opens the popup, or one
+  # before the popup opens, is not replayed: still a race.
+  defp shown_after_opening?(:popup_opened, opener, popup, shown, ctx) do
     steps = Enum.with_index(opener.steps)
 
     opened =
@@ -1578,10 +1582,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     displayed =
       for {%Step{op: op, args: %{element: ^shown}}, i} <- steps, op in @display_ops, do: i
 
-    opened != nil and displayed != [] and Enum.all?(displayed, &(&1 > opened))
+    within?(shown, popup, ctx) and opened != nil and displayed != [] and
+      Enum.all?(displayed, &(&1 > opened))
   end
 
-  defp shown_after_opening?(_kind, _opener, _popup, _shown), do: false
+  defp shown_after_opening?(_kind, _opener, _popup, _shown, _ctx), do: false
 
   defp displays(w),
     do:

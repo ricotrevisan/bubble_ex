@@ -154,6 +154,15 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @callback limit(value(), value()) :: list()
   @doc "`:item #n`: the `n`th item (from 1), else empty."
   @callback item_at(value(), value()) :: value()
+  @doc """
+  Things picked by position from a list of stored IDs (`pick`, one ID or a
+  list) and `read`, the records of those the user may view: each picked
+  thing as its record, or, when the read did not return it, as a thing
+  carrying only its stored ID (`%{id: id}`: its unique ID reads, every
+  other field is empty). Bubble does not skip a thing the user may not
+  view there (replay 2026-10-14).
+  """
+  @callback picked(value(), value()) :: value()
 
   @stubs ~w(format_boolean text_contains_words? capitalize_words json_encode url_encode is_email)a
 

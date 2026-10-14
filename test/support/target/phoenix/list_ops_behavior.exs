@@ -259,25 +259,31 @@ defmodule PhxCheckWeb.ListOpsBehaviorTest do
     assert html =~ "D: Bake"
   end
 
-  # The list's first thing is secret. Bubble does not skip it (replay
-  # 2026-10-14, WTF-387): `:first item` is that thing, its fields empty
-  # with enforced policies, and `:item #2` the list's second thing, hidden
-  # or not (positions in the list as stored, before privacy).
-  test "a hidden first item: the item with its fields empty, not the next", %{conn: conn} do
+  # The list's first and last things are secret (Eat). Bubble does not
+  # skip them (replay 2026-10-14, WTF-387): `:first item` is that thing,
+  # carrying its unique ID with every other field empty under enforced
+  # policies, and it is not empty; `:item #` and `:last item` pick by
+  # position in the list as stored, and `:items until #2` keeps the
+  # hidden thing in its place (its title is empty, so dropped).
+  test "a hidden item picked by position: its ID, every other field empty", %{conn: conn} do
     Ash.Seed.update!(Ash.get!(PhxCheck.Project, @p1, authorize?: false), %{
-      tasks: [@t5, @t3, @t1]
+      tasks: [@t5, @t3, @t1, @t5]
     })
 
     {:ok, _view, html} = live(conn, "/")
     assert html =~ "D: Clean"
+    assert html =~ "Idv: #{@t5}"
+    assert html =~ "Emv: no"
 
     if enforced?() do
-      assert html =~ "A: "
-      refute html =~ ~r/A: \w/
-      refute html =~ ~r/B: \w/
+      for label <- ~w(A B Lv Ivv), do: refute(html =~ ~r/[^\w]#{label}: \w/, label)
+      assert shown(html, "Tilv") == ["Clean"]
     else
       assert html =~ "A: Eat"
       assert html =~ "B: Bake"
+      assert html =~ "Lv: Eat"
+      assert html =~ "Ivv: Eat"
+      assert shown(html, "Tilv") == ["Eat", "Clean"]
     end
   end
 

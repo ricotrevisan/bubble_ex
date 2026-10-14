@@ -606,6 +606,28 @@ defmodule <%= @module %>.Bubble.Runtime do
   end
 
   @doc """
+  Things picked by position from a list of stored IDs (`pick`: one ID, or
+  a list of them for `:items until #`), with `read`, the records of those
+  the user may view (one, or a list). Each picked thing is its record, or,
+  when the read did not return it (a thing the user may not view, or one
+  that no longer exists), a thing carrying only its stored ID: its unique
+  ID reads and every other field is empty, as Bubble shows a hidden item
+  (replay 2026-10-14). The ID is only what the list already stores.
+  """
+  def picked(read, pick) when is_list(pick) do
+    by_id = Map.new(list(read), &{id(&1), &1})
+    for p <- pick, (i = id(p)) != nil, do: Map.get(by_id, i, %{id: i})
+  end
+
+  def picked(read, pick) do
+    case {read, id(pick)} do
+      {_, nil} -> nil
+      {%{id: _} = record, i} -> if id(record) == i, do: record, else: %{id: i}
+      {_, i} -> %{id: i}
+    end
+  end
+
+  @doc """
   `:sorted` on texts, numbers or dates: by value, empty values first
   ascending and last descending (replay 2026-10-07); equal values keep
   their order.

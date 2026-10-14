@@ -31,7 +31,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
       thing once. `:first item`, `:last item`, `:item #n` and `:items
       until #n` directly over such a field pick by position in the list
       as stored, hidden things included (replay 2026-10-14), and read
-      only the things picked: a hidden one's fields are empty.
+      only the things picked: a hidden one is a thing carrying only its
+      stored ID (`:picked`), every other field empty.
 
   The list a rewritten search reads is wrapped in `:pinned`: the binding
   computes it first, in Elixir, and passes its things' IDs into the
@@ -118,9 +119,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
   # and only the things picked are read (replay 2026-10-14, WTF-387: Bubble
   # does not skip a thing the user may not view; it is the item, its
   # fields empty). The pick runs in Elixir over the stored IDs (`:pinned`),
-  # then the listed query reads those things as the user may view them: a
-  # hidden one reads as nothing, so its fields are empty, and no ID the
-  # list does not already hold is read.
+  # then the listed query reads those things as the user may view them;
+  # `:picked` (the runtime's `picked/2`) puts back, in the pick's place,
+  # a thing the read did not return as one carrying only its stored ID:
+  # its unique ID reads, every other field is empty, and no ID the list
+  # does not already hold is read.
   defp read_through(%IR{op: op, args: [%IR{op: :field} = list | _]} = ir)
        when op in @positional do
     cond do
@@ -128,11 +131,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
         ir
 
       op == :limit ->
-        records(ir) |> Map.put(:path, ir.path)
+        IR.node(:picked, [records(ir), ir], ir.type) |> Map.put(:path, ir.path)
 
       true ->
         picked = IR.node(:as_list, [ir], list.type)
-        IR.node(:first, [records(picked)], ir.type) |> Map.put(:path, ir.path)
+        read = IR.node(:first, [records(picked)], ir.type)
+        IR.node(:picked, [read, ir], ir.type) |> Map.put(:path, ir.path)
     end
   end
 

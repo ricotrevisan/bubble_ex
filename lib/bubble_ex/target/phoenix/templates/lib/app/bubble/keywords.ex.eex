@@ -6,6 +6,21 @@ defmodule <%= @module %>.Bubble.Keywords do
   condition and a search agree (replay 2026-10-14, WTF-387). Scaffolded
   by bubble_ex; this file is yours.
 
+  The stemmer implements the Snowball English (Porter2) algorithm
+  (<https://snowballstem.org/algorithms/english/stemmer.html>), and the
+  stop words are the list PostgreSQL ships from the Snowball project.
+  Snowball is Copyright (c) 2001, Dr Martin Porter; Copyright (c)
+  2004,2005, Richard Boulton; Copyright (c) 2013, Yoshiki Shibukawa;
+  Copyright (c) 2006,2007,2009,2010,2011,2014-2019, Olly Betts. All rights
+  reserved. It is distributed under the BSD 3-clause license
+  (<https://snowballstem.org/license.html>): redistributions must retain
+  this notice, the license's conditions and its disclaimer; the names of
+  the Snowball project and its contributors may not be used to endorse or
+  promote products derived from it without prior written permission. THE
+  SOFTWARE IS PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES;
+  see the license for the full text (bubble_ex's THIRD_PARTY_NOTICES.md
+  reproduces it).
+
   `lexemes/1` splits a text into words (letters and digits; a hyphenated
   word of letters gives itself and its parts, as PostgreSQL's parser
   does),

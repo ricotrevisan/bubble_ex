@@ -543,12 +543,19 @@ defmodule <%= @web %>.BubbleWorkflows do
       {budget, expected} = Map.pop(expected, {scope, element, key})
       socket = assign(socket, :bubble_popups_expected, expected)
 
-      if budget != nil and budget.chain >= max_chain() do
-        Logger.debug("bubble: a popup event at :max_chain (#{max_chain()}) was ignored")
-        {:noreply, socket}
-      else
-        socket = assign(socket, :bubble_refused, false)
-        {:noreply, socket |> event(page, [{module, scope, ids, %{}}], budget) |> notice()}
+      cond do
+        # A show of an open Popup (a hide of a closed one): nothing runs,
+        # and the report a step expected (with what it kept) is forgotten.
+        Map.get(params, "skipped") == true ->
+          {:noreply, socket}
+
+        budget != nil and budget.chain >= max_chain() ->
+          Logger.debug("bubble: a popup event at :max_chain (#{max_chain()}) was ignored")
+          {:noreply, socket}
+
+        true ->
+          socket = assign(socket, :bubble_refused, false)
+          {:noreply, socket |> event(page, [{module, scope, ids, %{}}], budget) |> notice()}
       end
     else
       _ -> {:noreply, socket}

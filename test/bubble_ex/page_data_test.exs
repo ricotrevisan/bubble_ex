@@ -516,7 +516,7 @@ defmodule BubbleEx.PageDataTest do
       refute page =~ ~r/data-bubble-id="bPop"[^>]*data-bubble-events/
 
       assert hook =~
-               ~s|this.pushEvent("bubble:popup", { scope, element, event })|
+               ~s|this.pushEvent("bubble:popup", skipped ? { scope, element, event, skipped } : { scope, element, event })|
 
       assert runtime =~ ~r/def handle_event\(\s*socket,\s*page,\s*"bubble:popup"/
       assert runtime =~ "expect_popups(socket, popups, budget, kept)"
@@ -1219,19 +1219,30 @@ defmodule BubbleEx.PageDataTest do
       refute kept?([opener, opened("wO", [reset.("aO", "bDetail")])], popup_app())
       refute kept?([opener, opened("wO", [show_detail("aO")])], popup_app())
 
-      # Replayed (2026-10-14): "Show popup; Display data" wins over a
-      # reset in the popup's "is opened" (of the element, or the popup
-      # around it): kept, the page keeps the display through the reset.
-      # Shown by the popup's "is opened" too: still not replayed.
+      # Replayed (2026-10-14): "Show popup; Display data" into the popup
+      # (bDetail inside it) wins over a reset in the popup's "is opened"
+      # (of the element, or the popup around it): kept, the page keeps the
+      # display through the reset. Shown by the popup's "is opened" too,
+      # or an element outside the popup: still not replayed.
       show_then_display = clicked("wC", [toggle("aCs", "ShowElement"), show_detail("aC")])
-      assert kept?([show_then_display, opened("wO", [reset.("aO", "bDetail")])], popup_app())
-      refute kept?([show_then_display, opened("wO", [show_detail("aO")])], popup_app())
+      inside = ["pages", "shown", "elements", "bPop2", "elements"]
 
-      assert kept?(
-               [show_then_display, opened("wO", [reset.("aO", "bPop2")])],
+      for reset_element <- ["bDetail", "bPop2"] do
+        assert kept?(
+                 [show_then_display, opened("wO", [reset.("aO", reset_element)])],
+                 popup_app(%{"elements" => %{}}),
+                 inside
+               ),
+               reset_element
+      end
+
+      refute kept?(
+               [show_then_display, opened("wO", [show_detail("aO")])],
                popup_app(%{"elements" => %{}}),
-               ["pages", "shown", "elements", "bPop2", "elements"]
+               inside
              )
+
+      refute kept?([show_then_display, opened("wO", [reset.("aO", "bDetail")])], popup_app())
 
       # bDetail inside the popup, which its "is opened" resets.
       refute kept?(
