@@ -179,14 +179,17 @@ element (not a mobile view):
 | an input's (Input, Multiline Input) initial content that is an expression, outside a repeating group's cell (WTF-520) | `:input` | its value, its conditional states that set the content applied, computed where the input is: the input's first value |
 
 A source reading **"Get data from an external API"** (an API Connector
-call used as data, WTF-533) makes the call first, with the generated
-client, in the page's LiveView (`read: {:value, %{calls: [...]}}`,
-printed as `api_data_<n> = BubbleData.api(ctx, ...)`): once per read of
-the page's data for the same values, read again when an input its
-parameters read changes, empty (logged, marked in dev) when it fails or
-its secrets are not set. In a cell, only a call whose values are the
-same in every cell is made (once); see `docs/api-connector-calls.md`,
-"Calls used as data".
+call used as data, WTF-533) reads the call first
+(`read: {:value, %{calls: [...]}}`, printed as `api_data_<n> =
+BubbleData.api(ctx, ...)`), without waiting for the API: it shows a
+cached response (30 s, shared by every page) or what it last showed,
+and the call runs in a task; when it ends, the sources reading it are
+read again (their `inputs` name it). Within a page's budget (10 calls
+per 10 s), empty (logged, marked in dev) when it fails or its secrets
+are not set. In a cell, only a call whose values are the same in every
+cell is made (once). **Its response bypasses the policies**: it is
+fetched with the owner's credentials for any visitor. See
+`docs/api-connector-calls.md`, "Calls used as data".
 
 A **search** (with its constraints, its sort, optionally under `first
 item`, `item #n`, `items until #n` or `count`) is an Ash query: its filter
