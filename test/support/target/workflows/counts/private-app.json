@@ -2,7 +2,7 @@
   "generated": {
     "by_kind": {
       "api": {
-        "native": 76,
+        "native": 80,
         "total": 474
       },
       "custom_event": {
@@ -10,7 +10,7 @@
         "total": 121
       },
       "database_trigger": {
-        "native": 23,
+        "native": 24,
         "total": 75
       }
     },
@@ -22,55 +22,55 @@
       "authenticated": 16,
       "none": 1
     },
-    "native_own_body": 168,
+    "native_own_body": 174,
     "privacy_bypasses": 186,
     "residue_reasons": {
       "api_connector_action": 35,
       "auth_action": 3,
       "plugin_action": 14,
-      "uncompiled_expression": 1270,
+      "uncompiled_expression": 1191,
       "unresolved_reference": 16,
       "unsupported_action": 34,
-      "unsupported_option": 34
+      "unsupported_option": 32
     },
     "step_ops": {
-      "api_call": 25,
-      "call": 197,
-      "create": 78,
+      "api_call": 29,
+      "call": 217,
+      "create": 84,
       "delete": 34,
       "delete_list": 9,
       "return": 148,
-      "schedule": 161,
+      "schedule": 163,
       "schedule_list": 1,
-      "terminate": 222,
-      "update": 352,
+      "terminate": 228,
+      "update": 394,
       "update_current_user": 1,
       "update_list": 7
     },
     "steps": {
-      "native": 1235,
-      "residue": 1224,
+      "native": 1315,
+      "residue": 1144,
       "total": 2459
     },
     "triggers": 20,
     "workflows": {
-      "native": 127,
-      "residue": 543,
+      "native": 132,
+      "residue": 538,
       "total": 670
     }
   },
   "lowering": {
     "by_kind": {
       "api": {
-        "native": 222,
+        "native": 234,
         "total": 474
       },
       "custom_event": {
-        "native": 76,
+        "native": 77,
         "total": 121
       },
       "database_trigger": {
-        "native": 54,
+        "native": 58,
         "total": 75
       }
     },
@@ -82,33 +82,33 @@
       "api_connector_action": 35,
       "auth_action": 3,
       "plugin_action": 14,
-      "uncompiled_expression": 573,
+      "uncompiled_expression": 474,
       "unresolved_reference": 16,
       "unsupported_action": 34,
       "unsupported_option": 32
     },
     "step_ops": {
-      "api_call": 46,
-      "call": 230,
-      "create": 133,
+      "api_call": 53,
+      "call": 257,
+      "create": 140,
       "delete": 37,
-      "delete_list": 41,
+      "delete_list": 43,
       "return": 186,
-      "schedule": 222,
+      "schedule": 224,
       "schedule_list": 46,
-      "terminate": 313,
-      "update": 492,
+      "terminate": 319,
+      "update": 538,
       "update_current_user": 1,
       "update_list": 57
     },
     "steps": {
-      "native": 1804,
-      "residue": 655,
+      "native": 1901,
+      "residue": 558,
       "total": 2459
     },
     "workflows": {
-      "native": 352,
-      "residue": 318,
+      "native": 369,
+      "residue": 301,
       "total": 670
     }
   }

@@ -20,25 +20,23 @@
     "deleted_option_sets": 9,
     "deleted_option_values": 17,
     "diagnostics": {
-      "exact_type_definition_missing": 7,
-      "invalid_descriptor": 7,
+      "call_metadata_inconsistent": 11,
       "model_option_key_missing": 9,
       "model_undeclared_option_attribute_value": 40,
       "model_unresolved_target": 5
     },
-    "external_fields": 0,
+    "external_fields": 2956,
     "external_types": {
-      "opaque": 5
+      "resolved": 307
     },
     "fields": 1299,
     "fields_by_kind": {
-      "external": 3,
+      "external": 10,
       "file_ref": 11,
       "list external": 4,
       "list option": 19,
       "list ref": 113,
       "list scalar": 9,
-      "opaque": 7,
       "option": 116,
       "ref": 311,
       "scalar": 702,

@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **API Connector calls used as data are page data** (WTF-533, slice 2).
+  "Get data from an external API" parses to `Expression.Ast.ApiData`,
+  typed as the call's response, and compiles to the IR `:api_data` (only
+  non-private parameters are values). A page data source reading it makes
+  the call with the generated Req client in the actor's LiveView
+  (`<Web>.BubbleData.api/4`), behind the `data_access` opt-in: once per
+  read for the same values (`once/3`, nothing cached across reads), read
+  again when an input its parameters read changes, empty when it fails or
+  its secrets are not set (logged; `data-bubble-api-error` with the
+  developer markers on; no notice). A call whose values read a repeating
+  group's cell is `:page_data_in_cell` residue (`kind: "api_data"`); one
+  whose client is not generated is `:api_connector_data` residue. Fields
+  over lists of API values (and list fields) now compile. The Model
+  resolves registry types keyed as Bubble writes them (without
+  `api.apiconnector2.`). See `docs/api-connector-calls.md`.
+
 ### Fixed
 
 - **Locked versions and missing app scripts are `BubbleEx.Error`s**
