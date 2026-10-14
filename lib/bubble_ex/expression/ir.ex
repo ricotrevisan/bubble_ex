@@ -26,6 +26,7 @@ defmodule BubbleEx.Expression.IR do
   | `:option_attribute` | `[option, option_set, attribute]` | an option-set attribute |
   | `:option_label` | `[option, option_set]` | an option's display text (Bubble's `display`) |
   | `:external_field` | `[value, external_type, field]` | a field of an API Connector type |
+  | `:api_data` | `[group, call, params, value, …]` | `Get data from an external API` (WTF-533): API Connector call `call` of `group` (Bubble IDs) used as data, its result typed as the call's response; `params` lists `%{"parameter", "in", "key"}` for each non-private parameter the expression sets (in the call's order), and the values follow in the same order |
   | `:eq`, `:neq` | `[left, right]` | `is`, `is not`. Taken to be Bubble's: an empty value equals an empty value (not verified; targets deny on an empty actor-side value) |
   | `:gt`, `:lt`, `:gte`, `:lte` | `[left, right]` | ordering comparisons |
   | `:and`, `:or` | `[a, b, …]` | flattened; Bubble groups left to right |

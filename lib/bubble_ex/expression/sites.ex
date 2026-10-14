@@ -238,15 +238,8 @@ defmodule BubbleEx.Expression.Sites do
   # An API Connector call's result (WTF-533): the API type it returns (a
   # list of it for a list response), when the Model resolves that type.
   defp api_result(ref, %Model{} = model) do
-    with [group_id, call_id] <- String.split(ref, ".", parts: 2),
-         %Model.Connector{} = group <- Enum.find(model.connectors, &(&1.id == group_id)),
-         %Model.ConnectorCall{returns: returns, request: request} <-
-           Model.Connector.call(group, call_id),
-         {%Model.Type{kind: :external, target: id, cardinality: cardinality}, nil} <-
-           Model.Type.classify(returns || ""),
-         %Model.ExternalType{} <- Model.external_type(model, id) do
-      if cardinality == :many or (request != nil and request.list), do: "list." <> id, else: id
-    else
+    case String.split(ref, ".", parts: 2) do
+      [group_id, call_id] -> Model.call_result_type(model, group_id, call_id)
       _ -> nil
     end
   end

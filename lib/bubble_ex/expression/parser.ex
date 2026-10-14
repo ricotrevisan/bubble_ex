@@ -12,6 +12,8 @@ defmodule BubbleEx.Expression.Parser do
 
   alias BubbleEx.Expression.Ast.{
     AllOptions,
+    ApiData,
+    ApiParam,
     ArbitraryText,
     Arithmetic,
     Check,
@@ -104,6 +106,36 @@ defmodule BubbleEx.Expression.Parser do
 
       _ ->
         shape(raw, path, "ArbitraryText needs exactly an arbitrary_text property")
+    end
+  end
+
+  # `Get data from an external API` (WTF-533): the call's group and call
+  # IDs from `provider`, and the parameter values it sets (members named
+  # like an action's). Other members are kept and diagnosed.
+  defp source("GetDataFromAPI", raw, path, ctx) do
+    {used, extra} = Keys.split(raw, [:type, :properties])
+
+    with {pkey, props} when is_map(props) <- Keys.get(raw, :properties),
+         "apiconnector2." <> ref <- props["provider"],
+         [group, call] when group != "" and call != "" <- String.split(ref, ".", parts: 2) do
+      {members, other} =
+        props
+        |> Map.delete("provider")
+        |> Enum.sort()
+        |> Enum.split_with(fn {key, _} -> BubbleEx.Model.ConnectorCall.member?(key) end)
+
+      {params, diags} =
+        Enum.map_reduce(members, [], fn {key, value}, acc ->
+          {node, more} = parse(value, path ++ [pkey, key], ctx)
+          {%ApiParam{key: key, value: node}, acc ++ more}
+        end)
+
+      other = Map.new(other)
+      meta = %{keys: used, extra: extra, extra_props: other}
+      node = %ApiData{group: group, call: call, params: params, meta: meta}
+      {node, extra_diags(extra, path) ++ extra_diags(other, path ++ [pkey]) ++ diags}
+    else
+      _ -> shape(raw, path, "GetDataFromAPI needs a provider apiconnector2.<group>.<call>")
     end
   end
 

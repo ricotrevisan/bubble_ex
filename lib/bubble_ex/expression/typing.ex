@@ -13,6 +13,7 @@ defmodule BubbleEx.Expression.Typing do
   | Node | Type |
   |------|------|
   | literal, current user, option value, all options, text, search | as parsed |
+  | `Get data from an external API` | the call's response type (`BubbleEx.Model.call_result_type/3`), its parameters typed where they are |
   | `This Thing` | the innermost binder's: the rule's data type, a search's or `:filtered` list's item type, or `env.this_type` |
   | parent group's / ancestor group's thing | the content type of the nearest enclosing group that has one (of `ancestor_type` for an ancestor; a table's repeated row, `TableCrossAxis`, is "Current row's thing"); unknown when that is a table or a part of it other than its repeated row (a header) |
   | current cell's thing / index | the enclosing repeating group's (or table row's) content type / number; in a database-trigger workflow, the triggering record |
@@ -43,6 +44,7 @@ defmodule BubbleEx.Expression.Typing do
 
   alias BubbleEx.Expression.Ast.{
     AllOptions,
+    ApiData,
     ArbitraryText,
     Arithmetic,
     Check,
@@ -536,6 +538,26 @@ defmodule BubbleEx.Expression.Typing do
     cbase = base ++ [key(n, :properties), n.meta[:prop_keys][:constraints] || "constraints"]
     {constraints, diags} = constraints(n, cbase, item)
     {%{n | constraints: constraints}, base, diags}
+  end
+
+  # `Get data from an external API` (WTF-533): the call's response type,
+  # its parameter values typed where they are.
+  defp t(%ApiData{} = n, base, ctx) do
+    pbase = base ++ [key(n, :properties)]
+
+    {params, diags} =
+      Enum.map_reduce(n.params, [], fn p, acc ->
+        {typed, _p, d} = t(p.value, pbase ++ [p.key], ctx)
+        {%{p | value: typed}, acc ++ d}
+      end)
+
+    type =
+      case ctx.env.model do
+        %Model{} = model -> Model.call_result_type(model, n.group, n.call)
+        _ -> nil
+      end
+
+    {%{n | params: params, type: type}, base, diags}
   end
 
   defp t(%Raw{subject: nil} = n, base, _ctx), do: {n, base, []}

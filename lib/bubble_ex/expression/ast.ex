@@ -35,6 +35,7 @@ defmodule BubbleEx.Expression.Ast do
           | __MODULE__.DynamicText.t()
           | __MODULE__.ArbitraryText.t()
           | __MODULE__.Search.t()
+          | __MODULE__.ApiData.t()
           | __MODULE__.Field.t()
           | __MODULE__.Property.t()
           | __MODULE__.Compare.t()
@@ -48,7 +49,7 @@ defmodule BubbleEx.Expression.Ast do
 
   @node_modules Enum.map(
                   ~w(Literal Empty CurrentUser ThisThing Scope OptionValue AllOptions DynamicText
-                     ArbitraryText Search Field Property Compare Logical Check Arithmetic ListOp
+                     ArbitraryText Search ApiData Field Property Compare Logical Check Arithmetic ListOp
                      Filter Fallback Raw),
                   &Module.concat(__MODULE__, &1)
                 )
@@ -171,6 +172,36 @@ defmodule BubbleEx.Expression.Ast do
             data_type: String.t() | nil,
             constraints: [BubbleEx.Expression.Ast.Constraint.t()],
             options: map(),
+            type: String.t() | nil,
+            meta: map()
+          }
+  end
+
+  defmodule ApiParam do
+    @moduledoc """
+    A parameter value of an `ApiData` source: `key` is the member Bubble
+    keeps it under (`headers_<key>`, `params_<key>`, `url_params_<key>`,
+    `body_params_<key>`), `value` its expression.
+    """
+    defstruct [:key, :value, meta: %{}]
+
+    @type t :: %__MODULE__{key: String.t(), value: BubbleEx.Expression.Ast.t(), meta: map()}
+  end
+
+  defmodule ApiData do
+    @moduledoc """
+    `Get data from an external API`: an API Connector call used as data
+    (WTF-533). `group` and `call` are the call's Bubble IDs (the
+    `provider` `apiconnector2.<group>.<call>`); `params` the parameter
+    values the expression sets (`ApiParam`s, by member key). Its type is
+    the call's response type, from the Model.
+    """
+    defstruct [:group, :call, params: [], type: nil, meta: %{}]
+
+    @type t :: %__MODULE__{
+            group: String.t(),
+            call: String.t(),
+            params: [BubbleEx.Expression.Ast.ApiParam.t()],
             type: String.t() | nil,
             meta: map()
           }
