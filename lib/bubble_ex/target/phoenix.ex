@@ -759,24 +759,34 @@ defmodule BubbleEx.Target.Phoenix do
   defp api_calls_bound(_opts, %Spec{}), do: :ok
 
   defp api_calls_bound(opts, nil) do
+    flows =
+      case Keyword.get(opts, :frontend_workflows) do
+        %FlowSpec{} = spec -> spec
+        _ -> nil
+      end
+
+    cond do
+      Enum.any?(bound_steps(opts, flows), &(&1.op == :api_call and &1.residue == [])) ->
+        invalid("workflows call API Connector clients: pass api_clients: (the same Spec)")
+
+      # Page data reading API Connector calls (WTF-533).
+      flows != nil and FlowSpec.api_data?(flows) ->
+        invalid("page data reads API Connector calls: pass api_clients: (the same Spec)")
+
+      true ->
+        :ok
+    end
+  end
+
+  defp bound_steps(opts, flows) do
     backend =
       case Keyword.get(opts, :workflows) do
         %WorkflowSpec{} = spec -> for a <- WorkflowSpec.actions(spec), s <- a.steps, do: s
         _ -> []
       end
 
-    pages =
-      case Keyword.get(opts, :frontend_workflows) do
-        %FlowSpec{} = spec ->
-          for w <- FlowSpec.workflows(spec), step <- w.steps, do: step
-
-        _ ->
-          []
-      end
-
-    if Enum.any?(backend ++ pages, &(&1.op == :api_call and &1.residue == [])),
-      do: invalid("workflows call API Connector clients: pass api_clients: (the same Spec)"),
-      else: :ok
+    pages = if flows, do: for(w <- FlowSpec.workflows(flows), step <- w.steps, do: step), else: []
+    backend ++ pages
   end
 
   defp asset_store(opts) do

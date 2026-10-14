@@ -99,7 +99,7 @@ defmodule BubbleEx.Target.ApiClients do
                       )
 
   # Module segments taken by the renderer's own modules.
-  @reserved_modules ~w(Decode MissingEnvError)
+  @reserved_modules ~w(Decode MissingEnvError Data)
 
   # Every variable a client reads is namespaced (WTF-533).
   @env_prefix "BUBBLE_API_"

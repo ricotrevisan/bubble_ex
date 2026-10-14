@@ -15,7 +15,9 @@ defmodule <%= @module %>.Application do
          Application.fetch_env!(:<%= @app %>, Oban)
        )},
       {Phoenix.PubSub, name: <%= @module %>.PubSub},
-      {AshAuthentication.Supervisor, otp_app: :<%= @app %>},
+      {AshAuthentication.Supervisor, otp_app: :<%= @app %>},<%= if @api_clients? do %>
+      # API Connector calls used as data: their cache and tasks (WTF-533).
+      <%= @module %>.ApiClients.Data,<% end %>
       <%= @web %>.Endpoint
     ]
 

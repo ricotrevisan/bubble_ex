@@ -119,6 +119,57 @@ defmodule BubbleEx.Model.ConnectorCall do
     parameters: []
   ]
 
+  # Members of an action (or a data expression) setting a call's
+  # parameters, longest prefix first: the locations they set.
+  @members [
+    {"body_params_", [:body]},
+    {"url_params_", [:url]},
+    {"headers_", [:header]},
+    {"params_", [:query, :param]}
+  ]
+
+  @doc """
+  Whether `key` is a member an API Connector action or data expression
+  sets a parameter in (`headers_<key>`, `params_<key>`,
+  `url_params_<key>`, `body_params_<key>`).
+  """
+  @spec member?(term()) :: boolean()
+  def member?(key) when is_binary(key),
+    do: Enum.any?(@members, fn {prefix, _} -> String.starts_with?(key, prefix) end)
+
+  def member?(_key), do: false
+
+  @doc """
+  The values `members` (member key => value) set for `call`'s non-private
+  parameters, in the call's parameter order, as `{parameter, member key,
+  value}`, and how many members name no non-private parameter (a private
+  one, or one since removed): Bubble does not send those.
+  """
+  @spec member_values(t(), [{String.t(), term()}] | map()) ::
+          {[{BubbleEx.Model.ConnectorParameter.t(), String.t(), term()}], non_neg_integer()}
+  def member_values(%__MODULE__{parameters: parameters}, members) do
+    set =
+      for {key, value} <- members,
+          is_binary(key),
+          {prefix, locations} = prefix(key),
+          prefix != nil,
+          do: {String.replace_prefix(key, prefix, ""), locations, key, value}
+
+    values =
+      for p <- parameters,
+          not p.private,
+          is_binary(p.name),
+          {_name, _locations, key, value} <-
+            [Enum.find(set, fn {name, locs, _, _} -> name == p.name and p.in in locs end)],
+          do: {p, key, value}
+
+    used = MapSet.new(values, &elem(&1, 1))
+    {values, Enum.count(set, fn {_, _, key, _} -> key not in used end)}
+  end
+
+  defp prefix(key),
+    do: Enum.find(@members, {nil, []}, fn {prefix, _} -> String.starts_with?(key, prefix) end)
+
   @type t :: %__MODULE__{
           id: String.t(),
           name: String.t() | nil,

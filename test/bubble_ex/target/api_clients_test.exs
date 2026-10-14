@@ -363,7 +363,12 @@ defmodule BubbleEx.Target.ApiClientsTest do
 
       # The runtime and the client compile without running anything.
       runtime = Map.new(sources)["lib/hostile_ids/api_clients.ex"]
-      [client] = for {path, s} <- sources, path =~ ~r{lib/hostile_ids/api_clients/}, do: s
+
+      [client] =
+        for {path, s} <- sources,
+            path =~ ~r{lib/hostile_ids/api_clients/},
+            not String.ends_with?(path, "/data.ex"),
+            do: s
 
       modules =
         ExUnit.CaptureIO.capture_io(:stderr, fn ->

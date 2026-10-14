@@ -328,15 +328,6 @@ defmodule BubbleEx.Workflows.Lowering do
 
   # --- API Connector calls ---------------------------------------------------------
 
-  # Action members setting a call's parameters, longest prefix first: the
-  # locations they set.
-  @api_members [
-    {"body_params_", [:body]},
-    {"url_params_", [:url]},
-    {"headers_", [:header]},
-    {"params_", [:query, :param]}
-  ]
-
   @doc "Whether `type` is an API Connector action type (`apiconnector2-...`)."
   @spec api_call?(term()) :: boolean()
   def api_call?("apiconnector2-" <> _), do: true
@@ -349,10 +340,7 @@ defmodule BubbleEx.Workflows.Lowering do
   @spec api_member?(String.t()) :: boolean()
   def api_member?(key) when key in ["condition", "breakpoint"], do: true
 
-  def api_member?(key) when is_binary(key),
-    do: Enum.any?(@api_members, fn {prefix, _} -> String.starts_with?(key, prefix) end)
-
-  def api_member?(_key), do: false
+  def api_member?(key), do: Model.ConnectorCall.member?(key)
 
   @doc """
   Lowers an API Connector action of `type` (`apiconnector2-<group>.<call>`)
@@ -386,29 +374,13 @@ defmodule BubbleEx.Workflows.Lowering do
   end
 
   defp api_params(call, props, path, env) do
-    set =
-      for {key, value} <- props,
-          is_binary(key),
-          {prefix, locations} = api_prefix(key),
-          prefix != nil,
-          do: {String.replace_prefix(key, prefix, ""), locations, key, value}
+    {values, ignored} = Model.ConnectorCall.member_values(call, props)
 
     params =
-      for p <- call.parameters,
-          not p.private,
-          is_binary(p.name),
-          {_name, _locations, key, value} <-
-            [Enum.find(set, fn {name, locs, _, _} -> name == p.name and p.in in locs end)],
-          do:
-            {key,
-             %{parameter: p.id, in: p.in, key: p.name, value: expr(value, path ++ [key], env)}}
+      for {p, key, value} <- values,
+          do: %{parameter: p.id, in: p.in, key: p.name, value: expr(value, path ++ [key], env)}
 
-    used = MapSet.new(params, &elem(&1, 0))
-    {Enum.map(params, &elem(&1, 1)), Enum.count(set, fn {_, _, key, _} -> key not in used end)}
-  end
-
-  defp api_prefix(key) do
-    Enum.find(@api_members, {nil, []}, fn {prefix, _} -> String.starts_with?(key, prefix) end)
+    {params, ignored}
   end
 
   # --- residue ---------------------------------------------------------------------

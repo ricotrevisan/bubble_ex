@@ -178,6 +178,11 @@ defmodule BubbleEx.Index.Reads do
 
   defp walk(%Ast.Scope{ref: ref}, acc, ctx), do: nested(ref, acc, ctx)
 
+  defp walk(%Ast.ApiData{group: group, call: call, params: params}, acc, ctx) do
+    acc = [{:calls_api, Symbol.id(:api_call, [group, call]), %{via: :data_source}} | acc]
+    Enum.reduce(params, acc, &walk(&1.value, &2, ctx))
+  end
+
   defp walk(%Ast.Raw{raw: raw, subject: subject}, acc, ctx) do
     acc = api_source(raw, acc)
     walk(subject, nested(raw, acc, ctx), ctx)

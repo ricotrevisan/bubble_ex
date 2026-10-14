@@ -124,6 +124,7 @@ defmodule BubbleEx.Target.ApiCallsTest do
       assert Enum.map(spec.env, &{&1.name, &1.kind}) == [
                {"BUBBLE_API_EXAMPLE_API_KEY", :auth},
                {"BUBBLE_API_EXAMPLE_GET_ITEM_X_TENANT", :private},
+               {"BUBBLE_API_EXAMPLE_GET_STATUS_X_STATUS_TOKEN", :private},
                {"BUBBLE_API_EXAMPLE_POST_NOTE_SIGNING", :private}
              ]
 
@@ -463,9 +464,13 @@ defmodule BubbleEx.Target.ApiCallsTest do
       assert {:ok, %{source: source}} = ElixirTarget.compile(field, project)
       assert source == ~s|get_in(step_result_a1, [Access.key("_api_c2_name")])|
 
-      # A list of API values' field is not compiled.
-      list = IR.node(:external_field, [item.("list." <> @item), @item, "_api_c2_name"], "text")
-      assert {:ok, %{source: nil}} = ElixirTarget.compile(list, project)
+      # A list of API values' field is each item's, empty ones left out.
+      list =
+        IR.node(:external_field, [item.("list." <> @item), @item, "_api_c2_name"], "list.text")
+
+      assert {:ok, %{source: source}} = ElixirTarget.compile(list, project)
+      assert source =~ "as_list(step_result_a1)"
+      assert source =~ ~s|Access.key("_api_c2_name")|
 
       # A type a data field stores has a typed struct: its attribute.
       {:ok, model} =
@@ -479,6 +484,240 @@ defmodule BubbleEx.Target.ApiCallsTest do
       field = IR.node(:external_field, [item.(customer), customer, "email"], "text")
       assert {:ok, %{source: source}} = ElixirTarget.compile(field, typed)
       assert source =~ ~r/get_in\(step_result_a1, \[Access\.key\(:[a-z_]+\)\]\)/
+    end
+  end
+
+  describe "data calls (WTF-533, slice 2)" do
+    @row "api.apiconnector2.gEx.cList.Row"
+
+    defp catalog(pages), do: FrontendWorkflows.Spec.data(pages, "bCatalog")
+    defp source(pages, id), do: Enum.find(catalog(pages), &(&1.element == id))
+
+    test "Get data from an external API parses, round-trips and types as the call's response",
+         %{model: model} do
+      raw = %{
+        "type" => "GetDataFromAPI",
+        "properties" => %{
+          "provider" => "apiconnector2.gEx.cList",
+          "params_q" => %{"type" => "TextExpression", "entries" => %{"0" => "x"}}
+        },
+        "next" => %{"type" => "Message", "name" => "first_element"}
+      }
+
+      {:ok, %{ast: ast, diagnostics: []}} = BubbleEx.Expression.parse(raw)
+
+      assert %BubbleEx.Expression.Ast.ListOp{subject: %BubbleEx.Expression.Ast.ApiData{} = call} =
+               ast
+
+      assert {call.group, call.call, Enum.map(call.params, & &1.key)} ==
+               {"gEx", "cList", ["params_q"]}
+
+      assert BubbleEx.Expression.to_bubble(ast) == {:ok, raw}
+
+      env = BubbleEx.Expression.Env.new(model)
+      {:ok, %{ir: ir, diagnostics: []}} = BubbleEx.Expression.Compiler.compile(ast, env)
+      assert %IR{op: :first, type: @row, args: [%IR{op: :api_data} = data]} = ir
+      assert data.type == "list." <> @row
+      [_group, _call, [key] | [value]] = data.args
+      assert key == %{"parameter" => "p2", "in" => "query", "key" => "q"}
+      assert %IR{op: :literal, args: ["x"]} = value
+    end
+
+    test "a private parameter an expression sets is never a value; an unknown call is not compiled",
+         %{model: model} do
+      env = BubbleEx.Expression.Env.new(model)
+
+      private = %{
+        "type" => "GetDataFromAPI",
+        "properties" => %{
+          "provider" => "apiconnector2.gEx.cNote",
+          "body_params_text" => "hi",
+          "body_params_signing" => "page-private-value"
+        }
+      }
+
+      {:ok, %{ast: ast}} = BubbleEx.Expression.parse(private)
+      {:ok, %{ir: ir}} = BubbleEx.Expression.Compiler.compile(ast, env)
+      [_g, _c, keys | values] = ir.args
+      assert Enum.map(keys, & &1["key"]) == ["text"]
+      refute inspect(values) =~ "page-private-value"
+
+      {:ok, %{ast: ast}} =
+        BubbleEx.Expression.parse(%{
+          "type" => "GetDataFromAPI",
+          "properties" => %{"provider" => "apiconnector2.gEx.cGone"}
+        })
+
+      assert {:ok, %{ir: nil, diagnostics: [%{details: %{construct: :api_data}}]}} =
+               BubbleEx.Expression.Compiler.compile(ast, env)
+    end
+
+    test "a registry keyed as Bubble writes it (without api.apiconnector2.) resolves" do
+      app = @fixture |> File.read!() |> Jason.decode!()
+
+      app =
+        update_in(
+          app,
+          ["settings", "client_safe", "apiconnector2", "gEx", "calls", "cList"],
+          fn c ->
+            types =
+              c["types"]
+              |> Jason.decode!()
+              |> Map.new(fn {k, v} -> {String.replace_prefix(k, "api.apiconnector2.", ""), v} end)
+
+            %{c | "types" => Jason.encode!(types)}
+          end
+        )
+
+      {:ok, model} = Model.build(app)
+      assert %{resolution: :resolved, fields: [_, _, _]} = Model.external_type(model, @row)
+      assert Model.call_result_type(model, "gEx", "cList") == "list." <> @row
+    end
+
+    test "page data reads the call first, with page values for its parameters", %{pages: pages} do
+      items = source(pages, "bItems")
+      assert items.residue == []
+      assert {:value, %{calls: [call], source: "api_data_1"}} = items.read
+      assert %{module: "ApiClients.Example", function: "list_items", list?: true} = call
+
+      assert [%{key: "q", value: %{bindings: [%{bind: {:input, %{element: "bQuery"}}}]}}] =
+               call.params
+
+      first = source(pages, "bFirst")
+      assert {:value, %{calls: [_], source: source}} = first.read
+      assert source =~ "List.first"
+
+      # Read again when the input changes (narrowed reloads).
+      assert FrontendWorkflows.Spec.reads_api?(items)
+      assert FrontendWorkflows.Spec.api_data?(pages)
+    end
+
+    test "in a cell: once when its values are the same in every cell, else residue",
+         %{pages: pages} do
+      assert source(pages, "bItemBase").residue == []
+
+      assert [%{reason: :page_data_in_cell, detail: %{kind: "api_data"}}] =
+               source(pages, "bItemPrice").residue
+    end
+
+    test "a call whose client is not generated is residue", %{
+      lowered: lowered,
+      project: project,
+      workflows: workflows,
+      app: app,
+      model: model
+    } do
+      {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+      {:ok, page_data} = BubbleEx.PageData.build(app, model)
+
+      {:ok, pages} =
+        FrontendWorkflows.map(lowered, project,
+          namespace: "Acme",
+          frontend: frontend,
+          backend: workflows,
+          page_data: page_data
+        )
+
+      assert [%{reason: :api_connector_data, detail: %{call: "gEx.cList"}}] =
+               source(pages, "bItems").residue
+
+      refute FrontendWorkflows.Spec.api_data?(pages)
+    end
+
+    test "the page module calls the client through BubbleData.api/4", %{files: files} do
+      page = files["lib/acme_web/live/catalog_live/workflows.ex"]
+      assert page =~ "BubbleData.api(ctx, Acme.ApiClients.Example, :list_items, %{"
+      assert page =~ ":q => Acme.Bubble.Runtime.text(element_state_bquery_get_data)"
+      assert page =~ ~s|inputs: ["API Acme.ApiClients.Example.list_items", "bQuery"]|
+
+      data = files["lib/acme_web/bubble_data.ex"]
+      assert data =~ "def api(_ctx, module, function, params, opts \\\\ [])"
+      assert data =~ "once({:api_data, key}"
+      # The call ends in a task; what reads it is read again.
+      assert page =~ ~s|"API Acme.ApiClients.Example.list_items"|
+      assert files["lib/acme/api_clients/data.ex"] =~ "defmodule Acme.ApiClients.Data"
+      assert files["lib/acme/application.ex"] =~ "Acme.ApiClients.Data,"
+
+      catalog = files["lib/acme_web/live/catalog_live.html.heex"]
+      assert catalog =~ ~s|data-bubble-api-error={Bubble.api_error(@bubble_data, "", "bStatus")}|
+      assert files["lib/acme_web/components/bubble.ex"] =~ "def api_error(data, scope, element)"
+    end
+
+    test "rendering page data that reads the clients needs the clients", %{project: project} do
+      app = @fixture |> File.read!() |> Jason.decode!()
+      app = Map.update!(app, "api", fn _ -> %{} end)
+      app = update_in(app, ["pages", "index", "workflows"], fn _ -> %{} end)
+      {:ok, model} = Model.build(app)
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, spec} = ApiClients.map(model)
+      {:ok, lowered} = Frontend.build(app, model, index)
+      {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+      {:ok, page_data} = BubbleEx.PageData.build(app, model)
+
+      {:ok, backend} = Backend.build(app, model, index)
+      {:ok, workflows} = AshWorkflows.map(backend, project, namespace: "Acme")
+
+      {:ok, pages} =
+        FrontendWorkflows.map(lowered, project,
+          namespace: "Acme",
+          frontend: frontend,
+          backend: workflows,
+          page_data: page_data,
+          api_clients: spec
+        )
+
+      assert {:error, %BubbleEx.Error{message: message}} =
+               Phoenix.render(project,
+                 name: "Acme",
+                 frontend: frontend,
+                 workflows: workflows,
+                 frontend_workflows: pages
+               )
+
+      assert message =~ "page data reads API Connector calls"
+    end
+
+    test "a field through a list of API values maps over the items", %{project: project} do
+      rows = IR.node(:input, [:api_data, %{"n" => "1"}], "list." <> @row)
+      tags = IR.node(:external_field, [rows, @row, "_api_c2_tags"], "list.text")
+      assert {:ok, %{source: source}} = ElixirTarget.compile(tags, project)
+      assert source =~ "Enum.flat_map("
+    end
+
+    test "a conditional source and another surface read the call; list values are lists",
+         %{pages: pages} do
+      assert %{read: {:switch, sw}, residue: []} = source(pages, "bPick")
+      assert FrontendWorkflows.Spec.reads_api?(source(pages, "bPick"))
+      assert [%{when: _, then: {:value, %{calls: [_]}}}] = sw.cases
+
+      [count] = FrontendWorkflows.Spec.data(pages, "bCountDef")
+      assert {:value, %{calls: [%{function: "list_items"}]}} = count.read
+
+      assert {:value, %{calls: [%{params: [%{value: %{source: source}}]}]}} =
+               source(pages, "bTagged").read
+
+      assert source =~ "split("
+    end
+
+    test "an API value a data field stores loads leniently: never a failed row" do
+      parts = [
+        {"_api_c2_amount", "amount", :float},
+        {"_api_c2_tags", "tags", {:array, :text}}
+      ]
+
+      encoding = {:external, parts}
+      convert = &BubbleEx.Load.Convert.encode(encoding, &1)
+
+      assert {%{"amount" => 3.0, "tags" => ["x"]}, []} =
+               convert.(%{"_api_c2_amount" => 3, "_api_c2_tags" => ["x"]})
+
+      # Unknown members are dropped, mistyped ones empty with an issue.
+      assert {%{"amount" => nil, "tags" => nil}, issues} =
+               convert.(%{"_api_c2_amount" => "three", "_api_c2_tags" => 7, "other" => 1})
+
+      assert issues != []
+      # Not an object: empty, with an issue.
+      assert {nil, [_]} = convert.("text")
     end
   end
 

@@ -98,7 +98,8 @@ defmodule BubbleEx.Target.Elixir do
   Not compiled yet (diagnosed with `:elixir_expr_unsupported`, stage
   `{:target, :elixir}`): searches, and `:filtered` or sorting of a list of
   things (these become Ash queries, `FrontendWorkflows.Lists`), other
-  sorting by a field, fields of a list of API values (or through one),
+  sorting by a field, an API Connector call used as data outside a
+  page's data sources (`FrontendWorkflows.Data` reads it there),
   fields of the items of a
   list-of-things field (stored as a list of IDs: `a path through a list
   or value`, `a field of first`, ...; a page's data sources read such
@@ -367,6 +368,12 @@ defmodule BubbleEx.Target.Elixir do
   defp value(%IR{op: :field} = ir, st), do: path(ir, [], :value, st)
 
   defp value(%IR{op: :external_field} = ir, st), do: external(ir, [], st)
+
+  # An API Connector call used as data (WTF-533) is read by the page's data
+  # loader, which gives its value to what reads it (`FrontendWorkflows.Data`);
+  # anywhere else it is not compiled.
+  defp value(%IR{op: :api_data}, st),
+    do: unsupported(st, {"an API Connector call outside page data", nil})
 
   # A condition used as a value: strictly true or false, never nil (WTF-471).
   defp value(%IR{op: op} = ir, st) when op in @conditions do
@@ -961,34 +968,62 @@ defmodule BubbleEx.Target.Elixir do
   # A field chain of an API Connector value (WTF-533: a call's result, as
   # the generated client decoded it), nil-safe: an API type with a typed
   # struct (one a data field stores) is read by its attributes, any other
-  # (a call's own type) from the decoded map by Bubble field ID. A field of
-  # a list of API values, or through one, is not compiled.
+  # (a call's own type) from the decoded map by Bubble field ID. Over a
+  # list of API values, or through a list field, it is each item's field,
+  # one list of their values (a list field's flattened), empty ones left
+  # out, as a field of a list of things.
   defp external(%IR{op: :external_field, args: [base, ext, field], type: type}, fields, st),
     do: external(base, [{ext, field, type} | fields], st)
 
   defp external(%IR{type: type} = base, fields, st) do
-    if match?(%Type{cardinality: :many}, classify(type)) do
-      unsupported(st, {"a field of a list of API values", nil})
-    else
-      case external_keys(fields, st.lookup.externals) do
-        {:ok, keys} ->
-          {source, st} = value(base, st)
-          {ok(source, &"get_in(#{&1}, [#{Enum.join(keys, ", ")}])"), st}
+    case external_keys(fields, st.lookup.externals) do
+      {:ok, keys} ->
+        {source, st} = value(base, st)
+        list? = match?(%Type{cardinality: :many}, classify(type))
+        segments = external_segments(Enum.zip(fields, keys))
+        external_read(source, list?, segments, st)
 
-        {:error, what} ->
-          unsupported(st, what)
-      end
+      {:error, what} ->
+        unsupported(st, what)
     end
   end
 
+  # The chain in segments, each ending at a list field (or the chain's end).
+  defp external_segments(steps) do
+    {segments, last} =
+      Enum.reduce(steps, {[], []}, fn {{_, _, type}, key}, {done, current} ->
+        current = current ++ [key]
+
+        if match?(%Type{cardinality: :many}, classify(type)),
+          do: {done ++ [{current, true}], []},
+          else: {done, current}
+      end)
+
+    if last == [], do: segments, else: segments ++ [{last, false}]
+  end
+
+  defp external_read(:error, _list?, _segments, st), do: {:error, st}
+  defp external_read(source, _list?, [], st), do: {source, st}
+
+  defp external_read(source, false, [{keys, list?} | rest], st),
+    do: external_read("get_in(#{source}, [#{Enum.join(keys, ", ")}])", list?, rest, st)
+
+  defp external_read(source, true, [{keys, list?} | rest], st) do
+    {items, st} = as_list(source, st)
+    get = "get_in(api_item, [#{Enum.join(keys, ", ")}])"
+
+    read =
+      if list?,
+        do: "Enum.flat_map(#{items}, fn api_item -> List.wrap(#{get}) end)",
+        else: "Enum.reject(Enum.map(#{items}, fn api_item -> #{get} end), &is_nil/1)"
+
+    external_read(read, true, rest, st)
+  end
+
   defp external_keys(fields, externals) do
-    {init, [_last]} = Enum.split(fields, -1)
     structs = Enum.map(fields, fn {ext, _, _} -> Map.has_key?(externals, ext) end)
 
     cond do
-      Enum.any?(init, fn {_, _, type} -> match?(%Type{cardinality: :many}, classify(type)) end) ->
-        {:error, {"a field through a list of API values", nil}}
-
       Enum.all?(structs) ->
         Enum.reduce_while(fields, {:ok, []}, &struct_key(&1, &2, externals))
 

@@ -633,9 +633,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   defp batch_in_reusable(%{read: {kind, _} = read} = b, once?) do
     case batch_read(read, true) do
-      {:ok, read} -> %{b | read: read}
-      :error when kind == :query and once? -> b
-      :error -> %{b | read: nil, residue: [in_cell_entry(b.symbol, :query)]}
+      {:ok, read} ->
+        if calls_vary?(read, true),
+          do: %{b | read: nil, residue: [in_cell_entry(b.symbol, :api_data)]},
+          else: %{b | read: read}
+
+      :error when kind == :query and once? ->
+        b
+
+      :error ->
+        %{b | read: nil, residue: [in_cell_entry(b.symbol, :query)]}
     end
   end
 
@@ -724,7 +731,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   defp read_bindings(%{read: read}), do: bindings_of(read)
 
-  defp bindings_of({:value, %{bindings: bindings}}), do: bindings
+  defp bindings_of({:value, %{bindings: bindings} = v}),
+    do: bindings ++ call_bindings(Map.get(v, :calls, []))
 
   defp bindings_of({:query, %{pins: pins}}),
     do: for(%{value: %{bindings: bindings}} <- pins, b <- bindings, do: b)
@@ -736,7 +744,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp all_bindings({_kind, read} = r),
     do: bindings_of(r) ++ Enum.flat_map(Map.get(read, :queries, []), &bindings_of({:query, &1}))
 
-  defp unscoped?(%{bind: {kind, _}}), do: kind in [:url, :url_value, :url_thing]
+  # A call's value (WTF-533) is decided by its parameters', which are
+  # among the bindings too.
+  defp unscoped?(%{bind: {kind, _}}), do: kind in [:url, :url_value, :url_thing, :api_data]
   defp unscoped?(%{bind: bind}), do: bind in [:actor, :now, :page_width]
 
   @doc """
@@ -936,16 +946,23 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         s |> search_source(base, search, take, bctx, fns) |> in_cell_batch(bctx)
 
       :value ->
-        cond do
-          s.cell != nil and queries?(ir) ->
-            s |> value_source(%{s.value | ir: ir}, base, bctx, fns) |> in_cell_batch(bctx)
+        value_read(s, ir, base, bctx, fns)
+    end
+  end
 
-          s.cell == nil and fold?(s, ir) ->
-            switch_source(s, ir, base, bctx, fns)
+  # A source whose value is not a search: in a cell, its searches and
+  # calls read for every cell together (or residue); a conditional one
+  # outside cells, a switch.
+  defp value_read(s, ir, base, ctx, fns) do
+    cond do
+      s.cell != nil and (queries?(ir) or calls?(ir)) ->
+        s |> value_source(%{s.value | ir: ir}, base, ctx, fns) |> in_cell_batch(ctx)
 
-          true ->
-            value_source(s, %{s.value | ir: ir}, base, bctx, fns)
-        end
+      s.cell == nil and fold?(s, ir) ->
+        switch_source(s, ir, base, ctx, fns)
+
+      true ->
+        value_source(s, %{s.value | ir: ir}, base, ctx, fns)
     end
   end
 
@@ -956,13 +973,49 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # cell together: each such query is batched (`cell_batch/2`), else the
   # source is residue (`:page_data_in_cell`, `kind` `"query"`), as before.
   defp in_cell_batch(%{residue: []} = b, ctx) do
-    case batch_read(b.read, per_scope?(b.surface, ctx)) do
-      {:ok, read} -> %{b | read: read}
-      :error -> %{b | read: nil, reads: [], residue: [in_cell_entry(b.symbol, :query)]}
+    per_scope? = per_scope?(b.surface, ctx)
+
+    case batch_read(b.read, per_scope?) do
+      {:ok, read} ->
+        if calls_vary?(read, per_scope?),
+          do: %{b | read: nil, reads: [], residue: [in_cell_entry(b.symbol, :api_data)]},
+          else: %{b | read: read}
+
+      :error ->
+        %{b | read: nil, reads: [], residue: [in_cell_entry(b.symbol, :query)]}
     end
   end
 
   defp in_cell_batch(b, _ctx), do: b
+
+  # Whether an API Connector call a source reads first (WTF-533) would be
+  # made with other values in each unit (cell, or per-cell scope): its
+  # parameters read the cell, the scope, or a query that does. Such a
+  # call would run once per cell (`:page_data_in_cell`, `detail.kind`
+  # `"api_data"`); one whose values are the same in every unit is made
+  # once (`once/3` in the loader).
+  defp calls_vary?(read, per_scope?) do
+    {calls, queries} = calls_and_queries(read)
+
+    varying =
+      for q <- queries, Map.has_key?(q, :batch), into: MapSet.new(), do: Integer.to_string(q.n)
+
+    calls
+    |> call_bindings()
+    |> Enum.any?(&binding_varies?(&1.bind, per_scope?, varying))
+  end
+
+  defp calls_and_queries({:switch, sw}) do
+    sw
+    |> Spec.switch_reads()
+    |> Enum.map(&calls_and_queries/1)
+    |> Enum.reduce({[], []}, fn {c, q}, {cs, qs} -> {cs ++ c, qs ++ q} end)
+  end
+
+  defp calls_and_queries({_kind, read}) when is_map(read),
+    do: {Map.get(read, :calls, []), Map.get(read, :queries, [])}
+
+  defp calls_and_queries(_read), do: {[], []}
 
   # Whether what a source reads of its scope differs from unit to unit: in
   # a reusable element rendered per cell, each cell has its own scope.
@@ -1345,11 +1398,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       {:ok, compiled, acc} ->
         queries = Enum.reverse(acc.queries)
         compiled = if queries == [], do: compiled, else: Map.put(compiled, :queries, queries)
+        calls = Enum.reverse(acc.calls)
+        compiled = if calls == [], do: compiled, else: Map.put(compiled, :calls, calls)
 
         # An instance in a cell, and its properties, are rendered per cell
         # of the list (WTF-494): they need it loaded.
         reads =
-          Enum.uniq(data_reads(compiled.bindings, ctx) ++ query_reads(queries, ctx))
+          Enum.uniq(
+            data_reads(compiled.bindings, ctx) ++
+              query_reads(queries, ctx) ++ data_reads(call_bindings(calls), ctx)
+          )
 
         reads =
           if s.cell != nil and s.kind in [:instance, :param],
@@ -1363,7 +1421,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     end
   end
 
-  defp new_acc, do: %{queries: [], seen: %{}, next: 1}
+  defp new_acc, do: %{queries: [], calls: [], seen: %{}, next: 1}
 
   # Compiles `expr` in Elixir, its searches first read as queries.
   defp compile_value(%Lowering.Expr{ir: ir} = expr, s, ctx, fns, acc) do
@@ -1373,6 +1431,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         {%{} = compiled, []} -> {:ok, compiled, acc}
         {_compiled, residue} -> {:error, residue}
       end
+    end
+  end
+
+  # An API Connector call used as data (WTF-533) is read first, once per
+  # source whatever reads it (`{:api_data, %{"n" => n}}`): see
+  # `new_call/5`.
+  defp extract(%IR{op: :api_data} = ir, s, ctx, fns, acc) do
+    key = {:api_data, IR.strip_paths(ir)}
+
+    case acc.seen do
+      %{^key => n} -> {:ok, api_input(n, ir.type), acc}
+      _ -> new_call(ir, key, s, ctx, fns, acc)
     end
   end
 
@@ -1404,6 +1474,59 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       {:ok, query_input(n, ir.type), %{acc | queries: queries, seen: Map.put(acc.seen, key, n)}}
     end
   end
+
+  # A call of the generated client (WTF-533): its module and function, and
+  # the values of the parameters the client sends (a parameter it does not
+  # send, Bubble does not either), each compiled in Elixir from the page.
+  # A call whose client is not generated (or with no clients) is
+  # `:api_connector_data` residue. The values are page values, never
+  # private ones: a private parameter is the client's environment
+  # variable.
+  defp new_call(%IR{args: [group, call, keys | values]} = ir, key, s, ctx, fns, acc) do
+    case Map.get(Map.get(ctx, :api_calls, %{}), {group, call}) do
+      nil ->
+        {:error, [Residue.entry(s.id, :api_connector_data, %{call: "#{group}.#{call}"})]}
+
+      client ->
+        {params, residue} =
+          keys
+          |> Enum.zip(values)
+          |> Enum.flat_map_reduce([], &call_param(&1, &2, client, s, ctx, fns))
+
+        if residue == [] and Enum.all?(params, &is_map(&1.value)) do
+          n = acc.next
+
+          entry = %{
+            n: n,
+            module: client.module,
+            function: client.function,
+            params: params,
+            list?: Type.list?(ir.type),
+            cache?: not Map.get(client, :wrap_errors, false)
+          }
+
+          {:ok, api_input(n, ir.type),
+           %{acc | calls: [entry | acc.calls], seen: Map.put(acc.seen, key, n), next: n + 1}}
+        else
+          {:error, Enum.uniq(residue)}
+        end
+    end
+  end
+
+  defp call_param({%{"parameter" => p}, value}, acc, client, s, ctx, fns) do
+    case client.args[p] do
+      nil ->
+        {[], acc}
+
+      arg ->
+        {compiled, more} =
+          fns.compile.(%Lowering.Expr{path: value.path || "", ir: value}, s.id, ctx)
+
+        {[%{key: arg, value: compiled}], acc ++ more}
+    end
+  end
+
+  defp api_input(n, type), do: IR.node(:input, [:api_data, %{"n" => Integer.to_string(n)}], type)
 
   defp extract_args(%IR{op: op, args: [list, pred]} = ir, s, ctx, fns, acc) when op == :filter do
     with {:ok, list, acc} <- extract(list, s, ctx, fns, acc),
@@ -1472,6 +1595,21 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   defp queries?(%IR{} = ir), do: query(ir) != :value or Enum.any?(ir.args, &queries?/1)
   defp queries?(_arg), do: false
+
+  defp calls?(%IR{op: :api_data}), do: true
+  defp calls?(%IR{args: args}), do: Enum.any?(args, &calls?/1)
+  defp calls?(_arg), do: false
+
+  # What the calls a value reads first (WTF-533) read of the page: their
+  # parameters' values.
+  defp call_bindings(calls),
+    do:
+      for(
+        %{params: params} <- calls,
+        %{value: %{bindings: bindings}} <- params,
+        b <- bindings,
+        do: b
+      )
 
   # The page data the queries' pins read.
   defp query_reads(queries, ctx) do

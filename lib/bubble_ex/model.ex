@@ -196,6 +196,41 @@ defmodule BubbleEx.Model do
     do: Enum.find(types, &(&1.id == id))
 
   @doc """
+  The API Connector call `call_id` of group `group_id`, or nil.
+  """
+  @spec connector_call(t(), String.t(), String.t()) ::
+          {BubbleEx.Model.Connector.t(), BubbleEx.Model.ConnectorCall.t()} | nil
+  def connector_call(%__MODULE__{connectors: connectors}, group_id, call_id) do
+    with %BubbleEx.Model.Connector{} = group <- Enum.find(connectors, &(&1.id == group_id)),
+         %BubbleEx.Model.ConnectorCall{raw: nil} = call <-
+           BubbleEx.Model.Connector.call(group, call_id) do
+      {group, call}
+    else
+      _ -> nil
+    end
+  end
+
+  def connector_call(_model, _group_id, _call_id), do: nil
+
+  @doc """
+  What API Connector call `call_id` of group `group_id` returns (WTF-533):
+  the API type of its response (a list of it for a list response), when
+  the Model resolves that type; nil otherwise.
+  """
+  @spec call_result_type(t(), String.t(), String.t()) :: String.t() | nil
+  def call_result_type(%__MODULE__{} = model, group_id, call_id) do
+    with {_group, %BubbleEx.Model.ConnectorCall{returns: returns, request: request}} <-
+           connector_call(model, group_id, call_id),
+         {%Type{kind: :external, target: id, cardinality: cardinality}, nil} <-
+           Type.classify(returns || ""),
+         %ExternalType{} <- external_type(model, id) do
+      if cardinality == :many or (request != nil and request.list), do: "list." <> id, else: id
+    else
+      _ -> nil
+    end
+  end
+
+  @doc """
   A field of data type `type_id` by Bubble ID, including built-in fields
   (e.g. `"Created Date"`, `"_id"`). A live defined field comes first, then a
   built-in field, then a deleted or malformed one.

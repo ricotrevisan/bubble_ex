@@ -9,6 +9,7 @@ defmodule BubbleEx.Expression.Encoder do
 
   alias BubbleEx.Expression.Ast.{
     AllOptions,
+    ApiData,
     ArbitraryText,
     Arithmetic,
     Check,
@@ -133,6 +134,16 @@ defmodule BubbleEx.Expression.Encoder do
       )
 
     object(m, type: "Search", properties: props)
+  end
+
+  def encode(%ApiData{group: group, call: call, params: params, meta: m}) do
+    props =
+      params
+      |> Map.new(&{&1.key, encode(&1.value)})
+      |> Map.merge(m[:extra_props] || %{})
+      |> Map.put("provider", "apiconnector2.#{group}.#{call}")
+
+    object(m, type: "GetDataFromAPI", properties: props)
   end
 
   # --- chain operators: encode the subject, then append this message --------

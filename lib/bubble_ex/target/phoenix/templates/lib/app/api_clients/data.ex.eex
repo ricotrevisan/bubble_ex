@@ -1,0 +1,375 @@
+defmodule <%= @module %>.ApiClients.Data do
+  @moduledoc """
+  What API Connector calls used as data (a page's "Get data from an
+  external API", WTF-533) share across pages: a cache of their responses,
+  one call at a time for the same call and values (every page waiting for
+  it gets its result), a cap on the calls in flight per API, and the
+  tasks that make them, off the pages' LiveView processes. The pages'
+  loader (`<%= @web %>.BubbleData.api/5`) uses it; a workflow's call (an
+  action) never does.
+
+  ## Cost model (defaults)
+
+  A data call costs a request to someone else's API, made with the app's
+  credentials whoever views the page. So:
+
+    * **Off the page's process.** A call runs in a task
+      (`Task.Supervisor`): the page renders with what it has (a cached
+      response, else empty) and reads its sources again when the call
+      ends. At most `:max_concurrency` (4) per page at once.
+    * **Once for every page.** While a call with the same values is in
+      flight, another page waits for its result instead of calling again.
+    * **Cached.** A response is shared by every page for `:ttl` ms
+      (30 s), keyed by the client function and the parameters' values
+      (never the actor or a secret): mounts, change notifications and
+      other pages reading the same call within it make no call. Past
+      the TTL the response is still shown, while a new call is made, for
+      at most `:max_stale` ms (5 × the TTL); a failure that is not
+      transient (a 4xx response other than 429) removes it. A call with
+      "Include errors in response" is never cached, nor any named in
+      `:no_cache` (`[{module, function}]`), nor a failure. At most
+      `:max_entries` (1,000) responses and `:max_bytes` (64 MB) of them.
+    * **A budget per page.** At most `:budget` calls (`{10, 10_000}`: 10
+      per 10 s) per page; past it the page keeps the values it has and
+      logs once.
+    * **A cap per API.** At most `:max_in_flight` (20) calls in flight
+      per API (client module), all pages together; a page waits for one
+      to end. A task that dies, even killed, frees its place (a monitor).
+    * **Tighter limits than an action's.** `:deadline` 8 s (under the
+      LiveView's 10 s join timeout), `:max_retries` 1 (only on a refused
+      connection, a 429 or a 503) waiting at most `:max_retry_delay`
+      1 s, and responses of at most `:max_body_bytes` (1 MB).
+
+  All of it is configuration:
+
+      config :<%= @app %>, <%= @module %>.ApiClients.Data,
+        ttl: 30_000,
+        max_stale: 150_000,
+        no_cache: [],
+        budget: {10, 10_000},
+        max_concurrency: 4,
+        max_in_flight: 20,
+        deadline: 8_000,
+        max_retries: 1,
+        max_retry_delay: 1_000,
+        max_body_bytes: 1_000_000,
+        max_entries: 1_000,
+        max_bytes: 64_000_000
+
+  A call's result reaches the pages as `{:bubble, :api_data, key,
+  result}`, `result` `{:ok, value}`, `{:error, reason}` where `reason`
+  is a status, an error's kind or `{:missing_env, names}`: never a body,
+  a header or a value of the environment; or `:busy` when it could not
+  start (the page asks again later).
+  """
+
+  use Supervisor
+
+  require Logger
+
+  @cache __MODULE__.Cache
+  @flight __MODULE__.InFlight
+  @calls __MODULE__.Calls
+  @waiters __MODULE__.Waiters
+  @tasks __MODULE__.Tasks
+
+  @defaults [
+    ttl: 30_000,
+    max_stale: nil,
+    no_cache: [],
+    budget: {10, 10_000},
+    max_concurrency: 4,
+    max_in_flight: 20,
+    deadline: 8_000,
+    max_retries: 1,
+    max_retry_delay: 1_000,
+    max_body_bytes: 1_000_000,
+    max_entries: 1_000,
+    max_bytes: 64_000_000
+  ]
+
+  @doc false
+  def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+
+  @impl true
+  def init(_opts) do
+    # Owned by this supervisor: they live as long as the app.
+    :ets.new(@cache, [:named_table, :public, :set, read_concurrency: true])
+    :ets.new(@flight, [:named_table, :public, :set, write_concurrency: true])
+    :ets.new(@calls, [:named_table, :public, :set])
+    :ets.new(@waiters, [:named_table, :public, :bag])
+
+    Supervisor.init([{Task.Supervisor, name: @tasks}, __MODULE__.Monitor],
+      strategy: :one_for_one
+    )
+  end
+
+  @doc "The configuration (see the moduledoc), with its defaults."
+  def config(key), do: Keyword.get(config(), key)
+
+  def config do
+    config = Keyword.merge(@defaults, Application.get_env(:<%= @app %>, __MODULE__, []))
+    Keyword.put(config, :max_stale, config[:max_stale] || 5 * config[:ttl])
+  end
+
+  @doc "The client options of a data call: its deadline, retries and body cap."
+  def call_opts do
+    c = config()
+
+    [
+      deadline: c[:deadline],
+      max_retries: c[:max_retries],
+      max_retry_delay: c[:max_retry_delay],
+      max_body_bytes: c[:max_body_bytes]
+    ]
+  end
+
+  @doc "Whether the responses of `function` of `module` may be cached."
+  def cache?(module, function), do: {module, function} not in config(:no_cache)
+
+  @doc """
+  The cached response of `key`: `{:fresh, value}` within the TTL,
+  `{:stale, value}` past it for at most `:max_stale` ms (shown while a new
+  one is called), or `:miss`.
+  """
+  def cached(key) do
+    now = System.monotonic_time(:millisecond)
+
+    case :ets.lookup(@cache, key) do
+      [{^key, value, expires}] ->
+        cond do
+          now < expires -> {:fresh, value}
+          now < expires - config(:ttl) + config(:max_stale) -> {:stale, value}
+          true -> :miss
+        end
+
+      [] ->
+        :miss
+    end
+  rescue
+    ArgumentError -> :miss
+  end
+
+  @doc "Caches a response of `key` for the TTL."
+  def put(key, value) do
+    c = config()
+    if :ets.info(@cache, :size) >= c[:max_entries] or bytes() >= c[:max_bytes], do: prune(c)
+    :ets.insert(@cache, {key, value, System.monotonic_time(:millisecond) + c[:ttl]})
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  @doc "Forgets the response of `key` (a failure that is not transient)."
+  def forget(key) do
+    :ets.delete(@cache, key)
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  defp bytes, do: :ets.info(@cache, :memory) * :erlang.system_info(:wordsize)
+
+  # Drops what is too old to show; when that is not enough, everything.
+  defp prune(c) do
+    oldest = System.monotonic_time(:millisecond) - c[:max_stale] + c[:ttl]
+    :ets.select_delete(@cache, [{{:_, :_, :"$1"}, [{:<, :"$1", oldest}], [true]}])
+
+    if :ets.info(@cache, :size) >= c[:max_entries] or bytes() >= c[:max_bytes],
+      do: :ets.delete_all_objects(@cache)
+  end
+
+  @doc """
+  Forgets every cached response and stops every call in flight (tests,
+  an owner's console): their pages read them as `:crashed`.
+  """
+  def clear do
+    :ets.delete_all_objects(@cache)
+
+    for pid <- Task.Supervisor.children(@tasks), do: Process.exit(pid, :kill)
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  @doc """
+  Asks for `function(params)` of `module` (the call `key`): the caller
+  gets `{:bubble, :api_data, key, result}` when it ends. When the same
+  call is in flight (any page), the caller waits for it (`:waiting`);
+  otherwise a task makes it (`:started`), when fewer than
+  `:max_in_flight` calls of `module` are in flight (else `:busy`).
+  `cache?` says whether its response may be cached.
+  """
+  def call({module, function, params} = key, cache?) do
+    :ets.insert(@waiters, {key, self()})
+
+    if :ets.insert_new(@calls, {key, nil}) do
+      start(key, module, function, params, cache?)
+    else
+      # The call it waits for may have just ended: then it calls itself.
+      if :ets.member(@calls, key) do
+        :waiting
+      else
+        :ets.delete_object(@waiters, {key, self()})
+        call(key, cache?)
+      end
+    end
+  rescue
+    ArgumentError -> :busy
+  end
+
+  defp start({module, _, _} = key, module, function, params, cache?) do
+    if acquire(module) do
+      opts = call_opts()
+
+      case Task.Supervisor.start_child(@tasks, fn -> finish(key, cache?, attempt(module, function, params, opts)) end) do
+        {:ok, pid} ->
+          __MODULE__.Monitor.watch(pid, module, key)
+          :started
+
+        _ ->
+          release(module)
+          abandon(key)
+      end
+    else
+      abandon(key)
+    end
+  end
+
+  # It could not start: the pages that came to wait for it try again
+  # (`:busy`).
+  defp abandon(key) do
+    :ets.delete_object(@waiters, {key, self()})
+    notify(key, :busy)
+    :busy
+  end
+
+  # The call, its errors reduced to what may be logged and shown.
+  defp attempt(module, function, params, opts) do
+    case apply(module, function, [params, opts]) do
+      {:ok, value} -> {:ok, value}
+      {:error, %<%= @module %>.ApiClients.MissingEnvError{names: names}} -> {:error, {:missing_env, names}}
+      {:error, reason} -> {:error, reason(reason)}
+    end
+  rescue
+    _ -> {:error, :crashed}
+  catch
+    _, _ -> {:error, :crashed}
+  end
+
+  # Caches a response that may be cached (a non-transient failure forgets
+  # the last one), logs a failure once, and tells every waiting page.
+  defp finish({module, function, _} = key, cache?, result) do
+    case result do
+      {:ok, value} ->
+        if cache? and cache?(module, function), do: put(key, value)
+
+      {:error, reason} ->
+        if not transient?(reason), do: forget(key)
+        Logger.warning("bubble page data: API call #{inspect(module)}.#{function} " <> describe(reason))
+    end
+
+    notify(key, result)
+  end
+
+  @doc false
+  # Every page waiting for `key` gets `result`; the call is no longer in
+  # flight.
+  def notify(key, result) do
+    :ets.delete(@calls, key)
+
+    for {^key, pid} <- :ets.take(@waiters, key),
+        do: send(pid, {:bubble, :api_data, key, result})
+
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  @doc "How a failed call reads in the log and the developer markers."
+  def describe({:missing_env, names}), do: "not called, secrets not set: " <> Enum.join(names, ", ")
+  def describe(reason), do: "failed: " <> inspect(reason)
+
+  # A refused connection, a timeout, a 429 or a 5xx may pass; a 4xx other
+  # than 429 says the call itself is wrong.
+  defp transient?({:status, status}) when status in 400..499 and status != 429, do: false
+  defp transient?(_reason), do: true
+
+  # A failed call as the log and the marker show it: never a body or a header.
+  defp reason({:status, status, _body}), do: {:status, status}
+  defp reason({:redirect_refused, status, _location}), do: {:redirect_refused, status}
+  defp reason({:decode, _error}), do: :decode
+  defp reason(%Req.TransportError{reason: reason}), do: {:transport, reason}
+  defp reason(%{__exception__: true, __struct__: kind}), do: {:exception, kind}
+  defp reason(reason) when is_atom(reason), do: reason
+  defp reason({kind, _detail}) when is_atom(kind), do: kind
+  defp reason(_reason), do: :error
+
+  defp acquire(module) do
+    n = :ets.update_counter(@flight, module, {2, 1}, {module, 0})
+
+    if n > config(:max_in_flight) do
+      release(module)
+      false
+    else
+      true
+    end
+  rescue
+    ArgumentError -> false
+  end
+
+  @doc false
+  def release(module) do
+    :ets.update_counter(@flight, module, {2, -1, 0, 0}, {module, 0})
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  @doc false
+  def in_flight(module) do
+    case :ets.lookup(@flight, module) do
+      [{^module, n}] -> n
+      [] -> 0
+    end
+  end
+
+  defmodule Monitor do
+    @moduledoc false
+
+    # Frees a call's place when its task ends, however it ends (a killed
+    # task runs no `after`), and tells the pages waiting for a task that
+    # died without answering.
+    use GenServer
+
+    alias <%= @module %>.ApiClients.Data
+
+    def start_link(_opts), do: GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
+
+    def watch(pid, module, key), do: GenServer.cast(__MODULE__, {:watch, pid, module, key})
+
+    @impl true
+    def init(state), do: {:ok, state}
+
+    @impl true
+    def handle_cast({:watch, pid, module, key}, state) do
+      ref = Process.monitor(pid)
+      {:noreply, Map.put(state, ref, {module, key})}
+    end
+
+    @impl true
+    def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
+      case Map.pop(state, ref) do
+        {{module, key}, state} ->
+          Data.release(module)
+          if reason != :normal, do: Data.notify(key, {:error, :crashed})
+          {:noreply, state}
+
+        {nil, state} ->
+          {:noreply, state}
+      end
+    end
+
+    def handle_info(_message, state), do: {:noreply, state}
+  end
+end

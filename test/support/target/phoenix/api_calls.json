@@ -1,6 +1,6 @@
 {
  "_id": "api-calls-fixture",
- "_comment": "WTF-533: API Connector calls lowered to Req clients, all data invented (host api.example.test, stubbed in test/support/target/phoenix/api_calls_behavior.exs; never a real API). An API (Example, key in a header) with two calls: Get item (GET, a URL parameter, a query parameter, a private header; returns an Item) and Post note (POST JSON with a private body parameter, errors included in the response). A backend workflow fetches an item and returns its name; page buttons fetch an item and post a note, showing the result in a label.",
+ "_comment": "WTF-533: API Connector calls lowered to Req clients, all data invented (host api.example.test, stubbed in test/support/target/phoenix/api_calls_behavior.exs; never a real API). An API (Example, key in a header) with two calls: Get item (GET, a URL parameter, a query parameter, a private header; returns an Item) and Post note (POST JSON with a private body parameter, errors included in the response). A backend workflow fetches an item and returns its name; page buttons fetch an item and post a note, showing the result in a label. A catalog page reads data calls (WTF-533, slice 2): List items (GET, a list of rows filtered by an input's value) feeds a repeating group and a group's first row; Get price is called in the repeating group's cells, per cell (residue) and with a fixed value (once); Get status, whose private header the tests never set, shows as empty with a developer marker. A reusable element counts the same list (another surface, one call per read); a group's conditional state reads the price of the typed item; a repeating group sends the input split by commas (a list parameter).",
  "user_types": {
   "user": {
    "display": "User",
@@ -80,6 +80,53 @@
        "wrap_error": true,
        "ret_value": "api.apiconnector2.gEx.cNote.Receipt",
        "types": "{\"api.apiconnector2.gEx.cNote.Receipt\": {\"caption\": \"Receipt\", \"fields\": {\"_api_c2_id\": {\"caption\": \"id\", \"path\": [\"id\"], \"ret_btype\": \"text\"}, \"_api_c2_returned_an_error\": {\"caption\": \"returned an error\", \"path\": [\"returned_an_error\"], \"ret_btype\": \"boolean\"}, \"_api_c2_error.status_code\": {\"caption\": \"error status_code\", \"path\": [\"error\", \"status_code\"], \"ret_btype\": \"number\"}, \"_api_c2_error.status_message\": {\"caption\": \"error status_message\", \"path\": [\"error\", \"status_message\"], \"ret_btype\": \"text\"}, \"_api_c2_error.body\": {\"caption\": \"error body\", \"path\": [\"error\", \"body\"], \"ret_btype\": \"text\"}}}}"
+      },
+      "cList": {
+       "name": "List items",
+       "method": "get",
+       "publish_as": "data",
+       "url": "https://api.example.test/v1/items",
+       "params": {
+        "p2": {
+         "key": "q",
+         "value": "",
+         "private": false,
+         "querystring": true
+        }
+       },
+       "is_list": true,
+       "ret_value": "api.apiconnector2.gEx.cList.Row",
+       "types": "{\"api.apiconnector2.gEx.cList.Row\": {\"caption\": \"Row\", \"fields\": {\"_api_c2_id\": {\"caption\": \"id\", \"path\": [\"id\"], \"ret_btype\": \"text\"}, \"_api_c2_name\": {\"caption\": \"name\", \"path\": [\"name\"], \"ret_btype\": \"text\"}, \"_api_c2_tags\": {\"caption\": \"tags\", \"path\": [\"tags\"], \"ret_btype\": \"list.text\"}}}}"
+      },
+      "cPrice": {
+       "name": "Get price",
+       "method": "get",
+       "publish_as": "data",
+       "url": "https://api.example.test/v1/prices/[item_id]",
+       "url_params": {
+        "u2": {
+         "key": "item_id",
+         "value": "1",
+         "private": false
+        }
+       },
+       "ret_value": "api.apiconnector2.gEx.cPrice.Price",
+       "types": "{\"api.apiconnector2.gEx.cPrice.Price\": {\"caption\": \"Price\", \"fields\": {\"_api_c2_amount\": {\"caption\": \"amount\", \"path\": [\"amount\"], \"ret_btype\": \"number\"}}}}"
+      },
+      "cStatus": {
+       "name": "Get status",
+       "method": "get",
+       "publish_as": "data",
+       "url": "https://api.example.test/v1/status",
+       "headers": {
+        "h3": {
+         "key": "X-Status-Token",
+         "value": "t",
+         "private": true
+        }
+       },
+       "ret_value": "api.apiconnector2.gEx.cStatus.Status",
+       "types": "{\"api.apiconnector2.gEx.cStatus.Status\": {\"caption\": \"Status\", \"fields\": {\"_api_c2_state\": {\"caption\": \"state\", \"path\": [\"state\"], \"ret_btype\": \"text\"}}}}"
       }
      }
     }
@@ -346,6 +393,521 @@
             "type": "Message",
             "name": "_api_c2_error.status_message"
            }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "catalog": {
+   "id": "bCatalog",
+   "name": "catalog",
+   "type": "Page",
+   "properties": {
+    "title": "Catalog"
+   },
+   "elements": {
+    "bQuery": {
+     "id": "bQuery",
+     "type": "Input",
+     "properties": {
+      "order": 1,
+      "width": 200,
+      "height": 40,
+      "min_height_css": "40px"
+     }
+    },
+    "bItems": {
+     "id": "bItems",
+     "type": "RepeatingGroup",
+     "properties": {
+      "order": 2,
+      "width": 300,
+      "height": 200,
+      "columns": 1,
+      "rows": 10,
+      "group_type": "api.apiconnector2.gEx.cList.Row",
+      "data_source": {
+       "type": "GetDataFromAPI",
+       "properties": {
+        "provider": "apiconnector2.gEx.cList",
+        "params_q": {
+         "type": "TextExpression",
+         "entries": {
+          "0": {
+           "type": "GetElement",
+           "properties": {
+            "element_id": "bQuery"
+           },
+           "next": {
+            "type": "Message",
+            "name": "get_data"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "elements": {
+      "bItemName": {
+       "id": "bItemName",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Item: ",
+          "1": {
+           "type": "CurrentDataItem",
+           "next": {
+            "type": "Message",
+            "name": "_api_c2_name"
+           }
+          }
+         }
+        }
+       }
+      },
+      "bItemPrice": {
+       "id": "bItemPrice",
+       "type": "Group",
+       "properties": {
+        "order": 2,
+        "width": 300,
+        "height": 40,
+        "group_type": "api.apiconnector2.gEx.cPrice.Price",
+        "data_source": {
+         "type": "GetDataFromAPI",
+         "properties": {
+          "provider": "apiconnector2.gEx.cPrice",
+          "url_params_item_id": {
+           "type": "TextExpression",
+           "entries": {
+            "0": {
+             "type": "CurrentDataItem",
+             "next": {
+              "type": "Message",
+              "name": "_api_c2_id"
+             }
+            }
+           }
+          }
+         }
+        }
+       },
+       "elements": {
+        "bItemAmount": {
+         "id": "bItemAmount",
+         "type": "Text",
+         "properties": {
+          "order": 1,
+          "width": 300,
+          "height": 40,
+          "min_height_css": "40px",
+          "text": {
+           "type": "TextExpression",
+           "entries": {
+            "0": "Price: ",
+            "1": {
+             "type": "ElementParent",
+             "next": {
+              "type": "Message",
+              "name": "_api_c2_amount"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      },
+      "bItemBase": {
+       "id": "bItemBase",
+       "type": "Group",
+       "properties": {
+        "order": 3,
+        "width": 300,
+        "height": 40,
+        "group_type": "api.apiconnector2.gEx.cPrice.Price",
+        "data_source": {
+         "type": "GetDataFromAPI",
+         "properties": {
+          "provider": "apiconnector2.gEx.cPrice",
+          "url_params_item_id": {
+           "type": "TextExpression",
+           "entries": {
+            "0": "base"
+           }
+          }
+         }
+        }
+       },
+       "elements": {
+        "bItemBaseAmount": {
+         "id": "bItemBaseAmount",
+         "type": "Text",
+         "properties": {
+          "order": 1,
+          "width": 300,
+          "height": 40,
+          "min_height_css": "40px",
+          "text": {
+           "type": "TextExpression",
+           "entries": {
+            "0": "Base: ",
+            "1": {
+             "type": "ElementParent",
+             "next": {
+              "type": "Message",
+              "name": "_api_c2_amount"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "bFirst": {
+     "id": "bFirst",
+     "type": "Group",
+     "properties": {
+      "order": 3,
+      "width": 300,
+      "height": 80,
+      "group_type": "api.apiconnector2.gEx.cList.Row",
+      "data_source": {
+       "type": "GetDataFromAPI",
+       "properties": {
+        "provider": "apiconnector2.gEx.cList",
+        "params_q": {
+         "type": "TextExpression",
+         "entries": {
+          "0": {
+           "type": "GetElement",
+           "properties": {
+            "element_id": "bQuery"
+           },
+           "next": {
+            "type": "Message",
+            "name": "get_data"
+           }
+          }
+         }
+        }
+       },
+       "next": {
+        "type": "Message",
+        "name": "first_element"
+       }
+      }
+     },
+     "elements": {
+      "bFirstName": {
+       "id": "bFirstName",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "First: ",
+          "1": {
+           "type": "ElementParent",
+           "next": {
+            "type": "Message",
+            "name": "_api_c2_name"
+           }
+          },
+          "2": " tags ",
+          "3": {
+           "type": "ElementParent",
+           "next": {
+            "type": "Message",
+            "name": "_api_c2_tags",
+            "next": {
+             "type": "Message",
+             "name": "count"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "bStatus": {
+     "id": "bStatus",
+     "type": "Group",
+     "properties": {
+      "order": 4,
+      "width": 300,
+      "height": 40,
+      "group_type": "api.apiconnector2.gEx.cStatus.Status",
+      "data_source": {
+       "type": "GetDataFromAPI",
+       "properties": {
+        "provider": "apiconnector2.gEx.cStatus"
+       }
+      }
+     },
+     "elements": {
+      "bState": {
+       "id": "bState",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "State: ",
+          "1": {
+           "type": "ElementParent",
+           "next": {
+            "type": "Message",
+            "name": "_api_c2_state"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "bCount": {
+     "id": "bCount",
+     "type": "CustomElement",
+     "properties": {
+      "custom_id": "bCountDef",
+      "order": 5,
+      "width": 300,
+      "height": 40
+     }
+    },
+    "bPick": {
+     "id": "bPick",
+     "type": "Group",
+     "properties": {
+      "order": 6,
+      "width": 300,
+      "height": 40,
+      "group_type": "api.apiconnector2.gEx.cPrice.Price",
+      "data_source": {
+       "type": "GetDataFromAPI",
+       "properties": {
+        "provider": "apiconnector2.gEx.cPrice",
+        "url_params_item_id": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "base"
+         }
+        }
+       }
+      }
+     },
+     "states": {
+      "0": {
+       "type": "State",
+       "condition": {
+        "type": "GetElement",
+        "properties": {
+         "element_id": "bQuery"
+        },
+        "next": {
+         "type": "Message",
+         "name": "get_data",
+         "next": {
+          "type": "Message",
+          "name": "is_not_empty"
+         }
+        }
+       },
+       "properties": {
+        "data_source": {
+         "type": "GetDataFromAPI",
+         "properties": {
+          "provider": "apiconnector2.gEx.cPrice",
+          "url_params_item_id": {
+           "type": "TextExpression",
+           "entries": {
+            "0": {
+             "type": "GetElement",
+             "properties": {
+              "element_id": "bQuery"
+             },
+             "next": {
+              "type": "Message",
+              "name": "get_data"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "elements": {
+      "bPickAmount": {
+       "id": "bPickAmount",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Pick: ",
+          "1": {
+           "type": "ElementParent",
+           "next": {
+            "type": "Message",
+            "name": "_api_c2_amount"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "bTagged": {
+     "id": "bTagged",
+     "type": "RepeatingGroup",
+     "properties": {
+      "order": 7,
+      "width": 300,
+      "height": 100,
+      "columns": 1,
+      "rows": 5,
+      "group_type": "api.apiconnector2.gEx.cList.Row",
+      "data_source": {
+       "type": "GetDataFromAPI",
+       "properties": {
+        "provider": "apiconnector2.gEx.cList",
+        "params_q": {
+         "type": "GetElement",
+         "properties": {
+          "element_id": "bQuery"
+         },
+         "next": {
+          "type": "Message",
+          "name": "get_data",
+          "next": {
+           "type": "Message",
+           "name": "split_by",
+           "properties": {
+            "separator": {
+             "type": "TextExpression",
+             "entries": {
+              "0": ","
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "elements": {
+      "bTaggedName": {
+       "id": "bTaggedName",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Tagged: ",
+          "1": {
+           "type": "CurrentDataItem",
+           "next": {
+            "type": "Message",
+            "name": "_api_c2_name"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "element_definitions": {
+  "count": {
+   "id": "bCountDef",
+   "name": "Count",
+   "type": "CustomDefinition",
+   "properties": {
+    "width": 300,
+    "height": 40
+   },
+   "elements": {
+    "bRCount": {
+     "id": "bRCount",
+     "type": "Group",
+     "properties": {
+      "order": 1,
+      "width": 300,
+      "height": 40,
+      "group_type": "number",
+      "data_source": {
+       "type": "GetDataFromAPI",
+       "properties": {
+        "provider": "apiconnector2.gEx.cList",
+        "params_q": {
+         "type": "TextExpression",
+         "entries": {
+          "0": ""
+         }
+        }
+       },
+       "next": {
+        "type": "Message",
+        "name": "count"
+       }
+      }
+     },
+     "elements": {
+      "bRCountN": {
+       "id": "bRCountN",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Rows: ",
+          "1": {
+           "type": "ElementParent"
           }
          }
         }

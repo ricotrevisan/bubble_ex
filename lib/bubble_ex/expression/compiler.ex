@@ -64,6 +64,7 @@ defmodule BubbleEx.Expression.Compiler do
 
   alias BubbleEx.Expression.Ast.{
     AllOptions,
+    ApiData,
     ArbitraryText,
     Arithmetic,
     Check,
@@ -259,6 +260,40 @@ defmodule BubbleEx.Expression.Compiler do
     else
       {:error, diag} -> {:error, base, [diag]}
       :error -> {:error, base, [uncompiled(pbase, "a search of an unknown data type", :search)]}
+    end
+  end
+
+  # `Get data from an external API` (WTF-533): the call and the values of
+  # its non-private parameters the expression sets (`:api_data`). A member
+  # naming a private parameter (or one since removed) is not sent, as in
+  # Bubble: a private value is never an expression's.
+  defp lower(%ApiData{} = n, base, ctx) do
+    pbase = base ++ [key(n, :properties)]
+
+    case Model.connector_call(ctx.env.model, n.group, n.call) do
+      {_group, call} when is_binary(n.type) ->
+        {values, _ignored} =
+          Model.ConnectorCall.member_values(call, Enum.map(n.params, &{&1.key, &1}))
+
+        {params, diags} =
+          Enum.map_reduce(values, [], fn {p, key, param}, acc ->
+            {ir, _p, d} = c(param.value, pbase ++ [key], ctx)
+
+            {{%{"parameter" => p.id, "in" => Atom.to_string(p.in), "key" => p.name}, ir},
+             acc ++ d}
+          end)
+
+        {keys, irs} = Enum.unzip(params)
+        ir = combine(IR.node(:api_data, [n.group, n.call, keys | irs], n.type), irs)
+        {ir, base, diags}
+
+      {_group, _call} ->
+        {:error, base,
+         [uncompiled(base, "an API Connector call whose response type is not known", :api_data)]}
+
+      nil ->
+        {:error, base,
+         [uncompiled(base, "an API Connector call that does not resolve", :api_data)]}
     end
   end
 

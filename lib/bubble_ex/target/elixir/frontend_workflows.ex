@@ -2214,6 +2214,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # A query a page data source reads first (WTF-495, `Data`).
   defp bind({:query, %{"n" => n}}, _ctx) when is_binary(n), do: {:ok, {:query, n}}
 
+  # An API Connector call a page data source reads first (WTF-533, `Data`).
+  defp bind({:api_data, %{"n" => n}}, _ctx) when is_binary(n), do: {:ok, {:api_data, n}}
+
   # The page's data (WTF-420): a page's or cell's thing, a group's data, a
   # repeating group's list, a reusable element's property (WTF-493).
   defp bind({:element_state, %{"state" => s}} = input, ctx)

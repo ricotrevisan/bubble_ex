@@ -2,9 +2,10 @@
 
 A Bubble API Connector call used as an **action** ("Use as: Action") in a
 backend or page workflow is lowered to a call of the generated Req client
-(`<App>.ApiClients.<API>.<call>`, WTF-374), on the server. Calls used as
-**data** (a data source, or inside an expression) are not lowered yet: see
-"Not lowered yet".
+(`<App>.ApiClients.<API>.<call>`, WTF-374), on the server. A call used as
+**data** ("Get data from an external API", in a page's data source) is
+page data, made with the same client by the page's LiveView: see "Calls
+used as data".
 
 ```elixir
 {:ok, model} = BubbleEx.Model.build(app)
@@ -69,7 +70,7 @@ debugger breakpoint are the action's other members; anything else is
 | with "Include errors in response" | the step succeeds whatever the status: on a 2xx `returned_an_error` is no, otherwise yes with `error`'s `status_code`, `status_message` (the HTTP reason phrase) and `body` (the response text), Bubble's own result fields |
 | a transport error (timeout, refused connection) | the step fails, with or without "Include errors in response" |
 | timeouts | 30 s to receive, 10 s to connect, and a 30 s deadline for the whole call, retries and redirects included (`:deadline`; then `:deadline_exceeded`), per API in the configuration |
-| retries | **none for an action** (every workflow step), whatever its method. A GET Bubble uses as data (for the data calls to come) is retried at most twice, only on a refused connection, a 429 or a 503, waiting what `retry-after` asks but at most 5 s (`:max_retry_delay`) |
+| retries | **none for an action** (every workflow step), whatever its method. A GET Bubble uses as data is retried only on a refused connection, a 429 or a 503, waiting what `retry-after` asks but at most `:max_retry_delay`; on a page's data path at most once, at most 1 s (below) |
 | response size | at most 10 MB read (`:max_body_bytes`), decompressed included: the clients ask for no compression, and inflate a gzip or deflate body only up to the limit (`{:body_too_large, limit}`); a truncated body, more than one encoding (in one `content-encoding` header or several: the app needs Req 0.7.4, which keeps them all) or another encoding is an error (`{:decode, :content_encoding}`) |
 | addresses | the host is Bubble's or the owner's (an environment variable), never a step's or a page's value: a call whose host or port has a public parameter, or whose `Host` header is a public parameter, is residue (`:host_parameter`; any port placeholder is `:dynamic_port`). Before each request and redirect the host is resolved and refused (`{:blocked_address, _}`) when an address is loopback, private, link-local (cloud metadata), carrier-grade NAT, multicast or reserved (documentation and benchmarking ranges, IPv4-mapped and -translated IPv6, local-use NAT64, Teredo, site-local, and 6to4 or well-known NAT64 of a refused IPv4 address), unless the owner configured it (the `:base_url`'s origin, e.g. a development `localhost`, or `allow_private_addresses: true`). The request then connects to the address checked (DNS rebinding cannot move it), the host kept in the `Host` header, TLS's SNI and certificate verification. Each pinned host gets a Finch instance, and each address it resolves to a pool in it, none ever stopped: bounded by the hosts Bubble and the owner define (redirects to other hosts are refused) and the addresses they resolve to. A `plug: nil` or `plug: false` is no plug: the request is checked |
 | path segments | percent-encoded; a value that is exactly `.` or `..` is `%2E` / `%2E%2E`, never a step up the path |
@@ -117,6 +118,76 @@ debugger breakpoint are the action's other members; anything else is
   (`.wtf/api_clients.json` version 2); `mix bubble.api_env` prints each
   missing one with its old name (`was PAYMENTS_API_KEY`).
 
+## Calls used as data
+
+"Get data from an external API" (`GetDataFromAPI`, with its `provider`
+`apiconnector2.<API>.<call>` and the parameter values it sets in members
+named like an action's) is an expression source:
+`BubbleEx.Expression.Ast.ApiData`, typed as the call's response
+(`BubbleEx.Model.call_result_type/3`: its API type, or a list of it when
+Bubble initialized a list) and compiled to the IR `:api_data` with the
+values of the call's **non-private** parameters only. A member naming a
+private parameter is not a value, as for an action.
+
+On a page it is **page data** (`docs/page-data.md`), never anything else:
+
+| | Generated |
+|-|-----------|
+| where it runs | on the server, **off the page's LiveView process**: the page's data loader (`<Web>.BubbleData.api/5`) returns a cached response, else the result of the call that just ended, else the page's last successful result of the same call with the same values (for at most `:max_stale`), else nothing, and asks for the call (`<App>.ApiClients.Data.call/2`): made in a task, or, when another page is making the same call, waited for (one request for every page). When it ends, the page reads again only the sources reading that call. A slow API never blocks a mount, a render or an event. The browser never sees the call, its secrets or its response, only what the page shows |
+| typed reads | a group's or repeating group's source of the call's type; `:first item`, `:item #`, `:count` and other list operators over a list response; "Current cell's" and "Parent group's" fields (`_api_c2_...`), a list field included (`tags:count`); a field over a list of API values maps over its items |
+| parameters | page values (inputs, custom states, URL, cells, the current user...), compiled like any page value; private ones only from the environment |
+| reloads | a source reading the call is in the page's dependency graph: its parameters' inputs are its `inputs`, so changing one reads again only what reads it (narrowed reloads, WTF-475) |
+| deduplication | the same call with the same values is asked **once per read of the page's data** (`once/3`), however many sources (and surfaces) read it, and made once while it is in flight, whatever page asks (single flight) |
+| in a repeating group's cell | a call whose values are the same in every cell is made once; one whose values read the cell (or a per-cell scope) would run once per cell and is `:page_data_in_cell` residue (`detail.kind` `"api_data"`), like a search that cannot be batched |
+| a failure | the call's value is empty (nil): a non-2xx response (without "Include errors in response"), a timeout or the data deadline (`:deadline_exceeded`), a body that does not decode or is too large, a task that crashed (`:crashed`). Logged once per call with the status or the error's kind only; no page notice; never cached. With "Include errors in response" an error is the call's value instead, its `error`'s `body` (the response text) included: **that body can reach the page** if the page shows it, as in Bubble |
+| secrets not set | the call is never sent (`MissingEnvError`) and reads as empty; the log names the missing variables, never a value |
+| developer markers | with `config :app, :bubble_dev_markers, true` (dev only) an element outside a cell whose own source reads a failed call has `data-bubble-api-error` with the same text (`<Web>.Bubble.api_error/3`) |
+| data access | page data needs the workflows' `data_access: true` opt-in: with it off, a page makes no call |
+| retries and limits | at most **1 retry** (a refused connection, a 429 or a 503), waiting at most **1 s**; an **8 s** deadline (under the LiveView's 10 s join timeout); responses of at most **1 MB** |
+
+### Cost model
+
+A data call is a request to someone else's API, paid with the owner's
+credentials whoever opens the page. The defaults
+(`<App>.ApiClients.Data`, all in `config :app, <App>.ApiClients.Data`):
+
+| | default | key |
+|-|---------|-----|
+| a response shared by every page (mounts, change notifications, other users, other pages) | 30 s | `:ttl` |
+| a stale response (past the TTL) shown while a new call is made; a 4xx other than 429 forgets it at once, a transient failure (timeout, 429, 5xx) keeps it, marked | 5 × the TTL | `:max_stale` |
+| calls never shared | those with "Include errors in response", and any `{module, function}` listed | `:no_cache` |
+| calls a page makes (a token bucket); past it the page keeps what it has and logs once, then reads again when a token is back | 10 per 10 s | `:budget` |
+| calls a page has in flight | 4 | `:max_concurrency` |
+| calls in flight per API (client module), all pages together; a task that dies, even killed, frees its place (a monitor) and its pages read it as `:crashed` | 20 | `:max_in_flight` |
+| a data call's deadline, retries, retry delay, response size | 8 s, 1, 1 s, 1 MB | `:deadline`, `:max_retries`, `:max_retry_delay`, `:max_body_bytes` |
+| cached responses kept, by count and by memory (past either, those too old to show go, then all) | 1,000; 64 MB | `:max_entries`, `:max_bytes` |
+| results a page keeps | those of the calls its latest read asked for, and those in flight | |
+
+So a keystroke burst costs at most the budget, a mount within the TTL
+costs nothing, and a change notification does not call again within it
+(failures are not cached: the next read calls again, within the budget).
+
+### Privacy
+
+**An API response bypasses Ash and its policies.** A data call is made
+with the owner's credentials (the environment's keys) for any actor who
+can open the page, an anonymous visitor included, as in Bubble: what it
+returns is shown to them, whatever privacy rules the app's data types
+have. Only the `data_access` opt-in gates it: with it off no page makes
+a call; with it on, nothing else does.
+Do not point a data call at an API returning what not every visitor of
+the page may see.
+
+A call whose client is not generated (or a render without
+`api_clients:`) leaves its source `:api_connector_data` residue
+(`detail.call`); `Target.Phoenix.render/2` refuses page data reading the
+clients without them. An `:api_data` value anywhere else (a text binding,
+a condition, a workflow's value) is not compiled yet
+(`elixir:an API Connector call outside page data`).
+
+Bubble's registry may key a type without `api.apiconnector2.` (its own
+`ret_value` form, `<API>.<call>.<type>`): the Model resolves both.
+
 ## Unverified Bubble behavior
 
 * **A non-private parameter an action leaves empty.** Bubble may send the
@@ -145,25 +216,62 @@ debugger breakpoint are the action's other members; anything else is
   responses only).
 * **A response field typed `date`** is read from ISO 8601 text; a number
   (a Unix time) is not converted.
+* **Caching of calls used as data.** Bubble is reported to cache
+  identical data calls; for how long, across which users and pages, is
+  not known. Here a response is shared by every page for 30 s (`:ttl`),
+  never one with "Include errors in response", never a failure. Not
+  replayed.
+* **A failed data call.** Bubble shows the element empty and, as far as
+  known, no notice; here the value is nil, logged, with a developer
+  marker. What Bubble shows of a partial or non-JSON body is not known.
+* **A data call per cell.** Bubble may run a call whose values read the
+  cell once per cell; here such a source is residue (`page_data_in_cell`).
 
 ## Not lowered yet
 
-* **Calls used as data** (a page's or an element's data source, a value
-  in an expression): their reads stay residue (`docs/page-data.md`, "an
-  API Connector type's field"). They need a page data source that calls
-  the client when the page loads (and caches it per page), with the same
-  secrets model; their parameters may read page values.
+* **Calls used as data outside a page's data sources** (a text binding,
+  a condition, a workflow's value, a backend workflow): not compiled
+  (above). Nor a call whose values read a repeating group's cell.
 * **Calls whose client is not generated** stay `:api_connector_action`
   residue with the generator's reasons (`detail.reasons`: a public
   parameter in the URL's host (`:host_parameter`), OAuth and other
   authentications, file parameters, raw bodies, query strings in the URL,
   unresolved calls).
 * **Defaults and "Allow blank"** of non-private parameters (above).
-* **A field of a list of API values** (or through one, `Result of step N's
-  items:first item's name`) does not compile yet; nor does an API value
-  mixing typed structs and maps.
+* **An API value mixing typed structs and maps** does not compile yet.
 
 ## Coverage
+
+### Private fixture app (test version), 2026-10-14, calls used as data
+
+Counts only (the snapshots under `test/support/*/counts/`). Two causes
+move them: the Model now reads the API types Bubble keys without
+`api.apiconnector2.` (most of the app's registries; before, 5 opaque
+types, now 307 resolved with 2,956 fields, `typed_responses` 0 to 106),
+and "Get data from an external API" is lowered as page data. With the
+types read, 12 data fields that held a `json_value` hold typed structs
+now, and 11 `call_metadata_inconsistent` warnings appear: a type
+defined by one call's registry and returned by another (`ret_value`
+differs), read as defined. The loader writes such a field leniently
+(`Load.Convert`'s `{:external, parts}`: unknown members dropped, a
+mistyped one empty with a `:load` issue, a value that is not an object
+empty): a row never fails on it. Checked with the encoding only; the
+private app's rows are not exported here, so no row was loaded.
+
+| | before | after |
+|-|--------|-------|
+| expressions: unresolved accessors / of them on an API type | 1,342 / 227 | 1,123 / 8 |
+| expressions: untyped "Result of step N" | 348 | 76 |
+| expressions compiled to IR / to Elixir (of 19,716) | 17,376 / 16,256 | 17,798 / 16,668 |
+| page data sources reading a data call (13 `GetDataFromAPI` nodes in 8 expressions; the rest are text values and workflow values) | 3 residue | 1 wired; 2 `:api_connector_data` (their calls have a public host parameter, no client) |
+| page data sources wired | 2,832 | 2,839 |
+| page steps / workflows native IR | 2,866 / 1,316 | 2,912 / 1,327 |
+| page steps / workflows generated whole | 2,571 / 923 | 2,610 / 927 |
+| backend steps / workflows generated whole | 1,235 / 127 | 1,315 / 132 |
+| structural: generated subjects | 811 | 820 (`residue:api_connector_action` 18 to 31: workflows whose values now compile stop at a call with no client instead) |
+
+Data calls in text bindings and workflow values (5 expressions) stay
+`elixir:an API Connector call outside page data`.
 
 ### Private fixture app (test version), 2026-10-11
 

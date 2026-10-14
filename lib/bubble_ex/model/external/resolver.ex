@@ -9,6 +9,12 @@ defmodule BubbleEx.Model.External.Resolver do
   # faithfully. `BubbleEx.Model.External` converts the result into Model
   # structs. API Connector settings are read once, into the Model's
   # connectors; this reads the calls from there.
+  #
+  # A descriptor names its group and call (`api.apiconnector2.<group>.<call>`,
+  # a call's own response, as Bubble writes `ret_value`), optionally followed
+  # by the type's own path (`...<call>.<type>`, an object inside it). The
+  # registry keys a definition by the descriptor, or, as Bubble writes it, by
+  # the descriptor without `api.apiconnector2.` (`<group>.<call>[.<type>]`).
 
   @prefix "api.apiconnector2."
   @scalars %{
@@ -168,7 +174,7 @@ defmodule BubbleEx.Model.External.Resolver do
   end
 
   defp resolve_registry_definition(state, id, call, registry, occurrence) do
-    case Map.fetch(registry, id) do
+    case registry_entry(registry, id) do
       {:ok, definition} when is_map(definition) ->
         resolve_definition(id, definition, call, occurrence, state)
 
@@ -267,9 +273,9 @@ defmodule BubbleEx.Model.External.Resolver do
     |> Map.values()
     |> Enum.flat_map(& &1.calls)
     |> Enum.flat_map(fn call ->
-      case call.registry do
-        %{^id => definition} -> [definition]
-        _ -> []
+      case registry_entry(call.registry || %{}, id) do
+        {:ok, definition} -> [definition]
+        :error -> []
       end
     end)
     |> Enum.uniq()
@@ -287,7 +293,21 @@ defmodule BubbleEx.Model.External.Resolver do
   defp strip_list("list." <> descriptor), do: {descriptor, :many}
   defp strip_list(descriptor), do: {descriptor, :one}
 
-  defp valid_external?(@prefix <> rest), do: length(String.split(rest, ".")) >= 3
+  # A type's definition: under its descriptor, or under the descriptor
+  # without the prefix (Bubble's own key).
+  defp registry_entry(registry, @prefix <> rest = id) do
+    case Map.fetch(registry, id) do
+      {:ok, definition} -> {:ok, definition}
+      :error -> Map.fetch(registry, rest)
+    end
+  end
+
+  defp registry_entry(registry, id), do: Map.fetch(registry, id)
+
+  defp valid_external?(@prefix <> rest),
+    do:
+      rest |> String.split(".") |> then(&(length(&1) >= 2 and Enum.all?(&1, fn p -> p != "" end)))
+
   defp valid_external?(_), do: false
 
   defp identity_parts(@prefix <> rest) do

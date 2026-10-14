@@ -8,12 +8,12 @@
     "attributes_by_type": {
       "array enum": 19,
       "array string": 110,
+      "array typed_struct": 4,
       "boolean": 159,
       "enum": 109,
       "float": 62,
-      "json_value": 12,
       "string": 892,
-      "typed_struct": 4,
+      "typed_struct": 12,
       "utc_datetime_usec": 262
     },
     "db_references": {
@@ -26,7 +26,6 @@
       "ash_decision_applied": 1,
       "ash_deleted_omitted": 59,
       "ash_expr_unmapped_reference": 3,
-      "ash_opaque_value": 6,
       "ash_policies_unverified": 1,
       "ash_policy_aggregates_unguarded": 41,
       "ash_policy_attachments_unenforced": 5,
@@ -37,9 +36,7 @@
       "ash_policy_search_fields_restricted": 1,
       "ash_policy_stricter_than_bubble": 86,
       "ash_unresolved_reference": 5,
-      "exact_type_definition_missing": 7,
-      "external_type_unresolved_root": 6,
-      "invalid_descriptor": 7,
+      "call_metadata_inconsistent": 11,
       "model_option_key_missing": 9,
       "model_undeclared_option_attribute_value": 40,
       "model_unresolved_target": 5
@@ -84,11 +81,12 @@
     "resources": 84,
     "synthesized_resources": 0,
     "typed_structs": {
+      "external": 17,
       "structured": 3
     }
   },
   "decisions_sha256": "314c4c62d790e0b11fb3f14b2c30e9bd085cab1beb265c5a36cd6de0389dc94f",
-  "project_sha256": "d6e82b49376f12ff7e0983bc3a5b562aaf6bfc3655861b8ad0ae102de4609128",
+  "project_sha256": "ba1ff2ce88dce4daa96ecb1d66989247aed32167d300e6406dc76b4ae012848b",
   "resolved": {
     "acknowledged": 0,
     "active": 27,

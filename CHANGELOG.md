@@ -6,6 +6,28 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **API Connector calls used as data are page data** (WTF-533, slice 2).
+  "Get data from an external API" parses to `Expression.Ast.ApiData`,
+  typed as the call's response, and compiles to the IR `:api_data` (only
+  non-private parameters are values). A page data source reading it makes
+  the call with the generated Req client behind the `data_access` opt-in,
+  **off the LiveView process** (`<App>.ApiClients.Data`, a task per call):
+  the page shows a cached or its last value and reads again what reads
+  the call when it ends; pages asking for the same call while it is in
+  flight share it. Defaults, all configurable: a 30 s cache shared by
+  every page (never for "Include errors in response" or failures; a stale
+  response shown at most 5 × the TTL, forgotten on a 4xx other than 429;
+  at most 1,000 entries and 64 MB), a
+  budget of 10 calls per 10 s per page, 4 in flight per page, 20 per API,
+  an 8 s deadline, 1 retry within 1 s, 1 MB responses. A failed call or
+  missing secrets read as empty (logged once; `data-bubble-api-error` with
+  the developer markers on; no notice). Responses bypass the Ash policies,
+  as in Bubble. A call whose values read a repeating group's cell is
+  `:page_data_in_cell` residue (`kind: "api_data"`); one whose client is
+  not generated is `:api_connector_data` residue. Fields over lists of
+  API values (and list fields) now compile. The Model resolves registry
+  types keyed as Bubble writes them (without
+  `api.apiconnector2.`). See `docs/api-connector-calls.md`.
 - **Buildprint format 35** (`bubblescript-35`). `BubbleEx.Buildprint.V5`
   accepts workspaces Buildprint now writes. A comparison with a format-32
   clone found the same tables, columns, metadata keys, manifest and row
