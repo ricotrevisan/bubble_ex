@@ -11,7 +11,7 @@ defmodule BubbleEx.Apps.Parser do
   @doc """
   Extracts the dynamic JavaScript URL from a Bubble app's HTML payload.
   """
-  @spec extract_dynamic_js_url(map()) :: {:ok, String.t()} | {:error, term()}
+  @spec extract_dynamic_js_url(map()) :: {:ok, String.t()} | {:error, BubbleEx.Error.t()}
   def extract_dynamic_js_url(%{body: html_content, url: base_url}) do
     with {:ok, document} <- Floki.parse_document(html_content),
          {:ok, relative_url} <- find_dynamic_js_script(document),
@@ -20,8 +20,28 @@ defmodule BubbleEx.Apps.Parser do
     else
       {:error, reason} ->
         Logger.error("Failed to extract dynamic JS URL")
+        {:error, dynamic_js_error(html_content, base_url, reason)}
+    end
+  end
 
-        {:error, %{phase: :discover_dynamic_js, url: base_url, reason: reason}}
+  # Bubble answers 200 with this notice, and no app, when a version is
+  # password-protected but the app's plan no longer includes that feature.
+  # Only the owner upgrading the plan unlocks it.
+  @version_locked_notice "protected in run mode by a password"
+
+  defp dynamic_js_error(html, url, reason) do
+    if is_binary(html) and String.contains?(html, @version_locked_notice) do
+      BubbleEx.Error.new(
+        :version_locked,
+        "version is password-protected but the app's plan does not include it",
+        %{url: url, reason: :version_locked}
+      )
+    else
+      BubbleEx.Error.new(:parse_failed, "could not find the app's dynamic_js script", %{
+        url: url,
+        phase: :discover_dynamic_js,
+        reason: reason
+      })
     end
   end
 
