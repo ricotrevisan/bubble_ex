@@ -27,6 +27,32 @@ defmodule BubbleEx.AppsTest do
       assert {:ok, url} = Parser.extract_dynamic_js_url(payload)
       assert url == "https://example.com:443/package/dynamic_js/123/dynamic.js"
     end
+
+    test "reports a version Bubble locked for the app's plan" do
+      payload = %{
+        body:
+          ~s(<!doctype html><title>Bubble Application</title><div class="mention">This ) <>
+            ~s(<a href="https://bubble.io">Bubble</a> application is protected in run mode by a ) <>
+            "password. The application plan does not include this feature.</div>",
+        url: "https://locked.bubbleapps.io/version-test"
+      }
+
+      assert {:error,
+              %BubbleEx.Error{
+                kind: :version_locked,
+                context: %{url: "https://locked.bubbleapps.io/version-test"}
+              }} = Parser.extract_dynamic_js_url(payload)
+    end
+
+    test "reports a page without a dynamic_js script as a parse failure" do
+      payload = %{body: "<html><body>maintenance</body></html>", url: "https://example.com"}
+
+      assert {:error,
+              %BubbleEx.Error{
+                kind: :parse_failed,
+                context: %{reason: :dynamic_js_script_not_found, url: "https://example.com"}
+              }} = Parser.extract_dynamic_js_url(payload)
+    end
   end
 
   describe "fetch_app/2 (offline, full pipeline via Req.Test)" do

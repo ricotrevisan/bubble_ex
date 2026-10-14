@@ -37,6 +37,8 @@ defmodule BubbleEx.Error do
     an input declares a format or schema version outside the supported set
   - `:unsupported_renderer` - the app is not using Bubble's modern responsive renderer
   - `:export_blocked` - a blocking finding (e.g. leaked credential) stopped a frontend export
+  - `:version_locked` - Bubble locks a password-protected version whose app plan
+    no longer includes password protection
   """
   @type kind ::
           :not_a_bubble_app
@@ -54,6 +56,7 @@ defmodule BubbleEx.Error do
           | :unknown_format
           | :unsupported_renderer
           | :export_blocked
+          | :version_locked
 
   @type t :: %__MODULE__{kind: kind(), message: String.t(), context: map()}
 
