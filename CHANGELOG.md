@@ -6,6 +6,27 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Secret scans no longer lose plain-text secrets TruffleHog labels
+  BASE64** (WTF-538). TruffleHog keeps one of two decoders' identical
+  findings at the same location, and a payload file is one line, so a
+  plain-text secret could come back as a BASE64 finding, which
+  `Secrets.Trufflehog` dropped because its base64 form is not in the
+  payload. A live GCP service-account key in an API Connector sample body
+  was lost that way in two runs out of three. Such a finding (and an HTML or
+  other decoder's) whose secret is in the payload as is is now reported as
+  PLAIN.
+
+### Added
+
+- **TruffleHog custom detectors, starting with Elastic App Search private
+  keys** (WTF-538). Every `Secrets.Trufflehog` scan loads
+  `priv/trufflehog/custom_detectors.yaml` (`--config`). A finding gets the
+  detector's provider name and a `"DetectorType"` id from 1_000_001 up
+  (`Trufflehog.custom_detectors/0`) instead of TruffleHog's `"CustomRegex"`
+  (904), and is marked `"Verification" => "skipped"`, also in verify mode.
+  Verify mode therefore asks TruffleHog for unverified results too and drops
+  the ones a provider rejected itself.
+
 - **API Connector clients: hardening follow-ups** (WTF-534). The address
   check also refuses the documentation (192.0.2/24, 198.51.100/24,
   203.0.113/24, 2001:db8::/32, 3fff::/20), benchmarking, 6to4 relay,

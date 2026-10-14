@@ -1,0 +1,15 @@
+# TruffleHog custom detectors bubble_ex adds to every scan (`--config`).
+# TruffleHog reports each as DetectorName "CustomRegex" with the name below in
+# ExtraData.name; `BubbleEx.Secrets.Trufflehog` maps that name to a provider
+# name and a DetectorType id of its own (`@custom_detectors` there). Add a
+# detector in both places together.
+detectors:
+  # Elastic App Search private API key (WTF-538). TruffleHog has no detector
+  # for it. Public search keys (`search-...`) are meant for browsers and are
+  # not matched.
+  - name: ElasticAppSearch
+    keywords:
+      - private-
+    regex:
+      key: '\b(private-[a-z0-9]{24})\b'
+    entropy: 3

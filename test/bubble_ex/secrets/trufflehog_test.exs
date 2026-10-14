@@ -65,8 +65,24 @@ defmodule BubbleEx.Secrets.TrufflehogTest do
   end
 
   describe "provider verification (offline, fake CLI)" do
-    # The fake CLI records its arguments one per line and prints the finding a
-    # `--no-verification` run prints: unverified, no verification error.
+    # The fake CLI records its arguments one per line and prints one finding
+    # of each kind a run can report: accepted by its provider, not checkable
+    # (verification error), rejected (what a `--no-verification` run reports
+    # for everything: unverified, no verification error), and a bubble_ex
+    # custom detector's.
+    @verified %{
+      "DecoderName" => "PLAIN",
+      "DetectorName" => "Github",
+      "Raw" => "synthetic-verified",
+      "Verified" => true
+    }
+    @unknown %{
+      "DecoderName" => "PLAIN",
+      "DetectorName" => "Github",
+      "Raw" => "synthetic-unknown",
+      "Verified" => false,
+      "VerificationError" => "timeout"
+    }
     @finding %{
       "DecoderName" => "PLAIN",
       "DetectorName" => "Github",
@@ -74,6 +90,19 @@ defmodule BubbleEx.Secrets.TrufflehogTest do
       "Verified" => false,
       "VerificationError" => nil
     }
+    @custom %{
+      "DecoderName" => "PLAIN",
+      "DetectorType" => 904,
+      "DetectorName" => "CustomRegex",
+      "ExtraData" => %{"name" => "ElasticAppSearch"},
+      "Raw" => "synthetic-custom",
+      "Verified" => false
+    }
+    @named_custom Map.merge(@custom, %{
+                    "DetectorType" => 1_000_001,
+                    "DetectorName" => "ElasticAppSearch",
+                    "Verification" => "skipped"
+                  })
 
     setup do
       root =
@@ -85,10 +114,13 @@ defmodule BubbleEx.Secrets.TrufflehogTest do
       File.mkdir_p!(root)
       cli = Path.join(root, "trufflehog")
 
+      lines =
+        Enum.map_join([@verified, @unknown, @finding, @custom], " ", &"'#{Jason.encode!(&1)}'")
+
       File.write!(cli, """
       #!/bin/sh
       printf '%s\\n' "$@" > '#{root}/args'
-      printf '%s\\n' '#{Jason.encode!(@finding)}'
+      printf '%s\\n' #{lines}
       """)
 
       File.chmod!(cli, 0o700)
@@ -107,35 +139,42 @@ defmodule BubbleEx.Secrets.TrufflehogTest do
       }
     end
 
-    test "the default asks providers and reports verified and unknown results only", %{
-      args: args
-    } do
-      # Characterization of the behaviour before WTF-485: findings unchanged.
-      assert {:ok, [@finding]} = Trufflehog.scan(%{"_id" => "x"})
+    test "the default asks providers and drops the results they rejected", %{args: args} do
+      assert {:ok, [@verified, @unknown, @named_custom]} = Trufflehog.scan(%{"_id" => "x"})
 
       assert [
                "filesystem",
                _path,
                "--json",
                "--log-level=5",
-               "--results=verified,unknown",
+               "--config=" <> config,
+               "--results=verified,unknown,unverified",
                "--no-update"
              ] = args.()
 
+      assert File.read!(config) =~ "name: ElasticAppSearch"
+
       default = args.()
-      assert {:ok, [@finding]} = Trufflehog.scan(%{"_id" => "x"}, verify: true)
+
+      assert {:ok, [@verified, @unknown, @named_custom]} =
+               Trufflehog.scan(%{"_id" => "x"}, verify: true)
+
       assert Enum.drop(args.(), 2) == Enum.drop(default, 2)
     end
 
     test "verify: false contacts no provider and marks every result skipped", %{args: args} do
-      assert {:ok, [finding]} = Trufflehog.scan(%{"_id" => "x"}, verify: false, log_level: "0")
-      assert finding == Map.put(@finding, "Verification", "skipped")
+      assert {:ok, findings} = Trufflehog.scan(%{"_id" => "x"}, verify: false, log_level: "0")
+
+      assert findings ==
+               Enum.map([@verified, @unknown, @finding], &Map.put(&1, "Verification", "skipped")) ++
+                 [@named_custom]
 
       assert [
                "filesystem",
                _path,
                "--json",
                "--log-level=0",
+               "--config=" <> _config,
                "--no-verification",
                "--results=verified,unknown,unverified",
                "--no-update"
@@ -143,22 +182,26 @@ defmodule BubbleEx.Secrets.TrufflehogTest do
     end
 
     test "scan_file/2 takes the same option", %{args: args} do
-      assert {:ok, [%{"Verification" => "skipped"}]} =
+      assert {:ok, [%{"Verification" => "skipped"} | _]} =
                PayloadFile.with_file(%{"_id" => "x"}, &Trufflehog.scan_file(&1, verify: false))
 
       assert "--no-verification" in args.()
 
-      assert {:ok, [@finding]} = PayloadFile.with_file(%{"_id" => "x"}, &Trufflehog.scan_file/1)
+      assert {:ok, [@verified, @unknown, @named_custom]} =
+               PayloadFile.with_file(%{"_id" => "x"}, &Trufflehog.scan_file/1)
+
       refute "--no-verification" in args.()
     end
 
     test "the option reaches the adapter through the public entry points", %{args: args} do
-      assert {:ok, [%{"Verification" => "skipped"}]} =
+      assert {:ok, [%{"Verification" => "skipped"} | _]} =
                BubbleEx.scan_payload_for_secrets(%{"_id" => "x"}, verify: false)
 
       assert "--no-verification" in args.()
 
-      assert {:ok, [@finding]} = BubbleEx.scan_payload_for_secrets(%{"_id" => "x"})
+      assert {:ok, [@verified, @unknown, @named_custom]} =
+               BubbleEx.scan_payload_for_secrets(%{"_id" => "x"})
+
       refute "--no-verification" in args.()
     end
 
@@ -212,6 +255,57 @@ defmodule BubbleEx.Secrets.TrufflehogTest do
                |> Trufflehog.scan(log_level: "2")
 
       assert is_list(results)
+    end
+
+    # WTF-538: an API Connector call holding a GCP service-account key in a
+    # sample body (JSON inside a JSON string, so its newlines arrive escaped)
+    # and an Elastic App Search private key in an Authorization header. Every
+    # value is synthetic and built here, not stored as a key-shaped literal.
+    # `verify: false`: no provider is contacted.
+    test "finds a service-account key in an API Connector body and an App Search key" do
+      pem_body = for(_ <- 1..24, do: String.duplicate("QUJDRA", 10) <> "\n") |> Enum.join()
+
+      # In the order Google writes the file: TruffleHog reads at most 2 KB
+      # after `auth_provider_x509_cert_url`, so the key must come before it.
+      account =
+        Jason.OrderedObject.new([
+          {"type", "service_" <> "account"},
+          {"project_id", "synthetic-project-000000"},
+          {"private_key_id", String.duplicate("0f", 20)},
+          {"private_key",
+           "-----BEGIN " <>
+             "PRIVATE KEY-----\n" <> pem_body <> "-----END " <> "PRIVATE KEY-----\n"},
+          {"client_email", "synthetic@synthetic-project-000000.iam.gserviceaccount.com"},
+          {"client_id", "000000000000000000000"},
+          {"auth_uri", "https://accounts.google.com/o/oauth2/auth"},
+          {"token_uri", "https://oauth2.googleapis.com/token"},
+          {"auth_provider_x509_cert_url", "https://www.googleapis.com/oauth2/v1/certs"},
+          {"client_x509_cert_url", "https://www.googleapis.com/robot/v1/metadata/x509/synthetic"}
+        ])
+
+      body = "{\n    \"credentials\": " <> Jason.encode!(account, pretty: true) <> "\n}"
+      app_search_key = "private-" <> "q8wz3kv1mx7pt2r9hn5yc4bd"
+
+      payload = %{
+        "_id" => "synthetic",
+        "%p3" => %{
+          "call" => %{
+            "%b3" => body,
+            "headers" => %{
+              "a" => %{"%k" => "Authorization", "%v" => "Bearer " <> app_search_key}
+            },
+            "url" => "https://synthetic.ent-search.example.com/api/as/v1/engines/x/documents"
+          }
+        }
+      }
+
+      assert {:ok, results} = Trufflehog.scan(payload, verify: false, log_level: "0")
+
+      assert %{"DecoderName" => "PLAIN", "Verification" => "skipped"} =
+               Enum.find(results, &(&1["DetectorName"] == "GCP"))
+
+      assert %{"DetectorType" => 1_000_001, "Raw" => ^app_search_key} =
+               Enum.find(results, &(&1["DetectorName"] == "ElasticAppSearch"))
     end
   end
 

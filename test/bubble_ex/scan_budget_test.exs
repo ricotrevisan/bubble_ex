@@ -55,10 +55,37 @@ defmodule BubbleEx.ScanBudgetTest do
     """)
 
     payload = %{"_id" => "synthetic", "encoded" => Base.encode64("hello")}
-    assert {:ok, results} = Trufflehog.scan(payload)
+    assert {:ok, results} = Trufflehog.scan(payload, verify: false)
     assert Enum.map(results, & &1["Raw"]) == ["synthetic", "hello", "last"]
     assert Enum.at(results, 1)["Encoded"] == "aGVsbG8="
-    assert {:ok, ^results} = PayloadFile.with_file(payload, &Trufflehog.scan_file/1)
+
+    assert {:ok, ^results} =
+             PayloadFile.with_file(payload, &Trufflehog.scan_file(&1, verify: false))
+  end
+
+  # TruffleHog keeps one of two decoders' identical findings at the same
+  # location, so a plain-text secret can arrive labelled BASE64 (WTF-538).
+  test "a BASE64 finding whose secret is in the payload as is is reported as PLAIN", %{
+    root: root
+  } do
+    cli(root, ~S"""
+    printf '%s\n' '{"DecoderName":"BASE64","Raw":"plain-synthetic-secret"}'
+    printf '%s\n' '{"DecoderName":"HTML","Raw":"plain-synthetic-secret"}'
+    printf '%s\n' '{"DecoderName":"HTML","Raw":"decoded&synthetic"}'
+    """)
+
+    payload = %{
+      "_id" => "synthetic",
+      "body" => "{\"key\": \"plain-synthetic-secret\"}",
+      "html" => "decoded&amp;synthetic"
+    }
+
+    assert {:ok, [base64, html, decoded]} = Trufflehog.scan(payload, verify: false)
+    assert %{"DecoderName" => "PLAIN", "Raw" => "plain-synthetic-secret"} = base64
+    refute Map.has_key?(base64, "Encoded")
+    assert %{"DecoderName" => "PLAIN", "Raw" => "plain-synthetic-secret"} = html
+    # Really HTML-decoded: kept as reported.
+    assert %{"DecoderName" => "HTML", "Raw" => "decoded&synthetic"} = decoded
   end
 
   test "a map is written as compact JSON and counted in bytes" do

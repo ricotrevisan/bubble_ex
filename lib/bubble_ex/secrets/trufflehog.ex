@@ -11,13 +11,28 @@ defmodule BubbleEx.Secrets.Trufflehog do
   By default TruffleHog asks each provider whether a found key works and only
   verified and unknown (verification errored) results are reported. With
   `verify: false` it contacts no provider (`--no-verification`) and reports
-  every result (`--results=verified,unknown,unverified`; without
-  `unverified` a run that verifies nothing reports nothing), each marked
-  `"Verification" => "skipped"`: TruffleHog's `"Verified" => false` then means
-  not asked, never invalid (WTF-485).
+  every result, each marked `"Verification" => "skipped"`: TruffleHog's
+  `"Verified" => false` then means not asked, never invalid (WTF-485).
+
+  Both modes run with `--results=verified,unknown,unverified` (without
+  `unverified` a run that verifies nothing reports nothing); in verify mode
+  the results a provider rejected are dropped here instead.
+
+  Every scan also loads bubble_ex's TruffleHog custom detectors
+  (`priv/trufflehog/custom_detectors.yaml`, WTF-538) for secrets TruffleHog
+  has no detector for. Their findings are renamed from TruffleHog's generic
+  `"CustomRegex"` to a provider name and a `"DetectorType"` id of bubble_ex's
+  own (`custom_detectors/0`). They are never verified, so they are marked
+  `"Verification" => "skipped"` in both modes.
   """
 
   @behaviour BubbleEx.Secrets
+
+  # Custom detector name (priv/trufflehog/custom_detectors.yaml) =>
+  # {DetectorType, DetectorName}. The ids start above 1_000_000, far above
+  # TruffleHog's own DetectorType enum, so they never name a TruffleHog
+  # detector.
+  @custom_detectors %{"ElasticAppSearch" => {1_000_001, "ElasticAppSearch"}}
 
   alias BubbleEx.{Error, PayloadFile}
   alias BubbleEx.Secrets.Output
@@ -148,8 +163,15 @@ defmodule BubbleEx.Secrets.Trufflehog do
 
   defp run_port(file, cli, opts, output, timeout) do
     args =
-      ["filesystem", file.path, "--json", "--log-level=#{Keyword.get(opts, :log_level, "5")}"] ++
-        verification_args(Keyword.get(opts, :verify, true)) ++ ["--no-update"]
+      [
+        "filesystem",
+        file.path,
+        "--json",
+        "--log-level=#{Keyword.get(opts, :log_level, "5")}",
+        "--config=#{custom_detectors_path()}"
+      ] ++
+        verification_args(Keyword.get(opts, :verify, true)) ++
+        ["--results=verified,unknown,unverified", "--no-update"]
 
     port =
       Port.open({:spawn_executable, cli}, [:binary, :exit_status, :stderr_to_stdout, args: args])
@@ -167,16 +189,32 @@ defmodule BubbleEx.Secrets.Trufflehog do
   end
 
   # A run without verification reports nothing as verified or unknown, so it
-  # must ask for unverified results or it would report none.
-  defp verification_args(true), do: ["--results=verified,unknown"]
+  # must ask for unverified results or it would report none. A verifying run
+  # asks for them too, because the custom detectors never verify; the results
+  # a provider rejected are dropped by `mark_verification/2`.
+  defp verification_args(true), do: []
+  defp verification_args(false), do: ["--no-verification"]
 
-  defp verification_args(false),
-    do: ["--no-verification", "--results=verified,unknown,unverified"]
+  @doc """
+  The custom detectors every scan adds, as `%{name => {detector_type,
+  detector_name}}`, where `name` is the detector's name in
+  `priv/trufflehog/custom_detectors.yaml`.
+  """
+  @spec custom_detectors() :: %{String.t() => {pos_integer(), String.t()}}
+  def custom_detectors, do: @custom_detectors
+
+  defp custom_detectors_path,
+    do: Application.app_dir(:bubble_ex, "priv/trufflehog/custom_detectors.yaml")
 
   defp collect_findings(port, output, file, opts, deadline) do
     remaining = max(deadline - System.monotonic_time(:millisecond), 0)
     verify = Keyword.get(opts, :verify, true)
-    enhance = &(&1 |> enhance_result(file, deadline) |> mark_verification(verify))
+
+    enhance =
+      &(&1
+        |> enhance_result(file, deadline)
+        |> name_custom_detector()
+        |> mark_verification(verify))
 
     if remaining == 0 do
       budget_error(:scan_timeout)
@@ -240,19 +278,68 @@ defmodule BubbleEx.Secrets.Trufflehog do
 
   defp enhance_result(%{"InvalidResult" => true}, _file, _deadline), do: nil
 
+  # A BASE64 finding whose encoded form is not in the payload is a decoder
+  # artifact and is dropped, unless the secret is in the payload as is.
+  # TruffleHog drops a finding as a duplicate when another decoder already
+  # reported it at the same location, and a payload file is a single line, so
+  # a plain-text secret comes back labelled BASE64 whenever the base64
+  # decoding of its chunk left it intact and won the race (WTF-538: a GCP
+  # service-account key was lost that way). It is reported as PLAIN.
   defp enhance_result(%{"DecoderName" => "BASE64", "Raw" => raw} = finding, file, deadline)
        when is_binary(raw) do
     encoded = Base.encode64(raw)
 
-    if PayloadFile.contains?(file, encoded, deadline),
-      do: Map.put(finding, "Encoded", encoded),
-      else: nil
+    cond do
+      PayloadFile.contains?(file, encoded, deadline) -> Map.put(finding, "Encoded", encoded)
+      PayloadFile.contains?(file, raw, deadline) -> Map.put(finding, "DecoderName", "PLAIN")
+      true -> nil
+    end
+  end
+
+  # The same race labels plain-text secrets HTML (or another decoder's name),
+  # which leaves callers unable to find where they are; one that is in the
+  # payload as is is PLAIN. Any other is kept as TruffleHog reported it.
+  defp enhance_result(%{"DecoderName" => decoder, "Raw" => raw} = finding, file, deadline)
+       when decoder != "PLAIN" and is_binary(raw) do
+    if PayloadFile.contains?(file, raw, deadline),
+      do: Map.put(finding, "DecoderName", "PLAIN"),
+      else: finding
   end
 
   defp enhance_result(finding, _file, _deadline), do: finding
 
+  defp name_custom_detector(
+         %{"DetectorName" => "CustomRegex", "ExtraData" => %{"name" => name}} = finding
+       ) do
+    case Map.fetch(@custom_detectors, name) do
+      {:ok, {type, detector_name}} ->
+        Map.merge(finding, %{
+          "DetectorType" => type,
+          "DetectorName" => detector_name,
+          "Verification" => "skipped"
+        })
+
+      :error ->
+        finding
+    end
+  end
+
+  defp name_custom_detector(finding), do: finding
+
+  # In verify mode a result is kept when the provider accepted it, when it
+  # could not be asked (a verification error: unknown), or when it was never
+  # meant to be asked (a custom detector); one the provider rejected is not.
   defp mark_verification(nil, _verify), do: nil
-  defp mark_verification(finding, true), do: finding
+  defp mark_verification(%{"Verification" => "skipped"} = finding, _verify), do: finding
+  defp mark_verification(%{"Verified" => true} = finding, true), do: finding
+
+  defp mark_verification(finding, true) do
+    case finding["VerificationError"] do
+      error when is_binary(error) and error != "" -> finding
+      _rejected -> nil
+    end
+  end
+
   defp mark_verification(finding, false), do: Map.put(finding, "Verification", "skipped")
 
   defp stream(nil, _ref, _data), do: :ok
