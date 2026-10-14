@@ -133,11 +133,11 @@ On a page it is **page data** (`docs/page-data.md`), never anything else:
 
 | | Generated |
 |-|-----------|
-| where it runs | on the server, **off the page's LiveView process**: the page's data loader (`<Web>.BubbleData.api/5`) returns what the page has (a cached response, the result of a call that just ended, else the last value shown, empty at first) and starts the call in a task (`<App>.ApiClients.Data`); when it ends, the page reads again only the sources reading that call. A slow API never blocks a mount, a render or an event. The browser never sees the call, its secrets or its response, only what the page shows |
+| where it runs | on the server, **off the page's LiveView process**: the page's data loader (`<Web>.BubbleData.api/5`) returns a cached response, else the result of the call that just ended, else the page's last successful result of the same call with the same values (for at most `:max_stale`), else nothing, and asks for the call (`<App>.ApiClients.Data.call/2`): made in a task, or, when another page is making the same call, waited for (one request for every page). When it ends, the page reads again only the sources reading that call. A slow API never blocks a mount, a render or an event. The browser never sees the call, its secrets or its response, only what the page shows |
 | typed reads | a group's or repeating group's source of the call's type; `:first item`, `:item #`, `:count` and other list operators over a list response; "Current cell's" and "Parent group's" fields (`_api_c2_...`), a list field included (`tags:count`); a field over a list of API values maps over its items |
 | parameters | page values (inputs, custom states, URL, cells, the current user...), compiled like any page value; private ones only from the environment |
 | reloads | a source reading the call is in the page's dependency graph: its parameters' inputs are its `inputs`, so changing one reads again only what reads it (narrowed reloads, WTF-475) |
-| deduplication | the same call with the same values is made **once per read of the page's data** (`once/3`), however many sources (and surfaces) read it, and not again while it is in flight |
+| deduplication | the same call with the same values is asked **once per read of the page's data** (`once/3`), however many sources (and surfaces) read it, and made once while it is in flight, whatever page asks (single flight) |
 | in a repeating group's cell | a call whose values are the same in every cell is made once; one whose values read the cell (or a per-cell scope) would run once per cell and is `:page_data_in_cell` residue (`detail.kind` `"api_data"`), like a search that cannot be batched |
 | a failure | the call's value is empty (nil): a non-2xx response (without "Include errors in response"), a timeout or the data deadline (`:deadline_exceeded`), a body that does not decode or is too large, a task that crashed (`:crashed`). Logged once per call with the status or the error's kind only; no page notice; never cached. With "Include errors in response" an error is the call's value instead, its `error`'s `body` (the response text) included: **that body can reach the page** if the page shows it, as in Bubble |
 | secrets not set | the call is never sent (`MissingEnvError`) and reads as empty; the log names the missing variables, never a value |
@@ -154,12 +154,14 @@ credentials whoever opens the page. The defaults
 | | default | key |
 |-|---------|-----|
 | a response shared by every page (mounts, change notifications, other users, other pages) | 30 s | `:ttl` |
+| a stale response (past the TTL) shown while a new call is made; a 4xx other than 429 forgets it at once, a transient failure (timeout, 429, 5xx) keeps it, marked | 5 × the TTL | `:max_stale` |
 | calls never shared | those with "Include errors in response", and any `{module, function}` listed | `:no_cache` |
 | calls a page makes (a token bucket); past it the page keeps what it has and logs once, then reads again when a token is back | 10 per 10 s | `:budget` |
 | calls a page has in flight | 4 | `:max_concurrency` |
-| calls in flight per API (client module), all pages together | 20 | `:max_in_flight` |
+| calls in flight per API (client module), all pages together; a task that dies, even killed, frees its place (a monitor) and its pages read it as `:crashed` | 20 | `:max_in_flight` |
 | a data call's deadline, retries, retry delay, response size | 8 s, 1, 1 s, 1 MB | `:deadline`, `:max_retries`, `:max_retry_delay`, `:max_body_bytes` |
-| cached responses kept (past it, the expired ones go, then all) | 10,000 | `:max_entries` |
+| cached responses kept, by count and by memory (past either, those too old to show go, then all) | 1,000; 64 MB | `:max_entries`, `:max_bytes` |
+| results a page keeps | those of the calls its latest read asked for, and those in flight | |
 
 So a keystroke burst costs at most the budget, a mount within the TTL
 costs nothing, and a change notification does not call again within it

@@ -235,7 +235,9 @@ defmodule <%= @web %>.BubbleData do
   @unread {__MODULE__, :cell_unread}<%= if @api_data? do %>
   @api_failed {__MODULE__, :api_failed}
   @api_marks {__MODULE__, :api_marks}
-  @api_state {__MODULE__, :api_state}<% end %>
+  @api_state {__MODULE__, :api_state}
+  @api_skipped {__MODULE__, :api_skipped}
+  @api_kept {__MODULE__, :api_kept}<% end %>
 
   @doc "Whether pages may read stored data (the workflows' opt-in)."
   def data_access?,
@@ -336,7 +338,7 @@ defmodule <%= @web %>.BubbleData do
 
           # The reusable instances in cells (WTF-494): one scope per cell read.
           load_cells(socket, page, {data, by_source})<%= if @api_data? do %>
-          |> with_api_marks()<% end %>
+          |> with_api_marks(socket.assigns[:bubble_data])<% end %>
         end)
 
       socket
@@ -447,7 +449,7 @@ defmodule <%= @web %>.BubbleData do
               load_surfaces(socket, BubbleWorkflows.surfaces(page), {data, by_source}, affected)
 
             load_cells(socket, page, {data, by_source}, affected)<%= if @api_data? do %>
-            |> with_api_marks()<% end %>
+            |> with_api_marks(socket.assigns[:bubble_data])<% end %>
           end)
 
         socket
@@ -1296,7 +1298,8 @@ defmodule <%= @web %>.BubbleData do
   rescue
     error -><%= if @api_data? do %>
       # A failed call it read is not another source's (WTF-533).
-      Process.delete(@api_failed)<% end %>
+      Process.delete(@api_failed)
+      Process.delete(@api_skipped)<% end %>
 
       Logger.error(
         "bubble page data #{inspect(source.element)} failed: #{Exception.format_banner(:error, error)}"
@@ -1338,7 +1341,8 @@ defmodule <%= @web %>.BubbleData do
   rescue
     error -><%= if @api_data? do %>
       # A failed call it read is not another source's (WTF-533).
-      Process.delete(@api_failed)<% end %>
+      Process.delete(@api_failed)
+      Process.delete(@api_skipped)<% end %>
 
       Logger.error(
         "bubble page data #{inspect(source.element)} failed: #{Exception.format_banner(:error, error)}"
@@ -1355,7 +1359,8 @@ defmodule <%= @web %>.BubbleData do
   rescue
     error -><%= if @api_data? do %>
       # A failed call it read is not another source's (WTF-533).
-      Process.delete(@api_failed)<% end %>
+      Process.delete(@api_failed)
+      Process.delete(@api_skipped)<% end %>
 
       Logger.error(
         "bubble page data #{inspect(source.element)} failed: #{Exception.format_banner(:error, error)}"
@@ -1377,26 +1382,29 @@ defmodule <%= @web %>.BubbleData do
   `config/runtime.exs`. Pages read no data with data access off, so
   they make no call either.
 
-  **It never waits for the API.** It returns what the page has: a
-  response cached by `<%= @module %>.ApiClients.Data` (shared by every page
-  for its TTL, 30 s), the result of the page's own call that just ended,
-  or else the last value it showed (empty at first), and starts the call
-  in a task (`<%= @module %>.ApiClients.Data.run/2`) when what it has is not
+  **It never waits for the API.** It returns a response cached by
+  `<%= @module %>.ApiClients.Data` (shared by every page: fresh for 30 s,
+  shown while a new one is called for at most 5 times that), else the
+  result of this call that just ended, else the page's last successful
+  result of the same call with the same values, else nothing, and asks
+  for the call (`<%= @module %>.ApiClients.Data.call/2`: made in a task,
+  or waited for when another page is making it) when what it has is not
   fresh. When the call ends, the page reads again only the sources
   reading this call (`api_done/3`). The same call with the same values is
-  made once per read of the page's data (`once/3`), and a page makes at
+  asked once per read of the page's data (`once/3`), and a page makes at
   most `:budget` calls (10 per 10 s; past it it keeps what it has, and
   logs once) with at most `:max_concurrency` (4) in flight. See
   `<%= @module %>.ApiClients.Data` for the cost model and its configuration.
 
   A call that fails reads as empty: a non-2xx response (unless the call
   includes errors in its response), a timeout (`:deadline_exceeded`), a
-  body that does not decode, a task that crashed (`:crashed`). A call
-  whose secrets are not set is never sent and reads as empty too. Each is
-  logged once per call with the status, the error's kind or the missing
-  variables' names, never a body, a header or a value, and with the
-  developer markers on (`<%= @web %>.Bubble.dev_markers?/0`, dev only) the
-  element whose data source reads it is marked with the same text
+  body that does not decode, a task that crashed or was killed
+  (`:crashed`). A call whose secrets are not set is never sent and reads
+  as empty too. Each is logged once per call with the status, the
+  error's kind or the missing variables' names, never a body, a header
+  or a value, and with the developer markers on
+  (`<%= @web %>.Bubble.dev_markers?/0`, dev only) the element whose data
+  source reads it is marked with the same text
   (`<%= @web %>.Bubble.api_error/3`). The page shows no notice.
 
   `opts`: `cache: false` for a call whose response is never shared (one
@@ -1415,46 +1423,76 @@ defmodule <%= @web %>.BubbleData do
         Process.put(@api_failed, [text | Process.get(@api_failed, [])])
         nil
 
+      {:stale_failed, value, text} ->
+        Process.put(@api_failed, [text | Process.get(@api_failed, [])])
+        value
+
       value ->
         value
     end
   end
 
   # What the page has for `key` (`{:failed, text}` for a call that just
-  # failed), starting the call when it is not fresh.
+  # failed), asking for the call when it is not fresh. The keys a read
+  # asks for are the ones the page keeps results of (`with_api_marks/2`).
   defp api_read(key, cache?) do
     cached = if cache?, do: <%= @module %>.ApiClients.Data.cached(key), else: :miss
     state = api_state()
+    state = %{state | read: MapSet.put(state.read, key)}
 
     case {cached, Map.get(state.results, key)} do
       {{:fresh, value}, _} ->
+        put_api_state(state)
         value
 
-      # The page's own call just ended: shown once, then called again on
-      # the next read (a call that is not cached, or failed).
-      {_, {result, false}} ->
-        put_api_state(%{state | results: Map.put(state.results, key, {result, true})})
+      # This call just ended: shown once, then asked for again on the
+      # next read (a call that is not cached, or failed). A failure that
+      # leaves a stale response (a transient one) shows that, marked.
+      {_, {result, false, at}} ->
+        put_api_state(%{state | results: Map.put(state.results, key, {result, true, at})})
 
-        case result do
-          {:ok, value} -> value
-          {:error, text} -> {:failed, text}
+        case {result, cached} do
+          {{:ok, value}, _} -> value
+          {{:error, reason}, {:stale, value}} -> {:stale_failed, value, describe(reason)}
+          {{:error, reason}, _} -> {:failed, describe(reason)}
         end
 
       {cached, own} ->
-        api_request(key)
+        put_api_state(state)
+        api_request(key, cache?)
 
+        # A call that failed stays marked until one succeeds.
         case {cached, own} do
+          {{:stale, value}, {{:error, reason}, true, _}} -> {:stale_failed, value, describe(reason)}
           {{:stale, value}, _} -> value
-          {_, {{:ok, value}, true}} -> value
-          _ -> nil
+          {_, {{:ok, value}, true, at}} -> if recent?(at), do: value
+          {_, {{:error, reason}, true, _}} -> {:failed, describe(reason)}
+          _ -> skipped(key)
         end
     end
   end
 
-  # Starts the call in a task, within the page's budget and concurrency
-  # and the API's cap; what cannot start now starts on a later read
-  # (`api_retry/1`, `api_done/3`).
-  defp api_request({module, function, params} = key) do
+  # Nothing to show, and the call could not start (the page's budget, its
+  # concurrency, the API's cap): the source keeps the value it had
+  # (`with_api_marks/2`) until the call is made.
+  defp skipped(key) do
+    if MapSet.member?(api_state().waiting, key), do: Process.put(@api_skipped, true)
+    nil
+  end
+
+  defp describe(reason), do: <%= @module %>.ApiClients.Data.describe(reason)
+
+  # The page's own last result of a call is shown no longer than a cached
+  # one would be (`:max_stale`).
+  defp recent?(at),
+    do:
+      System.monotonic_time(:millisecond) - at <
+        <%= @module %>.ApiClients.Data.config(:max_stale)
+
+  # Asks for the call within the page's concurrency and budget (a call it
+  # waits for, another page's, costs nothing); what cannot start now
+  # starts on a later read (`api_retry/1`, `api_done/3`).
+  defp api_request(key, cache?) do
     state = api_state()
     data = <%= @module %>.ApiClients.Data
 
@@ -1466,34 +1504,18 @@ defmodule <%= @web %>.BubbleData do
         put_api_state(%{state | waiting: MapSet.put(state.waiting, key)})
 
       true ->
-        case take_token(state, System.monotonic_time(:millisecond), data.config(:budget)) do
-          {:ok, state} -> api_start(state, key, module, function, params)
+        case tokens(state, System.monotonic_time(:millisecond), data.config(:budget)) do
+          {:ok, state, spend} -> api_call(state, key, cache?, spend)
           {:empty, state} -> put_api_state(%{state | waiting: MapSet.put(state.waiting, key)})
         end
     end
   end
 
-  defp api_start(state, key, module, function, params) do
-    data = <%= @module %>.ApiClients.Data
-    page = self()
-    opts = data.call_opts()
+  defp api_call(state, key, cache?, spend) do
+    case <%= @module %>.ApiClients.Data.call(key, cache?) do
+      started when started in [:started, :waiting] ->
+        state = if started == :started, do: spend.(state), else: state
 
-    started =
-      data.run(module, fn ->
-        result =
-          try do
-            apply(module, function, [params, opts])
-          rescue
-            _ -> {:error, :crashed}
-          catch
-            _, _ -> {:error, :crashed}
-          end
-
-        send(page, {:bubble, :api_data, key, result})
-      end)
-
-    case started do
-      :ok ->
         put_api_state(%{
           state
           | in_flight: MapSet.put(state.in_flight, key),
@@ -1506,14 +1528,17 @@ defmodule <%= @web %>.BubbleData do
     end
   end
 
-  # The page's token bucket (`{calls, per_ms}`). Out of tokens, it logs
-  # once and reads again when one is back.
-  defp take_token(state, now, {calls, per}) do
+  # The page's token bucket (`{calls, per_ms}`): `{:ok, state, spend}`
+  # when a call may start (`spend` takes its token), else `{:empty,
+  # state}`, having logged once and asked to read again when a token is
+  # back.
+  defp tokens(state, now, {calls, per}) do
     {tokens, last} = state.bucket || {calls, now}
     tokens = min(calls, tokens + (now - last) * calls / per)
 
     if tokens >= 1 do
-      {:ok, %{state | bucket: {tokens - 1, now}, logged?: false}}
+      {:ok, %{state | bucket: {tokens, now}},
+       &%{&1 | bucket: {elem(&1.bucket, 0) - 1, now}, logged?: false}}
     else
       if not state.logged? do
         Logger.warning(
@@ -1538,6 +1563,7 @@ defmodule <%= @web %>.BubbleData do
     Process.get(@api_state) ||
       %{
         results: %{},
+        read: MapSet.new(),
         in_flight: MapSet.new(),
         waiting: MapSet.new(),
         bucket: nil,
@@ -1549,39 +1575,43 @@ defmodule <%= @web %>.BubbleData do
   defp put_api_state(state), do: Process.put(@api_state, state)
 
   @doc """
-  A data call of the page ended (`{:bubble, :api_data, key, result}`):
-  caches a response that may be shared, keeps the result for the page's
-  next read, logs a failure (once per call), and marks what reads the
-  call, and every call waiting to start, to be read again
-  (`mark_inputs/2`).
+  A data call the page asked for ended (`{:bubble, :api_data, key,
+  result}`, from `<%= @module %>.ApiClients.Data`, which caches and logs
+  it): keeps the result for the page's next read and marks what reads
+  the call, and every call waiting to start, to be read again
+  (`mark_inputs/2`). A call that could not start (`:busy`) is asked for
+  again later. A result the page did not ask for is ignored.
   """
-  def api_done(socket, {module, function, _params} = key, result) do
+  def api_done(socket, key, result) do
     state = api_state()
-    data = <%= @module %>.ApiClients.Data
 
-    result =
-      case result do
-        {:ok, value} ->
-          if data.cache?(module, function) and not wraps?(value), do: data.put(key, value)
-          {:ok, value}
+    cond do
+      not MapSet.member?(state.in_flight, key) ->
+        socket
 
-        {:error, %<%= @module %>.ApiClients.MissingEnvError{names: names}} ->
-          api_log(module, function, "not called, secrets not set: " <> Enum.join(names, ", "))
+      result == :busy ->
+        state = %{
+          state
+          | in_flight: MapSet.delete(state.in_flight, key),
+            waiting: MapSet.put(state.waiting, key)
+        }
 
-        {:error, reason} ->
-          api_log(module, function, "failed: " <> inspect(api_reason(reason)))
-      end
+        put_api_state(retry_later(state, 500))
+        socket
 
-    waiting = Enum.map(state.waiting, &api_input/1)
+      true ->
+        waiting = Enum.map(state.waiting, &api_input/1)
 
-    put_api_state(%{
-      state
-      | results: Map.put(state.results, key, {result, false}),
-        in_flight: MapSet.delete(state.in_flight, key),
-        waiting: MapSet.new()
-    })
+        put_api_state(%{
+          state
+          | results:
+              Map.put(state.results, key, {result, false, System.monotonic_time(:millisecond)}),
+            in_flight: MapSet.delete(state.in_flight, key),
+            waiting: MapSet.new()
+        })
 
-    mark_inputs(socket, Enum.uniq([api_input(key) | waiting]))
+        mark_inputs(socket, Enum.uniq([api_input(key) | waiting]))
+    end
   end
 
   @doc "The page's waiting data calls may start now (`{:bubble, :api_retry}`)."
@@ -1591,21 +1621,15 @@ defmodule <%= @web %>.BubbleData do
     mark_inputs(socket, state.waiting |> Enum.map(&api_input/1) |> Enum.uniq())
   end
 
-  # A call with "Include errors in response" returns its error as its
-  # value: never shared (its `cache: false` says so; this is the check
-  # for a value that carries one anyway).
-  defp wraps?(%{"_api_c2_returned_an_error" => _}), do: true
-  defp wraps?(_value), do: false
+  @doc false
+  # How many results the page keeps (tests): only those of the calls its
+  # latest read asked for, and those in flight.
+  def api_results, do: map_size(api_state().results)
 
   # What a source reading a call names among its inputs: the call's
   # function (no Bubble ID has a space), so that its end reads again only
   # what reads it.
   defp api_input({module, function, _params}), do: "API #{inspect(module)}.#{function}"
-
-  defp api_log(module, function, text) do
-    Logger.warning("bubble page data: API call #{inspect(module)}.#{function} #{text}")
-    {:error, text}
-  end
 
   # A parameter's value as the client sends it: a thing is its Bubble ID,
   # a date its text (UTC), as a workflow's API call sends them.
@@ -1617,18 +1641,13 @@ defmodule <%= @web %>.BubbleData do
   defp api_param(%{__struct__: _, id: id}), do: id
   defp api_param(value), do: Runtime.text(value)
 
-  # A failed call as the log and the marker show it: never a body or a header.
-  defp api_reason({:status, status, _body}), do: {:status, status}
-  defp api_reason({:redirect_refused, status, _location}), do: {:redirect_refused, status}
-  defp api_reason({:decode, _error}), do: :decode
-  defp api_reason(%Req.TransportError{reason: reason}), do: {:transport, reason}
-  defp api_reason(%{__exception__: true, __struct__: kind}), do: {:exception, kind}
-  defp api_reason(reason) when is_atom(reason), do: reason
-  defp api_reason({kind, _detail}) when is_atom(kind), do: kind
-  defp api_reason(_reason), do: :error
-
   # The calls a source's run failed (in this scope): kept for the marker.
   defp api_mark(value, source, ctx) do
+    if Process.delete(@api_skipped) do
+      kept = Process.get(@api_kept, MapSet.new())
+      Process.put(@api_kept, MapSet.put(kept, {Map.get(ctx, :scope), source.element}))
+    end
+
     case Process.delete(@api_failed) do
       nil ->
         value
@@ -1644,8 +1663,32 @@ defmodule <%= @web %>.BubbleData do
   # What this read's failed calls mark, kept in the page's data next to
   # the elements' values (`{scope, element, :api_error}`): read again with
   # them, so a call that succeeds again clears its mark.
-  defp with_api_marks({data, by_source, cells}) do
+  #
+  # It also forgets the results of the calls this read did not ask for
+  # (and that are not in flight): a page keeps at most one per call it
+  # shows, never one per value it ever asked with.
+  #
+  # A source whose call could not start keeps the value it had (`kept`,
+  # from `previous`, the page's data before this read).
+  defp with_api_marks({data, by_source, cells}, previous) do
     marks = Process.delete(@api_marks) || %{}
+    kept = Process.delete(@api_kept) || MapSet.new()
+
+    data =
+      Enum.reduce(kept, data, fn key, data ->
+        case Map.fetch(previous || %{}, key) do
+          {:ok, value} when not is_nil(value) -> Map.put(data, key, value)
+          _ -> data
+        end
+      end)
+    state = api_state()
+    keep = MapSet.union(state.read, state.in_flight)
+
+    put_api_state(%{
+      state
+      | results: Map.filter(state.results, fn {key, _} -> MapSet.member?(keep, key) end),
+        read: MapSet.new()
+    })
 
     data =
       Enum.reduce(marks, data, fn {{scope, element}, texts}, data ->

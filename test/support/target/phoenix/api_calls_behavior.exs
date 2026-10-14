@@ -480,6 +480,114 @@ defmodule PhxCheckWeb.ApiCallsBehaviorTest do
       refute page =~ "isn&#39;t available"
     end
 
+    defp page_results(view) do
+      {:dictionary, dict} = Process.info(view.pid, :dictionary)
+
+      case List.keyfind(dict, {PhxCheckWeb.BubbleData, :api_state}, 0) do
+        {_, state} -> map_size(state.results)
+        nil -> 0
+      end
+    end
+
+    test "a page keeps the results of the calls its latest read asked for, not every value", %{
+      conn: conn
+    } do
+      data_config(budget: {100, 1_000})
+      catalog()
+      {:ok, view, _html} = live(conn, "/catalog")
+      loaded(view)
+
+      for i <- 1..15 do
+        render_change(view, "bubble:change", %{
+          "bubble" => %{"scope" => "", "element" => "bQuery", "value" => "v#{i}", "on" => "blur"}
+        })
+
+        Process.sleep(40)
+      end
+
+      Process.sleep(300)
+      _ = render(view)
+      # The calls the page shows (the list with its value and as a list,
+      # the base and the picked price, the status), never one per keystroke.
+      assert page_results(view) <= 8
+    end
+
+    test "pages mounting together share one call in flight", %{conn: conn} do
+      catalog(fn conn ->
+        Process.sleep(300)
+        Req.Test.json(conn, @rows)
+      end)
+
+      # The second mounts while the first's call is in flight: it waits
+      # for that one.
+      {:ok, a, _html} = live(conn, "/catalog")
+      {:ok, b, _html} = live(conn, "/catalog")
+
+      eventually(fn -> render(a) =~ "Item: Alpha" and render(b) =~ "Item: Alpha" end, 5_000)
+      assert listed(requests(), "") == 1
+    end
+
+    test "a killed call frees its place and the page shows it failed", %{conn: conn} do
+      Application.put_env(:phx_check, :bubble_dev_markers, true)
+      test = self()
+
+      catalog(fn conn ->
+        send(test, {:calling, self()})
+        Process.sleep(10_000)
+        Req.Test.json(conn, @rows)
+      end)
+
+      {:ok, view, _html} = live(conn, "/catalog")
+      # The list's two calls (its value, and split as a list).
+      assert_receive {:calling, one}, 2_000
+      assert_receive {:calling, two}, 2_000
+      Process.exit(one, :kill)
+      Process.exit(two, :kill)
+
+      eventually(fn -> shown(view, "bItems") =~ ":crashed" end)
+
+      # Their places are free: what is counted in flight is what runs.
+      eventually(fn ->
+        PhxCheck.ApiClients.Data.in_flight(PhxCheck.ApiClients.Example) ==
+          length(Task.Supervisor.children(PhxCheck.ApiClients.Data.Tasks))
+      end)
+
+      refute render(view) =~ "Item:"
+    end
+
+    test "a stale response is shown for a while only, and a 4xx forgets it", %{conn: conn} do
+      data_config(ttl: 50, max_stale: 400)
+      catalog()
+      {:ok, view, _html} = live(conn, "/catalog")
+      loaded(view)
+
+      # Past the TTL the API fails transiently: the stale response stays.
+      Process.sleep(80)
+      catalog(&Plug.Conn.send_resp(&1, 503, "busy"))
+      render_patch(view, "/catalog?a=1")
+      Process.sleep(150)
+      assert render(view) =~ "Item: Alpha"
+
+      # Past :max_stale it is no longer shown.
+      Process.sleep(400)
+      render_patch(view, "/catalog?a=2")
+      eventually(fn -> not (render(view) =~ "Item: Alpha") end)
+
+      # A 4xx other than 429 forgets a cached response at once.
+      PhxCheck.ApiClients.Data.clear()
+      data_config(ttl: 50, max_stale: 60_000)
+      catalog()
+      {:ok, view, _html} = live(conn, "/catalog")
+      loaded(view)
+      Process.sleep(80)
+      catalog(&Plug.Conn.send_resp(&1, 404, "gone"))
+      render_patch(view, "/catalog?b=1")
+      eventually(fn -> not (render(view) =~ "Item: Alpha") end)
+
+      assert PhxCheck.ApiClients.Data.cached({PhxCheck.ApiClients.Example, :list_items, %{q: ""}}) ==
+               :miss
+    end
+
     test "with data access off, a page makes no call, not even on an input change", %{
       conn: conn
     } do

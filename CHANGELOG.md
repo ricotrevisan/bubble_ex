@@ -13,8 +13,11 @@ All notable changes to this project are documented here.
   the call with the generated Req client behind the `data_access` opt-in,
   **off the LiveView process** (`<App>.ApiClients.Data`, a task per call):
   the page shows a cached or its last value and reads again what reads
-  the call when it ends. Defaults, all configurable: a 30 s cache shared by
-  every page (never for "Include errors in response" or failures), a
+  the call when it ends; pages asking for the same call while it is in
+  flight share it. Defaults, all configurable: a 30 s cache shared by
+  every page (never for "Include errors in response" or failures; a stale
+  response shown at most 5 × the TTL, forgotten on a 4xx other than 429;
+  at most 1,000 entries and 64 MB), a
   budget of 10 calls per 10 s per page, 4 in flight per page, 20 per API,
   an 8 s deadline, 1 retry within 1 s, 1 MB responses. A failed call or
   missing secrets read as empty (logged once; `data-bubble-api-error` with
