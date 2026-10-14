@@ -325,7 +325,11 @@ defmodule BubbleEx.Expression.Tree do
   defp value_type(type, props) when type in ~w(Input MultiLineInput),
     do: Map.get(@input_formats, props["content_format"] || "text")
 
-  defp value_type("Dropdown", props), do: text(props["dynamic_type"]) || "text"
+  # A choice control's value is its dynamic type (a thing, option set or
+  # primitive), else text for static choices.
+  defp value_type(type, props) when type in ~w(Dropdown RadioButtons),
+    do: text(props["dynamic_type"]) || "text"
+
   defp value_type("Checkbox", _props), do: "boolean"
   defp value_type(_type, _props), do: nil
 
