@@ -6,6 +6,15 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Apps whose custom domain is dead can be fetched again** (WTF-536).
+  Bubble redirects the pages of an app with a custom domain to that
+  domain; when it no longer resolves, `fetch_app/2` on a
+  `<id>.bubbleapps.io` URL failed with `:nxdomain`. It now fetches the
+  index page's bundle from bubbleapps.io directly, under a fresh random
+  hash (Bubble's cache can serve another app's bundle for a reused one),
+  and accepts it only if its `_id` and `app_version` match the URL.
+  Otherwise the original error is returned.
+
 - **API Connector clients: hardening follow-ups** (WTF-534). The address
   check also refuses the documentation (192.0.2/24, 198.51.100/24,
   203.0.113/24, 2001:db8::/32, 3fff::/20), benchmarking, 6to4 relay,
