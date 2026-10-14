@@ -749,9 +749,12 @@ defmodule BubbleEx.Target.PhoenixTest do
       # WTF-520: a keyword search on Body (its owner only) too; the check
       # reads a fragment's expressions, so it sees the field.
       refute page =~ "TODO(bubble:element:bNoteWords)"
-      assert page =~ ~r/fragment\(\s+"coalesce\(cardinality\(\?::text\[\]\) > 0 AND \? ILIKE ALL/
-      # The words' patterns are computed in Elixir, never split per row.
-      assert page =~ "Acme.Bubble.Runtime.keyword_patterns("
+
+      assert page =~
+               ~r/fragment\(\s+"to_tsvector\('english', coalesce\(\?, ''\)\) @@ plainto_tsquery/
+
+      # The input is capped in Elixir; PostgreSQL splits and stems it.
+      assert page =~ "Acme.Bubble.Runtime.keyword_query("
       refute page =~ "regexp_split"
       assert search_fields =~ "body: [[:privacy_rule_owner]]"
 

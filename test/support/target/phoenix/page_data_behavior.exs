@@ -782,13 +782,13 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert strict(html) == []
   end
 
-  # WTF-520: Bubble's `contains keyword(s)`, read conservatively (its
-  # exact rule is not verified, docs/page-data.md): every whitespace-
-  # separated word of the input is a case-insensitive substring of the
-  # title, in any order; `%` and `_` match themselves. bWordsAll ignores
-  # empty constraints (an empty input lists everything), bWordsStrict does
-  # not (nothing).
-  test "a keyword input: every word, any case, a substring, escaped", %{conn: conn} do
+  # WTF-520: Bubble's `contains keyword(s)`, as replayed 2026-10-14
+  # (WTF-387): whole words, case and punctuation ignored, every word in
+  # any order, a hyphen splitting words, stemming, a stop word alone
+  # matching nothing; PostgreSQL's English full-text search. bWordsAll
+  # ignores empty constraints (an empty input lists everything),
+  # bWordsStrict does not (nothing).
+  test "a keyword input: whole words, stemmed, every word, any case", %{conn: conn} do
     on()
 
     for {n, title} <- [
@@ -798,8 +798,8 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
           {14, "100% rye"},
           {15, "1000 rye"},
           {16, "snake_case"},
-          {17, "snakeXcase"},
-          {18, "back\\slash"}
+          {17, "beta-test"},
+          {18, "Alphabet soup"}
         ],
         do:
           Ash.Seed.seed!(PhxCheck.Task, %{id: "1700000000000x2000000000000000#{n}", title: title})
@@ -811,11 +811,11 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
       Enum.sort(
         all ++
           [
+            "Alphabet soup",
             "Bake a cake",
             "Bake the bread",
             "Bread to bake",
-            "back\\slash",
-            "snakeXcase",
+            "beta-test",
             "snake_case"
           ]
       )
@@ -823,19 +823,29 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert Enum.sort(words(html, "Word")) == everything
     assert words(html, "Strict word") == []
 
+    baked = ["Bake", "Bake a cake", "Bake the bread", "Bread to bake"]
+
     for {typed, found} <- [
           {"bread BAKE", ["Bake the bread", "Bread to bake"]},
-          {"  bake\tREAD  ", ["Bake the bread", "Bread to bake"]},
-          {"ake",
-           ["Bake", "Bake a cake", "Bake the bread", "Bread to bake", "snakeXcase", "snake_case"]},
+          {"  bake\tBREAD  ", ["Bake the bread", "Bread to bake"]},
+          # Whole words, not substrings.
+          {"ake", []},
+          {"alpha", []},
+          # Stemming.
+          {"baking", baked},
+          {"betas", ["beta-test"]},
+          # Every word.
           {"cake bread", []},
           {"100%", ["100% rye"]},
-          {"e_c", ["snake_case"]},
-          {"\\", ["back\\slash"]},
+          # A hyphen or an underscore splits words; punctuation is ignored.
+          {"test", ["beta-test"]},
+          {"snake", ["snake_case"]},
+          {"soup!", ["Alphabet soup"]},
+          # A stop word alone matches nothing.
+          {"the", []},
           # Past the caps (32 words of the first 256 characters): the input
-          # is never split per row, so a long one costs no more.
-          {String.duplicate("bake ", 2_000),
-           ["Bake", "Bake a cake", "Bake the bread", "Bread to bake"]}
+          # is capped before PostgreSQL reads it, so a long one costs no more.
+          {String.duplicate("bake ", 2_000), baked}
         ] do
       render_change(view, "bubble:change", %{
         "bubble" => %{"scope" => "", "element" => "bWords", "value" => typed}
@@ -1794,6 +1804,27 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     html = popup(view, "bPopOpen", "closed")
     assert shown(html, "Popup inner") == []
     assert shown(html, "Popup inner project") == []
+  end
+
+  # Replay 2026-10-14 (WTF-387): bOpenPopKeep's click shows bPopKeep
+  # (its own source: the first task A to Z, Answer) and then displays
+  # bSrcB's thing (Eat) in it; the popup's "is opened" workflow resets it.
+  # The displayed value shows: the reset does not undo what the run that
+  # opened the popup showed after opening it. A reset the popup's own
+  # report did not follow (another opening) still does.
+  test "show popup, display data: the popup's \"is opened\" reset keeps the display", %{
+    conn: conn
+  } do
+    on()
+    {:ok, view, html} = live(conn, "/shown")
+    assert shown(html, "Keep popup") == ["Answer"]
+
+    assert shown(click(view, "bOpenPopKeep"), "Keep popup") == ["Eat"]
+    assert shown(popup(view, "bPopKeep", "opened"), "Keep popup") == ["Eat"]
+
+    # Opened by the user's report alone (no run kept anything for it):
+    # the reset forgets the display, and the own source shows again.
+    assert shown(popup(view, "bPopKeep", "opened"), "Keep popup") == ["Answer"]
   end
 
   test "only the popup events the page lists run, in a scope it renders", %{conn: conn} do

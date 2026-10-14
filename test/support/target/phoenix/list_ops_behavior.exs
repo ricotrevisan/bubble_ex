@@ -236,9 +236,10 @@ defmodule PhxCheckWeb.ListOpsBehaviorTest do
     assert render(view) =~ if(enforced?(), do: "N: 4", else: "N: 5")
   end
 
-  # WTF-520: a field read through the project's list of tasks, and through
-  # its first item, reads the tasks as the user may view them (a secret
-  # task is in no list), in the list's order, each once; each task's
+  # WTF-520: a field read through the project's list of tasks reads the
+  # tasks as the user may view them (a secret task is in no list), in the
+  # list's order, each once, and through its first item the first task
+  # the list stores (replay 2026-10-14); each task's
   # parent through the relationship, as the user (a parent the user may
   # not view, or a hidden parent field, is none).
   test "a field through a list field and through its first item", %{conn: conn} do
@@ -253,29 +254,30 @@ defmodule PhxCheckWeb.ListOpsBehaviorTest do
              )
   end
 
-  test ":item # of a list field is taken by its query, after privacy", %{conn: conn} do
+  test ":item # of a list field picks by position in the stored list", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/")
     assert html =~ "D: Bake"
   end
 
-  # The list's first thing is secret: with enforced policies it is in no
-  # list, so the first item the user may view is the next one, and item
-  # #2 the one after it (privacy before the offset).
-  test "a hidden first item: the first and second items the user may view", %{conn: conn} do
+  # The list's first thing is secret. Bubble does not skip it (replay
+  # 2026-10-14, WTF-387): `:first item` is that thing, its fields empty
+  # with enforced policies, and `:item #2` the list's second thing, hidden
+  # or not (positions in the list as stored, before privacy).
+  test "a hidden first item: the item with its fields empty, not the next", %{conn: conn} do
     Ash.Seed.update!(Ash.get!(PhxCheck.Project, @p1, authorize?: false), %{
       tasks: [@t5, @t3, @t1]
     })
 
     {:ok, _view, html} = live(conn, "/")
+    assert html =~ "D: Clean"
 
     if enforced?() do
-      assert html =~ "A: Clean"
-      assert html =~ "B: Draw"
-      assert html =~ "D: Bake"
+      assert html =~ "A: "
+      refute html =~ ~r/A: \w/
+      refute html =~ ~r/B: \w/
     else
       assert html =~ "A: Eat"
       assert html =~ "B: Bake"
-      assert html =~ "D: Clean"
     end
   end
 

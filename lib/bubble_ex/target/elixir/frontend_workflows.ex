@@ -1540,7 +1540,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # workflow resets (the element or a group around it) or shows data in
   # too. Which runs last is not replayed (here the popup's, after the
   # page re-rendered): what the element shows then is not known, so it is
-  # not kept, loudly.
+  # not kept, loudly. Replayed (2026-10-14): a workflow that shows the
+  # popup and then displays data in it wins over a reset in the popup's
+  # "is opened" workflow; the page keeps that display through the reset
+  # (`BubbleWorkflows.reset/5`, `kept`), so it is no race.
   defp popup_races(workflows, callers, ctx) do
     active = Enum.reject(workflows, & &1.disabled?)
     by_id = Map.new(active, &{&1.bubble_id, &1})
@@ -1552,10 +1555,33 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         own = displays(w),
         opener <- openers(active, kind, popup, callers, by_id),
         shown <- displays(opener),
-        shown in own or Enum.any?(resets, &within?(shown, &1, ctx)),
+        shown in own or
+          (Enum.any?(resets, &within?(shown, &1, ctx)) and
+             not shown_after_opening?(kind, opener, popup, shown)),
         into: MapSet.new(),
         do: shown
   end
+
+  # Whether `opener` itself shows (or toggles) `popup` and every step of
+  # it displaying data in `shown` comes after that step: what the popup's
+  # "is opened" workflow resets then shows the displayed value (replay
+  # 2026-10-14). Through a custom event that opens the popup, or before
+  # the popup opens, the order is not replayed.
+  defp shown_after_opening?(:popup_opened, opener, popup, shown) do
+    steps = Enum.with_index(opener.steps)
+
+    opened =
+      Enum.find_value(steps, fn {step, i} ->
+        if step.op in [:show, :toggle] and match?(%{element: ^popup}, step.args), do: i
+      end)
+
+    displayed =
+      for {%Step{op: op, args: %{element: ^shown}}, i} <- steps, op in @display_ops, do: i
+
+    opened != nil and displayed != [] and Enum.all?(displayed, &(&1 > opened))
+  end
+
+  defp shown_after_opening?(_kind, _opener, _popup, _shown), do: false
 
   defp displays(w),
     do:

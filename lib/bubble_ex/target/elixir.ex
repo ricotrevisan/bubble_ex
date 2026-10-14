@@ -200,7 +200,10 @@ defmodule BubbleEx.Target.Elixir do
       item?: false
     }
 
-    {source, st} = ir |> value(st) |> shown_file(ir)
+    {source, st} =
+      if st.shown == :display,
+        do: ir |> shown_value(st) |> shown_file(ir),
+        else: ir |> value(st) |> shown_file(ir)
 
     if source == :error or st.unsupported != [] do
       %{source: nil, bindings: [], loads: %{}, runtime: [], diagnostics: diagnostics(st, opts)}
@@ -371,11 +374,11 @@ defmodule BubbleEx.Target.Elixir do
     {ok(c, &"(#{&1} == true)"), st}
   end
 
-  # The `ILIKE` patterns of a keyword search's words (WTF-520, bound by
+  # The capped input of a keyword search (WTF-520, bound by
   # `FrontendWorkflows` for `BubbleEx.Target.Ash.Expressions`).
-  defp value(%IR{op: :keyword_patterns, args: [text]}, st) do
+  defp value(%IR{op: :keyword_query, args: [text]}, st) do
     {t, st} = value(text, st)
-    runtime(st, :keyword_patterns, [t])
+    runtime(st, :keyword_query, [t])
   end
 
   defp value(%IR{op: :count, args: [list]}, st) do
@@ -446,8 +449,11 @@ defmodule BubbleEx.Target.Elixir do
   defp value(%IR{op: :concat, args: parts}, st) do
     {texts, st} =
       Enum.map_reduce(parts, st, fn
-        %IR{op: :literal, args: [text]}, st when is_binary(text) -> {lit(text), st}
-        part, st -> part |> value(st) |> shown_file(part) |> then(fn {p, st} -> text(p, st) end)
+        %IR{op: :literal, args: [text]}, st when is_binary(text) ->
+          {lit(text), st}
+
+        part, st ->
+          part |> shown_value(st) |> shown_file(part) |> then(fn {p, st} -> text(p, st) end)
       end)
 
     {all_ok("(" <> Enum.join(texts, " <> ") <> ")", texts), st}
@@ -580,6 +586,32 @@ defmodule BubbleEx.Target.Elixir do
   defp yes_no_neq(%IR{op: :literal}, _r, a, b), do: "(#{a} != #{b})"
   defp yes_no_neq(_l, %IR{op: :literal}, a, b), do: "(#{a} != #{b})"
   defp yes_no_neq(_l, _r, a, b), do: "((#{a} == true) != (#{b} == true))"
+
+  # A value shown as text (a part of a dynamic text, a value shown on a
+  # page): `x is yes` on a stored yes/no x that is empty shows empty, not
+  # no (replay 2026-10-14; `x is no` there shows yes, and a condition
+  # reads `x is yes` as not holding). Anything else as `value/2`.
+  defp shown_value(ir, st) do
+    case yes_test_of(ir) do
+      %IR{} = x ->
+        {c, st} = cond(ir, st, true)
+        {v, st} = value(x, st)
+        {empty, st} = runtime(st, :empty?, [v])
+        {all_ok("(if #{empty}, do: nil, else: #{c} == true)", [c, v, empty]), st}
+
+      nil ->
+        value(ir, st)
+    end
+  end
+
+  # The stored yes/no `x` of `x is yes` (`yes is x`), else nil.
+  defp yes_test_of(%IR{op: :eq, args: [%IR{op: :literal, args: [true]}, x]}),
+    do: if(stored_yes_no?(x), do: x)
+
+  defp yes_test_of(%IR{op: :eq, args: [x, %IR{op: :literal, args: [true]}]}),
+    do: if(stored_yes_no?(x), do: x)
+
+  defp yes_test_of(_ir), do: nil
 
   defp yes_no_pair?(l, r),
     do: (stored_yes_no?(l) or stored_yes_no?(r)) and yes_no_side?(l) and yes_no_side?(r)

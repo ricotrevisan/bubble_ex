@@ -37,7 +37,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
   | `list doesn't contain item` | `is_nil(list) or is_nil(item) or not (item in list)` (an empty list contains nothing); an actor-side item must not be empty and an actor-side list needs a logged-in actor |
   | `not x` for a yes/no value | `is_distinct_from(x, true)` (empty is not yes), guarded like `is not` on the actor side |
   | `text contains string` | `contains(text, string)` |
-  | `text contains keyword(s)` (Bubble's keyword match), in a search on a text field, its words an input or a literal | `fragment("coalesce(cardinality(?::text[]) > 0 AND ? ILIKE ALL (?::text[]), false)", patterns, text, patterns)`: the words (`BubbleEx.Target.Keywords`: split on whitespace, at most 32 words of the first 256 characters) computed in Elixir, each an `ILIKE` substring pattern with `\`, `%` and `_` escaped; an input's patterns are an argument of their own (`keywords: true` in `arguments`, the caller computes them from the input's value). No words or an empty text matches nothing; `doesn't contain` is `is_nil(text) or not fragment(...)`. A conservative reading, **not verified against Bubble** (whole words or substrings, every word or any, stemming, a minimum word length, Unicode case folding); not compiled in privacy rules (PostgreSQL only, which a policy evaluated in Elixir cannot run) |
+  | `text contains keyword(s)` (Bubble's keyword match), in a search on a text field, its words an input or a literal | `fragment("to_tsvector('english', coalesce(?, '')) @@ plainto_tsquery('english', coalesce(?, ''))", text, query)`: PostgreSQL's full-text search, as Bubble matches (replay 2026-10-14): whole words, case and punctuation ignored, every word in any order, a hyphen splitting words, English stemming, a stop word alone or spaces only matching nothing. `query` is the input capped in Elixir (`BubbleEx.Target.Keywords.query/1`: at most 32 words of the first 256 characters, joined by spaces), bound as a parameter; an input's is an argument of its own (`keywords: true` in `arguments`, the caller computes it from the input's value). An empty text matches nothing; `doesn't contain` is `is_nil(text) or not fragment(...)`. The text's expression is the one the `:full_text` index covers (`BubbleEx.Target.Ash.Decisions`). Not compiled in privacy rules (PostgreSQL only, which a policy evaluated in Elixir cannot run) |
   | `+`, `-`, `*`, `/` on numbers | the operator |
   | `x defaulting to d` | `if(<x is empty>, d, x)`, emptiness as `is empty` tests it (nil, `""`, `[]`, a reference whose record is gone); `(x defaulting to d)'s a` is the chain over `x` when it is not empty, else over `d`; `(x defaulting to d) is empty` is both empty |
   | a context input (element value, parameter, …) | `^arg(:name)`, listed in `arguments`, where allowed (`inputs: :arguments`); unsupported in privacy rules |
@@ -98,13 +98,16 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
   @compare %{gt: ">", lt: "<", gte: ">=", lte: "<="}
   @arithmetic %{add: "+", sub: "-", mul: "*", div: "/"}
-  # `contains keyword(s)` (`:text_contains_words`): the text (the second
-  # `?`) matches every pattern of the bound list (the first and third,
-  # `BubbleEx.Target.Keywords.patterns/1`, computed in Elixir: nothing is
-  # split per row); no pattern, or an empty text, is false, never NULL.
-  # Ash splits a fragment on every `?` (a literal one would be `\\?`):
-  # this SQL has none but the placeholders.
-  @keywords_sql "coalesce(cardinality(?::text[]) > 0 AND ? ILIKE ALL (?::text[]), false)"
+  # `contains keyword(s)` (`:text_contains_words`): PostgreSQL's full-text
+  # match of the text (the first `?`) and the capped input (the second,
+  # `BubbleEx.Target.Keywords.query/1`, computed in Elixir), as Bubble
+  # matches (replay 2026-10-14). Both sides are coalesced, so it is never
+  # NULL: an empty text, or an input without a word that is not a stop
+  # word, is false. The text's side is the `:full_text` index's
+  # expression, so that index serves the filter. Ash splits a fragment on
+  # every `?` (a literal one would be `\\?`): this SQL has none but the
+  # placeholders.
+  @keywords_sql "to_tsvector('english', coalesce(?, '')) @@ plainto_tsquery('english', coalesce(?, ''))"
 
   # IR ops whose yes/no value may be empty (not predicates).
   @boolean_values [:field, :input, :option_attribute, :option_label, :external_field, :fallback]
@@ -623,15 +626,15 @@ defmodule BubbleEx.Target.Ash.Expressions do
     {all_ok({contains, absent, [{t, text.type}, {p, part.type}]}, [t, p]), st}
   end
 
-  # Bubble's keyword match (`contains keyword(s)`), read conservatively:
-  # the words of the part (`BubbleEx.Target.Keywords`: split on
-  # whitespace, capped), each a case-insensitive substring of the text
-  # (`ILIKE ALL` over their patterns, `\`, `%` and `_` escaped). A part
-  # with no words matches nothing; an empty text contains nothing, so its
-  # negation holds there. The words are computed in Elixir, so the part
-  # must be a context input (bound as a second argument of the same input,
-  # `keywords: true`) or a literal; in a search only: the filter is SQL
-  # (PostgreSQL), which a policy evaluated in Elixir cannot run.
+  # Bubble's keyword match (`contains keyword(s)`): PostgreSQL's full-text
+  # search over the part's capped words (`BubbleEx.Target.Keywords.query/1`;
+  # whole words, stemmed, stop words dropped, every word: replay
+  # 2026-10-14). A part with no words matches nothing; an empty text
+  # contains nothing, so its negation holds there. The cap is computed in
+  # Elixir, so the part must be a context input (bound as a second
+  # argument of the same input, `keywords: true`) or a literal; in a
+  # search only: the filter is SQL (PostgreSQL), which a policy evaluated
+  # in Elixir cannot run.
   defp atom_(%IR{op: :text_contains_words, args: [text, part]}, %{search?: true} = st) do
     cond do
       text.type != "text" ->
@@ -642,10 +645,10 @@ defmodule BubbleEx.Target.Ash.Expressions do
 
       true ->
         {t, st} = value(text, st)
-        {p, st} = keyword_patterns(part, st)
-        contains = {:call, "fragment", [{:value, @keywords_sql}, p, t, p]}
+        {q, st} = keyword_query(part, st)
+        contains = {:call, "fragment", [{:value, @keywords_sql}, t, q]}
         absent = {:or, [{:call, "is_nil", [t]}, {:not, contains}]}
-        {all_ok({contains, absent, [{t, text.type}]}, [t, p]), st}
+        {all_ok({contains, absent, [{t, text.type}]}, [t, q]), st}
     end
   end
 
@@ -1300,13 +1303,13 @@ defmodule BubbleEx.Target.Ash.Expressions do
   defp classify(type) when is_binary(type), do: type |> Type.classify() |> elem(0)
   defp classify(_type), do: nil
 
-  # The `ILIKE` patterns of a keyword search's words: a literal's computed
-  # here, an input's bound as an argument of its own (`keywords: true`),
-  # computed by the caller from the input's value.
-  defp keyword_patterns(%IR{op: :literal, args: [text]}, st),
-    do: {{:value, BubbleEx.Target.Keywords.patterns(text)}, st}
+  # The capped input of a keyword search: a literal's computed here, an
+  # input's bound as an argument of its own (`keywords: true`), computed
+  # by the caller from the input's value.
+  defp keyword_query(%IR{op: :literal, args: [text]}, st),
+    do: {{:value, BubbleEx.Target.Keywords.query(text)}, st}
 
-  defp keyword_patterns(%IR{op: :input, args: [kind, ref]}, %{inputs: :arguments} = st) do
+  defp keyword_query(%IR{op: :input, args: [kind, ref]}, %{inputs: :arguments} = st) do
     key = {{:keywords, kind}, ref}
 
     case Map.get(st.args, key) do
@@ -1319,7 +1322,7 @@ defmodule BubbleEx.Target.Ash.Expressions do
     end
   end
 
-  defp keyword_patterns(_part, st),
+  defp keyword_query(_part, st),
     do: unsupported(st, {"contains keyword(s) whose words are not an input or a literal", nil})
 
   # Argument names from the input kind and its Bubble IDs, deterministic;

@@ -1,17 +1,25 @@
 defmodule BubbleEx.Target.Keywords do
   @moduledoc """
-  The words of a keyword search (`contains keyword(s)`, IR
-  `:text_contains_words`), as the generated runtime reads them
-  (`<App>.Bubble.Runtime.keywords/1` and `keyword_patterns/1`, which must
+  The input of a keyword search (`contains keyword(s)`, IR
+  `:text_contains_words`), as the generated runtime reads it
+  (`<App>.Bubble.Runtime.keywords/1` and `keyword_query/1`, which must
   stay in step with this module): the first 256 characters of the text,
   split on whitespace, empty words dropped, at most the first 32 words.
-  The caps bound the work a search box can ask of the database (a long
-  input is never split per row). A text with no words matches nothing.
+  The caps bound the work a search box can ask of the database.
 
-  `patterns/1` gives each word as an `ILIKE` pattern matching it as a
-  substring: `\\`, `%` and `_` escaped with a backslash (`LIKE`'s default
-  escape character; the patterns are bound as parameters, so the server's
-  `standard_conforming_strings` does not apply), wrapped in `%`.
+  Bubble matches whole words, ignoring case and punctuation, every word
+  of the input in any order, a hyphen splitting words, with English
+  stemming (`betas` finds "beta"); a stop word alone, or an input of
+  spaces only, matches nothing (replay 2026-10-14, WTF-387). That is
+  PostgreSQL's full-text search: a search tests
+  `to_tsvector('english', coalesce(text, '')) @@
+  plainto_tsquery('english', coalesce(query, ''))`, `query` being
+  `query/1` of the input (its capped words joined by spaces), bound as a
+  parameter. PostgreSQL then splits, stems and drops stop words; nothing
+  is split per row in Elixir. The in-memory match of the generated
+  runtime (`text_contains_words?/2`) reads both texts the same way: a
+  tokenizer approximating PostgreSQL's parser and Snowball's English
+  (Porter2) stemmer with PostgreSQL's English stop words.
   """
 
   @max_chars 256
@@ -32,10 +40,10 @@ defmodule BubbleEx.Target.Keywords do
 
   def words(_text), do: []
 
-  @doc "The `ILIKE` patterns of `text`'s words."
-  @spec patterns(term()) :: [String.t()]
-  def patterns(text), do: text |> words() |> Enum.map(&pattern/1)
-
-  defp pattern(word),
-    do: "%" <> String.replace(word, ["\\", "%", "_"], &("\\" <> &1)) <> "%"
+  @doc """
+  The text a search binds for `text`: its words (`words/1`) joined by
+  single spaces, `""` when it has none (which matches nothing).
+  """
+  @spec query(term()) :: String.t()
+  def query(text), do: text |> words() |> Enum.join(" ")
 end

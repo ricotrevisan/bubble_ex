@@ -229,7 +229,7 @@ database sorts and filters lists of things wherever it can:
 | options, texts, numbers or dates `:filtered` | Elixir (`Enum.filter/2`, the constraints per item) |
 | texts, numbers or dates `:sorted` | Elixir (`Runtime.sort_values/2`): empty values first ascending, last descending; a stable sort |
 | `All <option set>` (an option value of `all values`) | every option of the set |
-| a field read through a list-of-things field (`list's a`, `list's a's b`) or through one of its items (`list:first item's a`, `:last item`, `:item #`, also over `:unique elements`, `:items until #`, `:minus`, `:merged with`, `defaulting to`; WTF-520) | a query for the list's records (`id in ^ids`, read as the user may view them, in the list's order: `BubbleData.listed/2`), then the field in Elixir: each item's, one flat list (empty values dropped), its relationships loaded on the query as the user; `:first item`, `:item #n` and `:items until #n` are the query's own take (one row, an offset, a limit) |
+| a field read through a list-of-things field (`list's a`, `list's a's b`) or through one of its items (`list:first item's a`, `:last item`, `:item #`, also over `:unique elements`, `:items until #`, `:minus`, `:merged with`, `defaulting to`; WTF-520) | a query for the list's records (`id in ^ids`, read as the user may view them, in the list's order: `BubbleData.listed/2`), then the field in Elixir: each item's, one flat list (empty values dropped), its relationships loaded on the query as the user. `:first item`, `:last item`, `:item #n` and `:items until #n` directly over the field pick by position in the list as stored, hidden things included, in Elixir over the stored IDs, and the query reads only the things picked: a thing the user may not view is the item, its fields empty (replay 2026-10-14, WTF-387) |
 
 Every query reads as the current user, bounded by `:max_items`, like any
 other search: a merged list reads at most `:max_items` of each search,
@@ -403,8 +403,11 @@ target cannot bind a part (a search the Ash compiler rejects, a value it
 cannot compile, a source it reads that is not loaded, a cycle), the
 element carries that target residue only, without the marker. What a
 "Display data" or "Display list" step shows wins over the folded source
-until a reset, as over any source of the element's own (unverified for a
-conditional source, below). Privacy is unchanged: every branch is read
+until a reset, as over any source of the element's own: switching the
+condition while the display is active changes nothing, and a reset shows
+the source as the condition then stands (replayed 2026-10-14, WTF-387;
+`page_data_behavior.exs`, "Display list wins over an own source with
+conditions until a reset"). Privacy is unchanged: every branch is read
 as the current user through Ash, with `data_access` off nothing is read,
 and with enforced policies a branch's search is checked like any other
 (`:search_field_hidden`, `:search_field_restricted`).
@@ -420,7 +423,11 @@ takes its default, a source of the reusable element computed inside it
 (a default may read the reusable element's thing, its other properties,
 its elements), read only for the instances that set no value; with no
 default it is empty; a default reading its own property is a cycle
-(`:unresolved_reference`). Values are kept under the instance's scope
+(`:unresolved_reference`). A value the instance sets that is empty at run
+time stays empty: it never falls back to the default, read inside the
+instance or from outside it (replayed 2026-10-14, WTF-387, with an
+absent URL parameter and an empty text; an instance that sets no value
+shows the default, inside and outside alike). Values are kept under the instance's scope
 (`{scope, "param_<id>/<reusable id>"}` in `@bubble_data`, the component's
 `bubble_data` attribute: property IDs are unique only within a reusable
 element, so keys, relationship loads and input-change reloads name
@@ -1805,9 +1812,16 @@ or returned by it. Before, `text/1` showed its debug output
 **An empty yes/no is no**, as in Bubble: the replays of 2026-09-29 and
 2026-10-01 (`docs/replay-kit.md`, "An empty yes/no reads as no") found
 `x is no` holding on a record whose x is empty (0 of 2, then 0 of 5
-agreeing with the stricter reading). Those replays observed **privacy
-rule conditions** on stored fields; every other place below follows them
-by inference (see "Unverified Bubble behavior"). Page searches (their
+agreeing with the stricter reading) in **privacy rule conditions** on
+stored fields. The replay of 2026-10-14 (WTF-387; three records: yes,
+no, empty) verified it outside privacy rules: a page search's `= no`
+finds the empty one (2 of 3), `= yes` 1, `≠ yes` 2, `is empty` only the
+empty one, `is not empty` 2; `:filtered` gives the same counts; the
+expression `x is no` is yes on an empty x; a page workflow's `Only when
+x is no` runs on it and `Only when x is yes` does not; and the current
+user's empty yes/no reads the same, logged out and logged in. Visibility
+conditions, a backend workflow's `Only when` and URL and input
+parameters follow by inference (see "Unverified Bubble behavior"). Page searches (their
 constraints, a `:filtered` list of things, which becomes a search) and
 every condition compiled by `BubbleEx.Target.Elixir` (page conditions,
 visibility, page and backend workflow `Only when`, `:filtered` on
@@ -1859,11 +1873,69 @@ Unchanged, and noted:
   policies' compilation of every yes/no form (their policy and
   calculation blocks, and `Expressions.filter/3`) to a golden recorded
   before this change.
-* **`is empty` on a yes/no** stays the exact empty test: whether Bubble
-  counts an empty yes/no as empty (or never empty, being no) is not
-  replayed.
+* **`is empty` on a yes/no** stays the exact empty test, as Bubble's
+  page search (replay 2026-10-14: `is empty` finds only the empty one,
+  `is not empty` the other two). Bubble does not offer `is empty` on a
+  yes/no expression in a condition.
+* **`x is yes` shown as a value** (a dynamic text's part, a value shown
+  on a page) on an empty x is empty, not "no" (replay 2026-10-14):
+  `BubbleEx.Target.Elixir` shows it so; `x is no` there shows yes, and as
+  a condition `x is yes` does not hold.
 * **A list of yes/no values** (`contains`, `:filtered` with `This item`)
   compares its items as stored: an empty item is not no.
+
+## Keyword searches (WTF-520, replay 2026-10-14)
+
+Bubble's `contains keyword(s)` constraint, replayed on 2026-10-14
+(WTF-387, a page search over six titles), matches **whole words**, not
+substrings (`alp` finds nothing; `alpha` misses "alphabet soup"),
+ignoring case and punctuation (`alpha!` is `alpha`). With several words,
+**every** word must match, in any order. A hyphen splits words
+(`beta-gamma` finds only "BETA-gamma"). Words are **stemmed** (`betas`
+finds "beta"). A stop word alone (`the`), or spaces only, matches
+nothing.
+
+That is PostgreSQL's English full-text search, which a page search
+compiles to (`BubbleEx.Target.Ash.Expressions`):
+
+```elixir
+fragment(
+  "to_tsvector('english', coalesce(?, '')) @@ plainto_tsquery('english', coalesce(?, ''))",
+  title,
+  ^arg(:query)
+)
+```
+
+`plainto_tsquery` ANDs the input's words, stems them and drops stop
+words; a hyphenated word must be in the text as a whole (and its parts
+are words of their own). The input is a bound parameter, capped in
+Elixir first (`BubbleEx.Target.Keywords.query/1`, the generated
+`Runtime.keyword_query/1`): its first 32 whitespace-separated words of
+its first 256 characters, joined by spaces, so a long input costs the
+database no more than a short one. An empty input follows
+`ignore_empty_constraints`; an empty text (NULL) contains nothing, and
+`doesn't contain keyword(s)` is `is_nil(text) or not fragment(...)`, so
+it holds there. A keyword search on a field some users may not view is
+guarded as any other (`<App>.Privacy.SearchFields` reads the fragment's
+arguments, WTF-457).
+
+**Index.** The `:full_text` access of `BubbleEx.Findings.SearchIndex`
+becomes a GIN index over `to_tsvector('english'::regconfig,
+coalesce("<column>", ''))` (`BubbleEx.Target.Ash.Decisions`), the
+expression the filter reads, so PostgreSQL serves the search from it (a
+bitmap index scan).
+
+**In memory** (a condition, a `:filtered` list of texts:
+`Runtime.text_contains_words?/2`) both texts are read the same way: the
+generated `Bubble.Keywords` (`lib/<app>/bubble/keywords.ex`) splits words of letters and digits (a
+hyphenated word of letters gives itself and its parts), lowercases them,
+drops PostgreSQL's English stop words and stems words of letters with
+Snowball's English (Porter2) stemmer, PostgreSQL's `english_stem`
+(compared on 63,748 dictionary words, no difference). It approximates
+PostgreSQL's parser for e-mail addresses, URLs, hosts, file paths and
+decimal or signed numbers, which PostgreSQL reads as one word each.
+Before (WTF-520, #216), every word was a case-insensitive substring
+(`ILIKE ALL`), which the replay refuted.
 
 ## Unverified Bubble behavior and open questions
 
@@ -1872,13 +1944,26 @@ Answered by the replay of 2026-10-07 and removed from this list:
 server actions with an empty input (kept stricter than Bubble, above)
 and "Display data" over a group's own source.
 
-* **An empty yes/no is no outside privacy rules** (WTF-529, above): the
-  replays observed it in privacy rule conditions on stored fields only.
-  Inferred, not replayed: page searches and `:filtered`, visibility
-  conditions, page and backend workflow `Only when` conditions (a
-  backend step now runs on an empty X for `X is no`), URL and input
-  parameters, and the current user's fields (a logged-out visitor's
-  included). Also open: whether `is empty` holds on an empty yes/no.
+Answered by the replay of 2026-10-14 (WTF-387) and removed from this
+list: an empty yes/no in page searches, `:filtered`, expressions, page
+workflow `Only when` and the current user's fields (above); "Display
+data" over a conditional source (above); keyword searches (*Keyword
+searches*, below); a property an instance sets to a value that is empty
+at run time (it stays empty, read from inside or outside the instance,
+as here: replayed with an absent URL parameter and an empty text; an
+instance that sets none shows the default); "Show popup; Display data in
+popup" against a reset in the popup's "is opened" workflow
+(`docs/frontend-workflows.md`); and `:count`, `contains`, the positional
+operators and `:filtered` of a list of things holding hidden things
+(*Lists of things and privacy*, below). Not replayed: API Connector
+redirects (no synthetic redirecting call).
+
+* **An empty yes/no is no in the rest of a page** (WTF-529, above):
+  replayed in page searches, `:filtered`, expressions, a page
+  workflow's `Only when` and the current user's fields. Inferred, not
+  replayed: visibility conditions, a backend workflow's `Only when` (a
+  backend step runs on an empty X for `X is no`), URL and input
+  parameters, and `x is not no` (here it needs a stored yes).
 * **`Current page width` and the scrollbar** (WTF-520, above): the page
   reports `window.innerWidth`, which includes a vertical scrollbar.
   Whether Bubble's value includes it (and so where a threshold falls on
@@ -1892,23 +1977,14 @@ and "Display data" over a group's own source.
 * **Matches nothing for operators other than `equals`.** The replay
   tried `equals`; that `>`, `contains`, `in` and the others match
   nothing on an empty value (or are dropped with `true`) is assumed.
-* **Keyword searches** (`contains keyword(s)`, WTF-520): compiled with a
-  conservative reading, every whitespace-separated word of the input a
-  case-insensitive substring of the field (`ILIKE ALL` over bound
-  patterns, `\`, `%` and `_` matching themselves), an input of spaces
-  only matching nothing. The words are computed in Elixir
-  (`BubbleEx.Target.Keywords`), never split per row, and capped: only
-  the first 32 words of the first 256 characters count, so a long input
-  costs the database no more than a short one (a later word is ignored,
-  which can only widen the result). The in-memory match
-  (`Bubble.Runtime.text_contains_words?/2`, for conditions and lists of
-  texts) uses the same words, so a search and a condition agree. What
-  Bubble does needs a replay: whole words or substrings, every word or
-  any, stemming, a minimum word length, punctuation as a separator, an
-  input of spaces only, whether a non-breaking space separates words
-  (here it does), whether it caps the input, and case folding beyond
-  ASCII (`ß`, a final sigma, a locale's rules: PostgreSQL's `ILIKE` and
-  Elixir's `String.downcase/1` may differ there too).
+* **Keyword searches** (*Keyword searches*, below): PostgreSQL's English
+  full-text search follows the replayed rule. Not replayed: whether a
+  non-breaking space separates words (here it does), whether Bubble
+  caps the input (here 32 words of the first 256 characters), Bubble's
+  stemming beyond the replayed plural (here Snowball's English), case
+  folding beyond ASCII (`ß`, a final sigma), and how Bubble splits
+  e-mail addresses, URLs and decimal numbers (here as PostgreSQL's
+  parser: one word each; the in-memory match splits them into parts).
 * A page's thing is read from the path segment after the page name; a
   slug is not resolved.
 * A repeating group shows its first page; later pages ("Show next") are
@@ -1918,9 +1994,6 @@ and "Display data" over a group's own source.
   cell, is not replayed (here neither runs in a cell); that two cells of
   the same thing (a list holding it twice) share their custom states is
   this target's choice (WTF-494).
-* A property an instance sets to a value that is empty at run time stays
-  empty; whether Bubble shows the property's default then is not replayed
-  (WTF-387).
 * An input whose initial content is page data (WTF-520, above) follows it
   until the user changes the input, and a reset brings it back; that
   Bubble re-evaluates the initial content after the page loaded (when the
@@ -1935,9 +2008,6 @@ and "Display data" over a group's own source.
   conservative reading is kept: a default that cannot be computed first
   (a cycle, an instance not rendered once) is not read, never read as
   empty.
-* A property an instance sets to a value that is empty at run time does
-  not fall back to the default when read from outside the instance
-  either (WTF-520): the value set wins, empty or not (as above).
 * A group, popup or repeating group with no data source that no step
   sets shows nothing (WTF-520): inferred from Bubble's data model, not
   replayed.
@@ -1948,11 +2018,6 @@ and "Display data" over a group's own source.
   base whole (a search is not merged with the base's constraints or
   sort). Assumed from how Bubble applies other conditional properties,
   not replayed for data sources.
-* **A Display step over a conditional source** (WTF-520, WTF-521): what
-  a "Display data" or "Display list" step shows is taken to win over a
-  folded source until a reset, even when a condition later flips, as it
-  does over a source of the element's own (replayed for that, not for a
-  conditional one).
 * Elements a plugin's event or "User is logged in / out" may set are
   taken to be set as the page loads (conservative, see
   `docs/frontend-workflows.md`).
@@ -1963,29 +2028,38 @@ and "Display data" over a group's own source.
   popup fires it again (here it does not), whether a popup's conditions
   open it (here what its workflows set stays unloaded), and the order of
   the popup's workflow and the rest of the workflow that opened it (here
-  the popup's runs after it). See `docs/frontend-workflows.md`.
+  the popup's runs after it), but for "Show popup; Display data in the
+  popup" against a reset in its "is opened" workflow: the display wins
+  (replay 2026-10-14). See `docs/frontend-workflows.md`.
 * **Fields through lists** (WTF-520, above): `list's a` over a list of
   things is each thing's `a` in the list's order, flattened into one
   list, empty values dropped, as Bubble's `each item's`; a list holding a
   thing twice is read through once (its records are read by ID, each
-  once), and a thing the user may not view is skipped (a field the user
-  may not view reads as empty). Not replayed: whether Bubble repeats a
-  thing listed twice, whether it removes duplicate things from the
-  result (two tasks with the same parent show the parent twice here),
-  and what it shows for a listed thing the user may not view.
-* **Counting and testing a list of things against privacy** (WTF-520):
-  reading through a list (`list's a`, `:first item`, `:item #`) reads
-  only the things the user may view, so with enforced policies `:item
-  #3` skips a hidden thing; `:count` and `contains` on a list-of-things
-  field still read the stored IDs, hidden things and dangling IDs
-  included (a count can tell how many things the user may not view).
-  Bubble is taken to apply privacy before list operators; not lowered
-  here because a visible read also collapses a thing listed twice (a
-  query finds each record once) and drops dangling IDs, neither of which
-  is replayed, and a `contains` outside a page's data (a condition, a
-  workflow) has no query to read through. To replay: `:count` and
-  `contains` of a list holding a hidden thing, a thing twice, a deleted
-  thing.
+  once), and a thing the user may not view gives nothing (its fields are
+  empty, and empty values are dropped). Not replayed: whether Bubble
+  repeats a thing listed twice, and whether it removes duplicate things
+  from the result (two tasks with the same parent show the parent twice
+  here).
+* **Lists of things and privacy** (WTF-520; replay 2026-10-14, WTF-387,
+  a visible thing whose list holds three things, two hidden from
+  everyone and one visible to a logged-in user only). Verified:
+  `:count` counts the hidden things (3 for both users) and `contains` a
+  hidden thing is yes: here both read the stored IDs, hidden things
+  (and dangling IDs) included. `:first item`, `:item #` and `:last item`
+  do not skip a hidden thing: it is the item, its fields empty; here
+  they pick by position in the stored list and read only the thing
+  picked, as the user may view it (above), so its fields are empty and
+  no ID the list does not hold is read. `:filtered` on a field drops the
+  things the user may not view (0 logged out, 1 logged in): here a
+  filtered list of things is a listed query, read as the user may view
+  its records. **Known difference, stricter:** Bubble's page search by
+  `unique id` for a hidden thing counts it (1, its fields empty); here
+  the search reads as the user may find records, so it finds nothing
+  (0). Counting it would need a read around the privacy policies, which
+  the generated pages never do. Not replayed: a thing listed twice, a
+  deleted thing, and the positional operators over a list that is not
+  a list-of-things field (a repeating group's list holds what the page
+  read: the things the user may view).
 * **A list of things `contains` a thing** (WTF-520) when one of its
   things has that thing's unique ID, whether the list holds records or
   IDs; an empty thing (or one the user may not view) is in no list.

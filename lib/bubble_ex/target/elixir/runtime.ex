@@ -103,16 +103,18 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @doc "`text contains string`: substring."
   @callback text_contains?(value(), value()) :: boolean()
   @doc """
-  `text contains` (`contains keyword(s)`): every word of `b`
-  (`keywords/1`) a case-insensitive substring of `a`; no words, or an
-  empty `a`, is false. The reading of `BubbleEx.Target.Keywords`, as a
-  search compiles it.
+  `text contains` (`contains keyword(s)`): every word of `b` (capped,
+  `keyword_query/1`) a word of `a`, as PostgreSQL's English full-text
+  search reads both (whole words, case and punctuation ignored, a hyphen
+  splitting words, Snowball English stems, its stop words dropped); `b`
+  with no word left, or an empty `a`, is false. As a search compiles it
+  (`BubbleEx.Target.Keywords`).
   """
   @callback text_contains_words?(value(), value()) :: boolean()
   @doc "The words of a keyword search: `BubbleEx.Target.Keywords.words/1`."
   @callback keywords(value()) :: [String.t()]
-  @doc "The `ILIKE` patterns of the words: `BubbleEx.Target.Keywords.patterns/1`."
-  @callback keyword_patterns(value()) :: [String.t()]
+  @doc "The input a keyword search binds: `BubbleEx.Target.Keywords.query/1`."
+  @callback keyword_query(value()) :: String.t()
 
   @doc """
   `:converted to list`: an empty value (`empty?/1`, a field the user may

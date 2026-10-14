@@ -2199,8 +2199,11 @@ defmodule BubbleEx.Target.Ash.Decisions do
         "trgm_index"
       )
 
+  # The expression a keyword search filters on
+  # (`BubbleEx.Target.Ash.Expressions`, English full-text search, replay
+  # 2026-10-14), so the index serves it.
   defp physical(:full_text, table, [col] = cols, index) do
-    expression = "to_tsvector('simple'::regconfig, coalesce(#{quote_ident(col)}, ''))"
+    expression = "to_tsvector('english'::regconfig, coalesce(#{quote_ident(col)}, ''))"
     index_struct(index, table, cols, :full_text, [expression], "gin", expression, "fts_index")
   end
 

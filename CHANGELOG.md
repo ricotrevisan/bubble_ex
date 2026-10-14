@@ -4,6 +4,45 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **Replay of 2026-10-14 applied** (WTF-387, WTF-520).
+  - **Keyword searches match whole words** (`contains keyword(s)`).
+    Bubble matches whole words, ignoring case and punctuation, every
+    word in any order, a hyphen splitting words, with English stemming;
+    a stop word alone or spaces only match nothing. A page search now
+    compiles to PostgreSQL's full-text search,
+    `to_tsvector('english', coalesce(text, '')) @@
+    plainto_tsquery('english', coalesce(query, ''))`, over the input
+    capped in Elixir (32 words of the first 256 characters) and bound
+    as a parameter (`BubbleEx.Target.Keywords.query/1`, replacing
+    `patterns/1`; the runtime's `keyword_query/1` replaces
+    `keyword_patterns/1`). The substring reading (`ILIKE ALL`, #216) is
+    gone: "ake" no longer finds "Bake". The in-memory match
+    (`Runtime.text_contains_words?/2`) reads both texts the same way,
+    with a Porter2 stemmer (the generated `Bubble.Keywords`, as PostgreSQL's
+    `english_stem`) and PostgreSQL's English stop words. The
+    `:full_text` index is now over `to_tsvector('english'::regconfig,
+    ...)`, the expression the filter reads, so it serves the search.
+  - **`:first item`, `:last item`, `:item #` and `:items until #` of a
+    list-of-things field do not skip hidden things.** They pick by
+    position in the list as stored, then read only the things picked as
+    the user may view them: a hidden thing is the item, its fields
+    empty (#228 read the first visible thing). `:count` and `contains`
+    (stored IDs, hidden things included) and `:filtered` (drops what the
+    user may not view) were confirmed. A page search by `unique id` for
+    a hidden thing stays stricter than Bubble (0 here, 1 there).
+  - **"Show popup; Display data in popup"** wins over a reset in the
+    popup's "is opened" workflow: the page keeps that display through
+    the reset, and such an element is loaded (#217 left it unloaded).
+  - **`x is yes` shown as text** on an empty yes/no is empty, not "no".
+  - Verified, no change: an empty yes/no is no in page searches,
+    `:filtered`, expressions, page `Only when` and the current user's
+    fields (#225); "Display data" over a conditional source (#215);
+    a Floating Group pinned to "both" or unset sits at the left edge
+    (#210); a property set to a value empty at run time stays empty
+    (#213).
+
 ### Fixed
 
 - **Locked versions and missing app scripts are `BubbleEx.Error`s**

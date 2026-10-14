@@ -277,7 +277,7 @@ defmodule MyApp.Card do
       index [:status, :title], name: "card_status_title_index", concurrently: true
       index [:tags], name: "card_tags_gin_index", using: "gin", concurrently: true
 
-      index ["to_tsvector('simple'::regconfig, coalesce(\"title\", ''))"],
+      index ["to_tsvector('english'::regconfig, coalesce(\"title\", ''))"],
         name: "card_title_fts_index",
         using: "gin",
         concurrently: true

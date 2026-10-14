@@ -469,16 +469,18 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
     end
 
     @arg "^arg(:parameter_pq_q)"
-    @call ~s|fragment("coalesce(cardinality(?::text[]) > 0 AND ? ILIKE ALL (?::text[]), false)", | <>
-            ~s|^arg(:parameter_keywords_pq_q), title, ^arg(:parameter_keywords_pq_q))|
+    @call ~s|fragment("to_tsvector('english', coalesce(?, '')) @@ | <>
+            ~s|plainto_tsquery('english', coalesce(?, ''))", title, ^arg(:parameter_keywords_pq_q))|
 
-    test "the words are bound as patterns: no split per row, the exact SQL", %{
+    # Replay 2026-10-14 (WTF-387): Bubble matches whole words, stemmed,
+    # every word, stop words dropped: PostgreSQL's English full-text search.
+    test "the capped input is bound to PostgreSQL's full-text search, the exact SQL", %{
       project: project
     } do
       %{expr: expr, diagnostics: []} =
         keywords(project, "text contains", %{"ignore_empty_constraints" => true})
 
-      # The input's value (for its emptiness) and its words' patterns,
+      # The input's value (for its emptiness) and its capped words,
       # computed by the caller (`keywords: true`).
       assert [
                %{name: "parameter_keywords_pq_q", type: "text", keywords: true, input: input},
@@ -520,17 +522,11 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
                ~s|expr(is_nil(#{@arg}) or #{@arg} == "" or is_nil(title) or not #{@call})|
     end
 
-    test "a literal's words are computed here, escaped and capped" do
-      assert BubbleEx.Target.Keywords.patterns("  Bread\tBAKE ") == ["%Bread%", "%BAKE%"]
-
-      assert BubbleEx.Target.Keywords.patterns(~S"100% a_b c\d") == [
-               "%100\\%%",
-               "%a\\_b%",
-               ~S"%c\\d%"
-             ]
-
-      assert BubbleEx.Target.Keywords.patterns("   ") == []
-      assert BubbleEx.Target.Keywords.patterns(nil) == []
+    test "a literal's words are computed here and capped" do
+      assert BubbleEx.Target.Keywords.query("  Bread\tBAKE ") == "Bread BAKE"
+      assert BubbleEx.Target.Keywords.query(~S"100% a_b c\d") == ~S"100% a_b c\d"
+      assert BubbleEx.Target.Keywords.query("   ") == ""
+      assert BubbleEx.Target.Keywords.query(nil) == ""
       many = Enum.map_join(1..2_000, " ", &"w#{&1}")
       assert length(BubbleEx.Target.Keywords.words(many)) == 32
 
@@ -580,8 +576,7 @@ defmodule BubbleEx.Target.Ash.ExpressionsTest do
       search = IR.node(:search, ["task", words.(title, lit.("a_b", "text"))], "list.custom.task")
       assert {:ok, %{expr: expr, diagnostics: []}} = Expressions.search(search, project)
 
-      assert Source.expr(expr) =~
-               ~S|ILIKE ALL (?::text[]), false)", ["%a\\_b%"], title, ["%a\\_b%"])|
+      assert Source.expr(expr) =~ ~S|coalesce(?, ''))", title, "a_b")|
     end
   end
 

@@ -608,7 +608,7 @@ defmodule BubbleEx.Target.Ash.Index do
       `:full_text` one SQL expression
     * `using` - the access method (`"gin"`), nil for btree
     * `expression` - for `:full_text`, the indexed expression
-      (`to_tsvector('simple'::regconfig, coalesce("col", ''))`): a search
+      (`to_tsvector('english'::regconfig, coalesce("col", ''))`): a search
       uses the index only through this exact expression
     * `source` - `%{type: _, key: decision key, index: position in the
       proposal}` (positions served by the same index are all listed:

@@ -13,14 +13,12 @@ defmodule BubbleEx.Target.Elixir.FormatsTzTest do
 
   setup_all do
     unless Code.ensure_loaded?(@runtime) do
-      source =
-        Templates.render("lib/app/bubble/runtime.ex", %{
-          module: @module,
-          app: @app,
-          enforced?: false
-        })
-
-      Code.compile_string(source)
+      # The runtime calls the keyword module (WTF-387): compiled first.
+      for template <- ["lib/app/bubble/keywords.ex", "lib/app/bubble/runtime.ex"] do
+        template
+        |> Templates.render(%{module: @module, app: @app, enforced?: false})
+        |> Code.compile_string()
+      end
     end
 
     :ok

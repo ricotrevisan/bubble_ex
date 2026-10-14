@@ -28,8 +28,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
       the list's things as records first (WTF-520): the field holds
       Bubble IDs, so the list becomes the search for its records, read
       as the user may view them in the list's order (`listed`), each
-      thing once; `:first item`, `:item #n` and `:items until #n` over it
-      are taken by the query itself (one row, an offset, a limit).
+      thing once. `:first item`, `:last item`, `:item #n` and `:items
+      until #n` directly over such a field pick by position in the list
+      as stored, hidden things included (replay 2026-10-14), and read
+      only the things picked: a hidden one's fields are empty.
 
   The list a rewritten search reads is wrapped in `:pinned`: the binding
   computes it first, in Elixir, and passes its things' IDs into the
@@ -102,13 +104,36 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
   # is (`list:first item's a`): a list-of-things field holds Bubble IDs, so
   # its things are read first, as the records the user may view
   # (`records/1`: a listed query, in the list's order, each thing once).
-  # `:first item`, `:item #n` and `:items until #n` over it are that
-  # query's own take (one row, an offset, a limit), never the whole list.
   # Through list operators that keep their operands' things.
   @keeps_things [:first, :last, :item_at, :unique, :limit, :minus_item, :minus_list]
+  # Operators that pick items by their position in the list.
+  @positional [:first, :last, :item_at, :limit]
 
   defp read_through(%IR{op: :field, type: type} = list) do
     if thing(type), do: records(list) |> Map.put(:path, list.path), else: list
+  end
+
+  # `:first item`, `:last item`, `:item #n` and `:items until #n` of a
+  # list-of-things field index the list as stored, hidden things included,
+  # and only the things picked are read (replay 2026-10-14, WTF-387: Bubble
+  # does not skip a thing the user may not view; it is the item, its
+  # fields empty). The pick runs in Elixir over the stored IDs (`:pinned`),
+  # then the listed query reads those things as the user may view them: a
+  # hidden one reads as nothing, so its fields are empty, and no ID the
+  # list does not already hold is read.
+  defp read_through(%IR{op: op, args: [%IR{op: :field} = list | _]} = ir)
+       when op in @positional do
+    cond do
+      thing(list.type) == nil ->
+        ir
+
+      op == :limit ->
+        records(ir) |> Map.put(:path, ir.path)
+
+      true ->
+        picked = IR.node(:as_list, [ir], list.type)
+        IR.node(:first, [records(picked)], ir.type) |> Map.put(:path, ir.path)
+    end
   end
 
   defp read_through(%IR{op: op, args: [list | rest]} = ir) when op in @keeps_things,

@@ -1,0 +1,343 @@
+defmodule <%= @module %>.Bubble.Keywords do
+  @moduledoc """
+  The words of a keyword search as PostgreSQL's English full-text search
+  reads them (`to_tsvector('english', ...)`, `plainto_tsquery('english',
+  ...)`), for `<%= @module %>.Bubble.Runtime.text_contains_words?/2`, so a
+  condition and a search agree (replay 2026-10-14, WTF-387). Scaffolded
+  by bubble_ex; this file is yours.
+
+  `lexemes/1` splits a text into words (letters and digits; a hyphenated
+  word of letters gives itself and its parts, as PostgreSQL's parser
+  does),
+  lowercases them, drops PostgreSQL's English stop words and stems words
+  of letters with Snowball's English (Porter2) stemmer, as PostgreSQL's
+  `english_stem` dictionary (checked against it on 63,748 words). Words
+  with digits are kept as they are. Approximated: PostgreSQL also reads
+  e-mail addresses, URLs, hosts, file paths, decimal numbers (`3.5`) and
+  signed ones (`covid-19` is `covid` and `-19`) as single words; here
+  their parts (without a sign) are words.
+  """
+
+  @stop_words ~w(
+    i me my myself we our ours ourselves you your yours yourself yourselves he him his himself
+    she her hers herself it its itself they them their theirs themselves what which who whom
+    this that these those am is are was were be been being have has had having do does did doing
+    a an the and but if or because as until while of at by for with about against between into
+    through during before after above below to from up down in out on off over under again
+    further then once here there when where why how all any both each few more most other some
+    such no nor not only own same so than too very s t can will just don should now
+  )
+
+  @doc "The lexemes of `text` (see the moduledoc), each once; `[]` for anything but a text."
+  def lexemes(text) when is_binary(text) do
+    ~r/[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*/u
+    |> Regex.scan(text)
+    |> Enum.flat_map(fn [token] ->
+      case String.split(token, "-") do
+        [word] -> [word]
+        parts -> if String.match?(token, ~r/\p{N}/u), do: parts, else: [token | parts]
+      end
+    end)
+    |> Enum.map(&String.downcase/1)
+    |> Enum.flat_map(&lexeme/1)
+    |> Enum.uniq()
+  end
+
+  def lexemes(_text), do: []
+
+  # A word of letters (or a hyphenated one) is stemmed unless it is a stop
+  # word; one with digits is kept as it is.
+  defp lexeme(word) do
+    cond do
+      String.match?(word, ~r/\p{N}/u) -> [word]
+      word in @stop_words -> []
+      true -> [stem(word)]
+    end
+  end
+
+  @vowels ~c"aeiouy"
+  @doubles ~w(bb dd ff gg mm nn pp rr tt)
+  @li_endings ~c"cdeghkmnrt"
+
+  @exception1 %{
+    "skis" => "ski",
+    "skies" => "sky",
+    "dying" => "die",
+    "lying" => "lie",
+    "tying" => "tie",
+    "idly" => "idl",
+    "gently" => "gentl",
+    "ugly" => "ugli",
+    "early" => "earli",
+    "only" => "onli",
+    "singly" => "singl",
+    "sky" => "sky",
+    "news" => "news",
+    "howe" => "howe",
+    "atlas" => "atlas",
+    "cosmos" => "cosmos",
+    "bias" => "bias",
+    "andes" => "andes"
+  }
+
+  @exception2 ~w(inning outing canning herring earring proceed exceed succeed)
+
+  @doc "Snowball's English (Porter2) stem of a lowercase word."
+  def stem(word) when byte_size(word) <= 2, do: word
+
+  def stem(word) do
+    case @exception1 do
+      %{^word => stem} -> stem
+      _ -> if String.length(word) <= 2, do: word, else: stem_word(word)
+    end
+  end
+
+  defp stem_word(word) do
+    w = word |> String.to_charlist() |> mark_y()
+    {r1, r2} = regions(w)
+
+    w = w |> step0() |> step1a()
+
+    if List.to_string(w) in @exception2 do
+      List.to_string(unmark(w))
+    else
+      w
+      |> step1b(r1)
+      |> step1c()
+      |> step2(r1)
+      |> step3(r1, r2)
+      |> step4(r2)
+      |> step5(r1, r2)
+      |> unmark()
+      |> List.to_string()
+    end
+  end
+
+  defp vowel?(c), do: c in @vowels
+
+  # Y after a vowel, or at the start, is a consonant.
+  defp mark_y([?y | rest]), do: [?Y | mark_y_rest(rest, ?Y)]
+  defp mark_y([c | rest]), do: [c | mark_y_rest(rest, c)]
+  defp mark_y([]), do: []
+
+  defp mark_y_rest([?y | rest], prev) do
+    c = if vowel?(prev), do: ?Y, else: ?y
+    [c | mark_y_rest(rest, c)]
+  end
+
+  defp mark_y_rest([c | rest], _prev), do: [c | mark_y_rest(rest, c)]
+  defp mark_y_rest([], _prev), do: []
+
+  defp unmark(w), do: Enum.map(w, fn ?Y -> ?y; c -> c end)
+
+  # R1 and R2 as offsets from the start.
+  defp regions(w) do
+    s = List.to_string(w)
+
+    r1 =
+      cond do
+        String.starts_with?(s, "gener") -> 5
+        String.starts_with?(s, "commun") -> 6
+        String.starts_with?(s, "arsen") -> 5
+        true -> region(w, 0)
+      end
+
+    {r1, region(w, r1)}
+  end
+
+  # The position after the first non-vowel following a vowel, from `from`.
+  defp region(w, from) do
+    n = length(w)
+    t = List.to_tuple(w)
+
+    Enum.reduce_while((from + 1)..(n - 1)//1, n, fn i, acc ->
+      if vowel?(elem(t, i - 1)) and not vowel?(elem(t, i)),
+        do: {:halt, i + 1},
+        else: {:cont, acc}
+    end)
+  end
+
+  defp ends?(w, suffix), do: List.ends_with?(w, suffix)
+
+  defp chop(w, n), do: Enum.take(w, length(w) - n)
+
+  # The longest of `suffixes` `w` ends with.
+  defp longest(w, suffixes) do
+    suffixes
+    |> Enum.filter(&ends?(w, &1))
+    |> Enum.max_by(&length/1, fn -> nil end)
+  end
+
+  defp in_region?(w, suffix, r), do: length(w) - length(suffix) >= r
+
+  defp step0(w) do
+    case longest(w, [~c"'s'", ~c"'s", ~c"'"]) do
+      nil -> w
+      s -> chop(w, length(s))
+    end
+  end
+
+  defp step1a(w) do
+    case longest(w, [~c"sses", ~c"ied", ~c"ies", ~c"s", ~c"us", ~c"ss"]) do
+      ~c"sses" ->
+        chop(w, 2)
+
+      s when s in [~c"ied", ~c"ies"] ->
+        if length(w) > 4, do: chop(w, 2), else: chop(w, 1)
+
+      ~c"s" ->
+        stem = chop(w, 1)
+        before = Enum.take(stem, length(stem) - 1)
+        if Enum.any?(before, &vowel?/1), do: stem, else: w
+
+      _ ->
+        w
+    end
+  end
+
+  defp step1b(w, r1) do
+    case longest(w, [~c"eed", ~c"eedly", ~c"ed", ~c"edly", ~c"ing", ~c"ingly"]) do
+      nil ->
+        w
+
+      s when s in [~c"eed", ~c"eedly"] ->
+        if in_region?(w, s, r1), do: chop(w, length(s)) ++ ~c"ee", else: w
+
+      s ->
+        stem = chop(w, length(s))
+
+        if Enum.any?(stem, &vowel?/1) do
+          cond do
+            Enum.any?([~c"at", ~c"bl", ~c"iz"], &ends?(stem, &1)) -> stem ++ ~c"e"
+            Enum.any?(@doubles, &ends?(stem, String.to_charlist(&1))) -> chop(stem, 1)
+            short_word?(stem, r1) -> stem ++ ~c"e"
+            true -> stem
+          end
+        else
+          w
+        end
+    end
+  end
+
+  # A short syllable ends the word, and R1 is empty.
+  defp short_word?(w, r1), do: r1 >= length(w) and short_syllable_end?(w)
+
+  defp short_syllable_end?(w) do
+    case Enum.reverse(w) do
+      [c, v, p | _] -> not vowel?(c) and c not in ~c"wxY" and vowel?(v) and not vowel?(p)
+      [c, v] -> not vowel?(c) and vowel?(v)
+      _ -> false
+    end
+  end
+
+  defp step1c(w) do
+    case Enum.reverse(w) do
+      [y, c | rest] when y in ~c"yY" and rest != [] ->
+        if vowel?(c), do: w, else: chop(w, 1) ++ ~c"i"
+
+      _ ->
+        w
+    end
+  end
+
+  @step2 [
+    {~c"tional", ~c"tion"},
+    {~c"enci", ~c"ence"},
+    {~c"anci", ~c"ance"},
+    {~c"abli", ~c"able"},
+    {~c"entli", ~c"ent"},
+    {~c"izer", ~c"ize"},
+    {~c"ization", ~c"ize"},
+    {~c"ational", ~c"ate"},
+    {~c"ation", ~c"ate"},
+    {~c"ator", ~c"ate"},
+    {~c"alism", ~c"al"},
+    {~c"aliti", ~c"al"},
+    {~c"alli", ~c"al"},
+    {~c"fulness", ~c"ful"},
+    {~c"ousli", ~c"ous"},
+    {~c"ousness", ~c"ous"},
+    {~c"iveness", ~c"ive"},
+    {~c"iviti", ~c"ive"},
+    {~c"biliti", ~c"ble"},
+    {~c"bli", ~c"ble"},
+    {~c"ogi", :ogi},
+    {~c"fulli", ~c"ful"},
+    {~c"lessli", ~c"less"},
+    {~c"li", :li}
+  ]
+
+  defp step2(w, r1), do: replace(w, @step2, r1, &step2_special/2)
+
+  defp step2_special(:ogi, stem), do: if(ends?(stem, ~c"l"), do: stem ++ ~c"og")
+  defp step2_special(:li, stem), do: if(List.last(stem) in @li_endings, do: stem)
+
+  @step3 [
+    {~c"tional", ~c"tion"},
+    {~c"ational", ~c"ate"},
+    {~c"alize", ~c"al"},
+    {~c"icate", ~c"ic"},
+    {~c"iciti", ~c"ic"},
+    {~c"ical", ~c"ic"},
+    {~c"ful", ~c""},
+    {~c"ness", ~c""},
+    {~c"ative", :ative}
+  ]
+
+  defp step3(w, r1, r2),
+    do: replace(w, @step3, r1, fn :ative, stem -> if length(stem) >= r2, do: stem end)
+
+  @step4 ~w(al ance ence er ic able ible ant ement ment ent ism ate iti ous ive ize ion)
+         |> Enum.map(&String.to_charlist/1)
+
+  defp step4(w, r2) do
+    case longest(w, @step4) do
+      nil ->
+        w
+
+      s ->
+        stem = chop(w, length(s))
+
+        cond do
+          not in_region?(w, s, r2) -> w
+          s == ~c"ion" -> if List.last(stem) in ~c"st", do: stem, else: w
+          true -> stem
+        end
+    end
+  end
+
+  defp step5(w, r1, r2) do
+    case Enum.reverse(w) do
+      [?e | _] ->
+        stem = chop(w, 1)
+
+        if length(stem) >= r2 or (length(stem) >= r1 and not short_syllable_end?(stem)),
+          do: stem,
+          else: w
+
+      [?l, ?l | _] ->
+        if length(w) - 1 >= r2, do: chop(w, 1), else: w
+
+      _ ->
+        w
+    end
+  end
+
+  # The longest suffix of `rules` `w` ends with, replaced when in R1
+  # (`special` decides a rule given as an atom: the stem, or nil).
+  defp replace(w, rules, r1, special) do
+    case rules |> Enum.filter(fn {s, _} -> ends?(w, s) end) |> Enum.max_by(fn {s, _} -> length(s) end, fn -> nil end) do
+      nil ->
+        w
+
+      {s, by} ->
+        stem = chop(w, length(s))
+
+        cond do
+          not in_region?(w, s, r1) -> w
+          is_atom(by) -> special.(by, stem) || w
+          true -> stem ++ by
+        end
+    end
+  end
+end

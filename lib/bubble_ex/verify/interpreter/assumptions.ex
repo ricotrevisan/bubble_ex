@@ -36,13 +36,18 @@ defmodule BubbleEx.Verify.Interpreter.Assumptions do
   without such a decision is a real difference.
 
   These flags describe privacy rule conditions, which the calibration
-  observed. Pages and workflows take some of Bubble's readings by
-  inference (WTF-529): `empty_yes_no_is_no` (an empty yes/no is no, the
-  current user's, a logged-out visitor's included) applies, not
-  replayed there, to page searches and `:filtered`, visibility
-  conditions, page and backend workflow `Only when` conditions (a
-  backend step runs on an empty X for `X is no`), and URL and input
-  parameters (`docs/page-data.md`, "Empty yes/no values").
+  observed. Pages and workflows take Bubble's reading of
+  `empty_yes_no_is_no` too (WTF-529: an empty yes/no is no, the current
+  user's, a logged-out visitor's included). The replay of 2026-10-14
+  (WTF-387) verified it there: page searches (`= no` and `≠ yes` include
+  an empty value, `is empty` matches only it), `:filtered`, expressions
+  (`x is no` is yes on an empty x; `x is yes` shown as a value is empty,
+  not no), a page workflow's `Only when`, and the current user's fields,
+  logged out and logged in. Still inferred: visibility conditions, a
+  backend workflow's `Only when` (a backend step runs on an empty X for
+  `X is no`), and URL and input parameters (`docs/page-data.md`, "Empty
+  yes/no values"). The flag's own evidence (privacy rule conditions) is
+  unchanged.
 
   | flag | Bubble (default) | target | the `true` reading | the `false` reading |
   |------|------------------|--------|--------------------|---------------------|
