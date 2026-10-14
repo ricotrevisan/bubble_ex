@@ -629,11 +629,15 @@ defmodule BubbleEx.Target.ApiCallsTest do
       page = files["lib/acme_web/live/catalog_live/workflows.ex"]
       assert page =~ "BubbleData.api(ctx, Acme.ApiClients.Example, :list_items, %{"
       assert page =~ ":q => Acme.Bubble.Runtime.text(element_state_bquery_get_data)"
-      assert page =~ ~s|inputs: ["bQuery"]|
+      assert page =~ ~s|inputs: ["API Acme.ApiClients.Example.list_items", "bQuery"]|
 
       data = files["lib/acme_web/bubble_data.ex"]
-      assert data =~ "def api(_ctx, module, function, params)"
-      assert data =~ "once({:api_data, module, function, params}"
+      assert data =~ "def api(_ctx, module, function, params, opts \\\\ [])"
+      assert data =~ "once({:api_data, key}"
+      # The call ends in a task; what reads it is read again.
+      assert page =~ ~s|"API Acme.ApiClients.Example.list_items"|
+      assert files["lib/acme/api_clients/data.ex"] =~ "defmodule Acme.ApiClients.Data"
+      assert files["lib/acme/application.ex"] =~ "Acme.ApiClients.Data,"
 
       catalog = files["lib/acme_web/live/catalog_live.html.heex"]
       assert catalog =~ ~s|data-bubble-api-error={Bubble.api_error(@bubble_data, "", "bStatus")}|
@@ -679,7 +683,42 @@ defmodule BubbleEx.Target.ApiCallsTest do
       tags = IR.node(:external_field, [rows, @row, "_api_c2_tags"], "list.text")
       assert {:ok, %{source: source}} = ElixirTarget.compile(tags, project)
       assert source =~ "Enum.flat_map("
-      _ = @price
+    end
+
+    test "a conditional source and another surface read the call; list values are lists",
+         %{pages: pages} do
+      assert %{read: {:switch, sw}, residue: []} = source(pages, "bPick")
+      assert FrontendWorkflows.Spec.reads_api?(source(pages, "bPick"))
+      assert [%{when: _, then: {:value, %{calls: [_]}}}] = sw.cases
+
+      [count] = FrontendWorkflows.Spec.data(pages, "bCountDef")
+      assert {:value, %{calls: [%{function: "list_items"}]}} = count.read
+
+      assert {:value, %{calls: [%{params: [%{value: %{source: source}}]}]}} =
+               source(pages, "bTagged").read
+
+      assert source =~ "split("
+    end
+
+    test "an API value a data field stores loads leniently: never a failed row" do
+      parts = [
+        {"_api_c2_amount", "amount", :float},
+        {"_api_c2_tags", "tags", {:array, :text}}
+      ]
+
+      encoding = {:external, parts}
+      convert = &BubbleEx.Load.Convert.encode(encoding, &1)
+
+      assert {%{"amount" => 3.0, "tags" => ["x"]}, []} =
+               convert.(%{"_api_c2_amount" => 3, "_api_c2_tags" => ["x"]})
+
+      # Unknown members are dropped, mistyped ones empty with an issue.
+      assert {%{"amount" => nil, "tags" => nil}, issues} =
+               convert.(%{"_api_c2_amount" => "three", "_api_c2_tags" => 7, "other" => 1})
+
+      assert issues != []
+      # Not an object: empty, with an issue.
+      assert {nil, [_]} = convert.("text")
     end
   end
 

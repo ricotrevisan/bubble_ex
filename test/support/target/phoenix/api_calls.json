@@ -1,6 +1,6 @@
 {
  "_id": "api-calls-fixture",
- "_comment": "WTF-533: API Connector calls lowered to Req clients, all data invented (host api.example.test, stubbed in test/support/target/phoenix/api_calls_behavior.exs; never a real API). An API (Example, key in a header) with two calls: Get item (GET, a URL parameter, a query parameter, a private header; returns an Item) and Post note (POST JSON with a private body parameter, errors included in the response). A backend workflow fetches an item and returns its name; page buttons fetch an item and post a note, showing the result in a label. A catalog page reads data calls (WTF-533, slice 2): List items (GET, a list of rows filtered by an input's value) feeds a repeating group and a group's first row; Get price is called in the repeating group's cells, per cell (residue) and with a fixed value (once); Get status, whose private header the tests never set, shows as empty with a developer marker.",
+ "_comment": "WTF-533: API Connector calls lowered to Req clients, all data invented (host api.example.test, stubbed in test/support/target/phoenix/api_calls_behavior.exs; never a real API). An API (Example, key in a header) with two calls: Get item (GET, a URL parameter, a query parameter, a private header; returns an Item) and Post note (POST JSON with a private body parameter, errors included in the response). A backend workflow fetches an item and returns its name; page buttons fetch an item and post a note, showing the result in a label. A catalog page reads data calls (WTF-533, slice 2): List items (GET, a list of rows filtered by an input's value) feeds a repeating group and a group's first row; Get price is called in the repeating group's cells, per cell (residue) and with a fixed value (once); Get status, whose private header the tests never set, shows as empty with a developer marker. A reusable element counts the same list (another surface, one call per read); a group's conditional state reads the price of the typed item; a repeating group sends the input split by commas (a list parameter).",
  "user_types": {
   "user": {
    "display": "User",
@@ -684,6 +684,230 @@
             "type": "Message",
             "name": "_api_c2_state"
            }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "bCount": {
+     "id": "bCount",
+     "type": "CustomElement",
+     "properties": {
+      "custom_id": "bCountDef",
+      "order": 5,
+      "width": 300,
+      "height": 40
+     }
+    },
+    "bPick": {
+     "id": "bPick",
+     "type": "Group",
+     "properties": {
+      "order": 6,
+      "width": 300,
+      "height": 40,
+      "group_type": "api.apiconnector2.gEx.cPrice.Price",
+      "data_source": {
+       "type": "GetDataFromAPI",
+       "properties": {
+        "provider": "apiconnector2.gEx.cPrice",
+        "url_params_item_id": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "base"
+         }
+        }
+       }
+      }
+     },
+     "states": {
+      "0": {
+       "type": "State",
+       "condition": {
+        "type": "GetElement",
+        "properties": {
+         "element_id": "bQuery"
+        },
+        "next": {
+         "type": "Message",
+         "name": "get_data",
+         "next": {
+          "type": "Message",
+          "name": "is_not_empty"
+         }
+        }
+       },
+       "properties": {
+        "data_source": {
+         "type": "GetDataFromAPI",
+         "properties": {
+          "provider": "apiconnector2.gEx.cPrice",
+          "url_params_item_id": {
+           "type": "TextExpression",
+           "entries": {
+            "0": {
+             "type": "GetElement",
+             "properties": {
+              "element_id": "bQuery"
+             },
+             "next": {
+              "type": "Message",
+              "name": "get_data"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "elements": {
+      "bPickAmount": {
+       "id": "bPickAmount",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Pick: ",
+          "1": {
+           "type": "ElementParent",
+           "next": {
+            "type": "Message",
+            "name": "_api_c2_amount"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "bTagged": {
+     "id": "bTagged",
+     "type": "RepeatingGroup",
+     "properties": {
+      "order": 7,
+      "width": 300,
+      "height": 100,
+      "columns": 1,
+      "rows": 5,
+      "group_type": "api.apiconnector2.gEx.cList.Row",
+      "data_source": {
+       "type": "GetDataFromAPI",
+       "properties": {
+        "provider": "apiconnector2.gEx.cList",
+        "params_q": {
+         "type": "GetElement",
+         "properties": {
+          "element_id": "bQuery"
+         },
+         "next": {
+          "type": "Message",
+          "name": "get_data",
+          "next": {
+           "type": "Message",
+           "name": "split_by",
+           "properties": {
+            "separator": {
+             "type": "TextExpression",
+             "entries": {
+              "0": ","
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "elements": {
+      "bTaggedName": {
+       "id": "bTaggedName",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Tagged: ",
+          "1": {
+           "type": "CurrentDataItem",
+           "next": {
+            "type": "Message",
+            "name": "_api_c2_name"
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "element_definitions": {
+  "count": {
+   "id": "bCountDef",
+   "name": "Count",
+   "type": "CustomDefinition",
+   "properties": {
+    "width": 300,
+    "height": 40
+   },
+   "elements": {
+    "bRCount": {
+     "id": "bRCount",
+     "type": "Group",
+     "properties": {
+      "order": 1,
+      "width": 300,
+      "height": 40,
+      "group_type": "number",
+      "data_source": {
+       "type": "GetDataFromAPI",
+       "properties": {
+        "provider": "apiconnector2.gEx.cList",
+        "params_q": {
+         "type": "TextExpression",
+         "entries": {
+          "0": ""
+         }
+        }
+       },
+       "next": {
+        "type": "Message",
+        "name": "count"
+       }
+      }
+     },
+     "elements": {
+      "bRCountN": {
+       "id": "bRCountN",
+       "type": "Text",
+       "properties": {
+        "order": 1,
+        "width": 300,
+        "height": 40,
+        "min_height_css": "40px",
+        "text": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "Rows: ",
+          "1": {
+           "type": "ElementParent"
           }
          }
         }
