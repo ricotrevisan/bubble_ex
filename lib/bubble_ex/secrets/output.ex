@@ -69,13 +69,19 @@ defmodule BubbleEx.Secrets.Output do
     end
   end
 
-  defp retain(state, _finding, _enhance) when state.count >= state.max_findings,
-    do: {:error, :findings_limit}
-
+  # Only retained findings count toward `max_findings`: a verifying scan reads
+  # the results providers rejected and drops them (WTF-538). Dropped lines
+  # stay bounded by `max_bytes` and the scan deadline.
   defp retain(state, finding, enhance) do
     case enhance.(finding) do
-      nil -> {:ok, %{state | count: state.count + 1}}
-      finding -> {:ok, %{state | findings: [finding | state.findings], count: state.count + 1}}
+      nil ->
+        {:ok, state}
+
+      _finding when state.count >= state.max_findings ->
+        {:error, :findings_limit}
+
+      finding ->
+        {:ok, %{state | findings: [finding | state.findings], count: state.count + 1}}
     end
   end
 end

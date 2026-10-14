@@ -13,6 +13,15 @@ All notable changes to this project are documented here.
   the application plan does not include this feature" notice (a
   password-protected version the plan no longer allows), and otherwise
   `:parse_failed` with `reason: :dynamic_js_script_not_found`.
+- **Secret scans no longer lose plain-text secrets TruffleHog labels
+  BASE64** (WTF-538). TruffleHog keeps one of two decoders' identical
+  findings at the same location, and a payload file is one line, so a
+  plain-text secret could come back as a BASE64 finding, which
+  `Secrets.Trufflehog` dropped because its base64 form is not in the
+  payload. A live GCP service-account key in an API Connector sample body
+  was lost that way in two runs out of three. Such a finding (and an HTML or
+  other decoder's) whose secret is in the payload as is is now reported as
+  PLAIN.
 
 - **Apps whose custom domain is dead can be fetched again** (WTF-536).
   Bubble redirects the pages of an app with a custom domain to that
@@ -875,6 +884,19 @@ All notable changes to this project are documented here.
   lists only unexpected ones.
 
 ### Added
+
+- **TruffleHog custom detectors, starting with Elastic App Search private
+  keys** (WTF-538). Every `Secrets.Trufflehog` scan loads
+  `priv/trufflehog/custom_detectors.yaml` (`--config`). A finding gets the
+  detector's provider name and a `"DetectorType"` id from 1_000_001 up
+  (`Trufflehog.custom_detectors/0`) instead of TruffleHog's `"CustomRegex"`
+  (904), and is marked `"Verification" => "skipped"`, also in verify mode.
+  Verify mode therefore asks TruffleHog for unverified results too and drops
+  the ones a provider rejected itself, before any payload search; only
+  retained findings count toward `:max_findings`. The App Search detector
+  (`private-` and 24 lowercase letters and digits) skips 24 hex characters
+  (Pusher/Ably private channels named after a Mongo ObjectId) and 24
+  letters.
 
 - **API Connector calls in workflows** (WTF-533, first slice;
   `docs/api-connector-calls.md`). An API Connector call used as an
