@@ -110,6 +110,7 @@ defmodule BubbleEx.MixProject do
       description: "An Elixir library to reverse engineer Bubble.io apps.",
       files: [
         "lib",
+        "priv",
         "LICENSE",
         "mix.exs",
         "README.md",

@@ -27,7 +27,24 @@ defmodule BubbleEx.Buildprint.V5 do
       with Buildprint's other members; its manifest entries no longer
       carry `bareContentSha256`, which is not read; and its API Connector
       `shared_headers` entries carry their header name (`key`), which
-      `BubbleEx.Model` reads as the parameter name.
+      `BubbleEx.Model` reads as the parameter name. Format 35 reads as
+      format 32 (formats 33 and 34 were never seen and stay unknown): its
+      tables, columns, metadata keys, manifest and row kinds are unchanged,
+      and the same branch exported in both formats decodes to the same
+      rows (only their member order, so their hashes, differ) and loads to
+      the same app and Model, deleted flags included. Buildprint's own
+      preamble members are unchanged; Bubble's merge and conflict members
+      (`merge_changes`, `conflicts_*`) appear only on branches that have
+      them, and are passed through unread like any member the Model does
+      not read. Its symbol index adds one `privacyRule` symbol, the
+      implicit "everyone else" rule (`privacy_role.everyone`), for each
+      data type whose JSON holds no privacy rule; `privacyRule` symbols
+      are not compared, so this needs no change. Other index content the
+      loader does not read changes too (`references`, `type_facts`, a few
+      API and workflow symbol kinds), as does `tests-state.json` (a
+      `revision`). Its `state.json` may hold a `null` `remoteArtifact`, and
+      `.buildprint/` gains an `inherited-errors.json` (Buildprint's
+      validation baseline); neither is read.
     * **Integrity.** Every row's `content_sha256` must be the SHA-256 of its
       JSON, root keys must be unique, and the manifest must list exactly the
       rows it describes, each once. An index with a pending write-ahead log
@@ -87,7 +104,7 @@ defmodule BubbleEx.Buildprint.V5 do
   # Defined only when the optional `exqlite` dependency is loaded.
   @compile {:no_warn_undefined, Sqlite}
 
-  @format_versions ["bubblescript-31", "bubblescript-32"]
+  @format_versions ["bubblescript-31", "bubblescript-32", "bubblescript-35"]
   @schema_versions ["16"]
   @manifest_versions [5]
 

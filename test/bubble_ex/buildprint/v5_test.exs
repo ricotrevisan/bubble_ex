@@ -491,7 +491,138 @@ defmodule BubbleEx.Buildprint.V5Test do
 
       assert {:error, %Error{kind: :unknown_format, context: context}} = V5.load(ws)
       assert context.value == "bubblescript-33"
-      assert context.supported == ["bubblescript-31", "bubblescript-32"]
+      assert context.supported == ["bubblescript-31", "bubblescript-32", "bubblescript-35"]
+    end
+
+    # The 2026-10-14 format-35 clone was of another branch than the format-32
+    # export, with fewer deleted definitions; the same branch at format 32
+    # loads to the same app. Format 35 still writes `deleted: true`, and a
+    # deleted data type, field, option set and value stay deleted.
+    test "a format-35 workspace keeps deleted flags", %{tmp_dir: dir} do
+      fragments =
+        fragments() ++
+          [
+            {"data-types/gone.ts",
+             %{
+               "user_types" => %{
+                 "gone" => %{
+                   "display" => "Gone",
+                   "deleted" => true,
+                   "fields" => %{
+                     "old_text" => %{"display" => "Old", "value" => "text", "deleted" => true}
+                   }
+                 }
+               }
+             }},
+            {"option-sets/old.ts",
+             %{
+               "option_sets" => %{
+                 "old" => %{
+                   "display" => "Old",
+                   "deleted" => true,
+                   "values" => %{"v" => %{"display" => "V", "deleted" => true}}
+                 }
+               }
+             }}
+          ]
+
+      symbols = Map.merge(@symbols, %{"dataType" => 3, "field" => 4, "optionSet" => 2})
+
+      {:ok, %V5{app: app} = result} =
+        dir
+        |> write_workspace(
+          preamble: preamble(),
+          fragments: fragments,
+          symbols: symbols,
+          metadata: %{"formatVersion" => "bubblescript-35"},
+          state: %{"formatVersion" => "bubblescript-35", "remoteArtifact" => nil}
+        )
+        |> V5.load()
+
+      assert result.format_version == "bubblescript-35"
+      assert app["user_types"]["gone"]["deleted"] == true
+      assert app["user_types"]["gone"]["fields"]["old_text"]["deleted"] == true
+      assert app["option_sets"]["old"]["deleted"] == true
+      refute :buildprint_count_mismatch in codes(result)
+
+      summary = Model.summary(result.model)
+      assert summary["deleted_data_types"] == 1
+      assert summary["deleted_option_sets"] == 1
+      assert summary["deleted_option_values"] == 1
+      assert summary["deleted_fields"] == 1
+      assert Enum.find(result.model.data_types, &(&1.id == "gone")).deleted
+    end
+
+    test "formats 33 and 34 were never seen and stay unknown", %{tmp_dir: dir} do
+      for format <- ["bubblescript-33", "bubblescript-34"] do
+        ws =
+          write_workspace(dir,
+            name: format,
+            metadata: %{"formatVersion" => format},
+            state: %{"formatVersion" => format}
+          )
+
+        assert {:error, %Error{kind: :unknown_format, context: %{value: ^format}}} = V5.load(ws)
+      end
+    end
+
+    test "a format-35 workspace loads like a format-32 one", %{tmp_dir: dir} do
+      # Format 35 keeps format 32's tables, metadata, manifest and row
+      # kinds. Its symbol index adds an implicit "everyone else"
+      # privacyRule symbol for each data type without privacy rules (here
+      # `user`, beside `task`'s own rule), which the loader does not
+      # compare; its state.json may hold a null remoteArtifact, and
+      # `.buildprint/` an inherited-errors.json baseline, neither read.
+      state = %{
+        "formatVersion" => "bubblescript-35",
+        "kind" => "app",
+        "appId" => "fixture-app",
+        "branch" => "b1",
+        "workflowEngine" => "legacy",
+        "remoteArtifact" => nil,
+        "base" => %{"kind" => "ready"}
+      }
+
+      expected =
+        dir
+        |> write_workspace(
+          name: "format32",
+          metadata: %{"formatVersion" => "bubblescript-32"},
+          state: %{"formatVersion" => "bubblescript-32"}
+        )
+        |> V5.load()
+
+      ws =
+        write_workspace(dir,
+          name: "format35",
+          metadata: %{"formatVersion" => "bubblescript-35"},
+          state: state,
+          symbols: Map.put(@symbols, "privacyRule", 2)
+        )
+
+      File.write!(
+        Path.join([ws, ".buildprint", "inherited-errors.json"]),
+        Jason.encode!(%{"key" => "k", "files" => %{"f reconcile" => %{"[\"BSP0000\"]" => 1}}})
+      )
+
+      assert {:ok, %V5{} = result} = V5.load(ws)
+      assert {:ok, %V5{} = result32} = expected
+      assert result.format_version == "bubblescript-35"
+      assert result.app == result32.app
+      assert result.counts == result32.counts
+      assert Map.delete(result.counts, "api_calls_unnamed") == result.symbol_counts
+      assert codes(result) == codes(result32)
+      refute Enum.any?(result.diagnostics, &(&1.code == :buildprint_count_mismatch))
+
+      # A format-32 state.json does not vouch for a format-35 index.
+      mixed =
+        write_workspace(dir,
+          name: "mixed35",
+          metadata: %{"formatVersion" => "bubblescript-35"},
+          state: %{"formatVersion" => "bubblescript-32"}
+        )
+
+      assert {:error, %Error{kind: :unknown_format}} = V5.load(mixed)
     end
 
     test "a format-32 workspace loads like a format-31 one", %{tmp_dir: dir} do
