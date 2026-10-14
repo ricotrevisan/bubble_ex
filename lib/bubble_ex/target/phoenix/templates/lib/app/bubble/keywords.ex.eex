@@ -157,7 +157,7 @@ defmodule <%= @module %>.Bubble.Keywords do
     end)
   end
 
-  defp ends?(w, suffix), do: List.ends_with?(w, suffix)
+  defp ends?(w, suffix), do: :lists.suffix(suffix, w)
 
   defp chop(w, n), do: Enum.take(w, length(w) - n)
 
