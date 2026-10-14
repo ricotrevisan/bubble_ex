@@ -6,6 +6,13 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Locked versions and missing app scripts are `BubbleEx.Error`s**
+  (WTF-542). `Apps.Parser.extract_dynamic_js_url/1` returned a raw map
+  when the landing page had no `dynamic_js` script. It now returns kind
+  `:version_locked` for Bubble's "protected in run mode by a password…
+  the application plan does not include this feature" notice (a
+  password-protected version the plan no longer allows), and otherwise
+  `:parse_failed` with `reason: :dynamic_js_script_not_found`.
 - **Secret scans no longer lose plain-text secrets TruffleHog labels
   BASE64** (WTF-538). TruffleHog keeps one of two decoders' identical
   findings at the same location, and a payload file is one line, so a
