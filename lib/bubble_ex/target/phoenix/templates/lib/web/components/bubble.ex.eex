@@ -687,7 +687,17 @@ defmodule <%= @web %>.Bubble do
 
   @doc "`text` with the developer markers on (`dev_markers?/0`), else nil."
   def dev_marker(text), do: if(dev_markers?(), do: text)
-
+<%= if @api_data? do %>
+  @doc """
+  With the developer markers on (`dev_markers?/0`), why the API Connector
+  calls the data source of `element` read in `scope` failed this read
+  (WTF-533: a status, an error's kind, or the secrets not set, by
+  variable name), else nil. Production shows nothing.
+  """
+  def api_error(data, scope, element) do
+    if dev_markers?(), do: Map.get(data || %{}, {scope, element, :api_error})
+  end
+<% end %>
   # The maximum CSS z-index: the notice's fallback where the popover
   # top layer is unsupported. The pages clamp theirs below it.
   @notice_z 2_147_483_647

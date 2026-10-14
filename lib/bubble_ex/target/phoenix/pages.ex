@@ -195,6 +195,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> Map.put(:required, required_vars(frontend, base))
       |> Map.put(:scoped, scoped(frontend, flows, base.expressions))
       |> Map.put(:data_blocked, data_blocked(flows))
+      |> Map.put(:api_readers, api_readers(flows))
 
     pages = Enum.map(names.pages, &page(&1, base))
     reusables = Enum.map(names.reusables, &reusable(&1, base))
@@ -2054,6 +2055,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> Kernel.++(clicks)
       |> put_authored_id(node, ctx, acc)
 
+    rest = rest ++ api_error_attrs(node, ctx, acc)
     {notes, rest} = Enum.split_with(rest, &match?({:dev_note, _}, &1))
     {binding_notes, acc} = take_binding_notes(acc, node)
     notes = Enum.map(notes, &elem(&1, 1)) ++ data_notes(node, ctx) ++ binding_notes
@@ -2328,6 +2330,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp url_input?({:url_parameter, _}), do: true
   defp url_input?(_), do: false
 
+  # The elements whose own data source reads an API Connector call
+  # (WTF-533): marked, with the developer markers on, when it fails.
+  defp api_readers(%FlowSpec{} = spec), do: FlowSpec.api_readers(spec)
+  defp api_readers(_flows), do: MapSet.new()
+
+  defp api_data?(%FlowSpec{} = spec), do: FlowSpec.api_data?(spec)
+  defp api_data?(_flows), do: false
+
   # The elements whose data source (or, for an instance, a property it
   # sets, WTF-493) the page does not load, with why.
   defp data_blocked(nil), do: %{}
@@ -2386,6 +2396,18 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     if Enum.any?(texts, &(&1 =~ "its data source is not loaded" and &1 =~ "page_data_in_cell")),
       do: ["Data not loaded: it would be searched once per cell"],
+      else: []
+  end
+
+  # An element whose own data source reads an API Connector call (WTF-533,
+  # outside a cell): with the developer markers on, the call's failure
+  # (`<Web>.Bubble.api_error/3`, nil otherwise: no attribute).
+  defp api_error_attrs(node, ctx, acc) do
+    if not acc.template and MapSet.member?(Map.get(ctx, :api_readers, MapSet.new()), bid(node)),
+      do: [
+        {"data-bubble-api-error",
+         {:expr, "Bubble.api_error(@bubble_data, #{scope_var(ctx)}, #{literal(bid(node))})"}}
+      ],
       else: []
   end
 
@@ -5065,7 +5087,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       app: ctx.app,
       modals: modals,
       viewer_loads: source(viewer_loads),
-      option_lists: source(FlowSpec.option_lists(Map.get(base, :flows)))
+      option_lists: source(FlowSpec.option_lists(Map.get(base, :flows))),
+      api_data?: api_data?(Map.get(base, :flows))
     })
   end
 

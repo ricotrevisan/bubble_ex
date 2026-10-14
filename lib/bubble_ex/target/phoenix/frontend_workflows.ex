@@ -69,6 +69,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       app: ctx.app,
       join_topics: ctx.join_topics,
       enforced?: Map.get(ctx, :enforced?, false),
+      api_data?: Spec.api_data?(spec),
       viewer?: Map.get(ctx, :viewer?, false),
       viewer_loads?: Map.get(ctx, :viewer_loads?, false)
     }
@@ -647,6 +648,9 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp prelude(exprs, cell_preloaded? \\ false, page_data? \\ false) do
     exprs
     |> Enum.flat_map(& &1.bindings)
+    # What a source reads first (a query, an API Connector call) is bound
+    # where it is read.
+    |> Enum.reject(&match?(%{bind: {kind, _}} when kind in [:query, :api_data], &1))
     |> Enum.group_by(& &1.var)
     |> Enum.sort()
     |> Enum.map_join(fn {var, [b | _] = bs} ->
@@ -890,7 +894,10 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   end
 
   defp read_bindings({:value, %{bindings: bindings} = v}),
-    do: bindings ++ Enum.flat_map(Map.get(v, :queries, []), &pin_bindings/1)
+    do:
+      bindings ++
+        Enum.flat_map(Map.get(v, :queries, []), &pin_bindings/1) ++
+        Enum.flat_map(call_values(v), & &1.bindings)
 
   defp read_bindings({:query, q}),
     do: pin_bindings(q) ++ Enum.flat_map(Map.get(q, :queries, []), &pin_bindings/1)
@@ -1097,22 +1104,39 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp read_body({:value, %{queries: [_ | _] = queries} = v}, d, ctx) do
     resource = if d.resource, do: "#{ctx.module}.#{d.resource}", else: "nil"
 
-    "#{queries_source(queries, [v], ctx)}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?}, #{inspect(d.page_size)})"
+    "#{queries_source(queries, [v | call_values(v)], ctx, nil, calls_source(v, ctx))}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?}, #{inspect(d.page_size)})"
   end
 
   defp read_body({:value, v}, d, ctx) do
     resource = if d.resource, do: "#{ctx.module}.#{d.resource}", else: "nil"
 
-    "#{prelude([v], d.cell != nil, true)}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?}, #{inspect(d.page_size)})"
+    "#{prelude([v | call_values(v)], d.cell != nil, true)}#{calls_source(v, ctx)}BubbleData.records(ctx, #{resource}, (#{v.source}), #{d.list?}, #{inspect(d.page_size)})"
   end
 
   defp read_body({:query, q}, d, ctx), do: query_source(q, d, ctx)
 
   # A conditional state's condition: a value, yes only when it is yes.
   defp condition_body({:value, %{queries: [_ | _] = queries} = v}, ctx),
-    do: "#{queries_source(queries, [v], ctx)}(#{v.source})"
+    do:
+      "#{queries_source(queries, [v | call_values(v)], ctx, nil, calls_source(v, ctx))}(#{v.source})"
 
-  defp condition_body({:value, v}, _ctx), do: "#{prelude([v], false, true)}(#{v.source})"
+  defp condition_body({:value, v}, ctx),
+    do: "#{prelude([v | call_values(v)], false, true)}#{calls_source(v, ctx)}(#{v.source})"
+
+  # The API Connector calls a value reads first (WTF-533): each made with
+  # its generated client through `BubbleData.api/4` (once per read of the
+  # page's data for the same values), after the page values its
+  # parameters read, before the queries and the value.
+  defp call_values(v), do: for(c <- Map.get(v, :calls, []), p <- c.params, do: p.value)
+
+  defp calls_source(v, ctx) do
+    Enum.map_join(Map.get(v, :calls, []), "", fn c ->
+      params =
+        "%{" <> Enum.map_join(c.params, ", ", &"#{atom(&1.key)} => (#{&1.value.source})") <> "}"
+
+      "api_data_#{c.n} = BubbleData.api(ctx, #{ctx.module}.#{c.module}, #{atom(c.function)}, #{params})\n"
+    end)
+  end
 
   defp query_source(%{queries: [_ | _] = queries} = q, d, ctx) do
     """
@@ -1191,7 +1215,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   # The queries a source reads first (WTF-495: searches under list
   # operators), in order, after the page values they all read; `values`
   # (and the source's own query `q`) read them as `query_<n>`.
-  defp queries_source(queries, values, ctx, q \\ nil) do
+  defp queries_source(queries, values, ctx, q, calls \\ "") do
     pinned = for x <- queries ++ List.wrap(q), %{value: %{bindings: _} = v} <- x.pins, do: v
     all = values ++ pinned
 
@@ -1212,7 +1236,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
         "#{pins_source(x)}query_#{n} = #{read}\n"
       end)
 
-    "#{prelude(page, false, true)}#{reads}#{if q, do: pins_source(q), else: ""}"
+    "#{prelude(page, false, true)}#{calls}#{reads}#{if q, do: pins_source(q), else: ""}"
   end
 
   defp pins_source(q) do

@@ -332,7 +332,8 @@ defmodule <%= @web %>.BubbleData do
             load_surfaces(socket, BubbleWorkflows.surfaces(page), {%{}, %{}}, nil)
 
           # The reusable instances in cells (WTF-494): one scope per cell read.
-          load_cells(socket, page, {data, by_source})
+          load_cells(socket, page, {data, by_source})<%= if @api_data? do %>
+          |> with_api_marks()<% end %>
         end)
 
       socket
@@ -442,7 +443,8 @@ defmodule <%= @web %>.BubbleData do
             {data, by_source} =
               load_surfaces(socket, BubbleWorkflows.surfaces(page), {data, by_source}, affected)
 
-            load_cells(socket, page, {data, by_source}, affected)
+            load_cells(socket, page, {data, by_source}, affected)<%= if @api_data? do %>
+            |> with_api_marks()<% end %>
           end)
 
         socket
@@ -1325,7 +1327,8 @@ defmodule <%= @web %>.BubbleData do
   defp run(_module, %{fun: nil}, _ctx), do: nil
 
   defp run(module, source, %{batch: %{}} = ctx) do
-    apply(module, source.fun, [ctx])
+    apply(module, source.fun, [ctx])<%= if @api_data? do %>
+    |> api_mark(source, ctx)<% end %>
   rescue
     error ->
       Logger.error(
@@ -1337,7 +1340,8 @@ defmodule <%= @web %>.BubbleData do
 
   defp run(module, source, ctx) do
     module
-    |> apply(source.fun, [ctx])
+    |> apply(source.fun, [ctx])<%= if @api_data? do %>
+    |> api_mark(source, ctx)<% end %>
     |> load_page(source.loads, ctx.actor)
   rescue
     error ->
@@ -1348,7 +1352,108 @@ defmodule <%= @web %>.BubbleData do
       nil
   end
 
-  # --- reads -----------------------------------------------------------------------------
+<%= if @api_data? do %>  # --- API Connector calls used as data (WTF-533) ----------------------------------------
+
+  @api_failed {__MODULE__, :api_failed}
+  @api_marks {__MODULE__, :api_marks}
+
+  @doc """
+  An API Connector call a page data source reads (Bubble's "Get data
+  from an external API"), made with its generated client
+  (`<%= @module %>.ApiClients.*`) on the server, in the page's LiveView:
+  the browser never sees the call, its secrets or its response, only what
+  the page shows of it. `params` are the values of the call's non-private
+  parameters, read from the page (a thing as its Bubble ID, a date as its
+  text in UTC); its secrets (keys, tokens, private parameters) come from
+  `config/runtime.exs`. Pages read no data with data access off, so they
+  make no call either.
+
+  The same call with the same values is made once per read of the
+  page's data (`once/3`), however many sources read it, and never served
+  from an earlier read: a change notification, an input a parameter
+  reads or any other read of the page makes it again.
+
+  A call that fails reads as empty (nil): a non-2xx response (unless the
+  call includes errors in its response), a timeout, a body that does not
+  decode. A call whose secrets are not set is never sent, and reads as
+  empty too. Either is logged with the status, the error's kind or the
+  missing variables' names, never a body, a header or a value, and with
+  the developer markers on (`<%= @web %>.Bubble.dev_markers?/0`, dev only) the
+  element whose data source reads it is marked with the same text
+  (`<%= @web %>.Bubble.api_error/3`). The page shows no notice.
+  """
+  def api(_ctx, module, function, params) do
+    params = Map.new(params, fn {key, value} -> {key, api_param(value)} end)
+
+    case once({:api_data, module, function, params}, nil, fn ->
+           apply(module, function, [params, []])
+         end) do
+      {:ok, value} ->
+        value
+
+      {:error, %<%= @module %>.ApiClients.MissingEnvError{names: names}} ->
+        api_failed(module, function, "not called, secrets not set: " <> Enum.join(names, ", "))
+
+      {:error, reason} ->
+        api_failed(module, function, "failed: " <> inspect(api_reason(reason)))
+    end
+  end
+
+  defp api_failed(module, function, text) do
+    Logger.warning("bubble page data: API call #{inspect(module)}.#{function} #{text}")
+    Process.put(@api_failed, [text | Process.get(@api_failed, [])])
+    nil
+  end
+
+  # A parameter's value as the client sends it: a thing is its Bubble ID,
+  # a date its text (UTC), as a workflow's API call sends them.
+  defp api_param(value)
+       when is_binary(value) or is_number(value) or is_boolean(value) or is_nil(value),
+       do: value
+
+  defp api_param(values) when is_list(values), do: Enum.map(values, &api_param/1)
+  defp api_param(%{__struct__: _, id: id}), do: id
+  defp api_param(value), do: Runtime.text(value)
+
+  # A failed call as the log and the marker show it: never a body or a header.
+  defp api_reason({:status, status, _body}), do: {:status, status}
+  defp api_reason({:redirect_refused, status, _location}), do: {:redirect_refused, status}
+  defp api_reason({:decode, _error}), do: :decode
+  defp api_reason(%Req.TransportError{reason: reason}), do: {:transport, reason}
+  defp api_reason(%{__exception__: true, __struct__: kind}), do: {:exception, kind}
+  defp api_reason(reason) when is_atom(reason), do: reason
+  defp api_reason({kind, _detail}) when is_atom(kind), do: kind
+  defp api_reason(_reason), do: :error
+
+  # The calls a source's run failed (in this scope): kept for the marker.
+  defp api_mark(value, source, ctx) do
+    case Process.delete(@api_failed) do
+      nil ->
+        value
+
+      texts ->
+        key = {Map.get(ctx, :scope), source.element}
+        marks = Process.get(@api_marks, %{})
+        Process.put(@api_marks, Map.put(marks, key, texts |> Enum.reverse() |> Enum.uniq()))
+        value
+    end
+  end
+
+  # What this read's failed calls mark, kept in the page's data next to
+  # the elements' values (`{scope, element, :api_error}`): read again with
+  # them, so a call that succeeds again clears its mark.
+  defp with_api_marks({data, by_source, cells}) do
+    marks = Process.delete(@api_marks) || %{}
+
+    data =
+      Enum.reduce(marks, data, fn {{scope, element}, texts}, data ->
+        Map.put(data, {scope, element, :api_error}, Enum.join(texts, "; "))
+      end)
+
+    {data, by_source, cells}
+  end
+
+<% end %>  # --- reads -----------------------------------------------------------------------------
 
   @doc """
   Loads a page expression's relationships with a database-side limit on
