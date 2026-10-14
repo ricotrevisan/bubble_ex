@@ -15,6 +15,10 @@ defmodule PhxCheckWeb.ApiCallsBehaviorTest do
   alias PhxCheck.Workflows.Runtime
 
   @stub PhxCheck.ApiClients.Example
+  @rows [
+    %{"id" => "a", "name" => "Alpha", "tags" => ["x", "y"]},
+    %{"id" => "b", "name" => "Beta", "tags" => []}
+  ]
   @secrets %{
     "BUBBLE_API_EXAMPLE_API_KEY" => "test-key",
     "BUBBLE_API_EXAMPLE_GET_ITEM_X_TENANT" => "test-tenant",
@@ -176,7 +180,13 @@ defmodule PhxCheckWeb.ApiCallsBehaviorTest do
 
   test "mix bubble.api_env lists the missing variables by name only" do
     secrets(Map.delete(@secrets, "BUBBLE_API_EXAMPLE_POST_NOTE_SIGNING"))
-    assert PhxCheck.ApiClients.missing_env() == ["BUBBLE_API_EXAMPLE_POST_NOTE_SIGNING"]
+
+    # The status call's private header is never set in these tests (a data call's
+    # missing secret, below).
+    assert PhxCheck.ApiClients.missing_env() == [
+             "BUBBLE_API_EXAMPLE_GET_STATUS_X_STATUS_TOKEN",
+             "BUBBLE_API_EXAMPLE_POST_NOTE_SIGNING"
+           ]
 
     output =
       ExUnit.CaptureIO.capture_io(:stderr, fn ->
@@ -187,6 +197,150 @@ defmodule PhxCheckWeb.ApiCallsBehaviorTest do
     refute output =~ "test-"
 
     secrets(@secrets)
-    assert PhxCheck.ApiClients.missing_env() == []
+    assert PhxCheck.ApiClients.missing_env() == ["BUBBLE_API_EXAMPLE_GET_STATUS_X_STATUS_TOKEN"]
+  end
+
+  # WTF-533, slice 2: calls used as data ("Get data from an external API")
+  # are page data, read by the page's LiveView on the server through the
+  # same clients, only with the data-access opt-in.
+  describe "data calls on a page" do
+    setup do
+      workflows = Application.get_env(:phx_check, PhxCheckWeb.BubbleWorkflows)
+      markers = Application.get_env(:phx_check, :bubble_dev_markers)
+
+      on_exit(fn ->
+        restore(PhxCheckWeb.BubbleWorkflows, workflows)
+        restore(:bubble_dev_markers, markers)
+      end)
+
+      Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: true)
+      Application.put_env(:phx_check, :bubble_dev_markers, false)
+      :ok
+    end
+
+    defp catalog(items \\ &Req.Test.json(&1, @rows)) do
+      stub(fn conn ->
+        case conn.request_path do
+          "/v1/items" -> items.(conn)
+          "/v1/prices/base" -> Req.Test.json(conn, %{"amount" => 3})
+          _ -> Req.Test.json(conn, %{"amount" => 99})
+        end
+      end)
+    end
+
+    defp paths(requests), do: Enum.map(requests, fn {conn, _} -> conn.request_path end)
+    defp shown(view, id), do: view |> element(~s([data-bubble-id="#{id}"])) |> render()
+
+    test "a repeating group and a group's first item show the call's list, called once", %{
+      conn: conn
+    } do
+      catalog()
+      {:ok, view, html} = live(conn, "/catalog")
+      page = render(view)
+
+      assert page =~ "Item: Alpha"
+      assert page =~ "Item: Beta"
+      # `:first item` over the list, and a list field of it.
+      assert shown(view, "bFirstName") =~ "First: Alpha tags 2"
+
+      # Both read the same call with the same values: one request per read,
+      # with the input's (empty) value, the key from the configuration.
+      requests = requests()
+      assert Enum.count(paths(requests), &(&1 == "/v1/items")) == 1
+      {items, _} = Enum.find(requests, fn {c, _} -> c.request_path == "/v1/items" end)
+      assert items.method == "GET"
+      assert Plug.Conn.get_req_header(items, "x-api-key") == ["test-key"]
+
+      # A call in a cell with the same values in every cell is made once;
+      # one whose values read the cell would be made once per cell, and is
+      # not loaded (page_data_in_cell).
+      assert Enum.count(paths(requests), &(&1 == "/v1/prices/base")) == 1
+      assert length(Regex.scan(~r/Base: 3/, page)) == 2
+      refute Enum.any?(paths(requests), &(&1 in ["/v1/prices/a", "/v1/prices/b"]))
+
+      # Nothing of the calls but what the page shows reaches the browser.
+      for secret <- Map.values(@secrets), do: refute(html =~ secret or page =~ secret)
+    end
+
+    test "an input a parameter reads calls again with its value, and only what reads it", %{
+      conn: conn
+    } do
+      catalog(fn conn ->
+        case Plug.Conn.fetch_query_params(conn).query_params do
+          %{"q" => "gam"} ->
+            Req.Test.json(conn, [%{"id" => "g", "name" => "Gamma", "tags" => []}])
+
+          _ ->
+            Req.Test.json(conn, @rows)
+        end
+      end)
+
+      {:ok, view, _html} = live(conn, "/catalog")
+      _ = render(view)
+      _ = requests()
+
+      render_change(view, "bubble:change", %{
+        "bubble" => %{"scope" => "", "element" => "bQuery", "value" => "gam", "on" => "blur"}
+      })
+
+      Process.sleep(200)
+      page = render(view)
+      assert page =~ "Item: Gamma"
+      refute page =~ "Item: Alpha"
+      assert shown(view, "bFirstName") =~ "First: Gamma tags 0"
+
+      # One call for the list and the group's first item (the same values);
+      # the list's cells are read again (their call is made once). The
+      # sources that do not read the input are not read again.
+      requests = requests()
+      assert Enum.sort(paths(requests)) == ["/v1/items", "/v1/prices/base"]
+      {items, _} = Enum.find(requests, fn {c, _} -> c.request_path == "/v1/items" end)
+      assert items.query_string == "q=gam"
+    end
+
+    test "a call whose secrets are not set is never sent: empty, marked in dev", %{conn: conn} do
+      catalog()
+      {:ok, view, _html} = live(conn, "/catalog")
+
+      assert shown(view, "bState") =~ "State:"
+      refute shown(view, "bStatus") =~ "data-bubble-api-error"
+      refute Enum.any?(requests(), fn {c, _} -> c.request_path == "/v1/status" end)
+
+      Application.put_env(:phx_check, :bubble_dev_markers, true)
+      {:ok, view, _html} = live(conn, "/catalog")
+      status = shown(view, "bStatus")
+      assert status =~ "data-bubble-api-error"
+      assert status =~ "BUBBLE_API_EXAMPLE_GET_STATUS_X_STATUS_TOKEN"
+      # The variable's name, never a value (and no notice).
+      refute status =~ "test-"
+      refute render(view) =~ "isn&#39;t available"
+    end
+
+    test "a call that fails shows as empty, without a notice, marked in dev", %{conn: conn} do
+      Application.put_env(:phx_check, :bubble_dev_markers, true)
+      catalog(&Plug.Conn.send_resp(&1, 500, "echo test-key"))
+      {:ok, view, _html} = live(conn, "/catalog")
+      page = render(view)
+
+      refute page =~ "Item:"
+      assert shown(view, "bFirstName") =~ "First:"
+      refute shown(view, "bFirstName") =~ "Alpha"
+      items = shown(view, "bItems")
+      assert items =~ "{:status, 500}"
+      refute page =~ "test-key"
+      refute page =~ "isn&#39;t available"
+
+      # A data GET is retried only on a refused connection, a 429 or a 503.
+      assert Enum.count(paths(requests()), &(&1 == "/v1/items")) == 1
+    end
+
+    test "with data access off, a page makes no call", %{conn: conn} do
+      Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: false)
+      catalog()
+      {:ok, view, _html} = live(conn, "/catalog")
+
+      refute render(view) =~ "Item:"
+      assert requests() == []
+    end
   end
 end
