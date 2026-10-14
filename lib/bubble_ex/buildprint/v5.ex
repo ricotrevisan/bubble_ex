@@ -29,12 +29,20 @@ defmodule BubbleEx.Buildprint.V5 do
       `shared_headers` entries carry their header name (`key`), which
       `BubbleEx.Model` reads as the parameter name. Format 35 reads as
       format 32 (formats 33 and 34 were never seen and stay unknown): its
-      tables, columns, metadata keys, manifest, row kinds, preamble members
-      and fragment members are unchanged. Its symbol index adds one
-      `privacyRule` symbol, the implicit "everyone else" rule
-      (`privacy_role.everyone`), for each data type whose JSON holds no
-      privacy rule; `privacyRule` symbols are not compared, so this needs
-      no change. Its `state.json` may hold a `null` `remoteArtifact`, and
+      tables, columns, metadata keys, manifest and row kinds are unchanged,
+      and the same branch exported in both formats decodes to the same
+      rows (only their member order, so their hashes, differ) and loads to
+      the same app and Model, deleted flags included. Buildprint's own
+      preamble members are unchanged; Bubble's merge and conflict members
+      (`merge_changes`, `conflicts_*`) appear only on branches that have
+      them, and are passed through unread like any member the Model does
+      not read. Its symbol index adds one `privacyRule` symbol, the
+      implicit "everyone else" rule (`privacy_role.everyone`), for each
+      data type whose JSON holds no privacy rule; `privacyRule` symbols
+      are not compared, so this needs no change. Other index content the
+      loader does not read changes too (`references`, `type_facts`, a few
+      API and workflow symbol kinds), as does `tests-state.json` (a
+      `revision`). Its `state.json` may hold a `null` `remoteArtifact`, and
       `.buildprint/` gains an `inherited-errors.json` (Buildprint's
       validation baseline); neither is read.
     * **Integrity.** Every row's `content_sha256` must be the SHA-256 of its

@@ -494,6 +494,65 @@ defmodule BubbleEx.Buildprint.V5Test do
       assert context.supported == ["bubblescript-31", "bubblescript-32", "bubblescript-35"]
     end
 
+    # The 2026-10-14 format-35 clone was of another branch than the format-32
+    # export, with fewer deleted definitions; the same branch at format 32
+    # loads to the same app. Format 35 still writes `deleted: true`, and a
+    # deleted data type, field, option set and value stay deleted.
+    test "a format-35 workspace keeps deleted flags", %{tmp_dir: dir} do
+      fragments =
+        fragments() ++
+          [
+            {"data-types/gone.ts",
+             %{
+               "user_types" => %{
+                 "gone" => %{
+                   "display" => "Gone",
+                   "deleted" => true,
+                   "fields" => %{
+                     "old_text" => %{"display" => "Old", "value" => "text", "deleted" => true}
+                   }
+                 }
+               }
+             }},
+            {"option-sets/old.ts",
+             %{
+               "option_sets" => %{
+                 "old" => %{
+                   "display" => "Old",
+                   "deleted" => true,
+                   "values" => %{"v" => %{"display" => "V", "deleted" => true}}
+                 }
+               }
+             }}
+          ]
+
+      symbols = Map.merge(@symbols, %{"dataType" => 3, "field" => 4, "optionSet" => 2})
+
+      {:ok, %V5{app: app} = result} =
+        dir
+        |> write_workspace(
+          preamble: preamble(),
+          fragments: fragments,
+          symbols: symbols,
+          metadata: %{"formatVersion" => "bubblescript-35"},
+          state: %{"formatVersion" => "bubblescript-35", "remoteArtifact" => nil}
+        )
+        |> V5.load()
+
+      assert result.format_version == "bubblescript-35"
+      assert app["user_types"]["gone"]["deleted"] == true
+      assert app["user_types"]["gone"]["fields"]["old_text"]["deleted"] == true
+      assert app["option_sets"]["old"]["deleted"] == true
+      refute :buildprint_count_mismatch in codes(result)
+
+      summary = Model.summary(result.model)
+      assert summary["deleted_data_types"] == 1
+      assert summary["deleted_option_sets"] == 1
+      assert summary["deleted_option_values"] == 1
+      assert summary["deleted_fields"] == 1
+      assert Enum.find(result.model.data_types, &(&1.id == "gone")).deleted
+    end
+
     test "formats 33 and 34 were never seen and stay unknown", %{tmp_dir: dir} do
       for format <- ["bubblescript-33", "bubblescript-34"] do
         ws =
