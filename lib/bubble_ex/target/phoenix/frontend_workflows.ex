@@ -146,7 +146,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
     data = Map.get(surface, :data, [])
     data_functions = Enum.map_join(data, "\n", &data_source(&1, s, ctx))
-    data_metas = Enum.map_join(data, ",\n", &data_meta(&1, s))
+    data_metas = Enum.map_join(data, ",\n", &data_meta(&1, s, ctx))
 
     uses_js? = Enum.any?(workflows, & &1.client?)
 
@@ -759,7 +759,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   # inputs it reads (`inputs`) and the page data it reads (`reads`, element
   # IDs): an input change reads again only the sources that read the input,
   # and those reading them, transitively (WTF-475).
-  defp data_meta(d, s) do
+  defp data_meta(d, s, ctx) do
     fun = if d.residue == [] and d.read != :displayed, do: ":" <> data_fun(d), else: "nil"
 
     loads = Map.get(Map.get(s, :loads, %{}), data_key_element(d), [])
@@ -771,7 +771,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       "#{outer_meta(d)}" <>
       "loads: #{source(loads)}, cell_loads: #{source(cell_loads(d.read))}, " <>
       "#{outer_loads_meta(d)}topic: #{topic}, " <>
-      "inputs: #{source(data_inputs(d.read))}, reads: #{source(data_reads(d))}, " <>
+      "inputs: #{source(data_inputs(d.read, ctx))}, reads: #{source(data_reads(d))}, " <>
       "deps: #{source(data_deps(d))}, " <>
       "blocked: #{source(Enum.uniq(Enum.map(d.residue, & &1.subject)))}" <>
       "#{display_meta(d)}#{data_default(d)}#{batch_meta(d, s)}#{query_topics(d)}" <>
@@ -881,7 +881,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   # The input elements a source's value or search constraints read (and
   # the viewport's width, `@page_width_input`).
-  defp data_inputs(read) do
+  defp data_inputs(read, ctx) do
     read
     |> read_bindings()
     |> Enum.flat_map(fn
@@ -889,9 +889,21 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       %{bind: :page_width} -> [@page_width_input]
       _ -> []
     end)
+    |> Kernel.++(api_inputs(read, ctx))
     |> Enum.uniq()
     |> Enum.sort()
   end
+
+  # The API Connector calls a source makes (WTF-533), as its inputs: when
+  # one ends, the page reads again only what reads it
+  # (`BubbleData.api_done/3`, the same names).
+  defp api_inputs({:value, v}, ctx),
+    do: for(c <- Map.get(v, :calls, []), do: "API #{ctx.module}.#{c.module}.#{c.function}")
+
+  defp api_inputs({:switch, sw}, ctx),
+    do: sw |> Spec.switch_reads() |> Enum.flat_map(&api_inputs(&1, ctx))
+
+  defp api_inputs(_read, _ctx), do: []
 
   defp read_bindings({:value, %{bindings: bindings} = v}),
     do:
@@ -1134,7 +1146,9 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       params =
         "%{" <> Enum.map_join(c.params, ", ", &"#{atom(&1.key)} => (#{&1.value.source})") <> "}"
 
-      "api_data_#{c.n} = BubbleData.api(ctx, #{ctx.module}.#{c.module}, #{atom(c.function)}, #{params})\n"
+      opts = if Map.get(c, :cache?, true), do: "", else: ", cache: false"
+
+      "api_data_#{c.n} = BubbleData.api(ctx, #{ctx.module}.#{c.module}, #{atom(c.function)}, #{params}#{opts})\n"
     end)
   end
 

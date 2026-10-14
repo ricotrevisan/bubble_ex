@@ -789,7 +789,18 @@ defmodule <%= @web %>.BubbleWorkflows do
     end
   end
 
-  # The rest of a paused workflow (WTF-451), sent by the page itself.
+<%= if @api_data? do %>  # A data call of the page ended (WTF-533, `BubbleData.api/5`): what reads
+  # it is read again, and the conditions checked.
+  def handle_info(socket, page, {:bubble, :api_data, {module, function, params} = key, result})
+      when is_atom(module) and is_atom(function) and is_map(params) do
+    {:noreply, event(BubbleData.api_done(socket, key, result), page, [])}
+  end
+
+  # The page's data calls that waited for its budget or a slot may start.
+  def handle_info(socket, page, {:bubble, :api_retry}),
+    do: {:noreply, event(BubbleData.api_retry(socket), page, [])}
+
+<% end %>  # The rest of a paused workflow (WTF-451), sent by the page itself.
   def handle_info(socket, page, {:bubble, :resume, frames, now, budget}) do
     socket = delivered(socket)
 

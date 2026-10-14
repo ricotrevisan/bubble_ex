@@ -1,0 +1,189 @@
+defmodule <%= @module %>.ApiClients.Data do
+  @moduledoc """
+  What API Connector calls used as data (a page's "Get data from an
+  external API", WTF-533) share across pages: a cache of their responses,
+  a cap on the calls in flight per API, and the tasks that make them, off
+  the pages' LiveView processes. The pages' loader
+  (`<%= @web %>.BubbleData.api/5`) uses it; a workflow's call (an action)
+  never does.
+
+  ## Cost model (defaults)
+
+  A data call costs a request to someone else's API, made with the app's
+  credentials whoever views the page. So:
+
+    * **Off the page's process.** A call runs in a task
+      (`Task.Supervisor`): the page renders with what it has (the last
+      value, or empty) and reads its sources again when the call ends.
+      At most `:max_concurrency` (4) per page at once.
+    * **Cached.** A response is shared by every page for `:ttl` ms
+      (30 s), keyed by the client function and the parameters' values:
+      mounts, change notifications and other pages reading the same call
+      within it make no call. A call with "Include errors in response"
+      is not cached (its error is the page's own), nor any named in
+      `:no_cache` (`[{module, function}]`). Failures are never cached.
+    * **A budget per page.** At most `:budget` calls (`{10, 10_000}`: 10
+      per 10 s) per page; past it the page keeps the values it has and
+      logs once.
+    * **A cap per API.** At most `:max_in_flight` (20) calls in flight
+      per API (client module), all pages together; a page waits for one
+      to end.
+    * **Tighter limits than an action's.** `:deadline` 8 s (under the
+      LiveView's 10 s join timeout), `:max_retries` 1 (only on a refused
+      connection, a 429 or a 503) waiting at most `:max_retry_delay`
+      1 s, and responses of at most `:max_body_bytes` (1 MB).
+
+  All of it is configuration:
+
+      config :<%= @app %>, <%= @module %>.ApiClients.Data,
+        ttl: 30_000,
+        no_cache: [],
+        budget: {10, 10_000},
+        max_concurrency: 4,
+        max_in_flight: 20,
+        deadline: 8_000,
+        max_retries: 1,
+        max_retry_delay: 1_000,
+        max_body_bytes: 1_000_000,
+        max_entries: 10_000
+  """
+
+  use Supervisor
+
+  @cache __MODULE__.Cache
+  @flight __MODULE__.InFlight
+  @tasks __MODULE__.Tasks
+
+  @defaults [
+    ttl: 30_000,
+    no_cache: [],
+    budget: {10, 10_000},
+    max_concurrency: 4,
+    max_in_flight: 20,
+    deadline: 8_000,
+    max_retries: 1,
+    max_retry_delay: 1_000,
+    max_body_bytes: 1_000_000,
+    max_entries: 10_000
+  ]
+
+  @doc false
+  def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
+
+  @impl true
+  def init(_opts) do
+    # Owned by this supervisor: they live as long as the app.
+    :ets.new(@cache, [:named_table, :public, :set, read_concurrency: true])
+    :ets.new(@flight, [:named_table, :public, :set, write_concurrency: true])
+    Supervisor.init([{Task.Supervisor, name: @tasks}], strategy: :one_for_one)
+  end
+
+  @doc "The configuration (see the moduledoc), with its defaults."
+  def config(key), do: Keyword.get(config(), key)
+
+  def config,
+    do: Keyword.merge(@defaults, Application.get_env(:<%= @app %>, __MODULE__, []))
+
+  @doc "The client options of a data call: its deadline, retries and body cap."
+  def call_opts do
+    c = config()
+
+    [
+      deadline: c[:deadline],
+      max_retries: c[:max_retries],
+      max_retry_delay: c[:max_retry_delay],
+      max_body_bytes: c[:max_body_bytes]
+    ]
+  end
+
+  @doc "Whether the responses of `function` of `module` may be cached."
+  def cache?(module, function), do: {module, function} not in config(:no_cache)
+
+  @doc """
+  The cached response of `key`: `{:fresh, value}` within the TTL,
+  `{:stale, value}` past it (shown until a new one comes), or `:miss`.
+  """
+  def cached(key) do
+    case :ets.lookup(@cache, key) do
+      [{^key, value, expires}] ->
+        if System.monotonic_time(:millisecond) < expires,
+          do: {:fresh, value},
+          else: {:stale, value}
+
+      [] ->
+        :miss
+    end
+  rescue
+    ArgumentError -> :miss
+  end
+
+  @doc "Caches a response of `key` for the TTL."
+  def put(key, value) do
+    if :ets.info(@cache, :size) >= config(:max_entries), do: prune()
+    :ets.insert(@cache, {key, value, System.monotonic_time(:millisecond) + config(:ttl)})
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  # Drops what has expired; when that is not enough, everything.
+  defp prune do
+    now = System.monotonic_time(:millisecond)
+    :ets.select_delete(@cache, [{{:_, :_, :"$1"}, [{:<, :"$1", now}], [true]}])
+
+    if :ets.info(@cache, :size) >= config(:max_entries), do: :ets.delete_all_objects(@cache)
+  end
+
+  @doc "Forgets every cached response (tests, an owner's console)."
+  def clear do
+    :ets.delete_all_objects(@cache)
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  @doc """
+  Runs `fun` (a call of `module`) in a task, when fewer than
+  `:max_in_flight` calls of `module` are in flight: `:ok`, or `:busy`.
+  """
+  def run(module, fun) do
+    if acquire(module) do
+      case Task.Supervisor.start_child(@tasks, fn ->
+             try do
+               fun.()
+             after
+               release(module)
+             end
+           end) do
+        {:ok, _pid} ->
+          :ok
+
+        _ ->
+          release(module)
+          :busy
+      end
+    else
+      :busy
+    end
+  end
+
+  defp acquire(module) do
+    n = :ets.update_counter(@flight, module, {2, 1}, {module, 0})
+
+    if n > config(:max_in_flight) do
+      release(module)
+      false
+    else
+      true
+    end
+  rescue
+    ArgumentError -> false
+  end
+
+  defp release(module) do
+    :ets.update_counter(@flight, module, {2, -1, 0, 0}, {module, 0})
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+end

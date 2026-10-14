@@ -98,6 +98,9 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
     |> Map.merge(decode)
     |> Map.merge(%{
       (lib <> "api_clients.ex") => format(runtime),
+      # Calls used as data (WTF-533): cache, caps and tasks.
+      (lib <> "api_clients/data.ex") =>
+        format(Templates.render("lib/app/api_clients/data.ex", ctx)),
       (test <> "api_clients_test.exs") => format(runtime_test(ctx)),
       "lib/mix/tasks/bubble.api_env.ex" => format(env_task(ctx)),
       ".env.example" => env_example(spec),

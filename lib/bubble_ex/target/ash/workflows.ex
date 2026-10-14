@@ -834,7 +834,8 @@ defmodule BubbleEx.Target.Ash.Workflows do
        %{
          module: "ApiClients." <> g.module,
          function: c.function,
-         args: Map.new(c.args, &{&1.parameter, &1.key})
+         args: Map.new(c.args, &{&1.parameter, &1.key}),
+         wrap_errors: c.wrap_errors
        }}
     end
   end

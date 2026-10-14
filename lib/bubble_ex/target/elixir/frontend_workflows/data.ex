@@ -1501,7 +1501,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
             module: client.module,
             function: client.function,
             params: params,
-            list?: Type.list?(ir.type)
+            list?: Type.list?(ir.type),
+            cache?: not Map.get(client, :wrap_errors, false)
           }
 
           {:ok, api_input(n, ir.type),
