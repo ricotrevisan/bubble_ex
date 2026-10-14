@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Buildprint format 35** (`bubblescript-35`). `BubbleEx.Buildprint.V5`
+  accepts workspaces Buildprint now writes. A comparison with a format-32
+  clone found the same tables, columns, metadata keys, manifest, row
+  kinds, preamble members and fragment members. The symbol index adds an
+  implicit "everyone else" `privacyRule` symbol for each data type
+  without privacy rules (the loader does not compare privacy-rule
+  symbols); `state.json` may hold a `null` `remoteArtifact`, and
+  `.buildprint/` an `inherited-errors.json`, neither read. Formats 33 and
+  34 were never seen and stay `:unknown_format`.
+
 ### Fixed
 
 - **Locked versions and missing app scripts are `BubbleEx.Error`s**
