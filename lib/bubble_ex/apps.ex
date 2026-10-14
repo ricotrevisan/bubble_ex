@@ -194,21 +194,62 @@ defmodule BubbleEx.Apps do
   end
 
   defp fetch_app_from_url(url, opts) do
-    with {:ok, initial_payload} <- HTTP.fetch_page(url, opts),
-         {:ok, dynamic_js_url} <- Parser.extract_dynamic_js_url(initial_payload),
-         {:ok, app_payload} <-
-           HTTP.fetch_page(
-             dynamic_js_url,
-             Keyword.put(
-               opts,
-               :max_body_length,
-               BubbleEx.Config.apps_script_max_body_length(opts)
-             )
-           ),
-         {:ok, app_data} <- Parser.parse_app_json(app_payload.body) do
-      attrs = build_app_attrs(app_data, initial_payload, url, opts)
-      {:ok, attrs}
+    case HTTP.fetch_page(url, opts) do
+      {:ok, initial_payload} ->
+        with {:ok, dynamic_js_url} <- Parser.extract_dynamic_js_url(initial_payload),
+             {:ok, app_payload} <- fetch_script(dynamic_js_url, opts),
+             {:ok, app_data} <- Parser.parse_app_json(app_payload.body) do
+          {:ok, build_app_attrs(app_data, initial_payload, url, opts)}
+        end
+
+      {:error, %Error{kind: :request_failed, context: %{reason: :nxdomain}} = error} ->
+        fetch_app_bundle_directly(url, error, opts)
+
+      {:error, error} ->
+        {:error, error}
     end
+  end
+
+  defp fetch_script(script_url, opts) do
+    HTTP.fetch_page(
+      script_url,
+      Keyword.put(opts, :max_body_length, BubbleEx.Config.apps_script_max_body_length(opts))
+    )
+  end
+
+  # `*.bubbleapps.io` resolves for every name, so an NXDOMAIN there comes from
+  # the custom domain Bubble redirects page routes to (a lapsed or never
+  # pointed domain). Bubble still serves `/package/` routes on bubbleapps.io,
+  # so fetch the index page's bundle from there. The path's hash is not
+  # validated, but Bubble's cache answers a reused hash with whichever app
+  # first used it: use a fresh one and require the bundle to be this app's.
+  defp fetch_app_bundle_directly(url, page_error, opts) do
+    with %URI{scheme: scheme, host: host, path: path} when scheme in ["http", "https"] <-
+           URI.parse(url),
+         [_, bubble_id] <- Regex.run(~r/\A([a-z0-9-]+)\.bubbleapps\.io\z/i, host || ""),
+         version = url_version(path),
+         {:ok, app_payload} <- fetch_script(bundle_url(scheme, host, bubble_id, version), opts),
+         {:ok, %{"_id" => ^bubble_id} = app_data} <- Parser.parse_app_json(app_payload.body),
+         true <- Map.get(app_data, "app_version", version) == version do
+      Logger.info("Fetched #{bubble_id} (#{version}) bundle directly; its page redirect is dead")
+      {:ok, build_app_attrs(app_data, %{app_payload | domain: host}, url, opts)}
+    else
+      _ -> {:error, page_error}
+    end
+  end
+
+  defp url_version(path) do
+    case Regex.run(~r{\A/version-([^/]+)}, path || "") do
+      [_, version] -> version
+      _ -> "live"
+    end
+  end
+
+  defp bundle_url(scheme, host, bubble_id, version) do
+    hash = 32 |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
+
+    "#{scheme}://#{host}/package/dynamic_js/#{hash}/#{bubble_id}/#{version}" <>
+      "/index/xnull/xfalse/xtrue/en_us/xfalse/xfalse/dynamic.js"
   end
 
   defp maybe_try_test_version(url_or_bubble_id, url, request_url, status_code, opts) do

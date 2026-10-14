@@ -16,20 +16,14 @@ All notable changes to this project are documented here.
   other decoder's) whose secret is in the payload as is is now reported as
   PLAIN.
 
-### Added
-
-- **TruffleHog custom detectors, starting with Elastic App Search private
-  keys** (WTF-538). Every `Secrets.Trufflehog` scan loads
-  `priv/trufflehog/custom_detectors.yaml` (`--config`). A finding gets the
-  detector's provider name and a `"DetectorType"` id from 1_000_001 up
-  (`Trufflehog.custom_detectors/0`) instead of TruffleHog's `"CustomRegex"`
-  (904), and is marked `"Verification" => "skipped"`, also in verify mode.
-  Verify mode therefore asks TruffleHog for unverified results too and drops
-  the ones a provider rejected itself, before any payload search; only
-  retained findings count toward `:max_findings`. The App Search detector
-  (`private-` and 24 lowercase letters and digits) skips 24 hex characters
-  (Pusher/Ably private channels named after a Mongo ObjectId) and 24
-  letters.
+- **Apps whose custom domain is dead can be fetched again** (WTF-536).
+  Bubble redirects the pages of an app with a custom domain to that
+  domain; when it no longer resolves, `fetch_app/2` on a
+  `<id>.bubbleapps.io` URL failed with `:nxdomain`. It now fetches the
+  index page's bundle from bubbleapps.io directly, under a fresh random
+  hash (Bubble's cache can serve another app's bundle for a reused one),
+  and accepts it only if its `_id` and `app_version` match the URL.
+  Otherwise the original error is returned.
 
 - **API Connector clients: hardening follow-ups** (WTF-534). The address
   check also refuses the documentation (192.0.2/24, 198.51.100/24,
@@ -883,6 +877,19 @@ All notable changes to this project are documented here.
   lists only unexpected ones.
 
 ### Added
+
+- **TruffleHog custom detectors, starting with Elastic App Search private
+  keys** (WTF-538). Every `Secrets.Trufflehog` scan loads
+  `priv/trufflehog/custom_detectors.yaml` (`--config`). A finding gets the
+  detector's provider name and a `"DetectorType"` id from 1_000_001 up
+  (`Trufflehog.custom_detectors/0`) instead of TruffleHog's `"CustomRegex"`
+  (904), and is marked `"Verification" => "skipped"`, also in verify mode.
+  Verify mode therefore asks TruffleHog for unverified results too and drops
+  the ones a provider rejected itself, before any payload search; only
+  retained findings count toward `:max_findings`. The App Search detector
+  (`private-` and 24 lowercase letters and digits) skips 24 hex characters
+  (Pusher/Ably private channels named after a Mongo ObjectId) and 24
+  letters.
 
 - **API Connector calls in workflows** (WTF-533, first slice;
   `docs/api-connector-calls.md`). An API Connector call used as an
