@@ -656,6 +656,41 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   def reads_query?(_bound), do: false
 
   @doc """
+  Whether a bound source reads an API Connector call used as data
+  (WTF-533: `calls` its value, or a branch's, makes first).
+  """
+  @spec reads_api?(map()) :: boolean()
+  def reads_api?(%{read: {:value, %{calls: [_ | _]}}}), do: true
+
+  def reads_api?(%{read: {:switch, sw}}),
+    do: Enum.any?(switch_reads(sw), &reads_api?(%{read: &1}))
+
+  def reads_api?(_bound), do: false
+
+  @doc "Whether a page data source of `spec` that loads reads an API Connector call (WTF-533)."
+  @spec api_data?(t()) :: boolean()
+  def api_data?(%__MODULE__{surfaces: surfaces}) do
+    Enum.any?(surfaces, fn {_id, s} ->
+      Enum.any?(Map.get(s, :data, []), &(&1.residue == [] and reads_api?(&1)))
+    end)
+  end
+
+  @doc """
+  The elements outside repeating group cells whose own data source (a
+  group's, a repeating group's) loads and reads an API Connector call
+  (WTF-533): with the developer markers on, the page marks them when the
+  call fails.
+  """
+  @spec api_readers(t()) :: MapSet.t(String.t())
+  def api_readers(%__MODULE__{surfaces: surfaces}) do
+    for {_id, s} <- surfaces,
+        d <- Map.get(s, :data, []),
+        d.residue == [] and d.cell == nil and d.kind in [:group, :list] and reads_api?(d),
+        into: MapSet.new(),
+        do: d.element
+  end
+
+  @doc """
   Whether a bound source reads a search batched for every cell of a
   repeating group (WTF-520: a query with `batch`, or one it reads first).
   """
@@ -679,7 +714,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   wired}` per kind), `"reads"` (wired sources per read: `url_thing`,
   `query`, `value`, `displayed`: an element with no source of its own
   that a "Display data" step sets, WTF-492; `switch`: a data source with
-  the conditional states that set one, WTF-521) and `"residue_reasons"`.
+  the conditional states that set one, WTF-521), `"api_data"` (wired
+  sources reading an API Connector call, WTF-533) and `"residue_reasons"`.
   """
   @spec data_coverage(t()) :: map()
   def data_coverage(%__MODULE__{surfaces: surfaces}) do
@@ -703,6 +739,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
           %{read: {kind, _}} -> Atom.to_string(kind)
           %{read: kind} when is_atom(kind) -> Atom.to_string(kind)
         end),
+      "api_data" => Enum.count(wired, &reads_api?/1),
       "residue_reasons" =>
         sources |> Enum.flat_map(& &1.residue) |> Enum.frequencies_by(&Atom.to_string(&1.reason))
     }

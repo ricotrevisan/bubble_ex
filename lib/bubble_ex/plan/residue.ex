@@ -25,6 +25,7 @@ defmodule BubbleEx.Plan.Residue do
   | `:reads_dropped_plugin` | any symbol | `BubbleEx.Plan.build/5`: it reads a dropped plugin element's states or a dropped plugin action's result, or names a dropped plugin's data type (`detail.reads`) |
   | `:uses_dropped` | any symbol | `BubbleEx.Plan.build/5` and the workflow bindings (`BubbleEx.Target.Ash.Workflows`, `BubbleEx.Target.Elixir.FrontendWorkflows`): it reads, writes, calls, schedules, navigates to or is triggered by a symbol an owner dropped (WTF-422, `BubbleEx.Decision.Drop`; `detail.symbol`) |
   | `:api_connector_action` | action | `BubbleEx.Workflows.Backend` and `BubbleEx.Workflows.Frontend` (through `BubbleEx.Workflows.Lowering`): an API Connector call in a backend or page workflow; it waits for the generated Req clients (`detail.call`) |
+  | `:api_connector_data` | element | `BubbleEx.Target.Elixir.FrontendWorkflows` (WTF-533): a page data source reading an API Connector call used as data ("Get data from an external API") whose Req client is not generated, or with no clients given (`detail.call`) |
   | `:unsupported_option` | workflow, action | `BubbleEx.Workflows.Backend`, `BubbleEx.Workflows.Frontend`: an event or action member with no lowering (`detail.options`) |
   | `:data_to_send_untyped_page` | action | no longer produced (before WTF-466, `BubbleEx.Workflows.Frontend`'s "Go to page" step sending data to a page with no type of content, then unverified; `detail.page`); still decoded |
   | `:unavailable_input` | workflow, action | `BubbleEx.Target.Elixir.FrontendWorkflows`: a value the generated page does not provide (a page's or cell's thing, a group's data, an element's built-in state; `detail.inputs`) |
@@ -59,7 +60,8 @@ defmodule BubbleEx.Plan.Residue do
               plugin_style trigger_dropped reads_dropped_plugin api_connector_action
               unsupported_option not_generated unavailable_input backend_workflow
               target_not_rendered page_data_in_cell uses_dropped data_to_send_untyped_page
-              search_field_restricted search_field_hidden element_condition)a
+              search_field_restricted search_field_hidden element_condition
+              api_connector_data)a
 
   # Events with a known wiring (page, element and backend events).
   @events ~w(ButtonClicked CustomEvent APIEvent DatabaseTriggerEvent ConditionTrue PageLoaded
