@@ -1540,7 +1540,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # workflow resets (the element or a group around it) or shows data in
   # too. Which runs last is not replayed (here the popup's, after the
   # page re-rendered): what the element shows then is not known, so it is
-  # not kept, loudly.
+  # not kept, loudly. Replayed (2026-10-14): a workflow that shows the
+  # popup and then displays data in it (the popup or an element inside
+  # it) wins over a reset in the popup's "is opened" workflow; the page
+  # keeps that display through the reset (`BubbleWorkflows.reset/5`,
+  # `kept`), so it is no race. (The page keeps any display made after the
+  # opening step so; an element outside the popup that such a reset
+  # reaches stays unloaded here, so nothing reads what it keeps.)
   defp popup_races(workflows, callers, ctx) do
     active = Enum.reject(workflows, & &1.disabled?)
     by_id = Map.new(active, &{&1.bubble_id, &1})
@@ -1552,10 +1558,35 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         own = displays(w),
         opener <- openers(active, kind, popup, callers, by_id),
         shown <- displays(opener),
-        shown in own or Enum.any?(resets, &within?(shown, &1, ctx)),
+        shown in own or
+          (Enum.any?(resets, &within?(shown, &1, ctx)) and
+             not shown_after_opening?(kind, opener, popup, shown, ctx)),
         into: MapSet.new(),
         do: shown
   end
+
+  # Whether `shown` is the popup or inside it, `opener` itself shows (or
+  # toggles) `popup` and every step of it displaying data in `shown` comes
+  # after that step: what the popup's "is opened" workflow resets then
+  # shows the displayed value (replay 2026-10-14). An element outside the
+  # popup, a display through a custom event that opens the popup, or one
+  # before the popup opens, is not replayed: still a race.
+  defp shown_after_opening?(:popup_opened, opener, popup, shown, ctx) do
+    steps = Enum.with_index(opener.steps)
+
+    opened =
+      Enum.find_value(steps, fn {step, i} ->
+        if step.op in [:show, :toggle] and match?(%{element: ^popup}, step.args), do: i
+      end)
+
+    displayed =
+      for {%Step{op: op, args: %{element: ^shown}}, i} <- steps, op in @display_ops, do: i
+
+    within?(shown, popup, ctx) and opened != nil and displayed != [] and
+      Enum.all?(displayed, &(&1 > opened))
+  end
+
+  defp shown_after_opening?(_kind, _opener, _popup, _shown, _ctx), do: false
 
   defp displays(w),
     do:

@@ -79,8 +79,9 @@ defmodule BubbleEx.PageDataTest do
       # conditional ones), the keywords page's two lists (WTF-520) and the
       # group reading the group a popup's "is opened" workflow sets
       # (WTF-520); the pair page's two instances of one reusable element,
-      # one of whose data source does not compile (WTF-522).
-      assert PageData.coverage(pd)["sources"] == %{"total" => 31, "native" => 30, "residue" => 1}
+      # one of whose data source does not compile (WTF-522); the popup a
+      # click shows and then displays data in (replay 2026-10-14).
+      assert PageData.coverage(pd)["sources"] == %{"total" => 32, "native" => 31, "residue" => 1}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -298,10 +299,12 @@ defmodule BubbleEx.PageDataTest do
       # (WTF-520: keyword searches); the popup a click opens, the group
       # its "is opened" workflow sets and the group reading that one
       # (WTF-520: popup events); the pair page's two instances, one of
-      # which does not load (WTF-522).
+      # which does not load (WTF-522); the popup a click shows and then
+      # displays data in, which its "is opened" workflow resets (replay
+      # 2026-10-14: the display wins, so it loads).
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 41,
-               "wired" => 40,
+               "total" => 42,
+               "wired" => 41,
                "residue" => 1
              }
 
@@ -401,7 +404,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 38
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 39
     end
 
     test "a repeating group in a repeating group's cell is read per outer cell; a third level is residue" do
@@ -513,10 +516,13 @@ defmodule BubbleEx.PageDataTest do
       refute page =~ ~r/data-bubble-id="bPop"[^>]*data-bubble-events/
 
       assert hook =~
-               ~s|this.pushEvent("bubble:popup", { scope, element, event })|
+               ~s|this.pushEvent("bubble:popup", skipped ? { scope, element, event, skipped } : { scope, element, event })|
 
       assert runtime =~ ~r/def handle_event\(\s*socket,\s*page,\s*"bubble:popup"/
-      assert runtime =~ "expect_popups(socket, popups, budget)"
+      assert runtime =~ "expect_popups(socket, popups, budget, kept)"
+      # What the opener shows after opening a popup survives its reset
+      # in the popup's "is opened" run (replay 2026-10-14).
+      assert runtime =~ "key not in ctx.kept"
     end
 
     test "two reusable instances store data under their own nested scope", %{files: files} do
@@ -1208,9 +1214,35 @@ defmodule BubbleEx.PageDataTest do
       assert kept?([opener], popup_app())
 
       # The popup's "is opened" resets the element, or shows data in it
-      # too: which wins is not replayed.
+      # too, after the click showed it before opening the popup: which
+      # wins is not replayed.
       refute kept?([opener, opened("wO", [reset.("aO", "bDetail")])], popup_app())
       refute kept?([opener, opened("wO", [show_detail("aO")])], popup_app())
+
+      # Replayed (2026-10-14): "Show popup; Display data" into the popup
+      # (bDetail inside it) wins over a reset in the popup's "is opened"
+      # (of the element, or the popup around it): kept, the page keeps the
+      # display through the reset. Shown by the popup's "is opened" too,
+      # or an element outside the popup: still not replayed.
+      show_then_display = clicked("wC", [toggle("aCs", "ShowElement"), show_detail("aC")])
+      inside = ["pages", "shown", "elements", "bPop2", "elements"]
+
+      for reset_element <- ["bDetail", "bPop2"] do
+        assert kept?(
+                 [show_then_display, opened("wO", [reset.("aO", reset_element)])],
+                 popup_app(%{"elements" => %{}}),
+                 inside
+               ),
+               reset_element
+      end
+
+      refute kept?(
+               [show_then_display, opened("wO", [show_detail("aO")])],
+               popup_app(%{"elements" => %{}}),
+               inside
+             )
+
+      refute kept?([show_then_display, opened("wO", [reset.("aO", "bDetail")])], popup_app())
 
       # bDetail inside the popup, which its "is opened" resets.
       refute kept?(

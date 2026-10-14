@@ -75,7 +75,9 @@ defmodule <%= @web %>.Bubble do
       It sends `bubble:popup` (the scope, the Popup's Bubble ID, `opened`
       or `closed`) when a Popup listing that event in
       `data-bubble-events` opens or closes (WTF-520); the server decides
-      the budget a report runs on. After a reconnect, open Popups stay
+      the budget a report runs on. A show of an open Popup (a hide of a
+      closed one) sends it with `skipped: true`: nothing runs, and the
+      server forgets the report a step expected. After a reconnect, open Popups stay
       open and are not reported again
   """
 
@@ -924,6 +926,9 @@ defmodule <%= @web %>.Bubble do
           // (WTF-477, WTF-509).
           if (!el.hidden) {
             if (!overlay) this.override(el, false)
+            // A Popup already open: no "is opened", but the server forgets
+            // the report a step of its own expected (replay 2026-10-14).
+            if (overlay === "popup") this.popupEvent(el, "opened", true)
             return
           }
           if (overlay === "popup" || overlay === "group_focus") {
@@ -944,7 +949,12 @@ defmodule <%= @web %>.Bubble do
         },
         hide(el) {
           if (!el.getAttribute("data-overlay")) return this.override(el, true)
-          if (el.hidden) return
+          if (el.hidden) {
+            // A Popup already closed: no "is closed"; the server forgets
+            // the report a step of its own expected.
+            if (el.getAttribute("data-overlay") === "popup") this.popupEvent(el, "closed", true)
+            return
+          }
           const hadFocus = el.contains(document.activeElement)
           this.js().setAttribute(el, "hidden", "")
           this.stack = this.stack.filter((open) => open !== el)
@@ -986,14 +996,16 @@ defmodule <%= @web %>.Bubble do
         // A Popup opened or closed: its "is opened" / "is closed" workflows,
         // when the page lists the event on it. The scope is the
         // reusable-element instance around it ("" on the page itself).
-        popupEvent(el, event) {
+        // `skipped`: a show of an open one (a hide of a closed one), which
+        // runs nothing.
+        popupEvent(el, event, skipped = false) {
           if (el.getAttribute("data-overlay") !== "popup") return
           const events = (el.getAttribute("data-bubble-events") || "").split(" ")
           const element = el.getAttribute("data-bubble-id")
           if (!element || !events.includes(event)) return
           const holder = el.parentElement && el.parentElement.closest("[data-bubble-scope]")
           const scope = (holder && holder.getAttribute("data-bubble-scope")) || ""
-          this.pushEvent("bubble:popup", { scope, element, event })
+          this.pushEvent("bubble:popup", skipped ? { scope, element, event, skipped } : { scope, element, event })
         },
         reset(el) {
           const fields = el.matches("input, textarea, select")

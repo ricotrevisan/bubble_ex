@@ -1828,8 +1828,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # A pinned argument: a hoisted value, compiled in Elixir (a list a
   # rewritten search reads, `:pinned`, with its own queries first), or a
   # context input bound as a workflow's.
-  # A keyword search's words (WTF-520): the `ILIKE` patterns of the
-  # input's value, computed by the runtime (`keyword_patterns/1`), so the
+  # A keyword search's input (WTF-520): its capped words joined by spaces,
+  # computed by the runtime (`keyword_query/1`), so the
   # database never splits the input per row.
   defp pin_value(%{keywords: true} = arg, hoisted, s, ctx, fns, acc) do
     input =
@@ -1844,7 +1844,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
           IR.node(:input, [kind, ref], arg.type)
       end
 
-    compile_pin(IR.node(:keyword_patterns, [input], "list.text"), s, ctx, fns, acc)
+    compile_pin(IR.node(:keyword_query, [input], "text"), s, ctx, fns, acc)
   end
 
   # A constraint's value (not a list a rewritten search reads, already

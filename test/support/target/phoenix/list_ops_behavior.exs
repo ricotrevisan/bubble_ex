@@ -236,9 +236,10 @@ defmodule PhxCheckWeb.ListOpsBehaviorTest do
     assert render(view) =~ if(enforced?(), do: "N: 4", else: "N: 5")
   end
 
-  # WTF-520: a field read through the project's list of tasks, and through
-  # its first item, reads the tasks as the user may view them (a secret
-  # task is in no list), in the list's order, each once; each task's
+  # WTF-520: a field read through the project's list of tasks reads the
+  # tasks as the user may view them (a secret task is in no list), in the
+  # list's order, each once, and through its first item the first task
+  # the list stores (replay 2026-10-14); each task's
   # parent through the relationship, as the user (a parent the user may
   # not view, or a hidden parent field, is none).
   test "a field through a list field and through its first item", %{conn: conn} do
@@ -253,29 +254,36 @@ defmodule PhxCheckWeb.ListOpsBehaviorTest do
              )
   end
 
-  test ":item # of a list field is taken by its query, after privacy", %{conn: conn} do
+  test ":item # of a list field picks by position in the stored list", %{conn: conn} do
     {:ok, _view, html} = live(conn, "/")
     assert html =~ "D: Bake"
   end
 
-  # The list's first thing is secret: with enforced policies it is in no
-  # list, so the first item the user may view is the next one, and item
-  # #2 the one after it (privacy before the offset).
-  test "a hidden first item: the first and second items the user may view", %{conn: conn} do
+  # The list's first and last things are secret (Eat). Bubble does not
+  # skip them (replay 2026-10-14, WTF-387): `:first item` is that thing,
+  # carrying its unique ID with every other field empty under enforced
+  # policies, and it is not empty; `:item #` and `:last item` pick by
+  # position in the list as stored, and `:items until #2` keeps the
+  # hidden thing in its place (its title is empty, so dropped).
+  test "a hidden item picked by position: its ID, every other field empty", %{conn: conn} do
     Ash.Seed.update!(Ash.get!(PhxCheck.Project, @p1, authorize?: false), %{
-      tasks: [@t5, @t3, @t1]
+      tasks: [@t5, @t3, @t1, @t5]
     })
 
     {:ok, _view, html} = live(conn, "/")
+    assert html =~ "D: Clean"
+    assert html =~ "Idv: #{@t5}"
+    assert html =~ "Emv: no"
 
     if enforced?() do
-      assert html =~ "A: Clean"
-      assert html =~ "B: Draw"
-      assert html =~ "D: Bake"
+      for label <- ~w(A B Lv Ivv), do: refute(html =~ ~r/[^\w]#{label}: \w/, label)
+      assert shown(html, "Tilv") == ["Clean"]
     else
       assert html =~ "A: Eat"
       assert html =~ "B: Bake"
-      assert html =~ "D: Clean"
+      assert html =~ "Lv: Eat"
+      assert html =~ "Ivv: Eat"
+      assert shown(html, "Tilv") == ["Eat", "Clean"]
     end
   end
 

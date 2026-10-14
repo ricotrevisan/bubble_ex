@@ -29,7 +29,9 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
       `TODO(bubble:<action>)`, and a workflow that reaches one (in its
       body or through a callee) fails before its first step
     * `lib/<app>/bubble/runtime.ex` - the `BubbleEx.Target.Elixir.Runtime`
-      contract the compiled values call
+      contract the compiled values call, and `lib/<app>/bubble/keywords.ex`,
+      the words of a keyword search as PostgreSQL reads them (stems, stop
+      words; WTF-387)
     * `test/<app>/bubble_workflows_test.exs` and, with exposed workflows,
       `test/<app>_web/bubble_workflow_api_test.exs`: smoke tests for each
       native workflow (its body and every callee generated whole): it runs

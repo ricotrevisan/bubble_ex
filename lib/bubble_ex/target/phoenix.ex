@@ -1163,7 +1163,10 @@ defmodule BubbleEx.Target.Phoenix do
     templates =
       if ctx.routes == [] and ctx.workflows == nil,
         do: templates,
-        else: Map.put(templates, "#{lib}/bubble/runtime.ex", "lib/app/bubble/runtime.ex")
+        else:
+          templates
+          |> Map.put("#{lib}/bubble/runtime.ex", "lib/app/bubble/runtime.ex")
+          |> Map.put("#{lib}/bubble/keywords.ex", "lib/app/bubble/keywords.ex")
 
     templates
     |> Map.new(fn {path, t} -> {path, Templates.render(t, assigns)} end)

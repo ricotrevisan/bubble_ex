@@ -86,7 +86,9 @@ defmodule PhxCheckWeb.NestedListsBehaviorTest do
     for i <- 1..n//1 do
       Ash.Seed.seed!(PhxCheck.Item, %{
         id: "1700000000000x9#{order |> String.split("x") |> List.last()}#{i}",
-        name: "#{prefix}#{i}",
+        # A number of its own: a keyword search matches whole words
+        # (replay 2026-10-14), so "2" finds "Anvil 2".
+        name: "#{prefix} #{i}",
         order_id: order
       })
     end
@@ -338,7 +340,7 @@ defmodule PhxCheckWeb.NestedListsBehaviorTest do
 
     html = render(view)
 
-    # Items named with a 2: Anvil2 and Bell2.
+    # Items named with the word 2 (`contains keyword(s)`): Anvil 2 and Bell 2.
     if enforced?(),
       do: assert(shown(html, "Match") == ~w(1 0 0)),
       else: assert(shown(html, "Match") == ~w(1 0 0 1 0))

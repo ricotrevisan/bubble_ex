@@ -247,20 +247,30 @@ defmodule <%= @module %>.Bubble.Runtime do
 
   # A keyword search's words, as the generated searches bind them
   # (BubbleEx.Target.Keywords, WTF-520): the first 256 characters, split
-  # on whitespace, at most 32 words. Bubble's own rule is not verified.
+  # on whitespace, at most 32 words. A search matches them as
+  # PostgreSQL's English full-text search does (replay 2026-10-14):
+  # `text_contains_words?/2` reads both texts the same way
+  # (`<%= @module %>.Bubble.Keywords`).
   @keyword_chars 256
   @keyword_words 32
 
-  @doc "`contains keyword(s)`: every word of `b` a case-insensitive substring of `a`."
+  @doc """
+  `contains keyword(s)`: every word of `b` a word of `a`, whole words,
+  case and punctuation ignored, a hyphen splitting words, English stems,
+  stop words dropped (`<%= @module %>.Bubble.Keywords`). `b` with
+  no word left (only stop words or spaces), or an empty `a`, is false.
+  """
   def text_contains_words?(a, b) when ci?(a) or ci?(b),
     do: text_contains_words?(plain(a), plain(b))
 
   def text_contains_words?(a, b) when is_binary(a) do
-    text = String.downcase(a)
+    case <%= @module %>.Bubble.Keywords.lexemes(keyword_query(b)) do
+      [] ->
+        false
 
-    case keywords(b) do
-      [] -> false
-      words -> Enum.all?(words, &String.contains?(text, String.downcase(&1)))
+      words ->
+        text = MapSet.new(<%= @module %>.Bubble.Keywords.lexemes(a))
+        Enum.all?(words, &MapSet.member?(text, &1))
     end
   end
 
@@ -278,9 +288,8 @@ defmodule <%= @module %>.Bubble.Runtime do
 
   def keywords(_x), do: []
 
-  @doc "The `ILIKE` patterns of `keywords/1`: `\\`, `%` and `_` escaped, wrapped in `%`."
-  def keyword_patterns(x),
-    do: Enum.map(keywords(x), &("%" <> String.replace(&1, ["\\", "%", "_"], fn c -> "\\" <> c end) <> "%"))
+  @doc "The input a keyword search binds: `keywords/1` joined by spaces."
+  def keyword_query(x), do: x |> keywords() |> Enum.join(" ")
 
   # TODO(bubble:runtime) Bubble capitalizes after spaces only.
   def capitalize_words(x) when ci?(x), do: x |> plain() |> capitalize_words()
@@ -593,6 +602,28 @@ defmodule <%= @module %>.Bubble.Runtime do
     case count(n) do
       n when is_integer(n) and n > 0 -> Enum.at(list(a), n - 1)
       _ -> nil
+    end
+  end
+
+  @doc """
+  Things picked by position from a list of stored IDs (`pick`: one ID, or
+  a list of them for `:items until #`), with `read`, the records of those
+  the user may view (one, or a list). Each picked thing is its record, or,
+  when the read did not return it (a thing the user may not view, or one
+  that no longer exists), a thing carrying only its stored ID: its unique
+  ID reads and every other field is empty, as Bubble shows a hidden item
+  (replay 2026-10-14). The ID is only what the list already stores.
+  """
+  def picked(read, pick) when is_list(pick) do
+    by_id = Map.new(list(read), &{id(&1), &1})
+    for p <- pick, (i = id(p)) != nil, do: Map.get(by_id, i, %{id: i})
+  end
+
+  def picked(read, pick) do
+    case {read, id(pick)} do
+      {_, nil} -> nil
+      {%{id: _} = record, i} -> if id(record) == i, do: record, else: %{id: i}
+      {_, i} -> %{id: i}
     end
   end
 

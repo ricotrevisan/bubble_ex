@@ -522,7 +522,7 @@ defmodule DecisionsCheck do
         "btree" -> ["USING btree (" <> Enum.join(columns, ", ") <> ")"]
         "gin" -> ["USING gin (" <> hd(columns) <> ")"]
         "trigram" -> ["USING gin (", "gin_trgm_ops"]
-        "full_text" -> ["USING gin (to_tsvector('simple'::regconfig", hd(columns)]
+        "full_text" -> ["USING gin (to_tsvector('english'::regconfig", hd(columns)]
       end
 
     # PostgreSQL quotes reserved words (`"order"`)

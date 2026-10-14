@@ -677,9 +677,12 @@ defmodule BubbleEx.Frontend.Export.Css do
 
   # A Floating Group is fixed to the viewport edges its references name.
   # Horizontally its width is its own (`floating_width/1`): a fixed or
-  # fit-content group pinned to "both" edges sits at the left edge at that
-  # width, and only a group that fills its width (or says nothing about
-  # it) spans the viewport between the left and right edges (WTF-516).
+  # fit-content group pinned to "both" edges, or with no horizontal
+  # reference, sits at the left edge at that width (WTF-516; replayed
+  # 2026-10-14, WTF-387/WTF-517: left 0 at 1440 and 390 px, a fixed width
+  # kept, a fit width fitting its content), and only a group that fills
+  # its width (or says nothing about it) spans the viewport between the
+  # left and right edges.
   defp floating_css(%Node{kind: :floating_group, attributes: attributes} = node) do
     width = floating_width(node)
 
