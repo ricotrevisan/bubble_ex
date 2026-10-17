@@ -6,6 +6,11 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Buildprint index schema 17.** `BubbleEx.Buildprint.V5` accepts
+  `schemaVersion` 17 (current Buildprint clones; first seen with format 35). It drops
+  index tables and columns the loader does not read; `metadata`,
+  `snapshot_roots` and `symbols` are unchanged, so it reads like 16.
+
 - **API Connector calls used as data are page data** (WTF-533, slice 2).
   "Get data from an external API" parses to `Expression.Ast.ApiData`,
   typed as the call's response, and compiles to the IR `:api_data` (only
