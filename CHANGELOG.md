@@ -120,9 +120,9 @@ All notable changes to this project are documented here.
   one column over the limit when only its trailing comma overflows (a
   list of `ApiClients.string([env["…"]])` in an API client's body); 1.19
   breaks it, so the generated app failed `mix format --check-formatted`
-  on a newer Elixir. `Target.Phoenix.Formatter` now breaks such lines the
-  way 1.19 does, never inside a string or comment. On 1.19 and later the
-  output is unchanged.
+  on a newer Elixir. On 1.18, `Target.Phoenix.Formatter` now breaks such
+  lines the way 1.19 does, never inside a string or comment. Other
+  versions render as before.
 - **Locked versions and missing app scripts are `BubbleEx.Error`s**
   (WTF-542). `Apps.Parser.extract_dynamic_js_url/1` returned a raw map
   when the landing page had no `dynamic_js` script. It now returns kind

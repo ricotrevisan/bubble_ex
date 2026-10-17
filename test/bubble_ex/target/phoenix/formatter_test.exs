@@ -69,6 +69,9 @@ defmodule BubbleEx.Target.Phoenix.FormatterTest do
       """
     end
 
+    # The generated app needs Elixir 1.18; 1.17 formats these differently.
+    if Version.match?(System.version(), "< 1.18.0"), do: @tag(skip: "needs Elixir 1.18 or later")
+
     test "breaks what only its trailing comma takes over the limit, never strings or comments" do
       for len <- 40..80 do
         source = corner_source(len)

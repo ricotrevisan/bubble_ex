@@ -147,17 +147,20 @@ defmodule BubbleEx.Target.Phoenix.Formatter do
       |> IO.iodata_to_binary()
       |> Kernel.<>("\n")
 
-  # Elixir before 1.19 can leave a line one column over the line length
-  # when only its trailing comma overflows (`ApiClients.string([env["…"]]),`
-  # in a list); 1.19 and later break it ("Ensure the formatter does not go
-  # over the specified limit in certain corner cases", 1.19.0), so a render
-  # made on 1.18 failed the generated app's `mix format --check-formatted`
-  # on a newer Elixir (WTF-543). Each such line is broken after its leading
-  # openers, as 1.19 does, and formatted again: the formatter keeps a
-  # newline after an opening bracket. A break that changes the code (a line
-  # of a string or heredoc) is not taken. On 1.19 and later there is no
-  # such line, so this only scans.
-  defp fit(formatted), do: fit(formatted, nil)
+  # Elixir 1.18 can leave a line one column over the line length when
+  # only its trailing comma overflows (a list of
+  # `ApiClients.string([env["…"]])`); 1.19 and later break it ("Ensure the
+  # formatter does not go over the specified limit in certain corner
+  # cases", 1.19.0), so a render made on 1.18 failed the generated app's
+  # `mix format --check-formatted` on a newer Elixir (WTF-543). Each such
+  # line is broken after its leading openers, as 1.19 does, and formatted
+  # again: the formatter keeps a newline after an opening bracket. A break
+  # that changes the code (a line of a string or heredoc), or that the
+  # formatter undoes, is not taken. Other versions are left alone (1.19
+  # and later have no such line; the generated app needs 1.18).
+  defp fit(formatted) do
+    if Version.match?(System.version(), "~> 1.18.0"), do: fit(formatted, nil), else: formatted
+  end
 
   defp fit(formatted, quoted) do
     lines = String.split(formatted, "\n")
@@ -187,8 +190,8 @@ defmodule BubbleEx.Target.Phoenix.Formatter do
     end
   end
 
-  # The lines only their trailing comma takes over the line length, split
-  # after their leading openers.
+  # The code lines only their trailing comma takes over the line length,
+  # split after their leading openers.
   defp corners(lines) do
     for {line, i} <- Enum.with_index(lines),
         String.length(line) == @line_length + 1,
@@ -201,7 +204,11 @@ defmodule BubbleEx.Target.Phoenix.Formatter do
   # The code without positions (a break moves lines, never the code), or
   # nil when it does not parse.
   defp strip(source) do
-    case Code.string_to_quoted(source, columns: false, token_metadata: false) do
+    case Code.string_to_quoted(source,
+           columns: false,
+           token_metadata: false,
+           emit_warnings: false
+         ) do
       {:ok, quoted} -> Macro.prewalk(quoted, &Macro.update_meta(&1, fn _ -> [] end))
       {:error, _} -> nil
     end

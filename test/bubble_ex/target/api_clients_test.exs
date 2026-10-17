@@ -484,6 +484,9 @@ defmodule BubbleEx.Target.ApiClientsTest do
     # only its trailing comma overflowed; 1.19 and later break it, so a
     # render made on 1.18 failed the generated app's mix format on a newer
     # Elixir. The call's name moves the body's lines across the limit.
+    # The generated app needs Elixir 1.18; 1.17 formats these differently.
+    if Version.match?(System.version(), "< 1.18.0"), do: @tag(skip: "needs Elixir 1.18 or later")
+
     test "generated API client source is formatted and fits the line length" do
       for n <- 1..30 do
         name = String.duplicate("x", n)
