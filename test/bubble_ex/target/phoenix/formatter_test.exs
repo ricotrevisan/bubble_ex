@@ -83,7 +83,10 @@ defmodule BubbleEx.Target.Phoenix.FormatterTest do
         assert out =~ "\n  #{String.duplicate("d", 96)},\n"
         assert out =~ "\n  # #{String.duplicate("c", 94)},\n"
 
-        for line <- String.split(out, "\n"), String.length(line) > 98 do
+        # On 1.18; 1.19 and later keep their own output.
+        for line <- String.split(out, "\n"),
+            Version.match?(System.version(), "~> 1.18.0"),
+            String.length(line) > 98 do
           assert line =~ ~r/^\s*(#|d+,$)/, "over the limit at #{len}: #{line}"
         end
       end

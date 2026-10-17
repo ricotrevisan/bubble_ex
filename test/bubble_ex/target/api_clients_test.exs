@@ -499,8 +499,11 @@ defmodule BubbleEx.Target.ApiClientsTest do
           assert IO.iodata_to_binary([Code.format_string!(source), "\n"]) == source,
                  "#{path} (call name of #{n}) is not formatted"
 
-          # No list item or argument over the limit, but a string.
+          # On 1.18 (the version that leaves them; 1.19 and later keep
+          # their own), no list item or argument over the limit, but a
+          # string.
           for line <- String.split(source, "\n"),
+              Version.match?(System.version(), "~> 1.18.0"),
               String.length(line) > 98,
               String.ends_with?(line, ","),
               code = Regex.replace(~r/"(?:[^"\\]|\\.)*"/, line, ~s("")) do
