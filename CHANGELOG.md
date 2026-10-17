@@ -110,6 +110,21 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **A slow page no longer drops its LiveView socket after the join**
+  (WTF-554). The generated `assets/js/app.js` set `longPollFallbackMs:
+  2500`: Phoenix's client then expects a heartbeat reply within 2.5 s of
+  opening the websocket, but the server answers it only after the
+  LiveView's join (mount, page data, first render). A join slower than
+  that (a page with much page data) closed the websocket, showed the
+  error state and fell back to LongPoll, remembered for the tab, where
+  slow joins failed too; the page rejoined after 5-9 s. The generated
+  LiveSocket sets no fallback now. `app.js` is yours once generated: in
+  an existing project, delete the `longPollFallbackMs` line by hand.
+  Users on a network that blocks websockets no longer fall back to
+  LongPoll either: they get the page's static render and the client's
+  reconnect attempts.
+  Tested in the pinned browser on Phoenix's own client against a slow
+  join (`test/support/fidelity/socket-join.mjs`).
 - **Generated conditions compile warning-free on Elixir 1.20** (WTF-555).
   A condition with nested `and`s repeated its checks (`not
   is_nil(current_user) and ... and (not is_nil(current_user) and ...)`),
