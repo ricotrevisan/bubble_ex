@@ -44,7 +44,11 @@ defmodule BubbleEx.Buildprint.V5 do
       API and workflow symbol kinds), as does `tests-state.json` (a
       `revision`). Its `state.json` may hold a `null` `remoteArtifact`, and
       `.buildprint/` gains an `inherited-errors.json` (Buildprint's
-      validation baseline); neither is read.
+      validation baseline); neither is read. Schema 17 (Buildprint's
+      SQLite index, seen with format 35 from 2026-10-17) drops index
+      tables and columns the loader does not read (`owners`, `type_facts`,
+      `value_order`, and columns of `modules` and `references`);
+      `metadata`, `snapshot_roots` and `symbols` are unchanged.
     * **Integrity.** Every row's `content_sha256` must be the SHA-256 of its
       JSON, root keys must be unique, and the manifest must list exactly the
       rows it describes, each once. An index with a pending write-ahead log
@@ -105,7 +109,7 @@ defmodule BubbleEx.Buildprint.V5 do
   @compile {:no_warn_undefined, Sqlite}
 
   @format_versions ["bubblescript-31", "bubblescript-32", "bubblescript-35"]
-  @schema_versions ["16"]
+  @schema_versions ["16", "17"]
   @manifest_versions [5]
 
   # App members a fragment may hold, keyed by definition ID.

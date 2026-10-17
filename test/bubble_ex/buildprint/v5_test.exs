@@ -705,8 +705,13 @@ defmodule BubbleEx.Buildprint.V5Test do
       assert {:error, %Error{kind: :unknown_format}} = V5.load(ws31)
     end
 
-    test "an unknown schemaVersion fails loudly", %{tmp_dir: dir} do
+    test "schemaVersion 17 reads like 16", %{tmp_dir: dir} do
       ws = write_workspace(dir, metadata: %{"schemaVersion" => "17"})
+      assert {:ok, %V5{schema_version: "17"}} = V5.load(ws)
+    end
+
+    test "an unknown schemaVersion fails loudly", %{tmp_dir: dir} do
+      ws = write_workspace(dir, metadata: %{"schemaVersion" => "18"})
 
       assert {:error, %Error{kind: :unknown_format, context: %{field: "schemaVersion"}}} =
                V5.load(ws)
