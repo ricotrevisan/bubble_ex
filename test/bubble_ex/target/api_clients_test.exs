@@ -480,14 +480,9 @@ defmodule BubbleEx.Target.ApiClientsTest do
   end
 
   describe "formatting (WTF-543)" do
-    # Elixir 1.18 left a list item one column over the line length when
-    # only its trailing comma overflowed; 1.19 and later break it, so a
-    # render made on 1.18 failed the generated app's mix format on a newer
-    # Elixir. The call's name moves the body's lines across the limit.
-    # The generated app needs Elixir 1.18; 1.17 formats these differently.
-    if Version.match?(System.version(), "< 1.18.0"), do: @tag(skip: "needs Elixir 1.18 or later")
-
-    test "generated API client source is formatted and fits the line length" do
+    # The generated app's `mix format --check-formatted` on the Elixir that
+    # rendered it. The call's name moves the body's lines across the limit.
+    test "generated API client source is a formatter fixed point" do
       for n <- 1..30 do
         name = String.duplicate("x", n)
         {:ok, model} = Model.build(webhook_app(name))
@@ -498,18 +493,6 @@ defmodule BubbleEx.Target.ApiClientsTest do
         for {path, source} <- files, path =~ ~r{api_clients.*\.exs?$} do
           assert IO.iodata_to_binary([Code.format_string!(source), "\n"]) == source,
                  "#{path} (call name of #{n}) is not formatted"
-
-          # On 1.18 (the version that leaves them; 1.19 and later keep
-          # their own), no list item or argument over the limit, but a
-          # string.
-          for line <- String.split(source, "\n"),
-              Version.match?(System.version(), "~> 1.18.0"),
-              String.length(line) > 98,
-              String.ends_with?(line, ","),
-              code = Regex.replace(~r/"(?:[^"\\]|\\.)*"/, line, ~s("")) do
-            refute code =~ ~r/[(\[{]/,
-                   "#{path} (call name of #{n}) has a line over the limit: #{line}"
-          end
         end
       end
     end

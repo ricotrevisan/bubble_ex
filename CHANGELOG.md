@@ -115,14 +115,9 @@ All notable changes to this project are documented here.
   only the clients at the closed local port and still fails closed on
   any other file. CI runs the render step on a synthetic app with API
   clients (`scripts/vertical_slice/render_check.sh`).
-- **Generated Elixir stays formatted on Elixir 1.19 and later when
-  rendered on 1.18** (WTF-543). Elixir 1.18's formatter can leave a line
-  one column over the limit when only its trailing comma overflows (a
-  list of `ApiClients.string([env["…"]])` in an API client's body); 1.19
-  breaks it, so the generated app failed `mix format --check-formatted`
-  on a newer Elixir. On 1.18, `Target.Phoenix.Formatter` now breaks such
-  lines the way 1.19 does, never inside a string or comment. Other
-  versions render as before.
+- **Generation is formatter-stable on Elixir 1.19 and later; bubble_ex
+  now develops on 1.20.2** (WTF-543). Generating on 1.18 can leave lines
+  a newer `mix format` rewrites.
 - **Locked versions and missing app scripts are `BubbleEx.Error`s**
   (WTF-542). `Apps.Parser.extract_dynamic_js_url/1` returned a raw map
   when the landing page had no `dynamic_js` script. It now returns kind
