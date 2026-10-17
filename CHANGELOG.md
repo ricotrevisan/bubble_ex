@@ -120,6 +120,9 @@ All notable changes to this project are documented here.
   slow joins failed too; the page rejoined after 5-9 s. The generated
   LiveSocket sets no fallback now. `app.js` is yours once generated: in
   an existing project, delete the `longPollFallbackMs` line by hand.
+  Users on a network that blocks websockets no longer fall back to
+  LongPoll either: they get the page's static render and the client's
+  reconnect attempts.
   Tested in the pinned browser on Phoenix's own client against a slow
   join (`test/support/fidelity/socket-join.mjs`).
 - **The vertical slice renders apps with API clients again** (WTF-543).
