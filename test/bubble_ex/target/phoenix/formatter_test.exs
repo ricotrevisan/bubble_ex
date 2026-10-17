@@ -50,4 +50,42 @@ defmodule BubbleEx.Target.Phoenix.FormatterTest do
     at_pin = BubbleEx.Target.Phoenix.Manifest.build(project, %{ctx | live_view: nil}, %{}, %{})
     refute Map.has_key?(at_pin["inputs"], "phoenix_live_view")
   end
+
+  describe "Elixir source (WTF-543)" do
+    # A list whose items fit the line length only without their trailing
+    # comma: Elixir 1.18 left them one column over, 1.19 breaks them.
+    defp corner_source(len) do
+      item = ~s|ApiClients.string([env["#{String.duplicate("A", len)}"]])|
+
+      """
+      defmodule A do
+        @moduledoc \"\"\"
+        #{String.duplicate("d", 96)},
+        \"\"\"
+
+        # #{String.duplicate("c", 94)},
+        def f(env), do: %{"a" => %{"b" => %{"c" => [#{item}, #{item}, #{item}]}}}
+      end
+      """
+    end
+
+    test "breaks what only its trailing comma takes over the limit, never strings or comments" do
+      for len <- 40..80 do
+        source = corner_source(len)
+        out = Formatter.format("lib/a.ex", source)
+
+        assert IO.iodata_to_binary([Code.format_string!(out), "\n"]) == out
+        assert Code.string_to_quoted!(out) |> strip() == Code.string_to_quoted!(source) |> strip()
+
+        assert out =~ "\n  #{String.duplicate("d", 96)},\n"
+        assert out =~ "\n  # #{String.duplicate("c", 94)},\n"
+
+        for line <- String.split(out, "\n"), String.length(line) > 98 do
+          assert line =~ ~r/^\s*(#|d+,$)/, "over the limit at #{len}: #{line}"
+        end
+      end
+    end
+
+    defp strip(quoted), do: Macro.prewalk(quoted, &Macro.update_meta(&1, fn _ -> [] end))
+  end
 end

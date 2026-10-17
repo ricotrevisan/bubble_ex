@@ -31,6 +31,11 @@ jobs:
             ${{ runner.os }}-mix-${{ matrix.elixir }}-${{ matrix.otp }}-
       - run: mix deps.get
       - run: mix quality
+      # The vertical slice's render step on a synthetic app with API
+      # clients and their shared helpers (WTF-543).
+      - name: Vertical slice render with API clients
+        if: matrix.elixir == '1.18.4' && matrix.otp == '28.0'
+        run: scripts/vertical_slice/render_check.sh
       - name: Check the production package from a fresh consumer
         if: matrix.elixir == '1.18.4' && matrix.otp == '28.0'
         run: scripts/package_consumer_smoke.sh

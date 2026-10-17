@@ -104,6 +104,12 @@ defmodule BubbleEx.Target.ApiClients do
   # Every variable a client reads is namespaced (WTF-533).
   @env_prefix "BUBBLE_API_"
 
+  @doc false
+  # The module segments no group takes: the renderer's own modules
+  # (`BubbleEx.Target.Phoenix.ApiClients.modules/2`'s helpers among them).
+  @spec reserved_modules() :: [String.t()]
+  def reserved_modules, do: @reserved_modules
+
   @doc "The prefix of every environment variable the clients read."
   @spec env_prefix() :: String.t()
   def env_prefix, do: @env_prefix

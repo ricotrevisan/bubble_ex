@@ -604,6 +604,32 @@ defmodule BubbleEx.Target.Phoenix do
           {:ok, Manifest.report()} | {:error, Error.t()}
   def check_manifest(manifest, files, opts \\ []), do: Manifest.check(manifest, files, opts)
 
+  @doc """
+  The modules of the API client files `render/2` writes for `spec` under
+  `lib/<app>/api_clients/`, by path: `clients`, one per group (each calls
+  its own host, so each has a `base_url` to configure), and `helpers`,
+  the modules the clients share (`<Module>.ApiClients.Data` and
+  `.Decode`; no host of their own). `decode.ex` is rendered only when a
+  call decodes into a typed struct. Options: `:module` (required) and
+  `:app` (default: the module underscored), as given to `render/2`.
+
+      %{clients: %{"lib/acme/api_clients/stripe.ex" => "Acme.ApiClients.Stripe"},
+        helpers: %{"lib/acme/api_clients/data.ex" => "Acme.ApiClients.Data", ...}} =
+        BubbleEx.Target.Phoenix.api_client_modules(spec, module: "Acme")
+  """
+  @spec api_client_modules(Spec.t() | nil, keyword()) :: %{
+          clients: %{String.t() => String.t()},
+          helpers: %{String.t() => String.t()}
+        }
+  def api_client_modules(spec, opts) do
+    module = Keyword.fetch!(opts, :module)
+
+    ApiClients.modules(spec, %{
+      module: module,
+      app: Keyword.get(opts, :app) || Macro.underscore(module)
+    })
+  end
+
   # --- context ------------------------------------------------------------------
 
   defp context(project, opts) do

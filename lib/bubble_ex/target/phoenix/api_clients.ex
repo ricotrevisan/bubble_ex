@@ -75,10 +75,13 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
         })
       )
 
+    %{clients: clients, helpers: helpers} = modules(spec, ctx)
+    paths = Map.new(clients, fn {path, module} -> {module, path} end)
+    helper = Map.new(helpers, fn {path, module} -> {module, path} end)
+
     groups =
       for %Group{} = group <- spec.groups, into: %{} do
-        {lib <> "api_clients/#{Macro.underscore(group.module)}.ex",
-         format(group_source(group, ctx))}
+        {Map.fetch!(paths, ctx.root <> "." <> group.module), format(group_source(group, ctx))}
       end
 
     tests =
@@ -90,7 +93,7 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
     decode =
       case decode_source(ctx) do
         nil -> %{}
-        source -> %{(lib <> "api_clients/decode.ex") => format(source)}
+        source -> %{Map.fetch!(helper, ctx.root <> ".Decode") => format(source)}
       end
 
     groups
@@ -99,13 +102,40 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
     |> Map.merge(%{
       (lib <> "api_clients.ex") => format(runtime),
       # Calls used as data (WTF-533): cache, caps and tasks.
-      (lib <> "api_clients/data.ex") =>
+      Map.fetch!(helper, ctx.root <> ".Data") =>
         format(Templates.render("lib/app/api_clients/data.ex", ctx)),
       (test <> "api_clients_test.exs") => format(runtime_test(ctx)),
       "lib/mix/tasks/bubble.api_env.ex" => format(env_task(ctx)),
       ".env.example" => env_example(spec),
       @json_path => json_document(spec)
     })
+  end
+
+  # Shared modules under api_clients/ that are not a group's client: no
+  # host of their own, so no base URL to configure (WTF-533, WTF-543).
+  @helpers ~w(Data Decode)
+
+  @doc false
+  # The modules of the files under lib/<app>/api_clients/, by path:
+  # `clients`, one per group (each calls its own host; its base URL is
+  # configurable), and `helpers`, shared by the clients. `decode.ex` is
+  # rendered only when a call decodes into a typed struct. `ctx` needs
+  # `:app` and `:module`.
+  @spec modules(Spec.t() | nil, map()) :: %{
+          clients: %{String.t() => String.t()},
+          helpers: %{String.t() => String.t()}
+        }
+  def modules(nil, _ctx), do: %{clients: %{}, helpers: %{}}
+
+  def modules(%Spec{groups: groups}, %{app: app, module: module}) do
+    dir = "lib/#{app}/api_clients/"
+    root = module <> ".ApiClients"
+    file = &(dir <> Macro.underscore(&1) <> ".ex")
+
+    %{
+      clients: Map.new(groups, &{file.(&1.module), root <> "." <> &1.module}),
+      helpers: Map.new(@helpers, &{file.(&1), root <> "." <> &1})
+    }
   end
 
   @doc false

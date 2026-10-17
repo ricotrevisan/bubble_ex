@@ -17,6 +17,10 @@ defmodule BubbleEx.Target.Phoenix.Formatter do
 
   `.ex` formatting follows the running Elixir version, which no pin
   covers: two Elixir versions may format the same source differently.
+  One known difference is handled: Elixir 1.18 can leave a line one
+  column over the limit when only its trailing comma overflows, which
+  1.19 and later break; the generator breaks it too (WTF-543), so a
+  render made on 1.18 stays formatted on 1.19 and later.
   """
 
   require Logger
@@ -31,6 +35,9 @@ defmodule BubbleEx.Target.Phoenix.Formatter do
   # The LiveView the generated app pins and the HEEx formatting is checked
   # against (scripts/phoenix_compile_check.sh). Bump it with mix.exs.
   @live_view "1.2.12"
+
+  # `mix format`'s default, which the generated .formatter.exs keeps.
+  @line_length 98
 
   @doc "The LiveView version the generator pins (`== <version>` in the generated `mix.exs`)."
   @spec live_view_version() :: String.t()
@@ -117,13 +124,86 @@ defmodule BubbleEx.Target.Phoenix.Formatter do
         Phoenix.LiveView.HTMLFormatter.format(source, extension: ".heex", file: path)
 
       Path.extname(path) in [".ex", ".exs"] ->
-        source
-        |> Code.format_string!(locals_without_parens: @locals_without_parens)
-        |> IO.iodata_to_binary()
-        |> Kernel.<>("\n")
+        elixir(source)
 
       true ->
         source
+    end
+  end
+
+  @doc false
+  # Elixir source as the generated app's `mix format` leaves it, on the
+  # running Elixir and on 1.19 and later (`fit/1`).
+  @spec elixir(String.t()) :: binary()
+  def elixir(source), do: source |> format_elixir() |> fit()
+
+  defp format_elixir(source),
+    do:
+      source
+      |> Code.format_string!(
+        locals_without_parens: @locals_without_parens,
+        line_length: @line_length
+      )
+      |> IO.iodata_to_binary()
+      |> Kernel.<>("\n")
+
+  # Elixir before 1.19 can leave a line one column over the line length
+  # when only its trailing comma overflows (`ApiClients.string([env["…"]]),`
+  # in a list); 1.19 and later break it ("Ensure the formatter does not go
+  # over the specified limit in certain corner cases", 1.19.0), so a render
+  # made on 1.18 failed the generated app's `mix format --check-formatted`
+  # on a newer Elixir (WTF-543). Each such line is broken after its leading
+  # openers, as 1.19 does, and formatted again: the formatter keeps a
+  # newline after an opening bracket. A break that changes the code (a line
+  # of a string or heredoc) is not taken. On 1.19 and later there is no
+  # such line, so this only scans.
+  defp fit(formatted), do: fit(formatted, nil)
+
+  defp fit(formatted, quoted) do
+    lines = String.split(formatted, "\n")
+
+    case corners(lines) do
+      [] ->
+        formatted
+
+      corners ->
+        quoted = quoted || strip(formatted)
+
+        Enum.find_value(corners, formatted, &break_corner(&1, lines, length(corners), quoted))
+    end
+  end
+
+  # The formatted source with the corner broken, fitted again; nil when
+  # the break changes the code or the formatter does not keep it.
+  defp break_corner({i, head, rest}, lines, count, quoted) do
+    broken = lines |> List.replace_at(i, head <> "\n" <> rest) |> Enum.join("\n")
+
+    with ^quoted <- strip(broken),
+         fitted = format_elixir(broken),
+         true <- length(corners(String.split(fitted, "\n"))) < count do
+      fit(fitted, quoted)
+    else
+      _ -> nil
+    end
+  end
+
+  # The lines only their trailing comma takes over the line length, split
+  # after their leading openers.
+  defp corners(lines) do
+    for {line, i} <- Enum.with_index(lines),
+        String.length(line) == @line_length + 1,
+        String.ends_with?(line, ","),
+        not String.starts_with?(String.trim_leading(line), "#"),
+        [_, head, rest] <- [Regex.run(~r/\A(\s*[^(\[{]*?(?:[(\[{]|%\{)+)(.+)\z/, line)],
+        do: {i, head, rest}
+  end
+
+  # The code without positions (a break moves lines, never the code), or
+  # nil when it does not parse.
+  defp strip(source) do
+    case Code.string_to_quoted(source, columns: false, token_metadata: false) do
+      {:ok, quoted} -> Macro.prewalk(quoted, &Macro.update_meta(&1, fn _ -> [] end))
+      {:error, _} -> nil
     end
   end
 end
