@@ -6,8 +6,12 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/<%= @app %>"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+// No `longPollFallbackMs` (WTF-554): with it, Phoenix's client drops the
+// websocket when the server has not answered a heartbeat within that time
+// of opening it, and the socket answers only once a LiveView's join (its
+// mount, page data and first render) is done. A slow page then showed the
+// error state and rejoined; the websocket now waits for the join.
 const liveSocket = new LiveSocket("/live", Socket, {
-  longPollFallbackMs: 2500,
   // The viewport's width (Bubble's "Current page width"), read again at
   // every (re)connect, so the first connected render has it.
   params: () => ({_csrf_token: csrfToken, bubble_page_width: Math.round(window.innerWidth)}),

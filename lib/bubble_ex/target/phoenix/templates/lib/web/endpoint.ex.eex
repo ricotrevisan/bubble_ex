@@ -12,6 +12,7 @@ defmodule <%= @web %>.Endpoint do
     # A frame is at most 1 MB (Phoenix sets no limit): an input's value is
     # capped much lower by <%= @web %>.BubbleWorkflows.
     websocket: [connect_info: [session: @session_options], max_frame_size: 1_000_000],
+    # Unused by assets/js/app.js (no LongPoll fallback, WTF-554); kept so it is easy to restore.
     longpoll: [connect_info: [session: @session_options]]
 
   # On the separate uploads origin only public files are served (WTF-415).
