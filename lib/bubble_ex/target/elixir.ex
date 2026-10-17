@@ -126,7 +126,7 @@ defmodule BubbleEx.Target.Elixir do
   alias BubbleEx.Expression.IR
   alias BubbleEx.Model.Type
   alias BubbleEx.Target.Ash.Project
-  alias BubbleEx.Target.Elixir.Formats
+  alias BubbleEx.Target.Elixir.{Conditions, Formats}
 
   @type result :: %{
           source: String.t() | nil,
@@ -209,7 +209,12 @@ defmodule BubbleEx.Target.Elixir do
     if source == :error or st.unsupported != [] do
       %{source: nil, bindings: [], loads: %{}, runtime: [], diagnostics: diagnostics(st, opts)}
     else
-      formatted = source |> Code.format_string!() |> IO.iodata_to_binary()
+      # Redundant guards would be type warnings on Elixir 1.20 (WTF-555).
+      formatted =
+        source
+        |> Conditions.simplify(pure: [st.runtime, st.namespace <> ".Enums"])
+        |> Code.format_string!()
+        |> IO.iodata_to_binary()
 
       %{
         source: formatted,

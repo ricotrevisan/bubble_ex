@@ -27,6 +27,12 @@
 #      tests on the throwaway `slice_test`, named with --test-db) and
 #      `mix wtf.verify structural`
 #
+# The project is compiled and verified with the generator's Elixir: it gets
+# the repository's .tool-versions, and the run stops when the two
+# directories still resolve to different Elixir/OTP versions (WTF-555). The
+# run exits non-zero when a step fails (compile, format, migrations,
+# assets, structural verification...).
+#
 # The server and the database are always stopped and removed on exit
 # (SLICE_KEEP=1 keeps them for inspection). The script writes only under
 # $SLICE_ROOT/SLUG (created 0700; $SLICE_ROOT itself is created 0700 when
@@ -101,6 +107,17 @@ cleanup() {
 trap cleanup EXIT
 
 step() { echo "== $*"; }
+# must OK LOG CMD...: run CMD, appending to LOG; print OK, or stop the run.
+must() {
+  local ok="$1" log="$2"
+  shift 2
+  if "$@" >> "$log" 2>&1; then
+    echo "$ok"
+  else
+    echo "FAILED: $* (see ${log#"$out/"})" >&2
+    exit 1
+  fi
+}
 
 # --- 1. the database ------------------------------------------------------------------------
 step "database $container on 127.0.0.1:$db_port"
@@ -138,6 +155,18 @@ step "render"
 mix run --no-compile scripts/vertical_slice/slice.exs render "$export_path" "$decisions" "$out" "$page" |
   tee "$logs/render.log"
 
+# One Elixir for the generator and the app (WTF-555): `mix wtf.verify`
+# compiles the project from here, the steps below from the project.
+if [[ -f "$root/.tool-versions" ]]; then cp "$root/.tool-versions" "$project/.tool-versions"; fi
+elixir_of() { (cd "$1" && elixir -e 'IO.write("#{System.version()} (OTP #{System.otp_release()})")'); }
+root_elixir="$(elixir_of "$root")"
+project_elixir="$(elixir_of "$project")"
+if [[ "$root_elixir" != "$project_elixir" ]]; then
+  echo "Elixir differs: $root_elixir for bubble_ex, $project_elixir for the project" >&2
+  exit 1
+fi
+echo "Elixir $root_elixir"
+
 cd "$project"
 (
   export MIX_ENV=dev
@@ -152,18 +181,19 @@ cd "$project"
     exit 1
   fi
   step "format"
-  mix format --check-formatted > "$logs/format.log" 2>&1 && echo "format ok" || echo "format FAILED (logs/format.log)"
+  : > "$logs/format.log"
+  must "format ok" "$logs/format.log" mix format --check-formatted
   step "migrations"
   rm -rf priv/resource_snapshots
   find priv/repo/migrations -name '*.exs' ! -name '20260101000000_add_oban_jobs_table.exs' -delete
   mix ash.codegen initial > "$logs/codegen.log" 2>&1
-  mix ash.codegen --check >> "$logs/codegen.log" 2>&1 && echo "migrations in sync"
+  must "migrations in sync" "$logs/codegen.log" mix ash.codegen --check
   mix ecto.drop --force-drop > "$logs/migrate.log" 2>&1 || true
   mix ecto.create >> "$logs/migrate.log" 2>&1
-  mix ecto.migrate >> "$logs/migrate.log" 2>&1 && echo "migrated"
+  must "migrated" "$logs/migrate.log" mix ecto.migrate
   step "assets"
   mix assets.setup > "$logs/assets.log" 2>&1
-  mix assets.build >> "$logs/assets.log" 2>&1 && echo "assets built"
+  must "assets built" "$logs/assets.log" mix assets.build
 )
 
 # --- 3. synthetic data ------------------------------------------------------------------------
@@ -216,9 +246,14 @@ wtf show "surface:page/$page_id" > "$logs/wtf-task-surface.log" 2>&1 || true
 wtf audit --app slice --test-db "$slice_test_db" > "$logs/wtf-task-audit.log" 2>&1 || true
 
 step "mix wtf.verify structural"
+verify_status=0
 mix wtf.verify structural --root "$project" --app slice --out "$out/structural" \
-  > "$logs/wtf-verify.log" 2>&1 || true
+  > "$logs/wtf-verify.log" 2>&1 || verify_status=$?
 grep -E '^(pass|fail|skip|not_run)' "$logs/wtf-verify.log" || tail -20 "$logs/wtf-verify.log"
 
 chmod -R go-rwx "$out"
 echo "slice output: $out"
+if [[ "$verify_status" != 0 ]]; then
+  echo "structural verification FAILED (logs/wtf-verify.log)" >&2
+  exit 1
+fi
