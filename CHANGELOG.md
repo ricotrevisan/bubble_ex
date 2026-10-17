@@ -7,7 +7,7 @@ All notable changes to this project are documented here.
 ### Added
 
 - **Buildprint index schema 17.** `BubbleEx.Buildprint.V5` accepts
-  `schemaVersion` 17 (current Buildprint clones, with format 35). It drops
+  `schemaVersion` 17 (current Buildprint clones; first seen with format 35). It drops
   index tables and columns the loader does not read; `metadata`,
   `snapshot_roots` and `symbols` are unchanged, so it reads like 16.
 
