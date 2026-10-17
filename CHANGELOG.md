@@ -110,6 +110,19 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **The vertical slice renders apps with API clients again** (WTF-543).
+  `scripts/vertical_slice/slice.exs render` counted every module under
+  `lib/<app>/api_clients/` as a client, so the shared helpers
+  `<App>.ApiClients.Data` and `.Decode` (WTF-533) stopped it with "API
+  clients not all accounted for". The generator now says which files are
+  clients and which are helpers
+  (`BubbleEx.Target.Phoenix.api_client_modules/2`); the script points
+  only the clients at the closed local port and still fails closed on
+  any other file. CI runs the render step on a synthetic app with API
+  clients (`scripts/vertical_slice/render_check.sh`).
+- **Generation is formatter-stable on Elixir 1.19 and later; bubble_ex
+  now develops on 1.20.2** (WTF-543). Generating on 1.18 can leave lines
+  a newer `mix format` rewrites.
 - **Locked versions and missing app scripts are `BubbleEx.Error`s**
   (WTF-542). `Apps.Parser.extract_dynamic_js_url/1` returned a raw map
   when the landing page had no `dynamic_js` script. It now returns kind

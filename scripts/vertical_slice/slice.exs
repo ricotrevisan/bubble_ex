@@ -54,8 +54,10 @@ defmodule VerticalSlice.Cli do
   #
   # The clients come from the API client Spec that was rendered, and fail
   # closed: every group must have its module in the rendered files and
-  # every file under lib/slice/api_clients/ must be one of them, else the
-  # slice stops (a client left unconfigured would call its real host).
+  # every file under lib/slice/api_clients/ must be a client or one of the
+  # helpers they share (`BubbleEx.Target.Phoenix.api_client_modules/2`),
+  # else the slice stops (a client left unconfigured would call its real
+  # host).
   def slice_config(files, clients_spec, env) do
     database = if env == :test, do: "slice_test", else: "slice_dev"
 
@@ -102,13 +104,18 @@ defmodule VerticalSlice.Cli do
     {uri.host, uri.port, URI.decode(user), URI.decode(password)}
   end
 
-  defp client_modules(files, %{groups: groups}) do
-    expected = groups |> Enum.map(&("Slice.ApiClients." <> &1.module)) |> Enum.sort()
+  # The generator says which files under lib/slice/api_clients/ are
+  # clients and which are the helpers they share (`Data`, `Decode`: no host,
+  # so nothing to point anywhere). Each file must define exactly its
+  # module, every client must be rendered, and no other file may be there.
+  def client_modules(files, spec) do
+    %{clients: clients, helpers: helpers} =
+      BubbleEx.Target.Phoenix.api_client_modules(spec, module: "Slice")
+
+    known = Map.merge(helpers, clients)
 
     defined =
-      for {path, content} <- files,
-          String.starts_with?(path, "lib/slice/api_clients/"),
-          into: %{} do
+      for {path, content} <- files, String.starts_with?(path, "lib/slice/api_clients/") do
         mods =
           Regex.scan(~r/^defmodule (Slice\.ApiClients\.[\w.]+) do/m, content,
             capture: :all_but_first
@@ -117,22 +124,18 @@ defmodule VerticalSlice.Cli do
         {path, List.flatten(mods)}
       end
 
-    unknown =
-      for {path, mods} <- defined, mods == [] or Enum.any?(mods, &(&1 not in expected)), do: path
-
-    missing = expected -- Enum.flat_map(defined, &elem(&1, 1))
+    unknown = for {path, mods} <- defined, mods != List.wrap(known[path]), do: path
+    missing = for {path, mod} <- clients, not Map.has_key?(files, path), do: mod
 
     if unknown != [] or missing != [],
       do:
         raise(
           "API clients not all accounted for: files #{inspect(Enum.sort(unknown))}, " <>
-            "groups without a module #{inspect(missing)}"
+            "groups without a module #{inspect(Enum.sort(missing))}"
         )
 
-    expected
+    clients |> Map.values() |> Enum.sort()
   end
-
-  defp client_modules(_files, nil), do: []
 
   def decisions("-"), do: nil
   def decisions(path), do: path

@@ -437,4 +437,100 @@ defmodule BubbleEx.Target.ApiClientsTest do
       assert message =~ "ApiClients"
     end
   end
+
+  describe "api_client_modules/2 (WTF-543)" do
+    test "names each group's client and the shared helpers by path", %{
+      spec: spec,
+      files: files
+    } do
+      %{clients: clients, helpers: helpers} = Phoenix.api_client_modules(spec, module: "Acme")
+
+      assert clients == %{
+               "lib/acme/api_clients/forms.ex" => "Acme.ApiClients.Forms",
+               "lib/acme/api_clients/mail.ex" => "Acme.ApiClients.Mail",
+               "lib/acme/api_clients/payments.ex" => "Acme.ApiClients.Payments",
+               "lib/acme/api_clients/tenants.ex" => "Acme.ApiClients.Tenants"
+             }
+
+      assert helpers == %{
+               "lib/acme/api_clients/data.ex" => "Acme.ApiClients.Data",
+               "lib/acme/api_clients/decode.ex" => "Acme.ApiClients.Decode"
+             }
+
+      # Every rendered file under api_clients/ is one of them, defining
+      # exactly its module.
+      known = Map.merge(clients, helpers)
+      rendered = for {path, _} <- files, path =~ ~r{^lib/acme/api_clients/}, do: path
+      assert Enum.sort(rendered) == known |> Map.keys() |> Enum.sort()
+
+      for path <- rendered do
+        assert Regex.scan(~r/^defmodule ([\w.]+) do/m, files[path], capture: :all_but_first) ==
+                 [[known[path]]]
+      end
+
+      # No group can take a helper's module.
+      for {_, module} <- helpers,
+          do: assert(List.last(String.split(module, ".")) in ApiClients.reserved_modules())
+
+      assert Phoenix.api_client_modules(nil, module: "Acme") == %{clients: %{}, helpers: %{}}
+
+      assert %{clients: %{"lib/shop/api_clients/forms.ex" => "Acme.ApiClients.Forms"}} =
+               Phoenix.api_client_modules(spec, module: "Acme", app: "shop")
+    end
+  end
+
+  describe "formatting (WTF-543)" do
+    # The generated app's `mix format --check-formatted` on the Elixir that
+    # rendered it. The call's name moves the body's lines across the limit.
+    test "generated API client source is a formatter fixed point" do
+      for n <- 1..30 do
+        name = String.duplicate("x", n)
+        {:ok, model} = Model.build(webhook_app(name))
+        {:ok, spec} = ApiClients.map(model)
+        {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
+        {:ok, files} = Phoenix.render(project, name: "Acme", api_clients: spec)
+
+        for {path, source} <- files, path =~ ~r{api_clients.*\.exs?$} do
+          assert IO.iodata_to_binary([Code.format_string!(source), "\n"]) == source,
+                 "#{path} (call name of #{n}) is not formatted"
+        end
+      end
+    end
+  end
+
+  # An app with one API Connector call whose JSON body nests a list of
+  # private values (each read from an environment variable).
+  defp webhook_app(name) do
+    params =
+      for i <- 1..4, into: %{} do
+        {"b#{i}", %{"key" => "value_#{i}", "value" => "v", "private" => true}}
+      end
+
+    body =
+      ~s({"data": {"filters": [{"action": "<value_1>", "fields": ["<value_2>", "<value_3>", "<value_4>"]}]}})
+
+    %{
+      "user_types" => %{},
+      "settings" => %{
+        "client_safe" => %{
+          "apiconnector2" => %{
+            "gHooks" => %{
+              "human" => "Hooks",
+              "auth" => "none",
+              "calls" => %{
+                "cHook" => %{
+                  "name" => "Establish " <> name,
+                  "method" => "post",
+                  "publish_as" => "action",
+                  "url" => "https://hooks.example.test/webhooks",
+                  "body" => body,
+                  "body_params" => params
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  end
 end
