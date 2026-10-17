@@ -211,7 +211,10 @@ defmodule BubbleEx.Target.Elixir do
     else
       # Redundant guards would be type warnings on Elixir 1.20 (WTF-555).
       formatted =
-        source |> Conditions.simplify() |> Code.format_string!() |> IO.iodata_to_binary()
+        source
+        |> Conditions.simplify(pure: [st.runtime, st.namespace <> ".Enums"])
+        |> Code.format_string!()
+        |> IO.iodata_to_binary()
 
       %{
         source: formatted,

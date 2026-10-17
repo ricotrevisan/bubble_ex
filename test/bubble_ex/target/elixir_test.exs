@@ -526,6 +526,21 @@ defmodule BubbleEx.Target.ElixirTest do
     assert Conditions.simplify("(a and (b or c))") == "(a and (b or c))"
     # a contradiction as written stays
     assert Conditions.simplify("not is_nil(x) and is_nil(x)") == "not is_nil(x) and is_nil(x)"
+
+    # a term that binds or calls anything not known pure: left as written
+    rebinds = "not is_nil(x) or ((x = 5) == 5 and is_nil(x))"
+    assert Conditions.simplify(rebinds) == rebinds
+    effect = "not is_nil(x) and Other.check(x) and not is_nil(x)"
+    assert Conditions.simplify(effect) == effect
+    assert Conditions.simplify(effect, pure: ["Other"]) == "not is_nil(x) and Other.check(x)"
+
+    assert Conditions.simplify("is_nil(x) or f.(x) or is_nil(x)") ==
+             "is_nil(x) or f.(x) or is_nil(x)"
+
+    assert Conditions.simplify("is_nil(x) or :erlang.put(:k, x) or is_nil(x)") ==
+             "is_nil(x) or :erlang.put(:k, x) or is_nil(x)"
+
+    assert Conditions.simplify("is_nil(x) or x.flag or is_nil(x)") == "is_nil(x) or x.flag"
   end
 
   # The warnings of `result`'s source compiled in a function (as the

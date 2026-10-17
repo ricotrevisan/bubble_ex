@@ -118,14 +118,19 @@ All notable changes to this project are documented here.
   drops a term its chain already established
   (`BubbleEx.Target.Elixir.Conditions`): repeated terms, and an
   `is_nil(x)` after `not is_nil(x)` in an `or` under it. Contradictions as
-  written are kept.
+  written are kept, and so is any source with a match or a call outside
+  the pure calls the generator emits (the simplification assumes terms
+  have no effect and bind nothing). With a non-boolean operand a dropped
+  term can change which error is raised, only for inputs that already
+  raise.
 - **The vertical slice compiles and verifies with one Elixir, and fails
   when verification does** (WTF-555). `scripts/vertical_slice/run.sh`
   copies bubble_ex's `.tool-versions` into the project and stops when the
   two directories still resolve to different Elixir/OTP versions (before,
   the project's compile ran on the global Elixir and `mix wtf.verify
-  structural` on bubble_ex's). A failed structural verification now makes
-  the run exit 1.
+  structural` on bubble_ex's). The run now exits 1 when the format check,
+  the migrations check, migrating, the asset build or structural
+  verification fails (before, these only printed a line).
 - **The vertical slice renders apps with API clients again** (WTF-543).
   `scripts/vertical_slice/slice.exs render` counted every module under
   `lib/<app>/api_clients/` as a client, so the shared helpers

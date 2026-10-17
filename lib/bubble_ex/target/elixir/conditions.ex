@@ -35,13 +35,38 @@ defmodule BubbleEx.Target.Elixir.Conditions do
   @doc false
   def encode_literal(literal, meta), do: {:ok, {:__block__, meta, [literal]}}
 
+  # Pure calls the generator emits (`BubbleEx.Target.Elixir`): operators,
+  # guards, field reads and the standard modules below; plus `:pure`.
+  @pure_locals ~w(== != === !== < > <= >= and or not ! && || <> ++ -- in .. + - * /
+                  is_nil is_map is_binary is_list is_atom is_boolean is_number
+                  is_integer is_float length hd tl get_in if then fn -> when & {} %{} % |
+                  __block__)a
+  @pure_modules ~w(Enum Access Map List String MapSet)
+
   @doc """
   `source` with its redundant condition terms dropped, or unchanged when
   it has none (or does not parse).
+
+  The simplification assumes evaluating a term has no effect and binds
+  nothing, so it is the same value wherever it appears in its chain. The
+  source is left as written unless every call in it is one the generator
+  emits as pure: operators and guards, `get_in/2`, `Enum`, `Access`, `Map`,
+  `List`, `String` and `MapSet`, a field read, and functions of the
+  modules named in `:pure` (the runtime's and the enums', prefixes). A
+  match (`=`, `<-`) or any other call keeps it as written. Operands
+  are the conditions the generator compiles (booleans); with a
+  non-boolean operand a dropped term can change which error is raised,
+  only for inputs that already raise.
+
+  Options: `:pure`, module names (`"MyApp.Runtime"`) whose functions, and
+  those of modules under them, are pure.
   """
-  @spec simplify(String.t()) :: String.t()
-  def simplify(source) when is_binary(source) do
+  @spec simplify(String.t(), keyword()) :: String.t()
+  def simplify(source, opts \\ []) when is_binary(source) do
+    pure = Keyword.get(opts, :pure, [])
+
     with {:ok, ast} <- Code.string_to_quoted(source, @parse),
+         true <- pure?(ast, pure),
          {simplified, true} <- term(ast, %{}) do
       simplified
       |> Code.quoted_to_algebra(escape: false)
@@ -165,4 +190,39 @@ defmodule BubbleEx.Target.Elixir.Conditions do
   end
 
   defp strip_meta({form, _meta, args}), do: {form, [], args}
+
+  # Whether every call in `ast` is pure (see `simplify/2`).
+  defp pure?(ast, pure) do
+    {_, ok?} =
+      Macro.prewalk(ast, true, fn
+        node, false -> {node, false}
+        node, true -> {node, pure_node?(node, pure)}
+      end)
+
+    ok?
+  end
+
+  # A remote call: an allowed module's function, or a field read
+  # (`x.name`, no arguments). The `:.` node itself was checked here.
+  defp pure_node?({{:., _, [{:__aliases__, _, parts}, fun]}, _, args}, pure)
+       when is_atom(fun) and is_list(args) do
+    module = Enum.map_join(parts, ".", &Atom.to_string/1)
+
+    module in @pure_modules or
+      Enum.any?(pure, &(module == &1 or String.starts_with?(module, &1 <> ".")))
+  end
+
+  defp pure_node?({{:., _, [_expr, field]}, meta, []}, _pure) when is_atom(field),
+    do: Keyword.get(meta, :no_parens, false)
+
+  defp pure_node?({:., _, [_, field]}, _pure) when is_atom(field), do: true
+  defp pure_node?({{:., _, _}, _, _}, _pure), do: false
+  defp pure_node?({:__aliases__, _, _}, _pure), do: true
+  defp pure_node?({name, _, ctx}, _pure) when is_atom(name) and is_atom(ctx), do: true
+
+  defp pure_node?({name, _, args}, _pure) when is_atom(name) and is_list(args),
+    do: name in @pure_locals
+
+  defp pure_node?({_, _, _}, _pure), do: false
+  defp pure_node?(_literal, _pure), do: true
 end
