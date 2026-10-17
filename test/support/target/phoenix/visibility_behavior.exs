@@ -97,6 +97,50 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     assert view |> element(~s([data-bubble-id="bTabText"])) |> render() =~ "Tab: closed"
   end
 
+  # The viewport's width as the page's hook reports it (WTF-520).
+  defp report_width(view, width) do
+    render_hook(view, "bubble:page_width", %{"width" => width})
+    Process.sleep(250)
+  end
+
+  test "a condition on the viewport's width follows it, on the page and in a reusable element",
+       %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> put_connect_params(%{"bubble_page_width" => 1024}) |> live("/?tab=open")
+
+    refute hidden?(view, "bWidth")
+    assert hidden?(view, "bNarrowTab")
+    assert hidden?(view, "bBadgeNarrow", "bMember-bCardBadge")
+
+    {:ok, view, _html} =
+      conn |> put_connect_params(%{"bubble_page_width" => 500}) |> live("/?tab=open")
+
+    assert hidden?(view, "bWidth")
+    refute hidden?(view, "bNarrowTab")
+    refute hidden?(view, "bBadgeNarrow", "bMember-bCardBadge")
+
+    # With the other condition false, the width alone shows nothing.
+    {:ok, view, _html} = conn |> put_connect_params(%{"bubble_page_width" => 500}) |> live("/")
+    assert hidden?(view, "bNarrowTab")
+
+    # A resize the hook reports re-renders what reads it.
+    {:ok, view, html} =
+      conn |> put_connect_params(%{"bubble_page_width" => 1024}) |> live("/?tab=open")
+
+    assert html =~ "data-bubble-reads-width"
+    report_width(view, 599)
+    assert hidden?(view, "bWidth")
+    refute hidden?(view, "bBadgeNarrow", "bMember-bCardBadge")
+    report_width(view, 600)
+    refute hidden?(view, "bWidth")
+    assert hidden?(view, "bBadgeNarrow", "bMember-bCardBadge")
+
+    # The static render has no width: as on page load.
+    static = conn |> get("/?tab=open") |> html_response(200)
+    [open] = Regex.run(~r/<p[^>]*data-bubble-id="bWidth"[^>]*>/s, static)
+    refute open =~ ~r/\shidden(\s|>|=)/
+  end
+
   test "logged in: the other group, and in a reusable element", %{conn: conn, user: user} do
     {:ok, view, _html} = live(sign_in(conn, user), "/")
     assert hidden?(view, "bOut")

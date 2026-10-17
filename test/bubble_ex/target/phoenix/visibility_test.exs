@@ -272,26 +272,79 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
   } do
     template = files["lib/shop_web/live/index_live.html.heex"]
 
-    for id <- ~w(bBad bWidth) do
-      assert template =~
-               "<%!-- TODO(bubble:#{id}) visibility: 1 conditional not lowered " <>
-                 "(it does not compile); shown as on page load --%>"
-    end
+    assert template =~
+             "<%!-- TODO(bubble:bBad) visibility: 1 conditional not lowered " <>
+               "(it does not compile); shown as on page load --%>"
 
-    # As on page load: bBad hidden, bWidth (Current Page Width) shown.
+    # As on page load: hidden.
     assert tag(template, "bBad") =~ ~r/\shidden[\s>]/
-    refute tag(template, "bWidth") =~ "hidden"
 
     residue = Frontend.residue(frontend, expressions)
 
     assert residue == [
-             %{subject: "element:bWidth", reason: :element_condition, detail: %{states: 1}},
              %{subject: "element:bBad", reason: :element_condition, detail: %{states: 1}}
            ]
 
     {:ok, plan} = Plan.build(model, index, frontend, [], residue: residue)
     page = Enum.find(plan.tasks, &(&1.id == "surface:page/bVis"))
     assert Enum.any?(page.residue, &(&1.reason == :element_condition))
+  end
+
+  test "a condition reads the viewport's width the runtime keeps (WTF-520)", %{files: files} do
+    template = files["lib/shop_web/live/index_live.html.heex"]
+    live = files["lib/shop_web/live/index_live.ex"]
+
+    # A width test kept as an element conditional (the editor's form of a
+    # state, not a breakpoint rule), alone or with another condition.
+    assert tag(template, "bWidth") =~ "hidden={!visible_bwidth(@bubble_page_width)}"
+
+    assert tag(template, "bNarrowTab") =~
+             ~s|hidden={!visible_bnarrowtab(@bubble_page_width, Map.get(@bubble_url, "tab"))}|
+
+    refute template =~ "TODO(bubble:bWidth)"
+    refute template =~ "TODO(bubble:bNarrowTab)"
+
+    assert live =~ """
+             defp visible_bwidth(page_data_current_page_width) do
+               cond do
+                 Shop.Bubble.Runtime.compare(:lt, page_data_current_page_width, 600) == true -> false
+                 true -> true
+               end
+             end
+           """
+
+    # A reusable element two levels down reads it from the width its
+    # caller passes down.
+    assert tag(template, "bMember") =~ "bubble_page_width={@bubble_page_width}"
+    card = files["lib/shop_web/components/reusables/card.html.heex"]
+    assert card =~ "bubble_page_width={@bubble_page_width}"
+    badge = files["lib/shop_web/components/reusables/badge.html.heex"]
+    assert tag(badge, "bBadgeNarrow") =~ "visible_bbadgenarrow(@bubble_page_width)"
+
+    assert files["lib/shop_web/components/reusables/badge.ex"] =~
+             "attr :bubble_page_width, :any, default: nil"
+
+    # The page says it reads the width: its hook reports it.
+    assert files["lib/shop_web/live/index_live/workflows.ex"] =~ "page_width: true"
+    refute files["lib/shop_web/live/task_live/workflows.ex"] =~ "page_width: true"
+  end
+
+  test "other page values a condition reads do not compile", %{} do
+    for name <- ["Current Page Name", "Current Date/Time"] do
+      template =
+        app()
+        |> put_in(
+          ["pages", "index", "elements", "bWidth", "states", "0", "condition", "properties"],
+          %{"name" => name}
+        )
+        |> build()
+        |> Map.fetch!(:files)
+        |> Map.fetch!("lib/shop_web/live/index_live.html.heex")
+
+      assert template =~
+               "TODO(bubble:bWidth) visibility: 1 conditional not lowered (it does not compile)",
+             name
+    end
   end
 
   test "the report counts compiled, marked and other conditional properties", %{
@@ -302,12 +355,13 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
 
     # Without the workflows the page keeps no custom state, input value or
     # URL and loads no data: bFlagged's, bFlagOff's, bOpen's,
-    # bCellNoProject's, bHasProject's, bTabOpen's, bCardTab's and
-    # bBadgeTab's conditionals are marked too (bKeep's only repeats its
-    # visibility on page load: compiled, whatever it reads).
+    # bCellNoProject's, bHasProject's, bTabOpen's, bCardTab's,
+    # bBadgeTab's and the width's (bWidth, bNarrowTab, bBadgeNarrow)
+    # conditionals are marked too (bKeep's only repeats its visibility on
+    # page load: compiled, whatever it reads).
     assert %{
              "visibility_conditions_compiled" => 9,
-             "visibility_conditions_marked" => 10,
+             "visibility_conditions_marked" => 12,
              "conditions_other_properties" => 2
            } = report
   end

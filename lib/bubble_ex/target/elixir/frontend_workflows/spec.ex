@@ -178,8 +178,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   "state" => state}}`) is stored when read in `surface`: `{:state, key}`,
   `{:input, key}`, page data (see `data_read/4`), a URL input (see
   `url/1`; a thing read from the URL is not kept by the page, only its
-  data sources and workflows read it) or nil when the page does not keep
-  it.
+  data sources and workflows read it), `{:page_width, %{}}` (`Current
+  page width`, the viewport's width the runtime keeps, WTF-520: the same
+  in every surface and cell) or nil when the page does not keep it.
 
   A reusable instance's property read where the instance is (`Card A's
   Title` on the page) is also its reusable element's default when the
@@ -187,6 +188,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   """
   @spec read(t(), String.t(), term(), String.t() | nil) :: {atom(), term()} | nil
   def read(spec, surface, input, cell \\ nil)
+
+  def read(%__MODULE__{}, _surface, {:page_data, %{"name" => "Current Page Width"}}, _cell),
+    do: {:page_width, %{}}
 
   def read(%__MODULE__{}, _surface, {:url_parameter, ref}, _cell) do
     case url(ref) do

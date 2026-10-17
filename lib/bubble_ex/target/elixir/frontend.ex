@@ -45,6 +45,13 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   workflows read it); a list parameter ("is a list", not replayed) does
   not compile.
 
+  A condition may also read `Current page width` (WTF-520): the page
+  keeps the viewport's width, so a width test that is not a breakpoint
+  rule of its own (`Current page width < 768 and …`, or one the export
+  keeps as an element conditional) decides with the width the browser
+  reports, again on a resize. Other page values (`Current page name`,
+  `Current date/time`) do not compile.
+
   A visibility conditional that does not compile (a condition with no IR
   or no Elixir, a non-literal visibility, an overlay's: a Popup, Group
   Focus or Floating Group is shown and hidden by workflows) is absent too;
@@ -286,13 +293,15 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   # What a page can supply a condition with: the current user, an
   # element's state (custom states, input values, a group's data), the
-  # page's or the current cell's thing and what the URL holds (the target
-  # decides per page whether it does). Anything else (the
-  # page's width or name…) would be a value nothing sets, never the one
-  # Bubble reads.
+  # page's or the current cell's thing, what the URL holds and the
+  # viewport's width (`Current page width`, WTF-520) (the target decides
+  # per page whether it does). Anything else (the page's name, the current
+  # date and time…) would be a value nothing sets, never the one Bubble
+  # reads.
   @page_inputs [:element_state, :page_thing, :cell_thing, :cell_index, :url_parameter]
 
   defp page_input?(:current_user), do: true
+  defp page_input?({:page_data, %{"name" => "Current Page Width"}}), do: true
   defp page_input?({kind, _ref}) when kind in @page_inputs, do: true
   defp page_input?(_input), do: false
 

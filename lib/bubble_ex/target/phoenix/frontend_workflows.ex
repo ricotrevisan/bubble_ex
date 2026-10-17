@@ -243,20 +243,22 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       cell_clicks: #{cell_map_source(cell_clicks)},
       cell_changes: #{cell_map_source(cell_changes)},
       cell_inputs: #{cell_inputs_source(cell_inputs)},
-      cell_lists: #{cell_lists_source(cell_lists)}#{page_width_source(surface)}
+      cell_lists: #{cell_lists_source(cell_lists)}#{page_width_source(surface, s)}
     }
     """
   end
 
   # Whether the surface reads the viewport's width (WTF-520): a loaded
-  # source or a wired workflow (a condition's included) binding it. Only
-  # then does the page's hook report it, and the runtime read again on a
+  # source or a wired workflow (a condition's included) binding it, or,
+  # for a page, a binding of its templates or of a reusable element it
+  # renders (`reads_width`: a visibility conditional, a text). Only then
+  # does the page's hook report it, and the runtime read again on a
   # report; listed only when true.
-  defp page_width_source(surface) do
+  defp page_width_source(surface, s) do
     data = for d <- Map.get(surface, :data, []), d.residue == [], do: d
     wired = Enum.filter(surface.workflows, &Spec.wired?/1)
 
-    if binds_page_width?(data) or binds_page_width?(wired),
+    if Map.get(s, :reads_width, false) or binds_page_width?(data) or binds_page_width?(wired),
       do: ",\n  page_width: true",
       else: ""
   end

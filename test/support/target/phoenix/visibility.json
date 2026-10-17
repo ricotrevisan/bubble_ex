@@ -48,6 +48,42 @@
             }
           },
           "type": "Text"
+        },
+        "bBadgeNarrow": {
+          "id": "bBadgeNarrow",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 2,
+            "text": {
+              "entries": {
+                "0": "Badge narrow"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Width"
+                },
+                "type": "PageData",
+                "next": {
+                  "args": 600,
+                  "name": "less_than",
+                  "type": "Message"
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
         }
       },
       "id": "bBadge",
@@ -995,6 +1031,67 @@
               },
               "properties": {
                 "is_visible": false
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bNarrowTab": {
+          "id": "bNarrowTab",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 27,
+            "text": {
+              "entries": {
+                "0": "Narrow tab"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Width"
+                },
+                "type": "PageData",
+                "next": {
+                  "args": 600,
+                  "name": "less_than",
+                  "type": "Message",
+                  "next": {
+                    "args": {
+                      "properties": {
+                        "parameter_name": {
+                          "entries": {
+                            "0": "tab"
+                          },
+                          "type": "TextExpression"
+                        }
+                      },
+                      "type": "GetParamFromUrl",
+                      "next": {
+                        "args": {
+                          "entries": {
+                            "0": "open"
+                          },
+                          "type": "TextExpression"
+                        },
+                        "name": "equals",
+                        "type": "Message"
+                      }
+                    },
+                    "name": "and_",
+                    "type": "Message"
+                  }
+                }
+              },
+              "properties": {
+                "is_visible": true
               },
               "type": "State"
             }

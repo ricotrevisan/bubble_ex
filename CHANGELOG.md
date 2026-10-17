@@ -6,6 +6,19 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Visibility conditionals read `Current page width`** (WTF-520). A
+  conditional testing the viewport's width that is not a breakpoint
+  rule (a width test with another condition, or one the export keeps as
+  an element conditional, as Buildprint's editor-form exports keep every
+  one) did not compile: the page kept its visibility on page load. It
+  now reads the width the runtime already keeps for data sources and
+  workflows (`@bubble_page_width`, passed down to reusable elements as
+  `bubble_page_width`), so it decides on the first connected render and
+  again on a resize; the page reports the width when any of its
+  templates or the reusable elements it renders reads it. The static
+  render has no width (as on page load). `Current page name` and
+  `Current date/time` in a conditional still do not compile.
+
 - **Buildprint index schema 17.** `BubbleEx.Buildprint.V5` accepts
   `schemaVersion` 17 (current Buildprint clones; first seen with format 35). It drops
   index tables and columns the loader does not read; `metadata`,
