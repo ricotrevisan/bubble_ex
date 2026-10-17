@@ -27,6 +27,11 @@
 #      tests on the throwaway `slice_test`, named with --test-db) and
 #      `mix wtf.verify structural`
 #
+# The project is compiled and verified with the generator's Elixir: it gets
+# the repository's .tool-versions, and the run stops when the two
+# directories still resolve to different Elixir/OTP versions (WTF-555). The
+# run exits non-zero when compiling or structural verification fails.
+#
 # The server and the database are always stopped and removed on exit
 # (SLICE_KEEP=1 keeps them for inspection). The script writes only under
 # $SLICE_ROOT/SLUG (created 0700; $SLICE_ROOT itself is created 0700 when
@@ -138,6 +143,18 @@ step "render"
 mix run --no-compile scripts/vertical_slice/slice.exs render "$export_path" "$decisions" "$out" "$page" |
   tee "$logs/render.log"
 
+# One Elixir for the generator and the app (WTF-555): `mix wtf.verify`
+# compiles the project from here, the steps below from the project.
+if [[ -f "$root/.tool-versions" ]]; then cp "$root/.tool-versions" "$project/.tool-versions"; fi
+elixir_of() { (cd "$1" && elixir -e 'IO.write("#{System.version()} (OTP #{System.otp_release()})")'); }
+root_elixir="$(elixir_of "$root")"
+project_elixir="$(elixir_of "$project")"
+if [[ "$root_elixir" != "$project_elixir" ]]; then
+  echo "Elixir differs: $root_elixir for bubble_ex, $project_elixir for the project" >&2
+  exit 1
+fi
+echo "Elixir $root_elixir"
+
 cd "$project"
 (
   export MIX_ENV=dev
@@ -216,9 +233,14 @@ wtf show "surface:page/$page_id" > "$logs/wtf-task-surface.log" 2>&1 || true
 wtf audit --app slice --test-db "$slice_test_db" > "$logs/wtf-task-audit.log" 2>&1 || true
 
 step "mix wtf.verify structural"
+verify_status=0
 mix wtf.verify structural --root "$project" --app slice --out "$out/structural" \
-  > "$logs/wtf-verify.log" 2>&1 || true
+  > "$logs/wtf-verify.log" 2>&1 || verify_status=$?
 grep -E '^(pass|fail|skip|not_run)' "$logs/wtf-verify.log" || tail -20 "$logs/wtf-verify.log"
 
 chmod -R go-rwx "$out"
 echo "slice output: $out"
+if [[ "$verify_status" != 0 ]]; then
+  echo "structural verification FAILED (logs/wtf-verify.log)" >&2
+  exit 1
+fi

@@ -110,6 +110,22 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Generated conditions compile warning-free on Elixir 1.20** (WTF-555).
+  A condition with nested `and`s repeated its checks (`not
+  is_nil(current_user) and ... and (not is_nil(current_user) and ...)`),
+  and Elixir 1.20's type checker warns on the second one, so the app
+  failed `mix compile --warnings-as-errors`. `BubbleEx.Target.Elixir` now
+  drops a term its chain already established
+  (`BubbleEx.Target.Elixir.Conditions`): repeated terms, and an
+  `is_nil(x)` after `not is_nil(x)` in an `or` under it. Contradictions as
+  written are kept.
+- **The vertical slice compiles and verifies with one Elixir, and fails
+  when verification does** (WTF-555). `scripts/vertical_slice/run.sh`
+  copies bubble_ex's `.tool-versions` into the project and stops when the
+  two directories still resolve to different Elixir/OTP versions (before,
+  the project's compile ran on the global Elixir and `mix wtf.verify
+  structural` on bubble_ex's). A failed structural verification now makes
+  the run exit 1.
 - **The vertical slice renders apps with API clients again** (WTF-543).
   `scripts/vertical_slice/slice.exs render` counted every module under
   `lib/<app>/api_clients/` as a client, so the shared helpers

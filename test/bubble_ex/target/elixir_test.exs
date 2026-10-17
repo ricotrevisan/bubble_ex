@@ -493,6 +493,62 @@ defmodule BubbleEx.Target.ElixirTest do
     refute eval(result, cell_thing_br1: %{assignee_id: nil}, current_user: nil)
   end
 
+  # WTF-555: Bubble's nested `and`s repeated the current user's guard, and
+  # Elixir 1.20's type checker warns on the second `is_nil(current_user)`.
+  test "a condition's repeated guards are dropped and it compiles warning-free",
+       %{project: project} do
+    assigned = chain(src("CurrentDataItem"), [msg("assignee_user"), msg("equals", cu())])
+    nested = chain(cu(), [msg("logged_in"), msg("and_", assigned)])
+
+    raw =
+      chain(cu(), [msg("logged_in"), msg("and_", assigned), msg("and_", nested)])
+
+    result = compile(raw, project, host: "bT3")
+    [_one] = Regex.scan(~r/is_nil\(current_user\)/, result.source)
+
+    assert eval(result, cell_thing_br1: %{assignee_id: "u1"}, current_user: %{id: "u1"})
+    refute eval(result, cell_thing_br1: %{assignee_id: "u2"}, current_user: %{id: "u1"})
+    refute eval(result, cell_thing_br1: %{assignee_id: nil}, current_user: nil)
+
+    assert compile_warnings(result) == []
+  end
+
+  test "an is_nil check after its negation in one chain is dropped" do
+    alias BubbleEx.Target.Elixir.Conditions
+
+    assert Conditions.simplify("not is_nil(x) and (is_nil(x) or y == 1)") ==
+             "not is_nil(x) and y == 1"
+
+    assert Conditions.simplify("is_nil(x) or (not is_nil(x) and y == 1) or is_nil(x)") ==
+             "is_nil(x) or y == 1"
+
+    # nothing redundant: the source as it was
+    assert Conditions.simplify("(a and (b or c))") == "(a and (b or c))"
+    # a contradiction as written stays
+    assert Conditions.simplify("not is_nil(x) and is_nil(x)") == "not is_nil(x) and is_nil(x)"
+  end
+
+  # The warnings of `result`'s source compiled in a function (as the
+  # generated workflows' conditions are) on the running Elixir.
+  defp compile_warnings(result) do
+    module = Module.concat(__MODULE__, "Warnings#{System.unique_integer([:positive])}")
+    bind = Enum.map_join(result.bindings, "\n", &"#{&1.var} = Map.get(ctx, :#{&1.var})")
+
+    source = """
+    defmodule #{inspect(module)} do
+      def condition(ctx) do
+        #{bind}
+        (#{result.source}) == true
+      end
+    end
+    """
+
+    {_, diagnostics} = Code.with_diagnostics(fn -> Code.compile_string(source) end)
+    :code.purge(module)
+    :code.delete(module)
+    for %{severity: :warning, message: message} <- diagnostics, do: message
+  end
+
   test "field paths through relationships record their loads", %{project: project} do
     raw =
       chain(cu(), [
