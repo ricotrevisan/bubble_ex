@@ -1918,6 +1918,44 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert shown(html, "Panel") == ["Eat"]
   end
 
+  # WTF-564: bIfEat and bIfNone open bPopIf "Only when Search for Tasks
+  # (title = Eat / Zzz):first item is not empty". The search is read as
+  # the click runs, as the current user: what it finds then decides.
+  @pop_if ~s([data-bubble-id="bPopIf"])
+
+  test "a click whose condition reads a search runs only when the search finds a thing", %{
+    conn: conn
+  } do
+    on()
+    {:ok, view, _html} = live(conn, "/shown")
+
+    click(view, "bIfEat")
+    assert_push_event(view, "bubble:exec", %{ops: [%{op: "show", to: @pop_if}]})
+
+    click(view, "bIfNone")
+    refute_push_event(view, "bubble:exec", %{ops: [%{to: @pop_if}]})
+    refute_push_event(view, "bubble:notice", _)
+
+    # The search is read again at each click, not kept from the page's load.
+    PhxCheck.Task
+    |> Ash.get!("1700000000000x200000000000000005", authorize?: false)
+    |> Ash.Changeset.for_update(:update, %{title: "Zzz"})
+    |> Ash.update!(authorize?: false)
+
+    click(view, "bIfEat")
+    refute_push_event(view, "bubble:exec", %{ops: [%{to: @pop_if}]})
+
+    click(view, "bIfNone")
+    assert_push_event(view, "bubble:exec", %{ops: [%{op: "show", to: @pop_if}]})
+  end
+
+  test "with data access off, a click whose condition reads a search is refused", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/shown")
+    click(view, "bIfEat")
+    assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."})
+    refute_push_event(view, "bubble:exec", %{ops: [%{to: @pop_if}]})
+  end
+
   test "with data access off, a popup's data workflow is refused with the notice", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/shown")
     assert shown(popup(view, "bPopOpen", "opened"), "Popup inner") == []

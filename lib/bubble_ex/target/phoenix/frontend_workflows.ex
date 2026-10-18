@@ -150,7 +150,9 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
     uses_js? = Enum.any?(workflows, & &1.client?)
 
-    queries? = Enum.any?(data, &Spec.reads_query?/1)
+    queries? =
+      Enum.any?(data, &Spec.reads_query?/1) or
+        Enum.any?(workflows, &match?(%{condition: %{queries: [_ | _]}}, &1))
 
     """
     defmodule #{s.module} do
@@ -159,7 +161,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       alias #{ctx.module}.Workflows.Runtime, warn: false
       alias #{ctx.web}.BubbleWorkflows, warn: false
       alias #{ctx.web}.Bubble, warn: false
-    #{if uses_js?, do: "  alias Phoenix.LiveView.JS\n", else: ""}#{if data != [], do: "  alias #{ctx.web}.BubbleData, warn: false\n", else: ""}#{if queries?, do: "\n  require Ash.Query\n", else: ""}
+    #{if uses_js?, do: "  alias Phoenix.LiveView.JS\n", else: ""}#{if data != [] or queries?, do: "  alias #{ctx.web}.BubbleData, warn: false\n", else: ""}#{if queries?, do: "\n  require Ash.Query\n", else: ""}
       @surface #{surface_map}
 
       @workflows %{
@@ -378,7 +380,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     def #{w.fun}(ctx) do
     #{event_todo}  BubbleWorkflows.steps(ctx, #{condition}, [#{steps}])
     end
-    #{condition_source(w)}#{Enum.map_join(w.steps, "", &step_source(&1, w, s, spec, ctx))}
+    #{condition_source(w, ctx)}#{Enum.map_join(w.steps, "", &step_source(&1, w, s, spec, ctx))}
     """
   end
 
@@ -389,17 +391,28 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     "  # TODO(bubble:#{comment(w.symbol)}) not lowered: #{reasons}\n"
   end
 
-  defp condition_source(%{condition: nil}), do: ""
+  defp condition_source(%{condition: nil}, _ctx), do: ""
 
-  defp condition_source(w) do
+  defp condition_source(w, ctx) do
     visibility = if w.kind == :condition_true, do: "@doc false\ndef", else: "defp"
     label = if w.kind == :condition_true, do: "Condition", else: "Only when"
+
+    # A condition reading a search (WTF-564): its queries are read first,
+    # as the condition is tested.
+    {arg, body} =
+      case w.condition do
+        %{queries: [_ | _] = queries} = c ->
+          {"ctx", "#{queries_source(queries, [c], ctx, nil, "", false)}  #{c.source}"}
+
+        c ->
+          {ctx_arg([c]), "#{prelude([c])}  #{c.source}"}
+      end
 
     """
 
     # #{label}
-    #{visibility} #{w.fun}__condition(#{ctx_arg([w.condition])}) do
-    #{prelude([w.condition])}  #{w.condition.source}
+    #{visibility} #{w.fun}__condition(#{arg}) do
+    #{body}
     end
     """
   end
@@ -1236,7 +1249,9 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   # The queries a source reads first (WTF-495: searches under list
   # operators), in order, after the page values they all read; `values`
   # (and the source's own query `q`) read them as `query_<n>`.
-  defp queries_source(queries, values, ctx, q, calls \\ "") do
+  # A workflow's condition (`page_data?` false) binds the page values as
+  # its steps do.
+  defp queries_source(queries, values, ctx, q, calls \\ "", page_data? \\ true) do
     pinned = for x <- queries ++ List.wrap(q), %{value: %{bindings: _} = v} <- x.pins, do: v
     all = values ++ pinned
 
@@ -1257,7 +1272,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
         "#{pins_source(x)}query_#{n} = #{read}\n"
       end)
 
-    "#{prelude(page, false, true)}#{calls}#{reads}#{if q, do: pins_source(q), else: ""}"
+    "#{prelude(page, false, page_data?)}#{calls}#{reads}#{if q, do: pins_source(q), else: ""}"
   end
 
   defp pins_source(q) do

@@ -1423,6 +1423,39 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   defp new_acc, do: %{queries: [], calls: [], seen: %{}, next: 1}
 
+  @doc """
+  A workflow's condition that reads a search (WTF-564), compiled as a
+  conditional state's condition is here: its list operators lowered
+  (`FrontendWorkflows.Lists`), each search under them read first as an
+  Ash query (`queries`, read as `query_<n>`), the rest compiled in Elixir
+  by `fns.compile` in the workflow's context `ctx` (`id` its subject).
+  `{:ok, compiled}` (with `queries`) when it reads a query and no API
+  Connector call; `{:error, residue}` when it reads one but does not
+  compile; `:none` when it reads neither.
+  """
+  @spec condition(Lowering.Expr.t(), String.t(), map(), map()) ::
+          {:ok, map()} | {:error, [map()]} | :none
+  def condition(%Lowering.Expr{ir: %IR{} = ir} = expr, id, ctx, fns) do
+    ir = Lists.lower(ir)
+
+    if queries?(ir) and not calls?(ir) do
+      case compile_value(%{expr | ir: ir}, %{id: id, path: expr.path}, ctx, fns, new_acc()) do
+        {:ok, compiled, %{queries: [_ | _] = queries}} ->
+          {:ok, Map.put(compiled, :queries, Enum.reverse(queries))}
+
+        {:ok, _compiled, _acc} ->
+          :none
+
+        {:error, residue} ->
+          {:error, residue}
+      end
+    else
+      :none
+    end
+  end
+
+  def condition(_expr, _id, _ctx, _fns), do: :none
+
   # Compiles `expr` in Elixir, its searches first read as queries.
   defp compile_value(%Lowering.Expr{ir: ir} = expr, s, ctx, fns, acc) do
     with {:ok, ir, acc} <- extract(ir, s, ctx, fns, acc),
