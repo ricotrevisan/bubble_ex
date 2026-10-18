@@ -560,6 +560,8 @@ defmodule BubbleEx.Target.Phoenix do
   `"visibility_conditions_unset_property"` those of them reading a reusable
   element's property with no value (no default, not set: marked, or
   decided only for the instances that set it, WTF-505);
+  `"visibility_conditions_plugin_state"` those of them marked because they
+  read a plugin element's state (the plugin element is not migrated);
   `"conditions_other_properties"` the states that set anything else
   (colors, text…), not lowered yet.
   `"assets_<status>"` count `.wtf/assets.json`'s assets by status;

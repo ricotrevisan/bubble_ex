@@ -6,6 +6,10 @@ defmodule BubbleEx.Expression.Tree do
   content, a page's type, a reusable's type), its parent, its custom states
   and, for reusables, its parameters.
 
+  A plugin element's states are typed from its plugin's definition when
+  the app holds one (`BubbleEx.Plugins.States`, from a Buildprint v5
+  workspace); otherwise they stay untyped.
+
   Pages, mobile views and reusable elements are nodes too (`kind: :page` or
   `:reusable`), so `GetElement` on a page reads its custom states and on a
   reusable its parameters. A reusable instance (`CustomElement`) records the
@@ -17,6 +21,7 @@ defmodule BubbleEx.Expression.Tree do
   Reads either key form for the members it uses.
   """
 
+  alias BubbleEx.Plugins.States, as: PluginStates
   alias BubbleEx.Workflows.Source
 
   defmodule Node do
@@ -33,6 +38,9 @@ defmodule BubbleEx.Expression.Tree do
       * `parent` - the Bubble ID of the enclosing element, page or reusable
       * `owner` - the Bubble ID of the enclosing page or reusable
       * `states` - custom states: state ID => type descriptor
+      * `plugin_states` - a plugin element's states its plugin's definition
+        types (`BubbleEx.Plugins.States.element/3`): accessor
+        (`"get_<state code>"`) => type descriptor
       * `defaults` - the custom states' default values as supplied
         (`default_val`: a literal or an expression), for those that have
         one
@@ -58,6 +66,7 @@ defmodule BubbleEx.Expression.Tree do
       :page_size,
       repeats: false,
       states: %{},
+      plugin_states: %{},
       defaults: %{},
       params: %{}
     ]
@@ -74,6 +83,7 @@ defmodule BubbleEx.Expression.Tree do
             page_size: pos_integer() | nil,
             repeats: boolean(),
             states: %{String.t() => String.t()},
+            plugin_states: %{String.t() => String.t()},
             defaults: %{String.t() => term()},
             params: %{String.t() => String.t()}
           }
@@ -106,6 +116,8 @@ defmodule BubbleEx.Expression.Tree do
   @doc "Builds the tree from decoded app JSON. Never fails: unusable nodes are skipped."
   @spec build(term()) :: t()
   def build(app) when is_map(app) do
+    plugins = PluginStates.get(app)
+
     nodes =
       for {sections, kind} <- @sections,
           section <- sections,
@@ -113,7 +125,7 @@ defmodule BubbleEx.Expression.Tree do
           is_map(owners),
           {key, owner} <- Enum.sort(owners),
           is_map(owner),
-          node <- owner(key, owner, kind),
+          node <- owner(key, owner, kind, plugins),
           reduce: %{} do
         acc -> Map.put_new(acc, node.id, node)
       end
@@ -150,7 +162,7 @@ defmodule BubbleEx.Expression.Tree do
 
   # --- building ----------------------------------------------------------------
 
-  defp owner(key, raw, kind) do
+  defp owner(key, raw, kind, plugins) do
     id = text(Source.value(raw, ~w(id %id))) || key
     props = props(raw)
 
@@ -170,10 +182,10 @@ defmodule BubbleEx.Expression.Tree do
     }
 
     aliases = if key != id, do: [%{node | id: key}], else: []
-    [node | aliases] ++ children(raw, id, id)
+    [node | aliases] ++ children(raw, id, id, plugins)
   end
 
-  defp children(raw, parent, owner) do
+  defp children(raw, parent, owner, plugins) do
     raw
     |> Source.get(@children)
     |> case do
@@ -181,10 +193,10 @@ defmodule BubbleEx.Expression.Tree do
       nil -> []
     end
     |> Enum.sort_by(&elem(&1, 0))
-    |> Enum.flat_map(fn {key, element} -> element(key, element, parent, owner) end)
+    |> Enum.flat_map(fn {key, element} -> element(key, element, parent, owner, plugins) end)
   end
 
-  defp element(key, raw, parent, owner) when is_map(raw) do
+  defp element(key, raw, parent, owner, plugins) when is_map(raw) do
     id = text(Source.value(raw, ~w(id %id))) || to_string(key)
     type = text(Source.value(raw, ~w(type %x)))
     props = props(raw)
@@ -198,16 +210,17 @@ defmodule BubbleEx.Expression.Tree do
       parent: parent,
       owner: owner,
       states: states(raw),
+      plugin_states: PluginStates.element(plugins, type, props),
       defaults: defaults(raw),
       instance_of: if(type == "CustomElement", do: text(props["custom_id"])),
       page_size: list_page_size(type, raw, props),
       repeats: repeats?(type, props)
     }
 
-    [node | raw |> children(id, owner) |> rows(node)]
+    [node | raw |> children(id, owner, plugins) |> rows(node)]
   end
 
-  defp element(_key, _raw, _parent, _owner), do: []
+  defp element(_key, _raw, _parent, _owner, _plugins), do: []
 
   # A table's repeated row holds its table's thing, as a repeating
   # group's cell does ("Current row's thing").

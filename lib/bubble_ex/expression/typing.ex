@@ -23,7 +23,7 @@ defmodule BubbleEx.Expression.Typing do
   | workflow / API parameter | its declared `btype_id` |
   | page data, URL parameter | by name (`Current Date/Time` is a date); a URL parameter as its type (text by default; a number, yes/no, date or thing), the path's segments as a list of texts |
   | `field` on a record, option or API type | the field's, option attribute's or external field's type; on a list, a list of it |
-  | element state (`is visible`, `value`, `group's thing`, a reusable's parameter, a custom state) | from the element tree |
+  | element state (`is visible`, `value`, `group's thing`, a reusable's parameter, a custom state, a plugin element's state its plugin's definition types) | from the element tree |
   | comparisons, `and`/`or`, checks, list predicates | yes/no |
   | arithmetic | the left operand's type |
   | list operators, `:filtered`, `defaulting to` | from their operands |
@@ -320,6 +320,11 @@ defmodule BubbleEx.Expression.Typing do
   def element_state(node, "custom." <> state, env) do
     present(Map.get(node.states, state) || Map.get(definition(node, env).states, state))
   end
+
+  # A plugin element's state, as its plugin's definition types it.
+  def element_state(%Tree.Node{plugin_states: %{} = states}, name, _env)
+      when is_map_key(states, name),
+      do: {:ok, Map.fetch!(states, name)}
 
   def element_state(_node, _name, _env), do: :error
 

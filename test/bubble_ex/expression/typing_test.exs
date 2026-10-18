@@ -153,11 +153,36 @@ defmodule BubbleEx.Expression.TypingTest do
                typed(chain(src("ThisElement"), [msg("is_hovered")]), host: "bT1")
     end
 
-    test "a plugin element's state is unresolved" do
+    test "a plugin element's state is unresolved without its plugin's definition" do
       {ast, [diag]} = typed(chain(el("bX1"), [msg("get_AAB")]), [])
       assert %Property{type: nil} = ast
       assert diag.code == :expr_unresolved_accessor
       assert diag.path == "/next"
+    end
+
+    test "a plugin element's state is typed from its plugin's definition" do
+      states = %{
+        "1234x5678-AAA" => %{
+          "AAB" => %{"value" => "boolean", "is_list" => false},
+          "AAC" => %{"value" => "number", "is_list" => true},
+          "AAD" => %{"value" => "date_range", "is_list" => false}
+        }
+      }
+
+      tree = app() |> BubbleEx.Plugins.States.put(states) |> Tree.build()
+
+      assert {%Property{type: "boolean"}, []} =
+               typed(chain(el("bX1"), [msg("get_AAB")]), tree: tree)
+
+      assert {%Property{type: "list.number"}, []} =
+               typed(chain(el("bX1"), [msg("get_AAC")]), tree: tree)
+
+      # A type the definition names that typing does not model stays
+      # unresolved, as does a state it does not declare.
+      for name <- ~w(get_AAD get_AAZ) do
+        assert {%Property{type: nil}, [%{code: :expr_unresolved_accessor}]} =
+                 typed(chain(el("bX1"), [msg(name)]), tree: tree)
+      end
     end
   end
 

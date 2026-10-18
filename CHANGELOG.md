@@ -6,6 +6,35 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **A plugin element's states are typed, and what reads them says why it
+  is left out.** An expression reading a plugin element's state (`Timer's
+  running`) did not compile: the app JSON does not say what a plugin's
+  states hold, so typing left it unresolved (`expr_unresolved_accessor`).
+  `BubbleEx.Buildprint.V5` now keeps, of the plugins' definitions in the
+  workspace (`__bp_plugins__`), only the types of their elements' states
+  (`BubbleEx.Plugins.States`, under `__bubble_ex_plugin_states__`; no
+  captions, code or headers; a state whose code or type is not a known
+  form is dropped and counted in a `:buildprint_plugin_states_dropped`
+  diagnostic), and `Expression.Tree` types each plugin
+  element's `get_<state>` from it: `text`, `number`, `boolean`, `date`, a
+  list of one, or the type the element's own "type of content" field sets.
+  The plugin element is still not migrated (a placeholder), so nothing on
+  the page holds its states, and none is read as empty (as WTF-505 does
+  for a property with no value): a visibility conditional reading one is
+  not lowered, "it reads the state of a plugin element, which is not
+  migrated" (counted in `visibility_conditions_plugin_state`), a value is
+  marked ("Text not migrated: reads the state of a plugin element..."),
+  a disabled conditional stays fail-closed and a workflow is
+  `:unavailable_input` residue instead of `:uncompiled_expression`. A
+  state without a definition (another export, Bubble's own plugins such
+  as `select2-*`, a type field left empty, `date_range`) does not compile,
+  as before. New fixture `phoenix_plugin_states`. On the private fixture
+  app (counts only), visibility markers "it does not compile" went from
+  145 to 105 (/meeting: 80 to 59); 32 now name the plugin state (19), 5
+  read page data that is not loaded (1) and 3 only set the page-load
+  visibility; 15 of the 128 values marked "not compiled" now name the
+  plugin state.
+
 - **Visibility conditionals read `Current page width`** (WTF-520). A
   conditional testing the viewport's width that is not a breakpoint
   rule (a width test with another condition, or one the export keeps as

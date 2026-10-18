@@ -61,6 +61,9 @@
 #     that do not compile) render as before, marked only with the
 #     developer markers on (WTF-520,
 #     test/support/target/phoenix/dev_markers_behavior.exs); for
+#     phoenix_plugin_states, reads of a plugin element's states left out,
+#     never read as empty
+#     (test/support/target/phoenix/plugin_states_behavior.exs); for
 #     phoenix_api_calls, API Connector calls from a backend and a page
 #     workflow through the generated Req clients, against a stub, and
 #     their secrets only from the configuration (WTF-533,
@@ -253,6 +256,15 @@ for fixture in $fixtures; do
         test/dev_markers_behavior_test.exs
       mix test test/dev_markers_behavior_test.exs
       rm test/dev_markers_behavior_test.exs
+    fi
+
+    # A plugin element's states: left out (marked in dev), never read as
+    # empty; a click whose condition reads one is refused.
+    if [[ "$fixture" == phoenix_plugin_states ]]; then
+      cp "$root/test/support/target/phoenix/plugin_states_behavior.exs" \
+        test/plugin_states_behavior_test.exs
+      mix test test/plugin_states_behavior_test.exs
+      rm test/plugin_states_behavior_test.exs
     fi
 
     # Visibility conditionals (WTF-477): the hidden attribute per user and
