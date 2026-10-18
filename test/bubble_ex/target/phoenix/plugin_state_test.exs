@@ -72,6 +72,28 @@ defmodule BubbleEx.Target.Phoenix.PluginStateTest do
     assert %{"visibility_conditions_plugin_state" => 1} = report
   end
 
+  test "an \"isn't clickable\" conditional reading a plugin element's state stays disabled" do
+    {page, _report, _spec} = files(app())
+
+    assert page =~
+             "TODO(bubble:bTimerStop) isn't clickable: 1 conditional not lowered (it reads the " <>
+               "state of a plugin element, which is not migrated: element_state:get_AAB); disabled"
+
+    [open] = Regex.run(~r/<button\s+data-bubble-id="bTimerStop"[^>]*>/s, page)
+    assert open =~ ~r/\sdisabled\b/
+  end
+
+  test "a conditional that only sets the page-load visibility is dropped, whatever it reads" do
+    {page, report, _spec} = files(app())
+
+    refute page =~ "TODO(bubble:bTimerAlways) visibility"
+    refute page =~ ~r/visible_btimeralways/
+    [open] = Regex.run(~r/<p\s+data-bubble-id="bTimerAlways"[^>]*>/s, page)
+    refute open =~ "hidden"
+    # bTimerShown is marked; bTimerAlways is compiled (constant), not marked.
+    assert %{"visibility_conditions_plugin_state" => 1} = report
+  end
+
   test "a value reading a plugin element's state is left out, never empty" do
     {page, report, _spec} = files(app())
 

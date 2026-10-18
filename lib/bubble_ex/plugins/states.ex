@@ -12,7 +12,9 @@ defmodule BubbleEx.Plugins.States do
       %{"<plugin id>-<element code>" => %{"<state code>" => %{"value" => type, "is_list" => boolean}}}
 
   Declarative types only: no captions, names, documentation, code or
-  headers. An app read from elsewhere (a `.bubble` file, `BubbleEx.fetch_app/2`)
+  headers. A state whose code is not a Bubble code or whose type is not a
+  known form (bounded in length) is dropped, and `BubbleEx.Buildprint.V5`
+  counts it in a `:buildprint_plugin_states_dropped` diagnostic. An app read from elsewhere (a `.bubble` file, `BubbleEx.fetch_app/2`)
   has none, and its plugin states stay untyped.
 
   `element/3` types one element's states as `BubbleEx.Expression.Tree`
@@ -26,7 +28,14 @@ defmodule BubbleEx.Plugins.States do
 
   @key "__bubble_ex_plugin_states__"
   @basic ~w(text number boolean date)
-  @settable ~r/\A(?:text|number|boolean|date|user|(?:custom|option|api)\..+)\z/
+  # Declared state types kept: the basic ones, `date_range` (kept, not
+  # typed), a "type of content" field (`custom_data_<field code>`), and the
+  # type descriptors an element's field may set. Anything else is dropped.
+  @declared ~r/\A(?:text|number|boolean|date|date_range|user|custom_data_[A-Za-z0-9_]{1,32}|(?:custom|option|api)\.[A-Za-z0-9_.\-]{1,200})\z/
+  @settable ~r/\A(?:text|number|boolean|date|user|(?:custom|option|api)\.[A-Za-z0-9_.\-]{1,200})\z/
+  # Bubble codes (`AAB`, `ACx`) and plugin IDs (`<ms>x<n>`, a slug).
+  @code ~r/\A[A-Za-z0-9_]{1,32}\z/
+  @plugin_id ~r/\A[A-Za-z0-9_]{1,64}\z/
 
   @type t :: %{String.t() => %{String.t() => %{String.t() => term()}}}
 
@@ -37,23 +46,34 @@ defmodule BubbleEx.Plugins.States do
   @doc """
   The projection of plugin definitions keyed by plugin ID (Buildprint's
   `__bp_plugins__`: each `%{"plugin_id", "plugin_elements" => %{code =>
-  %{"states" => ...}}}`). Malformed entries are skipped.
+  %{"states" => ...}}}`), and how many declared states were dropped: a
+  plugin ID, element or state code that is not a Bubble code (bounded
+  length), or a type that is not a known form (`@declared`). A plugin or
+  element that is not a JSON object, or has no states, is not a state and
+  is skipped uncounted.
   """
-  @spec from_definitions(term()) :: t()
+  @spec from_definitions(term()) :: {t(), non_neg_integer()}
   def from_definitions(plugins) when is_map(plugins) do
-    for {key, plugin} <- plugins,
-        is_map(plugin),
-        id = text(plugin["plugin_id"]) || text(key),
-        id != nil,
-        {code, element} <- objects(plugin["plugin_elements"]),
-        states = element_states(element),
-        states != %{},
-        into: %{} do
-      {id <> "-" <> code, states}
-    end
+    {entries, dropped} =
+      for {key, plugin} <- plugins,
+          is_map(plugin),
+          {code, element} <- objects(plugin["plugin_elements"]),
+          reduce: {[], 0} do
+        {acc, dropped} ->
+          id = text(plugin["plugin_id"]) || text(key)
+          {states, bad} = element_states(element)
+
+          if is_binary(id) and Regex.match?(@plugin_id, id) and Regex.match?(@code, code),
+            do:
+              {if(states == %{}, do: acc, else: [{id <> "-" <> code, states} | acc]),
+               dropped + bad},
+            else: {acc, dropped + bad + map_size(states)}
+      end
+
+    {Map.new(entries), dropped}
   end
 
-  def from_definitions(_), do: %{}
+  def from_definitions(_), do: {%{}, 0}
 
   @doc "`app` with `states` under `key/0` (unchanged when there are none)."
   @spec put(map(), t()) :: map()
@@ -79,6 +99,7 @@ defmodule BubbleEx.Plugins.States do
     case Map.get(states, unversioned(type)) do
       %{} = declared ->
         for {code, state} <- declared,
+            is_binary(code) and is_map(state),
             base = state_type(state["value"], props),
             base != nil,
             into: %{},
@@ -92,11 +113,15 @@ defmodule BubbleEx.Plugins.States do
   def element(_states, _type, _props), do: %{}
 
   defp element_states(element) do
-    for {code, state} <- objects(element["states"]),
-        value = text(state["value"]),
-        value != nil,
-        into: %{},
-        do: {code, %{"value" => value, "is_list" => state["is_list"] == true}}
+    Enum.reduce(objects(element["states"]), {%{}, 0}, fn {code, state}, {kept, dropped} ->
+      value = state["value"]
+
+      if Regex.match?(@code, code) and is_binary(value) and Regex.match?(@declared, value),
+        do:
+          {Map.put(kept, code, %{"value" => value, "is_list" => state["is_list"] == true}),
+           dropped},
+        else: {kept, dropped + 1}
+    end)
   end
 
   defp state_type(value, _props) when value in @basic, do: value

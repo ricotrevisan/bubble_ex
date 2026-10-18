@@ -257,12 +257,13 @@ defmodule BubbleEx.Buildprint.V5 do
     acc = Enum.reduce(fragments, acc, &apply_fragment/2)
 
     {settings, dropped_settings} = client_safe_only(acc.app["settings"])
+    {plugin_states, dropped_states} = PluginStates.from_definitions(preamble["__bp_plugins__"])
 
     {app, handles} =
       acc.app
       |> put_settings(settings)
       |> drop_buildprint_members()
-      |> PluginStates.put(PluginStates.from_definitions(preamble["__bp_plugins__"]))
+      |> PluginStates.put(plugin_states)
       |> redact()
       |> then(fn {app, handles} -> {EditorGeometry.mark(app), handles} end)
 
@@ -292,6 +293,15 @@ defmodule BubbleEx.Buildprint.V5 do
             :buildprint_settings_dropped,
             ["settings"],
             "settings other than client_safe were dropped unread",
+            details: %{count: &1}
+          )
+        ) ++
+        counted(
+          dropped_states,
+          &Diagnostic.new(
+            :buildprint_plugin_states_dropped,
+            ["__bp_plugins__"],
+            "plugin element states whose code or type is not a known form were dropped",
             details: %{count: &1}
           )
         ) ++

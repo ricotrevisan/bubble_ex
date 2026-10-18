@@ -47,6 +47,11 @@ defmodule PhxCheckWeb.PluginStatesBehaviorTest do
     refute tag(view, "bTimerShown") =~ ~r/\shidden/
     assert text(view, "bTimerUndeclared") == "Undeclared"
     assert tag(view, "bTimer") =~ ~s(data-bubble-placeholder="plugin")
+    # "isn't clickable" reading the state: disabled (fail closed).
+    assert tag(view, "bTimerStop") =~ ~r/\sdisabled/
+    # A conditional that only sets the page-load visibility.
+    assert text(view, "bTimerAlways") == "Always"
+    refute tag(view, "bTimerAlways") =~ ~r/\shidden/
 
     for id <- ~w(bTimerStatus bTimerShown bPlain) do
       refute tag(view, id) =~ "data-bubble-dev-marker", id

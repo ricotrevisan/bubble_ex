@@ -13,7 +13,9 @@ All notable changes to this project are documented here.
   `BubbleEx.Buildprint.V5` now keeps, of the plugins' definitions in the
   workspace (`__bp_plugins__`), only the types of their elements' states
   (`BubbleEx.Plugins.States`, under `__bubble_ex_plugin_states__`; no
-  captions, code or headers), and `Expression.Tree` types each plugin
+  captions, code or headers; a state whose code or type is not a known
+  form is dropped and counted in a `:buildprint_plugin_states_dropped`
+  diagnostic), and `Expression.Tree` types each plugin
   element's `get_<state>` from it: `text`, `number`, `boolean`, `date`, a
   list of one, or the type the element's own "type of content" field sets.
   The plugin element is still not migrated (a placeholder), so nothing on

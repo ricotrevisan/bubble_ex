@@ -42,6 +42,8 @@ defmodule BubbleEx.Diagnostic.Codes do
      "definitions held by more than one Buildprint fragment; the last by root key is kept"},
     {:buildprint_settings_dropped, :info, :degraded, :read,
      "app settings other than `client_safe` in a Buildprint snapshot; dropped unread (they may hold secrets)"},
+    {:buildprint_plugin_states_dropped, :warning, :degraded, :read,
+     "plugin element states in a Buildprint snapshot whose code or type is not a known form; dropped (the state stays untyped)"},
     {:buildprint_secret_handle, :warning, :degraded, :read,
      "strings (or keys) holding a Buildprint secret handle (`$bp…`); replaced by an empty string (the key's member dropped)"},
     {:buildprint_count_mismatch, :warning, :preserved, :read,

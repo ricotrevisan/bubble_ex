@@ -1043,13 +1043,18 @@ defmodule BubbleEx.Buildprint.V5Test do
           "plugin_elements" => %{
             "AAA" => %{
               "display" => "Timer",
-              "states" => %{"AAB" => %{"caption" => "Running", "value" => "boolean"}}
+              "states" => %{
+                "AAB" => %{"caption" => "Running", "value" => "boolean"},
+                "AAC" => %{"caption" => "Odd", "value" => "<not a type>"}
+              }
             }
           }
         }
       }
 
-      {app, []} = V5.merge(Map.put(preamble(), "__bp_plugins__", plugins), fragments())
+      {app, [diagnostic]} = V5.merge(Map.put(preamble(), "__bp_plugins__", plugins), fragments())
+      assert diagnostic.code == :buildprint_plugin_states_dropped
+      assert diagnostic.details == %{count: 1}
 
       refute Enum.any?(Map.keys(app), &String.starts_with?(&1, "__bp"))
 
@@ -1059,6 +1064,7 @@ defmodule BubbleEx.Buildprint.V5Test do
 
       refute inspect(app) =~ "Running"
       refute inspect(app) =~ "run()"
+      refute inspect(app) =~ "not a type"
     end
   end
 end
