@@ -346,6 +346,7 @@ defmodule <%= @web %>.BubbleData do
       |> BubbleWorkflows.put_cells(cells)
       |> BubbleWorkflows.put_page_cells(page)
       |> assign(:bubble_data_actor, data_actor(socket))
+      |> assign(:bubble_data_url, url_key(socket))
       |> assign(:bubble_source_topics, by_source)
       |> subscribe(all_topics(by_source))
     else
@@ -359,10 +360,39 @@ defmodule <%= @web %>.BubbleData do
 
       socket
       |> assign(:bubble_data, %{})
+      |> assign(:bubble_data_url, nil)
       |> BubbleWorkflows.put_cells([])
       |> BubbleWorkflows.put_page_cells(page)
       |> assign(:bubble_data_warned, not data_access?() and connected?(socket))
     end
+  end
+
+  @doc """
+  The page's data for a `handle_params` (WTF-562): read again only when
+  what it reads of the URL (the query, the path and its segments, the
+  page's thing) or the current user differs from what the data was last
+  read with. A patch to the URL the page is on (a "Go to page" to the
+  current page with the same parameters, as a page-load workflow may run)
+  reads nothing, as in Bubble, where a data source is read again only
+  when what it reads changes; data already stale (`reload/3`) is read
+  again all the same. The first `handle_params` after a mount always
+  reads.
+  """
+  def load_url(socket, page, opts \\ []) do
+    if data_access?() and connected?(socket) and
+         Map.get(socket.assigns, :bubble_data_url) == url_key(socket) and
+         data_actor(socket) == Map.get(socket.assigns, :bubble_data_actor),
+       do: reload(socket, page, opts),
+       else: load(socket, page, opts)
+  end
+
+  # What the page's data reads of the URL. Never nil: a page that has not
+  # been read with a URL (`@bubble_data_url` unset or nil) always reads.
+  defp url_key(socket) do
+    a = socket.assigns
+
+    {Map.get(a, :bubble_url), Map.get(a, :bubble_segments), Map.get(a, :bubble_path),
+     Map.get(a, :bubble_page_path), Map.get(a, :bubble_thing)}
   end
 
   @doc """

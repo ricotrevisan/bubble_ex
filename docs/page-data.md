@@ -1181,7 +1181,13 @@ flag. An event that changes none of these reads nothing: a click whose
 workflows neither write nor change a state or input, a "do every" tick, a
 scheduled custom event (a self-scheduling one no longer reads per round).
 A page-load workflow runs on the data `handle_params` loaded (one read on
-a connected mount). Every read also takes the change notifications already
+a connected mount). A later `handle_params` (a patch: "Go to page" to the
+current page, a URL parameter) reads again only when what the data reads
+of the URL (its query, its path and segments, the page's thing) or the
+current user changed, or the data is stale (WTF-562): a patch to the URL
+the page is already on, as a page-load workflow may make, reads nothing,
+as in Bubble, where a data source is read again only when what it reads
+changes. Every read also takes the change notifications already
 delivered to the page (each is sent after its write committed, so the
 read sees it): a workflow's own write and its notification cost one read,
 not two; a write in owned code that goes through Ash counts too.
