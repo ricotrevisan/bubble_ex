@@ -539,6 +539,23 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
 
     aliases = if scheduler?, do: "{Runtime, Scheduler}", else: "Runtime"
 
+    # Without a workflow to run (a frontend-only app), the alias and the
+    # helper would be unused: compile warnings in the app's own test run
+    # (WTF-561).
+    helpers =
+      if native == [] do
+        ""
+      else
+        """
+
+          alias #{ctx.module}.Workflows.#{aliases}
+
+          defp ran?({:ok, %{status: status}}), do: status in [:done, :not_run, :terminated, :returned]
+          defp ran?({:error, _}), do: true
+          defp ran?(_), do: false
+        """
+      end
+
     data =
       """
       defmodule #{ctx.module}.BubbleWorkflowsTest do
@@ -550,13 +567,7 @@ defmodule BubbleEx.Target.Phoenix.Workflows do
         # asserting the workflow's behavior, tagged bubble: "workflow:<id>".
         use #{ctx.module}.DataCase, async: false
         use Oban.Testing, repo: #{ctx.module}.Repo
-
-        alias #{ctx.module}.Workflows.#{aliases}
-
-        defp ran?({:ok, %{status: status}}), do: status in [:done, :not_run, :terminated, :returned]
-        defp ran?({:error, _}), do: true
-        defp ran?(_), do: false
-      #{Enum.map_join(native, "\n", &workflow_test(&1, triggers, ctx))}
+      #{helpers}#{Enum.map_join(native, "\n", &workflow_test(&1, triggers, ctx))}
       end
       """
 

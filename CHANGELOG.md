@@ -251,6 +251,19 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **The generated API-client tests no longer catch other files' compile
+  warnings (WTF-561).** The scaffolded `bubble_workflows_test.exs` of an
+  app with no backend workflow to run defined an unused `ran?/1` and an
+  unused `Runtime` alias: compile warnings on stderr, while the async
+  `api_clients_test.exs` captured stderr to assert "Req warns nothing",
+  so `mix test` failed now and then. The workflows test now defines them
+  only when it has a workflow to run, and the API clients' runtime test
+  is synchronous (it runs after every test file is compiled, alone).
+  `scripts/phoenix_compile_check.sh` also wipes everything in its scratch
+  projects but `deps` and `_build` before each render, so a file a
+  previous fixture or a failed run left (a copied behavior test) never
+  runs with the next fixture.
+
 - **Page data reads `contains`, `is empty` and `count > 0` over a search
   exactly (WTF-565).** In a page data source, a conditional state's
   condition or a search constraint's value, `<search> contains <thing>` read the search as a list capped
