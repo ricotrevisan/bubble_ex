@@ -150,9 +150,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
     uses_js? = Enum.any?(workflows, & &1.client?)
 
-    queries? =
-      Enum.any?(data, &Spec.reads_query?/1) or
-        Enum.any?(workflows, &match?(%{condition: %{queries: [_ | _]}}, &1))
+    queries? = queries?(data, workflows)
 
     """
     defmodule #{s.module} do
@@ -390,6 +388,13 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     reasons = w.residue |> Enum.map(&Atom.to_string(&1.reason)) |> Enum.uniq() |> Enum.join(", ")
     "  # TODO(bubble:#{comment(w.symbol)}) not lowered: #{reasons}\n"
   end
+
+  # Whether a surface module reads a query: a page data source, or a
+  # workflow's condition (WTF-564).
+  defp queries?(data, workflows),
+    do:
+      Enum.any?(data, &Spec.reads_query?/1) or
+        Enum.any?(workflows, &match?(%{condition: %{queries: [_ | _]}}, &1))
 
   defp condition_source(%{condition: nil}, _ctx), do: ""
 

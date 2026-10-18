@@ -1006,20 +1006,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   defp condition(%Workflow{kind: :condition_true} = w, ctx), do: compile(w.condition, w.id, ctx)
 
   defp condition(%Workflow{condition: expr, id: id}, ctx) do
-    case compile(expr, id, ctx) do
-      {nil, [_ | _] = residue} = uncompiled ->
-        if Enum.any?(residue, &(&1.reason == :uncompiled_expression)) do
-          case Data.condition(expr, id, ctx, %{compile: &compile/3, bind: &bind/2}) do
-            {:ok, compiled} -> {compiled, []}
-            {:error, residue} -> {nil, residue}
-            :none -> uncompiled
-          end
-        else
-          uncompiled
-        end
-
-      compiled ->
-        compiled
+    with {nil, [_ | _] = residue} = uncompiled <- compile(expr, id, ctx),
+         true <- Enum.any?(residue, &(&1.reason == :uncompiled_expression)) do
+      case Data.condition(expr, id, ctx, %{compile: &compile/3, bind: &bind/2}) do
+        {:ok, compiled} -> {compiled, []}
+        {:error, residue} -> {nil, residue}
+        :none -> uncompiled
+      end
+    else
+      {_compiled, _residue} = compiled -> compiled
+      false -> compile(expr, id, ctx)
     end
   end
 
