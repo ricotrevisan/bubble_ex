@@ -150,6 +150,32 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **A page load reads a record's relationship once, whatever else the
+  record has loaded (WTF-559).** In a read pass, `BubbleData` kept a
+  relationship load keyed by the very record term and load list. The
+  same record missed whenever an earlier load had left other
+  relationships on it, or when it was asked for in another combination.
+  Each relationship is now kept once per read pass for the same records
+  (the same resource and attributes) and the same paths below it, and
+  its value is put on the record the caller passed. The relationships
+  not kept yet still load together, so a load never makes more queries
+  than before. The current user's loads are kept the same way. The
+  result is that of one load of all the paths: a relationship's limit
+  and nested loads depend only on its own paths, and when the load
+  fails, every relationship asked for reads as empty
+  (`Runtime.load_page_result/5`). A relationship that failed is kept as
+  failed. Outside a read pass, nothing changes.
+  On the private fixture app's `/meeting/<id>` (dev, privacy enforced,
+  median of 5):
+  - queries in the connected join: 301 to 226, exact repeats 134 to 65;
+  - `handle_params`: 1.9 to 1.6 s;
+  - join: 2.0 to 1.7 s;
+  - time to connected: 2.6 to 2.3 s;
+  - the reply (1.65 MB) is byte-identical;
+  - `/home`: 146 to 135 queries.
+  The rest of the join is Ash's own work per read (filters and policies,
+  about 5 ms each). 98% of the reply is markup hidden at join, mostly
+  closed popups.
 - **A popup always opened with its data is page data** (WTF-520). A
   popup that "Display data" steps set was kept only when every workflow
   that might start one of those steps ran whole here (as the page loads)

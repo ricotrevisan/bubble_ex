@@ -352,6 +352,48 @@ defmodule PhxCheckWeb.PageLoadBehaviorTest do
     assert :counters.get(ran, 1) == 5
   end
 
+  test "a read pass loads a record's relationship once, whatever else it has loaded (WTF-559)",
+       %{users: users} do
+    alias PhxCheckWeb.BubbleData
+
+    ctx = %{actor: users["Ada"]}
+    task = Ash.get!(PhxCheck.Task, "1700000000000x300000000000000001", authorize?: false)
+    tasks = PhxCheck.Task |> Ash.read!(authorize?: false) |> Enum.sort_by(& &1.title)
+    loads = [["owner"], ["team", "lead"]]
+    # (A record the user may not view reads as nil, with privacy enforced.)
+    name = &(&1 && &1.name)
+    shown = &{&1.title, name.(&1.owner), name.(&1.team), name.(&1.team && &1.team.lead)}
+
+    # Outside a pass every load is made.
+    {one, _} = queries(fn -> BubbleData.load_value(task, loads, ctx) end)
+    {_, owner_queries} = queries(fn -> BubbleData.load_value(task, [["owner"]], ctx) end)
+    {_, team_queries} = queries(fn -> BubbleData.load_value(task, [["team", "lead"]], ctx) end)
+    {list, list_queries} = queries(fn -> BubbleData.load_value(tasks, loads, ctx) end)
+
+    {loaded, pass_queries} =
+      queries(fn ->
+        BubbleData.read_pass(fn ->
+          owner = BubbleData.load_value(task, [["owner"]], ctx)
+
+          # The same task with its owner loaded reads only its team
+          # (and lead); the task as read then reads nothing.
+          both = BubbleData.load_value(owner, [["team"], ["owner"], ["team", "lead"]], ctx)
+          again = BubbleData.load_value(task, [["team", "lead"], ["owner"]], ctx)
+          {owner, both, again, BubbleData.load_value(tasks, loads, ctx)}
+        end)
+      end)
+
+    {owner, both, again, in_pass_list} = loaded
+    assert owner.owner.name == "Ada"
+    assert shown.(one) == {"Alpha", "Ada", "North", "Ada"}
+    assert shown.(both) == shown.(one) and shown.(again) == shown.(one)
+    assert Enum.map(in_pass_list, shown) == Enum.map(list, shown)
+    # In it: the task's owner, then its team and lead (the owner kept),
+    # then nothing; the list is other records.
+    sum = &Map.merge(&1, &2, fn _, a, b -> a + b end)
+    assert pass_queries == owner_queries |> sum.(team_queries) |> sum.(list_queries)
+  end
+
   test "the next page load reads again: a changed record shows", %{conn: conn, users: users} do
     {view, html} = board(sign_in(conn, users["Ada"]))
     assert shown(html, "Team") == ["North"]
