@@ -1100,6 +1100,121 @@ defmodule BubbleEx.PageDataTest do
              )
     end
 
+    # bDetail as a popup: bDetailProj, inside it, reads its thing.
+    defp popup_kept?(workflows, extra \\ %{}, outside \\ %{}) do
+      app =
+        Enum.reduce(outside, app(), fn {id, el}, acc ->
+          put_in(acc, ["pages", "shown", "elements", id], el)
+        end)
+
+      app =
+        workflows
+        |> detail_app(app)
+        |> update_in(["pages", "shown", "elements", "bDetail"], &Map.merge(&1, extra))
+        |> put_in(["pages", "shown", "elements", "bDetail", "type"], "Popup")
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+
+      case data(spec, "bDetail") do
+        %{read: :displayed, residue: []} ->
+          assert %{residue: []} = data(spec, "bDetailProj")
+          true
+
+        nil ->
+          assert %{residue: [%{reason: :unavailable_input}]} = data(spec, "bDetailProj")
+          false
+      end
+    end
+
+    defp open_detail(id, condition \\ nil) do
+      props = %{"element_id" => "bDetail"}
+      props = if condition, do: Map.put(props, "condition", condition), else: props
+      %{"id" => id, "type" => "ShowElement", "properties" => props}
+    end
+
+    defp plugin_event(id, actions),
+      do: wf(id, "1700000000000x100000000000000000-AAA", %{}, actions)
+
+    test "a popup always opened with its data is kept, whatever else may display in it (WTF-520)" do
+      opens = event("wE", [open_detail("aEo"), show_detail("aD")])
+      click = clicked("wC", [call("aC", "wE")])
+      plugin = plugin_event("wP", [call("aP", "wE")])
+
+      # A plugin's event the page never triggers also opens it with data:
+      # as a group, that keeps it unloaded (it may fire as the page loads).
+      refute kept?([opens, click, plugin])
+
+      # A popup is closed as the page loads and what is inside it renders
+      # only while it is open; every opening displays its data, so what it
+      # shows is what a run the page runs displayed. The plugin's event is
+      # residue of its own.
+      assert popup_kept?([opens, click, plugin])
+
+      # Displaying in it without opening it, as the page loads: what the
+      # next opening displays replaces it.
+      assert popup_kept?([opens, click, plugin_event("wP", [show_detail("aP")])])
+
+      # Refused as the page loads, likewise.
+      assert popup_kept?([opens, click, loaded("wL", [show_detail("aL"), mail("aLm")])])
+
+      # An opening with no display after it shows what was displayed
+      # before, which the page may not know.
+      no_data = clicked("wO", [open_detail("aO")])
+      refute popup_kept?([opens, click, plugin, no_data])
+      refute popup_kept?([event("wE", [show_detail("aD"), open_detail("aEo")]), click, plugin])
+
+      # A display with a condition may not run.
+      maybe =
+        event("wE", [
+          open_detail("aEo"),
+          put_in(show_detail("aD"), ["properties", "condition"], @user_logged_in)
+        ])
+
+      refute popup_kept?([maybe, click, plugin])
+
+      # Its conditions may open it.
+      visible = %{
+        "states" => %{
+          "0" => %{"condition" => @user_logged_in, "properties" => %{"is_visible" => true}}
+        }
+      }
+
+      refute popup_kept?([opens, click, plugin], visible)
+
+      # Something outside it reads its data while it is closed.
+      reader = %{
+        "id" => "bOutside",
+        "type" => "Group",
+        "properties" => %{
+          "group_type" => "custom.task",
+          "width" => 300,
+          "height" => 40,
+          "data_source" => %{
+            "type" => "GetElement",
+            "properties" => %{"element_id" => "bDetail"},
+            "next" => %{"type" => "Message", "name" => "get_group_data"}
+          }
+        }
+      }
+
+      refute popup_kept?([opens, click, plugin], %{}, %{"bOutside" => reader})
+
+      # A click outside it reads it, whenever.
+      reads =
+        clicked("wR", [
+          %{
+            "id" => "aR",
+            "type" => "DisplayGroupData",
+            "properties" => %{
+              "element_id" => "bShown",
+              "data_source" => reader["properties"]["data_source"]
+            }
+          }
+        ])
+
+      refute popup_kept?([opens, click, plugin, reads])
+    end
+
     test "a popup the page cannot follow keeps what its workflows set unloaded (WTF-520)" do
       # Its conditions set its visibility: they may open it as the page
       # loads, and the page does not follow an overlay's conditions.

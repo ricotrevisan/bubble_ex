@@ -314,7 +314,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
     {ctx, data, bound} =
       bind_data_and_workflows(
-        displayed(lowered.workflows, own_elements(page_data), ctx),
+        displayed(lowered.workflows, page_data, ctx),
         lowered,
         with_inputs(page_data, initial),
         ctx
@@ -477,9 +477,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # `event_kept?/2`); an event the page never
   # triggers (a click in a table's row, a third level) would leave it
   # empty where Bubble shows data, so it is not kept. No step at all:
-  # empty, kept.
+  # empty, kept. A popup always opened with its data is kept whatever its
+  # roots (`opened_with_data?/5`).
   defp kept?(element, %{cell: cell}, _workflows, shown) when is_binary(cell),
     do: MapSet.member?(shown, element)
+
+  defp kept?(_element, %{opened_with_data?: true}, _workflows, _shown), do: true
 
   defp kept?(_element, %{roots: roots}, %{all: all, runs: runs}, _shown) do
     Enum.all?(roots, fn
@@ -1506,7 +1509,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # no step sets, which show nothing (WTF-520): a group, popup, floating
   # group, group focus or repeating group with a type of content and no
   # data source, outside a repeating group's cell.
-  defp displayed(workflows, own, ctx) do
+  defp displayed(workflows, page_data, ctx) do
+    own = own_elements(page_data)
     starts = start_roots(workflows, ctx)
 
     steps =
@@ -1527,11 +1531,153 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         end
       end)
 
-    set = Map.drop(set, MapSet.to_list(popup_races(workflows, starts_callers(workflows), ctx)))
+    set =
+      set
+      |> Map.drop(MapSet.to_list(popup_races(workflows, starts_callers(workflows), ctx)))
+      |> Map.new(fn {element, holder} ->
+        {element,
+         Map.put(
+           holder,
+           :opened_with_data?,
+           opened_with_data?(element, holder, workflows, page_data, ctx)
+         )}
+      end)
 
     if own == nil,
       do: set,
       else: Map.merge(never_shown(steps, own, ctx), set)
+  end
+
+  # A popup always opened with its data (WTF-520): what it shows does
+  # not depend on which workflows may display data in it, so the page
+  # keeps it even when some of them do not run here (`kept?/4`). Popups
+  # are closed as the page loads, and what is inside one renders only
+  # while it is open. When every workflow that may open it (a show or a
+  # toggle) displays data in it, with no condition, after its last
+  # opening step, nothing else may open it (its conditions, an action
+  # this target does not lower) and nothing outside it reads it or
+  # anything inside it, then whatever it shows open is what the opening
+  # run displayed, or what a later run displayed while it stayed open.
+  # Both are the same here as in Bubble for a workflow the page runs; one
+  # that does not run (a plugin's event, a refused page-load workflow) is
+  # residue of its own, and what it would display is lost with it, as
+  # what it would set in a custom state is. Not in a repeating group's
+  # cell (kept by the steps that run there).
+  defp opened_with_data?(popup, holder, workflows, page_data, ctx) do
+    active = Enum.reject(workflows, & &1.disabled?)
+    openers = Enum.filter(active, &opens?(&1, popup))
+
+    holder.cell == nil and match?(%{type: "Popup"}, ctx.raw_elements[popup]) and openers != [] and
+      Enum.all?(openers, &opens_with_data?(&1, popup)) and
+      not visibility_conditions?(ctx.nodes[popup]) and
+      not Enum.any?(active, &unknown_step?(&1, popup, ctx)) and
+      not read_outside?(popup, active, page_data, ctx)
+  end
+
+  defp opens?(w, popup),
+    do: Enum.any?(w.steps, &(&1.op in [:show, :toggle] and match?(%{element: ^popup}, &1.args)))
+
+  # Whether a workflow that opens `popup` displays data in it, with no
+  # condition, after its last opening step.
+  defp opens_with_data?(w, popup) do
+    steps = Enum.with_index(w.steps)
+
+    last_open =
+      for {%Step{op: op, args: %{element: ^popup}}, i} <- steps, op in [:show, :toggle], do: i
+
+    Enum.any?(steps, fn {%Step{op: op, args: args, condition: condition}, i} ->
+      op == :display_data and match?(%{element: ^popup}, args) and condition == nil and
+        i > Enum.max(last_open)
+    end)
+  end
+
+  # An action this target does not lower naming the popup (or an element
+  # in it): it may open the popup, or change it, at any time.
+  defp unknown_step?(w, popup, ctx),
+    do:
+      Enum.any?(
+        w.steps,
+        &(&1.op == nil and is_binary(&1.element) and within?(&1.element, popup, ctx))
+      )
+
+  # Whether anything outside `popup` names the popup or an element inside
+  # it, other than as the target of a step: an element's binding or
+  # property (not `current_parent`, the editor's static record of a
+  # parent, never an expression), a page data source, a workflow's
+  # condition or a step's value. A workflow's steps after its own display
+  # in the popup read what it just displayed (the same run). A workflow
+  # that runs only while the popup is open is not outside: one of an
+  # element inside it, the popup's own "is opened" workflow, or a custom
+  # event only those call. Nor is one the page never triggers (an event
+  # this target does not lower or wire).
+  defp read_outside?(popup, workflows, page_data, ctx) do
+    ids =
+      for {id, _} <- ctx.raw_elements, within?(id, popup, ctx), do: ~s("#{id}")
+
+    names? = &String.contains?(inspect(&1, limit: :infinity, printable_limit: :infinity), ids)
+
+    nodes? =
+      Enum.any?(ctx.nodes, fn {id, node} ->
+        not within?(id, popup, ctx) and
+          names?.(
+            {node.bindings, node.content, node.attributes,
+             Map.delete(node.unmapped, "current_parent")}
+          )
+      end)
+
+    sources? =
+      page_data != nil and
+        Enum.any?(page_data.sources, fn s ->
+          not within?(s.element, popup, ctx) and names?.(s.value)
+        end)
+
+    by_id = Map.new(workflows, &{&1.bubble_id, &1})
+    callers = starts_callers(workflows)
+
+    workflows? =
+      Enum.any?(workflows, fn w ->
+        not while_open?(w, popup, by_id, callers, MapSet.new(), ctx) and
+          (names?.(w.condition) or names?.(before_display(w.steps, popup)))
+      end)
+
+    nodes? or sources? or workflows?
+  end
+
+  # Whether a workflow runs only while `popup` is open, or never here.
+  defp while_open?(nil, _popup, _by_id, _callers, _seen, _ctx), do: true
+
+  defp while_open?(w, popup, by_id, callers, seen, ctx) do
+    cond do
+      w.kind == :unsupported or w.kind in @unwired_events ->
+        true
+
+      is_binary(w.element) and w.kind in [:click, :input_change] ->
+        within?(w.element, popup, ctx)
+
+      w.kind == :popup_opened ->
+        w.element == popup
+
+      w.kind == :custom_event and not MapSet.member?(seen, w.bubble_id) ->
+        seen = MapSet.put(seen, w.bubble_id)
+
+        callers
+        |> Map.get(w.bubble_id, [])
+        |> Enum.all?(&while_open?(by_id[&1], popup, by_id, callers, seen, ctx))
+
+      w.kind == :custom_event ->
+        true
+
+      true ->
+        false
+    end
+  end
+
+  # The steps' conditions and values (not their targets) up to the
+  # workflow's first display in `popup`.
+  defp before_display(steps, popup) do
+    steps
+    |> Enum.take_while(&(not (&1.op == :display_data and match?(%{element: ^popup}, &1.args))))
+    |> Enum.map(&{&1.condition, Map.delete(&1.args, :element)})
   end
 
   # Elements whose data a popup's own workflow may undo (WTF-520): a

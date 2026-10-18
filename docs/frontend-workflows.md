@@ -327,6 +327,26 @@ may run (WTF-520):
   Bubble would set as it loads. A page-load step that runs sets the
   element right after the connected mount's read, and the page reads
   what depends on it again (one more read of the page's data).
+* **A popup always opened with its data.** A popup is kept whatever
+  may display data in it, a workflow the page never triggers or runs
+  whole included (a plugin's event, a refused page-load workflow), when
+  every workflow that may open it (a show or a toggle step) displays
+  data in it after its last opening step, with no condition on that
+  step; nothing else may open it (its conditions, an action this target
+  does not lower naming it or an element inside it); and nothing outside
+  it names it or an element inside it other than as a step's target (an
+  element's binding or property, a page data source, the condition or
+  value of a step in a workflow that may run while it is closed, before
+  that workflow's own display in it). Popups are closed as the page
+  loads and what is inside one renders only while it is open, so what it
+  shows is what the opening run displayed, or what a later run displayed
+  while it stayed open: the same here as in Bubble for every workflow the
+  page runs. A workflow that does not run is residue of its own, and
+  what it would have displayed is lost with it, as a custom state it
+  would set is. A workflow of an element inside the popup, the popup's
+  "is opened" workflow and a custom event only those call run while it
+  is open; one the page never triggers never runs here. Not a group (it
+  may show as the page loads), and not in a repeating group's cell.
 * **No step at all.** A group, popup, floating group, group focus or
   repeating group with a type of content, no data source and no step
   setting it, outside a repeating group's cell, shows nothing, ever:

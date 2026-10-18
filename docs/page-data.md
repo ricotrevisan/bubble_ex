@@ -344,7 +344,9 @@ page loads); one a step may set as the page loads (a page-load,
 condition-true or plugin-event workflow, a custom event one of them
 calls, or a popup one of them opens or closes) only when every such
 workflow runs whole here; otherwise it is not listed, and what reads it
-is not loaded.
+is not loaded. A popup every opening of which displays data in it, that
+nothing outside it reads, is listed whatever else may display in it
+(`docs/frontend-workflows.md`, "A popup always opened with its data").
 An element no step sets, with no data source, shows nothing and is
 listed too, so what reads it (a group inside it reading `Parent group's`
 field, a search constrained by it, a reusable property's default) loads,
