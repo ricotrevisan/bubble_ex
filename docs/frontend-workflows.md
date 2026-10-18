@@ -342,9 +342,11 @@ may run (WTF-520):
     source, no workflow's condition, no step's condition or value. A
     workflow's steps after its own display in the popup with no
     condition may read the popup itself (what that run just displayed),
-    never an element inside it. Exempt, as running only while the popup
-    is open: a click or an input change of an element inside it, and a
-    custom event only those call. Exempt, as never running here: a
+    never an element inside it; that display's own value counts as
+    before it. Exempt, as running only while the popup is open: a click
+    or an input change of an element inside it, and a custom event only
+    those call (not one anything schedules: it may run after the popup
+    closes). Exempt, as never running here: a
     workflow of an event this target does not lower or wire (a plugin's
     event, "User is logged in / out"). The popup's own "is opened"
     workflow is not exempt: which of it and the opening run reads first
@@ -357,8 +359,10 @@ may run (WTF-520):
   data. Those workflows (not triggered or not run whole, other than
   page-load workflows, which run while every popup is closed) are listed
   on its entry in `__bubble__(:data)` (`display: %{..., not_run: [<Bubble
-  IDs>]}`) and in a `:frontend_workflow_residue` diagnostic (`reason`
-  `"display_not_run"`). Not a group (it may show as the page loads), and
+  IDs>]}`), in a `:frontend_workflow_residue` diagnostic (`reason`
+  `"display_not_run"`), in a `TODO(bubble:<popup>)` marker in the
+  template, and, with the developer markers on, in the popup's tooltip
+  ("Data may be older: ..."). Not a group (it may show as the page loads), and
   not in a repeating group's cell.
 * **No step at all.** A group, popup, floating group, group focus or
   repeating group with a type of content, no data source and no step

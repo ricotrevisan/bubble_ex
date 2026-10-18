@@ -1108,12 +1108,7 @@ defmodule BubbleEx.PageDataTest do
           put_in(acc, ["pages", "shown", "elements", id], el)
         end)
 
-      app =
-        workflows
-        |> detail_app(app, at)
-        |> update_in(at ++ ["bDetail"], &Map.merge(&1, extra))
-        |> put_in(at ++ ["bDetail", "type"], "Popup")
-
+      app = detail_popup(workflows, app, extra, at)
       {spec, _project, _frontend, _app, _model} = spec(app)
 
       case data(spec, "bDetail") do
@@ -1125,6 +1120,13 @@ defmodule BubbleEx.PageDataTest do
           assert %{residue: [_ | _]} = data(spec, "bDetailProj")
           nil
       end
+    end
+
+    defp detail_popup(workflows, app, extra \\ %{}, at \\ ["pages", "shown", "elements"]) do
+      workflows
+      |> detail_app(app, at)
+      |> update_in(at ++ ["bDetail"], &Map.merge(&1, extra))
+      |> put_in(at ++ ["bDetail", "type"], "Popup")
     end
 
     defp popup_kept?(
@@ -1351,6 +1353,24 @@ defmodule BubbleEx.PageDataTest do
       assert popup_kept?(base ++ [reads_after.(show_detail("aRd"), @read_detail)])
       refute popup_kept?(base ++ [reads_after.(show_detail("aRd"), @read_inner)])
       refute popup_kept?(base ++ [reads_after.(when_logged_in(show_detail("aRd")), @read_detail)])
+
+      # A display's own value is read before it shows: displaying the
+      # popup's thing in it, from a click outside or from its opener.
+      display_own = fn id ->
+        %{
+          "id" => id,
+          "type" => "DisplayGroupData",
+          "properties" => %{"element_id" => "bDetail", "data_source" => @read_detail}
+        }
+      end
+
+      refute popup_kept?(base ++ [clicked("wR", [display_own.("aR")])])
+
+      refute popup_kept?([
+               event("wE", [open_detail("aEo"), display_own.("aD")]),
+               click,
+               plugin
+             ])
     end
 
     test "what runs while a popup always opened with its data is open may read it (WTF-520)" do
@@ -1383,6 +1403,15 @@ defmodule BubbleEx.PageDataTest do
                  [
                    event("wF", [show_in_shown("aF", @read_detail)]),
                    inside_click.([call("aI", "wF")])
+                 ]
+             )
+
+      # Scheduled from a click inside it: it may run after the popup closes.
+      refute app_with_button.(
+               base ++
+                 [
+                   event("wF", [show_in_shown("aF", @read_detail)]),
+                   inside_click.([call("aI", "wF", "ScheduleCustom")])
                  ]
              )
 
@@ -2224,6 +2253,56 @@ defmodule BubbleEx.PageDataTest do
   end
 
   describe "Display data, printed" do
+    defp render_shown(app) do
+      {spec, project, frontend, app, model} = spec(app)
+
+      {:ok, compiled} =
+        BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend,
+          runtime: "Shop.Bubble.Runtime",
+          namespace: "Shop"
+        )
+
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, backend} = BubbleEx.Workflows.Backend.build(app, model, index)
+      {:ok, workflows} = BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "Shop")
+
+      {:ok, files} =
+        Phoenix.render(project,
+          name: "Shop",
+          frontend: frontend,
+          expressions: compiled,
+          workflows: workflows,
+          frontend_workflows: spec
+        )
+
+      {files["lib/shop_web/live/shown_live/workflows.ex"],
+       files["lib/shop_web/live/shown_live.html.heex"]}
+    end
+
+    test "a popup kept with workflows that do not run lists them, and is marked (WTF-520)" do
+      opens = event("wE", [open_detail("aEo"), show_detail("aD")])
+      click = clicked("wC", [call("aC", "wE")])
+      plugin = plugin_event("wP", [call("aP", "wE")])
+
+      {shown, template} = render_shown(detail_popup([opens, click, plugin], app()))
+      assert shown =~ ~r/element: "bDetail",.*?display: %\{page_size: nil, not_run: \["wP"\]\}/s
+
+      assert template =~
+               "TODO(bubble:bDetail) display: workflows that do not run here may display data " <>
+                 "in it while it is open (wP); it may show older data"
+
+      # The popup's own attributes, up to its children.
+      [_, popup] = String.split(template, ~s(id="bubble-overlay-bDetail"), parts: 2)
+      [popup | _] = String.split(popup, ~s(data-bubble-id="bDetailProj"), parts: 2)
+      assert popup =~ ~s|data-bubble-dev-marker={Bubble.dev_markers?()}|
+      assert popup =~ "Data may be older: workflows that do not run here"
+
+      # Every workflow that may display in it runs: no list, no marker.
+      {shown, template} = render_shown(detail_popup([opens, click], app()))
+      refute shown =~ "not_run"
+      refute template =~ "Data may be older"
+    end
+
     test "the step keeps the element's data per instance; the loader reads it as the user" do
       {spec, project, frontend, app, model} = spec(app())
 

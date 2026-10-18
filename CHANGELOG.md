@@ -113,16 +113,18 @@ All notable changes to this project are documented here.
     properties (not the editor's `current_parent` record), page data
     sources, workflow and step conditions and values. Exempt: a click or
     input change of an element inside it and a custom event only those
-    call (they run while it is open), workflows the page never triggers,
-    and a workflow's reads of the popup itself after its own display in
-    it with no condition. Its "is opened" workflow is not exempt.
+    call, not schedule (they run while it is open), workflows the page
+    never triggers, and a workflow's reads of the popup itself after its
+    own display in it with no condition (not in that display's value).
+    Its "is opened" workflow is not exempt.
 
   On every opening it then shows what the opening run displayed. A
   workflow that does not run here (other than a page-load one, which
   runs while popups are closed) and may display in it while it is open
   is listed on its `__bubble__(:data)` entry (`display: %{..., not_run:
-  [...]}`) and in a `display_not_run` diagnostic: the popup may show
-  older data meanwhile. Groups and cells keep the old rule. On the
+  [...]}`), in a `display_not_run` diagnostic, in a `TODO(bubble:...)`
+  marker on the popup and, with the developer markers on, in its
+  tooltip: the popup may show older data meanwhile. Groups and cells keep the old rule. On the
   private fixture app (counts only, against main with #244), visibility
   markers reading page data that is not loaded went from 80 to 55 on
   /meeting and from 172 to 147 app-wide. 3 of the markers that now load

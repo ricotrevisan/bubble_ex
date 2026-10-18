@@ -1656,10 +1656,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # the element was, an ID or `<ID>.elements`, never an expression), a
   # page data source, a workflow's condition or a step's condition or
   # value. After a workflow's own display in the popup with no
-  # condition, its steps may read the popup itself (what it just
-  # displayed, in the same run), not the elements inside it. A workflow
+  # condition (not in that display's own value), its steps may read the
+  # popup itself (what it just displayed, in the same run), not the
+  # elements inside it. A workflow
   # of an element inside the popup (a click, an input change) runs only
-  # while it is open, and so does a custom event only those call: not
+  # while it is open, and so does a custom event only those call (not
+  # one anything schedules: it may run after the popup closes): not
   # outside. Nor is one the page never triggers (an event this target
   # does not lower or wire). The popup's own "is opened" workflow is
   # outside: which of it and the opening run reads first is not replayed
@@ -1698,6 +1700,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     inner = List.delete(ids, ~s("#{popup}"))
     by_id = Map.new(workflows, &{&1.bubble_id, &1})
     callers = starts_callers(workflows)
+    ctx = Map.put(ctx, :scheduled, scheduled(workflows))
 
     Enum.any?(workflows, fn w ->
       {before, later} = split_at_display(w.steps, popup)
@@ -1719,40 +1722,61 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     end
   end
 
+  # The custom events a workflow schedules: they may run after the popup
+  # closes, whoever schedules them.
+  defp scheduled(workflows) do
+    for w <- workflows,
+        %Step{op: :schedule_custom, args: %{workflow: callee}} <- w.steps,
+        is_binary(callee),
+        into: MapSet.new(),
+        do: callee
+  end
+
   # Whether a workflow runs only while `popup` is open, or never here.
   defp while_open?(nil, _popup, _by_id, _callers, _seen, _ctx), do: true
 
-  defp while_open?(w, popup, by_id, callers, seen, ctx) do
+  defp while_open?(%{kind: kind}, _popup, _by_id, _callers, _seen, _ctx)
+       when kind == :unsupported or kind in @unwired_events,
+       do: true
+
+  defp while_open?(%{kind: kind, element: element}, popup, _by_id, _callers, _seen, ctx)
+       when kind in [:click, :input_change] and is_binary(element),
+       do: within?(element, popup, ctx)
+
+  defp while_open?(%{kind: :custom_event, bubble_id: id}, popup, by_id, callers, seen, ctx) do
     cond do
-      w.kind == :unsupported or w.kind in @unwired_events ->
-        true
+      MapSet.member?(ctx.scheduled, id) ->
+        false
 
-      is_binary(w.element) and w.kind in [:click, :input_change] ->
-        within?(w.element, popup, ctx)
-
-      w.kind == :custom_event and not MapSet.member?(seen, w.bubble_id) ->
-        seen = MapSet.put(seen, w.bubble_id)
-
-        callers
-        |> Map.get(w.bubble_id, [])
-        |> Enum.all?(&while_open?(by_id[&1], popup, by_id, callers, seen, ctx))
-
-      w.kind == :custom_event ->
+      MapSet.member?(seen, id) ->
         true
 
       true ->
-        false
+        seen = MapSet.put(seen, id)
+
+        callers
+        |> Map.get(id, [])
+        |> Enum.all?(&while_open?(by_id[&1], popup, by_id, callers, seen, ctx))
     end
   end
 
-  # A workflow's steps before its first display in `popup` with no
-  # condition, and from it on.
-  defp split_at_display(steps, popup),
-    do:
+  defp while_open?(_w, _popup, _by_id, _callers, _seen, _ctx), do: false
+
+  # A workflow's steps up to its first display in `popup` with no
+  # condition, that display included (its value is read before it shows),
+  # and the steps after it.
+  defp split_at_display(steps, popup) do
+    {before, rest} =
       Enum.split_while(
         steps,
         &(not match?(%Step{op: :display_data, args: %{element: ^popup}, condition: nil}, &1))
       )
+
+    case rest do
+      [display | later] -> {before ++ [display], later}
+      [] -> {before, []}
+    end
+  end
 
   # What steps read: their conditions and values, not their targets.
   defp reads(steps), do: Enum.map(steps, &{&1.condition, Map.delete(&1.args, :element)})
