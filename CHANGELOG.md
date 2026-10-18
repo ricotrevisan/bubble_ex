@@ -226,6 +226,21 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **A patch to the URL the page is on no longer reads the page's data
+  again (WTF-562).** Every `handle_params` read all of a page's data
+  sources, so a page-load workflow that runs "Go to page" to the current
+  page with the same parameters read the whole page twice before it
+  showed. The generated `BubbleData.load_url/3` now reads again only when
+  what the data reads of the URL (the query, the path and its segments,
+  the page's thing) or the user, as read with privacy enforced, changed,
+  or the data is stale (without privacy the session's user is never read
+  again); a patch that changes a parameter reads as before, and the first
+  `handle_params` after a mount always reads. That Bubble does not run the
+  searches again on such a patch is an assumption, to confirm by replay. On a vertical slice's
+  meeting page (synthetic data, median of 5 signed-in visits) the page
+  connects in 2.8 s instead of 4.9 s, with 313 queries on the live
+  connection instead of 573.
+
 - **A property with no value is marked as one, whatever the other
   instances set** (WTF-505 follow-up). A visibility conditional reading
   `<instance>'s <property>`, where the instance sets none and the

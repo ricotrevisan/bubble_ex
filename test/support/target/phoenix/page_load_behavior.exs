@@ -228,6 +228,62 @@ defmodule PhxCheckWeb.PageLoadBehaviorTest do
     if enforced?(), do: assert(shown(html, "Task") == ["Delta", "Echo"])
   end
 
+  # WTF-562: a page-load workflow's "Go to page" to the current page.
+  test "a patch to the URL the page is on reads none of its data again", %{
+    conn: conn,
+    users: users
+  } do
+    {view, _html} = board(sign_in(conn, users["Ada"]))
+
+    {html, by_table} = queries(fn -> render_patch(view, "/board") end)
+
+    assert shown(html, "Team") == ["North"]
+    assert shown(html, "Task") == ["Alpha", "Beta", "Gamma"]
+    refute Map.has_key?(by_table, "task"), "a same-URL patch read task: #{inspect(by_table)}"
+    refute Map.has_key?(by_table, "team"), "a same-URL patch read team: #{inspect(by_table)}"
+
+    # A parameter that changes reads the page again.
+    {_html, by_table} = queries(fn -> render_patch(view, "/board?tab=next") end)
+    assert Map.get(by_table, "task", 0) > 0
+
+    # And the same URL again reads nothing.
+    {_html, by_table} = queries(fn -> render_patch(view, "/board?tab=next") end)
+    refute Map.has_key?(by_table, "task")
+  end
+
+  test "a same-URL patch reads again when the user, as read with privacy enforced, changed", %{
+    conn: conn,
+    users: users
+  } do
+    {view, html} = board(sign_in(conn, users["Ada"]))
+    assert shown(html, "Team") == ["North"]
+
+    move(users["Ada"], @south)
+    html = render_patch(view, "/board")
+
+    if enforced?() do
+      # The actor read again differs from the one the data was read as.
+      assert shown(html, "Team") == ["South"]
+      assert shown(html, "Task") == ["Delta", "Echo"]
+    else
+      # Without privacy the session's user is never read again, so the
+      # patch reads nothing: the page keeps what it showed until a
+      # change notice.
+      assert shown(html, "Team") == ["North"]
+      assert shown(html, "Task") == ["Alpha", "Beta", "Gamma"]
+
+      # A change notice reads the page again, and the user's team as it
+      # is now.
+      PhxCheck.Team
+      |> Ash.get!(@north, authorize?: false)
+      |> Ash.Changeset.for_update(:update, %{name: "Northwest"})
+      |> Ash.update!(authorize?: false)
+
+      Process.sleep(100)
+      assert shown(render(view), "Team") == ["South"]
+    end
+  end
+
   test "a read pass is forgotten after a raise, and a nested pass is its own" do
     alias PhxCheckWeb.BubbleData
 

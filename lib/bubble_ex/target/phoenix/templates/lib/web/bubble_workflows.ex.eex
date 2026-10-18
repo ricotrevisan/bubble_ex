@@ -417,7 +417,9 @@ defmodule <%= @web %>.BubbleWorkflows do
   The current user (<%= if @enforced? do %>the actor, and <% end %>the user as the visibility
   conditionals see them) is read afresh, unless `mount/2` has just read
   it for this very page load (WTF-501): the first `handle_params` after a
-  mount, never a later one (a patch, a URL parameter). A connected mount's page-loaded
+  mount, never a later one (a patch, a URL parameter). A patch reads the
+  data again only when the URL it reads changed, or the user as read with
+  privacy enforced did (`BubbleData.load_url/3`, WTF-562). A connected mount's page-loaded
   workflows run on the data this load read<%= if @enforced? do %>, as the actor read again<% end %> (`handle_info/3`).
   """
   def handle_params(socket, page, params, uri) do
@@ -437,7 +439,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_segments, Bubble.url_segments(URI.parse(uri).path, page_name(page)))
     |> assign(:bubble_thing, BubbleData.thing_id(params, URI.parse(uri).path))
     |> assign(:bubble_takes_thing, takes_thing?(page))
-    |> BubbleData.load(page, actor_fresh?: true)
+    |> BubbleData.load_url(page, actor_fresh?: true)
   end
 
   # The page's Bubble name, the first of its URL's path segments: its

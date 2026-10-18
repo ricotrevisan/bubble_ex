@@ -120,6 +120,9 @@ defmodule <%= @web %>.BubbleData do
   Every read clears the flag and takes the change notifications already
   delivered to the page (sent after their writes committed, so the read
   sees them): a workflow's own write and its notification are one read.
+  A patch (`load_url/3`, WTF-562) reads again only when what the data
+  reads of the URL, or the user as read with privacy enforced, changed,
+  or the data is stale: a patch to the URL the page is on reads nothing.
 
   An input change (typing, WTF-475) is narrower: it reads again only the
   sources whose value or search constraints read that input (a source's
@@ -346,6 +349,7 @@ defmodule <%= @web %>.BubbleData do
       |> BubbleWorkflows.put_cells(cells)
       |> BubbleWorkflows.put_page_cells(page)
       |> assign(:bubble_data_actor, data_actor(socket))
+      |> assign(:bubble_data_url, url_key(socket))
       |> assign(:bubble_source_topics, by_source)
       |> subscribe(all_topics(by_source))
     else
@@ -359,10 +363,40 @@ defmodule <%= @web %>.BubbleData do
 
       socket
       |> assign(:bubble_data, %{})
+      |> assign(:bubble_data_url, nil)
       |> BubbleWorkflows.put_cells([])
       |> BubbleWorkflows.put_page_cells(page)
       |> assign(:bubble_data_warned, not data_access?() and connected?(socket))
     end
+  end
+
+  @doc """
+  The page's data for a `handle_params` (WTF-562): read again only when
+  what it reads of the URL (the query, the path and its segments, the
+  page's thing) or the user, as read with privacy enforced, differs from
+  what the data was last read with (without privacy the session's user is
+  never read again). A patch to the URL the page is on (a "Go to page" to
+  the current page with the same parameters, as a page-load workflow may
+  run) reads nothing; that Bubble does not run the searches again then
+  is an assumption, to confirm by replay. Data already stale (`reload/3`)
+  is read again all the same. The first `handle_params` after a mount
+  always reads.
+  """
+  def load_url(socket, page, opts \\ []) do
+    if data_access?() and connected?(socket) and
+         Map.get(socket.assigns, :bubble_data_url) == url_key(socket) and
+         data_actor(socket) == Map.get(socket.assigns, :bubble_data_actor),
+       do: reload(socket, page, opts),
+       else: load(socket, page, opts)
+  end
+
+  # What the page's data reads of the URL. Never nil: a page that has not
+  # been read with a URL (`@bubble_data_url` unset or nil) always reads.
+  defp url_key(socket) do
+    a = socket.assigns
+
+    {Map.get(a, :bubble_url), Map.get(a, :bubble_segments), Map.get(a, :bubble_path),
+     Map.get(a, :bubble_page_path), Map.get(a, :bubble_thing)}
   end
 
   @doc """
