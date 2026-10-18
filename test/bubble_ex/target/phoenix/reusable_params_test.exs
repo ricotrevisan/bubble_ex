@@ -308,6 +308,42 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       assert runtime =~ "def set?(data, scope, keys) when is_map(data)"
     end
 
+    test "is marked as such when another instance's value does not load" do
+      # bCardA's Task does not compile, so the property does not load for
+      # This Card's reads. bCardB sets none and Task has no default: there
+      # is nothing to load for it, whatever bCardA sets.
+      app =
+        put_in_app(app(), ~w(pages task elements bCardA properties param_pTask), %{
+          "type" => "NoSuchExpression"
+        })
+
+      %{spec: spec, files: files} = build(app)
+      page = files["lib/shop_web/live/task_live.html.heex"]
+
+      assert Spec.read(
+               spec,
+               "bTaskPage",
+               {:element_state, %{"element" => "bCardB", "state" => "param_pTask"}}
+             ) == nil
+
+      assert unset(spec, "bTaskPage", "bCardB", "param_pTask") == :unset
+
+      for id <- ~w(bUnsetShown bUnsetKept) do
+        assert page =~
+                 "TODO(bubble:#{id}) visibility: 1 conditional not lowered (it reads a " <>
+                   "reusable element's property that is not set and has no default: " <>
+                   "element_state:param_pTask); shown as on page load"
+
+        refute page =~
+                 "TODO(bubble:#{id}) visibility: 1 conditional not lowered (it reads page data"
+      end
+
+      # bCardA's own value does not load: what reads it is not loaded.
+      assert page =~
+               "TODO(bubble:bSameTask) visibility: 1 conditional not lowered (it reads page " <>
+                 "data that is not loaded"
+    end
+
     test "the report counts the conditionals reading one", %{spec: spec} do
       app = app()
       {:ok, model} = Model.build(app)

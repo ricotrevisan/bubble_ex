@@ -2879,9 +2879,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # Every input of a condition must be what the page keeps (the current
   # user, its loaded data, custom states, input values): a value nothing
-  # sets would decide the visibility as if empty.
+  # sets would decide the visibility as if empty. A property with no value
+  # (`FlowSpec.unset_property/3` `:unset`) has nothing to load, whatever
+  # the other instances of its reusable element set: it is marked as such
+  # (WTF-505, `unset_visibility/7`), not as page data that is not loaded.
   defp conditional_visibility(node, %{bindings: vars} = compiled, states, static, ctx, acc) do
-    case Enum.find(vars, &(not kept_input?(&1, ctx))) do
+    case Enum.find(vars, &(not kept_input?(&1, ctx) and not unset_input?(&1, ctx))) do
       nil ->
         unset_visibility(node, compiled, states, static, unset_reads(vars, ctx), ctx, acc)
 
@@ -2996,6 +2999,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       do: {[{"hidden", true}], "hidden (privacy: enforced, a conditional may hide it)"},
       else: {static, "shown as on page load"}
   end
+
+  defp unset_input?(%{input: input}, %{flows: %FlowSpec{} = flows} = ctx),
+    do: FlowSpec.unset_property(flows, ctx.entry.id, input) == :unset
+
+  defp unset_input?(_var, _ctx), do: false
 
   defp kept_input?(%{input: :current_user}, _ctx), do: true
   defp kept_input?(_var, %{flows: nil}), do: false

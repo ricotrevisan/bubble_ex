@@ -208,6 +208,22 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **A property with no value is marked as one, whatever the other
+  instances set** (WTF-505 follow-up). A visibility conditional reading
+  `<instance>'s <property>`, where the instance sets none and the
+  property has no default, was marked "it reads page data that is not
+  loaded" when another instance of the reusable element (on any page)
+  sets a value that does not compile or load: the read from outside
+  needs every value of the property to load. That instance has nothing
+  to load, so the conditional now gets the WTF-505 marker ("it reads a
+  reusable element's property that is not set and has no default") and
+  its fallback: shown as on page load or, with privacy: :enforced, hidden
+  when a conditional may hide it. Another input that is not loaded is
+  still named first. On the private fixture app (counts only), 16
+  visibility markers move from "page data not loaded" to the WTF-505
+  marker, all on /meeting (55 to 39; app-wide 147 to 131); one element
+  there is now hidden by the privacy fallback.
+
 - **A slow page no longer drops its LiveView socket after the join**
   (WTF-554). The generated `assets/js/app.js` set `longPollFallbackMs:
   2500`: Phoenix's client then expects a heartbeat reply within 2.5 s of
