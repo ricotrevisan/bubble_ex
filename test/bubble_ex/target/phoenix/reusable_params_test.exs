@@ -308,6 +308,116 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       assert runtime =~ "def set?(data, scope, keys) when is_map(data)"
     end
 
+    test "is marked as such when another instance's value does not load" do
+      # bCardA's Task does not compile, so the property does not load for
+      # This Card's reads. bCardB sets none and Task has no default: there
+      # is nothing to load for it, whatever bCardA sets.
+      # bCardA's Due does not compile either: only some instances set Due,
+      # so This Card's Due is not unset, it is not loaded.
+      app =
+        app()
+        |> put_in_app(~w(pages task elements bCardA properties param_pTask), %{
+          "type" => "NoSuchExpression"
+        })
+        |> put_in_app(~w(pages task elements bCardA properties param_pDue), %{
+          "type" => "NoSuchExpression"
+        })
+
+      %{spec: spec, files: files} = build(app)
+      page = files["lib/shop_web/live/task_live.html.heex"]
+      template = files["lib/shop_web/components/reusables/card.html.heex"]
+
+      assert Spec.read(
+               spec,
+               "bTaskPage",
+               {:element_state, %{"element" => "bCardB", "state" => "param_pTask"}}
+             ) == nil
+
+      assert unset(spec, "bTaskPage", "bCardB", "param_pTask") == :unset
+
+      for id <- ~w(bUnsetShown bUnsetKept) do
+        assert page =~
+                 "TODO(bubble:#{id}) visibility: 1 conditional not lowered (it reads a " <>
+                   "reusable element's property that is not set and has no default: " <>
+                   "element_state:param_pTask); shown as on page load"
+
+        refute page =~
+                 "TODO(bubble:#{id}) visibility: 1 conditional not lowered (it reads page data"
+      end
+
+      # bCardA's own value does not load: what reads it is not loaded.
+      assert page =~
+               "TODO(bubble:bSameTask) visibility: 1 conditional not lowered (it reads page " <>
+                 "data that is not loaded"
+
+      assert unset(spec, "bCard", "bCard", "param_pDue") == {:some, "param_pDue/bCard"}
+
+      assert template =~
+               "TODO(bubble:bDueKnown) visibility: 1 conditional not lowered (it reads page " <>
+                 "data that is not loaded"
+
+      refute template =~ "visible_bdueknown("
+    end
+
+    test "is marked as such for an instance in a repeating group's cell" do
+      # bCardC is in bList's cell and sets no Extra, which has no default.
+      # The page does not read an instance's property from outside in a
+      # cell (`Spec.instance_property/4`), but there is nothing to load.
+      text = %{
+        "id" => "bCellUnset",
+        "type" => "Text",
+        "properties" => %{
+          "height" => 40,
+          "width" => 300,
+          "order" => 4,
+          "text" => %{"type" => "TextExpression", "entries" => %{"0" => "Card C extra known"}}
+        },
+        "states" => %{
+          "0" => %{
+            "type" => "State",
+            "condition" => %{
+              "type" => "GetElement",
+              "properties" => %{"element_id" => "bCardC"},
+              "next" => %{
+                "type" => "Message",
+                "name" => "param_pExtra",
+                "next" => %{"type" => "Message", "name" => "is_empty"}
+              }
+            },
+            "properties" => %{"is_visible" => false}
+          }
+        }
+      }
+
+      app = put_in_app(app(), ~w(pages task elements bList elements bCellUnset), text)
+
+      %{spec: spec, files: files} = build(app)
+      page = files["lib/shop_web/live/task_live.html.heex"]
+
+      assert Spec.read(
+               spec,
+               "bTaskPage",
+               {:element_state, %{"element" => "bCardC", "state" => "param_pExtra"}},
+               "bList"
+             ) == nil
+
+      assert unset(spec, "bTaskPage", "bCardC", "param_pExtra") == :unset
+
+      assert page =~
+               "TODO(bubble:bCellUnset) visibility: 1 conditional not lowered (it reads a " <>
+                 "reusable element's property that is not set and has no default: " <>
+                 "element_state:param_pExtra); shown as on page load"
+
+      # With privacy: :enforced, shown on page load and hidden by its
+      # condition: hidden.
+      %{files: enforced} = build(app, :enforced)
+
+      assert enforced["lib/shop_web/live/task_live.html.heex"] =~
+               "TODO(bubble:bCellUnset) visibility: 1 conditional not lowered (it reads a " <>
+                 "reusable element's property that is not set and has no default: " <>
+                 "element_state:param_pExtra); hidden (privacy: enforced, a conditional may hide it)"
+    end
+
     test "the report counts the conditionals reading one", %{spec: spec} do
       app = app()
       {:ok, model} = Model.build(app)

@@ -472,7 +472,16 @@ decide it wrongly (a panel shown whenever the property differs from
 something). Read from where the instance is, or in a reusable element no
 instance of which sets it, the conditionals are not lowered (a marker,
 counted in `visibility_conditions_unset_property` too) and the element
-keeps its fallback visibility. When only some instances set it, the
+keeps its fallback visibility. This holds whatever the other instances of
+the reusable element set: a value another instance sets that does not
+load leaves `This Reusable's <property>` unloaded (below), but the
+instance with no value has nothing to load, so a condition reading it
+from where it is says so instead of "reads page data that is not
+loaded". The same holds for an instance the page does not read from
+outside (one in a repeating group's cell, or one not rendered, WTF-522):
+a condition reading its property with no value gets this marker and
+fallback too, so with privacy: :enforced it may now be hidden. When only
+some instances set it, the
 helper decides for those, and an instance with no value keeps the
 fallback: `Bubble.set?/3` checks that the instance's scope has a value
 under the property's key, and a value the instance sets (even an empty
