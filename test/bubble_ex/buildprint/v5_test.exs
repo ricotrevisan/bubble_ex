@@ -1033,5 +1033,32 @@ defmodule BubbleEx.Buildprint.V5Test do
       assert app["user_types"]["task"]["display"] == "Task"
       assert diagnostics == []
     end
+
+    test "keeps only the types of the plugins' element states" do
+      plugins = %{
+        "1600000000000x100" => %{
+          "plugin_id" => "1600000000000x100",
+          "human" => "Timer",
+          "html_header" => %{"snippet" => "<script>run()</script>"},
+          "plugin_elements" => %{
+            "AAA" => %{
+              "display" => "Timer",
+              "states" => %{"AAB" => %{"caption" => "Running", "value" => "boolean"}}
+            }
+          }
+        }
+      }
+
+      {app, []} = V5.merge(Map.put(preamble(), "__bp_plugins__", plugins), fragments())
+
+      refute Enum.any?(Map.keys(app), &String.starts_with?(&1, "__bp"))
+
+      assert BubbleEx.Plugins.States.get(app) == %{
+               "1600000000000x100-AAA" => %{"AAB" => %{"value" => "boolean", "is_list" => false}}
+             }
+
+      refute inspect(app) =~ "Running"
+      refute inspect(app) =~ "run()"
+    end
   end
 end

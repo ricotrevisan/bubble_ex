@@ -1196,6 +1196,18 @@ Nothing is dropped silently:
   exactly what it did;
 * a workflow that reads it is `:unavailable_input` residue and refuses to
   start, as before;
+* a plugin element is not migrated (a placeholder), so nothing on the
+  page holds its states: a state its plugin's definition types
+  (`BubbleEx.Plugins.States`, kept from a Buildprint v5 workspace)
+  compiles, but a visibility conditional reading it is not lowered
+  ("it reads the state of a plugin element, which is not migrated",
+  counted in `visibility_conditions_plugin_state`), a value binding is
+  marked ("Text not migrated: reads the state of a plugin element...")
+  and a workflow is `:unavailable_input` residue; none reads it as
+  empty. Without a definition (another export, Bubble's own plugins
+  such as `select2-*`, a type the definition leaves to an unset
+  property) the state stays untyped and the expression does not
+  compile, as before;
 * a reusable instance whose own source is not loaded, while its reusable
   element's reads of its own thing are, is not rendered: a placeholder
   with its markers, and no scope (WTF-522, above).
