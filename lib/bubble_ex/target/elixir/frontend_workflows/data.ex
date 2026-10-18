@@ -29,7 +29,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       a query for the records a list holds is `listed` (read as the user
       may view them). A value the Ash filter cannot compute (a list
       operator, a search, a dynamic text) is computed in Elixir and
-      pinned when the filter needs it
+      pinned when the filter needs it. Where a list capped at
+      `:max_items` would differ, a whole search is read exactly
+      (WTF-565): `is empty` and `count` against 0 read its first record,
+      `contains <thing>` the first record of it constrained to the thing
     * a data source with the conditional states that set one (WTF-521,
       folded by `BubbleEx.PageData`), outside a repeating group's cell, is
       `read: {:switch, %{cases, else}}`: each case `%{when, then}`, a
@@ -1393,8 +1396,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   # A value computed in Elixir, after the queries it reads (WTF-495: a
   # search under a list operator, `query_<n>`), each read as a query is.
+  # Its searches are read exactly where a capped list would differ
+  # (WTF-565, `exact/1`): `is empty`, `contains <thing>`, `count` against 0.
   defp value_source(s, expr, base, ctx, fns) do
-    case compile_value(expr, s, ctx, fns, new_acc()) do
+    case compile_value(%{expr | ir: exact(expr.ir)}, s, ctx, fns, new_acc()) do
       {:ok, compiled, acc} ->
         queries = Enum.reverse(acc.queries)
         compiled = if queries == [], do: compiled, else: Map.put(compiled, :queries, queries)
@@ -1482,6 +1487,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp capped_query?(%{take: take} = q),
     do: (take == :all or match?({:limit, _}, take)) and !Map.get(q, :listed)
 
+  @doc false
+  # `exact/1`, for its tests.
+  @spec exact_ir(IR.t()) :: IR.t()
+  def exact_ir(%IR{} = ir), do: exact(ir)
+
   # The exact reads of a condition: `<search> is empty` is its first
   # record's, `<search> contains <thing>` (`:filtered` included, lowered
   # into the search) the first record of the search constrained to that
@@ -1501,8 +1511,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     list = exact(list)
     item = exact(item)
 
+    # A thing read from a predicate's own item (`This thing`, as in
+    # `<search> contains This Task's project` within a constraint) is not
+    # the constrained search's item: left as it is.
     with {:query, _search, :all} <- query(list),
          true <- Lists.search?(list),
+         false <- reads_item?(item),
          %IR{} = this <- this(list.type) do
       narrowed = Lists.constrain(list, IR.node(:eq, [this, item], "boolean"))
 
@@ -1513,8 +1527,47 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     end
   end
 
+  # `<search>:count` against 0 (`> 0`, `>= 1`, `is not 0`, ...: whether
+  # the search finds anything) is its first record's emptiness: one record
+  # read, not up to `:max_count` keys.
+  defp exact(%IR{op: op, args: [l, r]} = ir) when op in [:eq, :neq, :gt, :gte, :lt, :lte] do
+    l = exact(l)
+    r = exact(r)
+
+    case count_vs_zero(op, l, r) || count_vs_zero(flip(op), r, l) do
+      {list, empty?} ->
+        empty = IR.node(:is_empty, [first(list)], "boolean")
+        node = if empty?, do: empty, else: IR.node(:not, [empty], "boolean")
+        Map.put(node, :path, ir.path)
+
+      nil ->
+        %{ir | args: [l, r]}
+    end
+  end
+
   defp exact(%IR{args: args} = ir),
     do: %{ir | args: Enum.map(args, fn a -> if is_struct(a, IR), do: exact(a), else: a end)}
+
+  # `{list, empty?}` when `count op n` (`count` a whole search's, `n` 0
+  # or 1) tests only whether the search is empty (`empty?`) or not.
+  defp count_vs_zero(op, %IR{op: :count, args: [list]}, %IR{op: :literal, args: [n]})
+       when is_number(n) do
+    case {query(list), op, n == 0, n == 1} do
+      {{:query, _, :all}, o, true, _} when o in [:gt, :neq] -> {list, false}
+      {{:query, _, :all}, o, true, _} when o in [:eq, :lte] -> {list, true}
+      {{:query, _, :all}, :gte, _, true} -> {list, false}
+      {{:query, _, :all}, :lt, _, true} -> {list, true}
+      _ -> nil
+    end
+  end
+
+  defp count_vs_zero(_op, _l, _r), do: nil
+
+  defp flip(:gt), do: :lt
+  defp flip(:lt), do: :gt
+  defp flip(:gte), do: :lte
+  defp flip(:lte), do: :gte
+  defp flip(op), do: op
 
   defp first(%IR{type: type} = list),
     do: IR.node(:first, [list], Lists.item_type(type) || type) |> Map.put(:path, list.path)
@@ -1657,8 +1710,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # A search read as a query stops at `:max_items`: what is shown from it
   # may show less than Bubble, never more. Counting it, taking its last
   # item or subtracting it from a list (`:minus list`) would show a
-  # different count or item, or items Bubble would remove: residue
-  # (`elixir:capped_list`). A listed query reads all of a list's records.
+  # different count or item, or items Bubble would remove, and so would
+  # `contains` over it, or `is empty` over what removes items from it:
+  # residue (`elixir:capped_list`). A whole search's `contains`, `is empty`
+  # and `count` against 0 are read exactly first (`exact/1`, WTF-565). A
+  # listed query reads all of a list's records.
   defp whole_lists(ir, s, acc) do
     capped =
       for q <- acc.queries,
@@ -1684,6 +1740,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   defp needs_whole?(%IR{op: :minus_list, args: [a, b]}, capped),
     do: capped?(b, capped) or needs_whole?(a, capped) or needs_whole?(b, capped)
+
+  # `contains` over a capped list misses what is past it (WTF-565: a
+  # whole search's `contains <thing>` is read exactly first, `exact/1`).
+  defp needs_whole?(%IR{op: op, args: [list | _]} = ir, capped)
+       when op in [:member, :contains_all],
+       do: capped?(list, capped) or Enum.any?(ir.args, &needs_whole?(&1, capped))
+
+  # Emptiness survives a cap through a sort, a merge or `unique`, not
+  # through what removes items: the first records read may all be removed.
+  defp needs_whole?(%IR{op: :is_empty, args: [%IR{op: op} = list]}, capped)
+       when op in [:intersect, :minus_item, :filter],
+       do: capped?(list, capped) or needs_whole?(list, capped)
 
   defp needs_whole?(%IR{args: args}, capped), do: Enum.any?(args, &needs_whole?(&1, capped))
   defp needs_whole?(_arg, _capped), do: false

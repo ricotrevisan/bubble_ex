@@ -249,7 +249,15 @@ other search: a merged list reads at most `:max_items` of each search,
 then shows one page, so it may show less than Bubble, never more. What
 would show more or other than Bubble over such a capped read is residue
 (`elixir:capped_list`): its count, its last item, or subtracting it from
-a list (`:minus list`). A count of searches of one type merged is one
+a list (`:minus list`), `contains` over it, and `is empty` over a list
+that removes items from it (`:intersect`, `:minus item`, an Elixir
+`:filtered`). A whole search is read exactly instead where a capped
+list would differ (WTF-565, as a workflow's condition is): `<search> is
+empty` reads its first record, `<search> contains <thing>` (after
+`:filtered` too) the first record of the search constrained to that
+thing, and `<search>:count` compared to 0 (`> 0`, `>= 1`, `is 0`, ...)
+is whether that first record is empty. Any other count is one count
+query, exact below `:max_count` (10,000) with privacy enforced. A count of searches of one type merged is one
 count query for either's records. A query for a list's records reads
 them as the user may view them (the resource's read action, its count
 too, `BubbleData.listed/2`), as reading the list's things by ID does; a
