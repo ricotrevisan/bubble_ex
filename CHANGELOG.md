@@ -218,8 +218,13 @@ All notable changes to this project are documented here.
   to load, so the conditional now gets the WTF-505 marker ("it reads a
   reusable element's property that is not set and has no default") and
   its fallback: shown as on page load or, with privacy: :enforced, hidden
-  when a conditional may hide it. Another input that is not loaded is
-  still named first. On the private fixture app (counts only), 16
+  when a conditional may hide it. The same applies to an instance the
+  page does not read from outside: one in a repeating group's cell, or
+  one not rendered (WTF-522). Such a read was "page data not loaded" and
+  kept the page-load visibility; with privacy: :enforced it may now be
+  hidden. Another input that is not loaded is still named first, and a
+  property only some instances set stays "page data not loaded" when a
+  value does not load. On the private fixture app (counts only), 16
   visibility markers move from "page data not loaded" to the WTF-505
   marker, all on /meeting (55 to 39; app-wide 147 to 131); one element
   there is now hidden by the privacy fallback.
