@@ -748,6 +748,13 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       assert page =~
                ~s|visible_boutsideshown(Bubble.data(@bubble_data, "bCardA", "param_pNote/bCard"))|
 
+      # Until the page's data loads (the static render, WTF-563) a
+      # condition reading a property keeps the page-load visibility, on
+      # the page and in a reusable element, which gets it from its caller.
+      squashed = String.replace(page, ~r/\s+/, "")
+      assert squashed =~ ~s|hidden={if(@bubble_data_pending,do:true,else:!visible_boutsideshown(|
+      assert squashed =~ "bubble_data_pending={@bubble_data_pending}"
+
       # In a cell where the instance is not rendered per cell, what it sets
       # is marked (WTF-494).
       for p <- ~w(pTitle pTask) do

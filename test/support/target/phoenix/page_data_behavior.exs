@@ -557,6 +557,55 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     refute has_element?(view, ~s([data-bubble-id="bPairB"] [data-bubble-id="bCardTitle"]))
   end
 
+  # Whether the element with Bubble ID `id` renders with `hidden`.
+  defp hidden_in?(html, id) do
+    [open] = Regex.run(~r/<[a-z]+\s[^>]*data-bubble-id="#{id}"[^>]*>/s, html)
+    open =~ ~r/\shidden(\s|>|=)/
+  end
+
+  defp enforced? do
+    privacy = Module.concat(PhxCheck, Privacy)
+
+    Code.ensure_loaded?(privacy) and function_exported?(privacy, :mode, 0) and
+      apply(privacy, :mode, []) == :enforced
+  end
+
+  # WTF-563: the static render has no page data. A conditional reading it
+  # keeps the page-load visibility there (with privacy: :enforced, hidden
+  # when a conditional may hide the element), never decides as if empty.
+  test "the static render keeps the page-load visibility of what reads page data (WTF-563)",
+       %{conn: conn} do
+    on()
+    static = conn |> get("/task/#{@t1}") |> html_response(200)
+    refute static =~ "Title: Bake"
+    # Shown only when the page's task has no title: not on page load.
+    assert hidden_in?(static, "bNoAccess")
+    # Hidden when the page's task has no title: shown on page load, but
+    # with policies hidden until the data says.
+    assert hidden_in?(static, "bHasTask") == enforced?()
+
+    # Connected, the conditionals decide on the loaded task.
+    {:ok, view, html} = live(conn, "/task/#{@t1}")
+    assert html =~ "Title: Bake"
+    assert hidden_in?(html, "bNoAccess")
+    refute hidden_in?(html, "bHasTask")
+
+    assert view |> element(~s([data-bubble-id="bHasTask"])) |> render() =~
+             ~s(data-bubble-visible="true")
+
+    # No task: the "no access" state, once connected.
+    {:ok, _view, html} = live(conn, "/task")
+    refute hidden_in?(html, "bNoAccess")
+    assert hidden_in?(html, "bHasTask")
+
+    # With data access off nothing is pending: the page never loads its
+    # data, and the conditionals decide on it empty, as before.
+    Application.delete_env(:phx_check, PhxCheckWeb.BubbleWorkflows)
+    static = conn |> get("/task/#{@t1}") |> html_response(200)
+    refute hidden_in?(static, "bNoAccess")
+    assert hidden_in?(static, "bHasTask")
+  end
+
   test "go to the current page with a thing replaces the URL's thing (WTF-454)", %{conn: conn} do
     on()
     {:ok, view, html} = live(conn, "/task/#{@t1}")

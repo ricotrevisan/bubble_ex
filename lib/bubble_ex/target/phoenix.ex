@@ -562,6 +562,10 @@ defmodule BubbleEx.Target.Phoenix do
   decided only for the instances that set it, WTF-505);
   `"visibility_conditions_plugin_state"` those of them marked because they
   read a plugin element's state (the plugin element is not migrated);
+  `"visibility_conditions_pending_data"` the compiled ones reading the
+  page's data, which keep their fallback (the page-load visibility, or
+  hidden with privacy: :enforced when they may hide the element) until
+  the data loads (WTF-563: the static render has none);
   `"conditions_other_properties"` the states that set anything else
   (colors, text…), not lowered yet.
   `"assets_<status>"` count `.wtf/assets.json`'s assets by status;
