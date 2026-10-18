@@ -60,6 +60,8 @@ defmodule BubbleEx.Db.OneInterpretationTest do
       "element custom states (`custom.<id>`), not the data model",
     "lib/bubble_ex/target/phoenix/frontend_workflows.ex" =>
       "the generated input-change event's own `value` member, not the data model",
+    "lib/bubble_ex/plugins/states.ex" =>
+      "plugin definitions' element states (their own `value`, a type) and the `list.` wrapping of a list state, as the expression tree types custom states; not the data model",
     "lib/bubble_ex/index/plugins.ex" =>
       "installed plugin IDs and versions under `client_safe.plugins`, not API Connector types",
     "lib/bubble_ex/buildprint/v5.ex" =>

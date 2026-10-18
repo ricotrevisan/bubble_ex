@@ -1,0 +1,325 @@
+{
+  "_id": "plugin-states-fixture",
+  "_comment": "A plugin element is not migrated (a placeholder), so nothing on the page holds its states. Reads of its states, typed from the plugin's definition (`__bubble_ex_plugin_states__`, as BubbleEx.Buildprint.V5 keeps it), are left out, never read as empty: a text is marked, a visibility conditional keeps the page-load visibility, a click workflow whose condition reads one is refused. A button's \"isn't clickable\" conditional reading one stays disabled (fail closed); a conditional that only sets the page-load visibility is dropped, whatever it reads. A state the definition does not declare stays untyped. All data invented. test/support/target/phoenix/plugin_states_behavior.exs",
+  "user_types": {
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": [
+              "email"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "pages": {
+    "index": {
+      "id": "bHome",
+      "name": "index",
+      "type": "Page",
+      "properties": {
+        "title": "Home"
+      },
+      "custom_states": {
+        "label_": {
+          "default_val": "start",
+          "display": "Label",
+          "value": "text"
+        }
+      },
+      "elements": {
+        "bTimer": {
+          "id": "bTimer",
+          "type": "1600000000000x100-AAA",
+          "properties": {
+            "order": 1,
+            "width": 200,
+            "height": 40,
+            "min_height_css": "40px",
+            "AAF": "text"
+          }
+        },
+        "bTimerStatus": {
+          "id": "bTimerStatus",
+          "type": "Text",
+          "properties": {
+            "order": 2,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Status: ",
+                "1": {
+                  "type": "GetElement",
+                  "properties": {
+                    "element_id": "bTimer"
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "get_AAD"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bTimerShown": {
+          "id": "bTimerShown",
+          "type": "Text",
+          "properties": {
+            "order": 3,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Running"
+              }
+            }
+          },
+          "states": {
+            "0": {
+              "type": "State",
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bTimer"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "get_AAB"
+                }
+              },
+              "properties": {
+                "is_visible": false
+              }
+            }
+          }
+        },
+        "bTimerUndeclared": {
+          "id": "bTimerUndeclared",
+          "type": "Text",
+          "properties": {
+            "order": 4,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Undeclared"
+              }
+            }
+          },
+          "states": {
+            "0": {
+              "type": "State",
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bTimer"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "get_AAZ"
+                }
+              },
+              "properties": {
+                "is_visible": false
+              }
+            }
+          }
+        },
+        "bLabel": {
+          "id": "bLabel",
+          "type": "Text",
+          "properties": {
+            "order": 5,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": {
+                  "type": "GetElement",
+                  "properties": {
+                    "element_id": "bHome"
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "custom.label_"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bGo": {
+          "id": "bGo",
+          "type": "Button",
+          "properties": {
+            "order": 6,
+            "width": 120,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Go"
+              }
+            }
+          }
+        },
+        "bPlain": {
+          "id": "bPlain",
+          "type": "Text",
+          "properties": {
+            "order": 7,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Plain"
+              }
+            }
+          }
+        },
+        "bTimerStop": {
+          "id": "bTimerStop",
+          "type": "Button",
+          "properties": {
+            "order": 8,
+            "width": 120,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Stop"
+              }
+            }
+          },
+          "states": {
+            "0": {
+              "type": "State",
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bTimer"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "get_AAB"
+                }
+              },
+              "properties": {
+                "button_disabled": true
+              }
+            }
+          }
+        },
+        "bTimerAlways": {
+          "id": "bTimerAlways",
+          "type": "Text",
+          "properties": {
+            "order": 9,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Always"
+              }
+            }
+          },
+          "states": {
+            "0": {
+              "type": "State",
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bTimer"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "get_AAB"
+                }
+              },
+              "properties": {
+                "is_visible": true
+              }
+            }
+          }
+        }
+      },
+      "workflows": {
+        "wGo": {
+          "id": "wGo",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bGo",
+            "condition": {
+              "type": "GetElement",
+              "properties": {
+                "element_id": "bTimer"
+              },
+              "next": {
+                "type": "Message",
+                "name": "get_AAB"
+              }
+            }
+          },
+          "actions": {
+            "0": {
+              "type": "SetCustomState",
+              "properties": {
+                "custom_state": "custom.label_",
+                "element_id": "bHome",
+                "value": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "clicked"
+                  }
+                }
+              },
+              "id": "wGoa0"
+            }
+          }
+        }
+      }
+    }
+  },
+  "__bubble_ex_plugin_states__": {
+    "1600000000000x100-AAA": {
+      "AAB": {
+        "value": "boolean",
+        "is_list": false
+      },
+      "AAD": {
+        "value": "custom_data_AAF",
+        "is_list": false
+      }
+    }
+  }
+}

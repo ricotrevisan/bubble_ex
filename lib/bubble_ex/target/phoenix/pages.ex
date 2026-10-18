@@ -187,7 +187,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       asset_store: Keyword.get(opts, :asset_store),
       overrides: overrides(frontend),
       flows: flows,
-      enforced?: Map.get(ctx, :enforced?, false)
+      enforced?: Map.get(ctx, :enforced?, false),
+      plugin_elements: plugin_elements(frontend)
     }
 
     base =
@@ -758,6 +759,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         "visibility_conditions_compiled" => 0,
         "visibility_conditions_marked" => 0,
         "visibility_conditions_unset_property" => 0,
+        "visibility_conditions_plugin_state" => 0,
         "conditions_other_properties" => 0
       }
     }
@@ -1958,6 +1960,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           %{bindings: vars} <- [base.expressions[id]],
           %{var: var} = binding <- vars,
           not kept?(binding, surface, base),
+          not plugin_state?(binding, base),
           do: if(kind == :condition and viewer?(binding, base), do: "bubble_viewer", else: var)
 
     own ++ nested_vars(node, surface, by_ref, base, seen)
@@ -2511,7 +2514,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # from the page, see required_vars/2).
   defp binding_slot(node, name, binding, ctx, acc) do
     case ctx.expressions[binding.id] do
-      %{bindings: vars} = compiled when not is_nil(ctx.flows) ->
+      %{bindings: vars} = compiled when is_list(vars) and vars != [] ->
+        case Enum.find(vars, &plugin_state?(&1, ctx)) do
+          nil -> read_slot(node, name, compiled, ctx, acc, binding)
+          var -> plugin_slot(var, node, name, binding, acc)
+        end
+
+      compiled ->
+        read_slot(node, name, compiled, ctx, acc, binding)
+    end
+  end
+
+  defp read_slot(node, name, compiled, ctx, acc, binding) do
+    case compiled do
+      %{bindings: vars} when not is_nil(ctx.flows) ->
         vars
         |> Enum.find(
           &((data_input?(&1.input) or unrendered_input?(&1.input, ctx)) and
@@ -2522,6 +2538,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       compiled ->
         compiled_slot(node, name, compiled, ctx, acc, binding)
     end
+  end
+
+  # A binding reading a plugin element's state: the element is not
+  # migrated, so the value is left out (a marker), never read as empty.
+  defp plugin_slot(%{input: {_kind, ref}}, node, name, binding, acc) do
+    acc =
+      mark(
+        acc,
+        node,
+        "#{name}: reads the state of a plugin element, which is not migrated " <>
+          "(element_state:#{ref["state"]})"
+      )
+
+    residue_slot(node, name, binding, :plugin_state, acc)
   end
 
   # A binding reading page data the page does not load (WTF-420) is a
@@ -2570,6 +2600,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp residue_why(:unloaded), do: "reads data that is not loaded"
   defp residue_why(:uncompiled), do: "expression does not compile"
+
+  defp residue_why(:plugin_state),
+    do: "reads the state of a plugin element, which is not migrated"
+
   defp residue_why(:not_file), do: "not one image or file value"
   defp residue_why(:unlowered), do: "dynamic value not lowered"
 
@@ -2820,7 +2854,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         unset_visibility(node, compiled, states, static, unset_reads(vars, ctx), ctx, acc)
 
       var ->
-        {static, mark_visibility(acc, node, states, unkept(var))}
+        acc = mark_visibility(acc, node, states, unkept(var, ctx))
+
+        if plugin_state?(var, ctx),
+          do: {static, count(acc, "visibility_conditions_plugin_state", states)},
+          else: {static, acc}
     end
   end
 
@@ -2933,15 +2971,40 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp kept_input?(%{input: input}, ctx),
     do: FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell)) != nil
 
-  defp unkept(%{input: {kind, ref} = input}) do
+  defp unkept(%{input: {kind, ref} = input} = var, ctx) do
     what = if kind == :element_state, do: "element_state:" <> to_string(ref["state"]), else: kind
 
-    if data_input?(input),
-      do: "it reads page data that is not loaded: #{what}",
-      else: "it reads a value the page does not keep: #{what}"
+    cond do
+      plugin_state?(var, ctx) ->
+        "it reads the state of a plugin element, which is not migrated: #{what}"
+
+      data_input?(input) ->
+        "it reads page data that is not loaded: #{what}"
+
+      true ->
+        "it reads a value the page does not keep: #{what}"
+    end
   end
 
-  defp unkept(_var), do: "it reads a value the page does not keep"
+  defp unkept(_var, _ctx), do: "it reads a value the page does not keep"
+
+  # A plugin element is not migrated (a placeholder, WTF-520): nothing on
+  # the page holds its states, so a condition reading one is not decided
+  # as if it were empty.
+  defp plugin_state?(%{input: {:element_state, %{"element" => element}}}, ctx),
+    do: MapSet.member?(Map.get(ctx, :plugin_elements, MapSet.new()), element)
+
+  defp plugin_state?(_var, _ctx), do: false
+
+  # The Bubble IDs of the plugin elements on every page and reusable
+  # element (placeholders of a plugin's type).
+  defp plugin_elements(frontend) do
+    for root <- frontend.pages ++ frontend.reusables,
+        %Node{kind: :placeholder} = node <- tree_nodes(root),
+        Payload.plugin_type?(node.attributes["data-placeholder-kind"]),
+        into: MapSet.new(),
+        do: bid(node)
+  end
 
   defp mark_visibility(acc, node, states, why, kept \\ "shown as on page load") do
     noun = if states == 1, do: "conditional", else: "conditionals"
@@ -3078,7 +3141,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       %{bindings: vars} = compiled ->
         cond do
           var = Enum.find(vars, &(not kept_input?(&1, ctx))) ->
-            disabled_closed(node, states, unkept(var), acc)
+            disabled_closed(node, states, unkept(var, ctx), acc)
 
           unset_reads(vars, ctx) != {[], []} ->
             disabled_closed(

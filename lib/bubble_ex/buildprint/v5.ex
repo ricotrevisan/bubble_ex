@@ -65,7 +65,9 @@ defmodule BubbleEx.Buildprint.V5 do
       other members are ignored), so a stub or a `deleted` flag the fragment
       does not carry does not survive. Deleted definitions are kept with
       their `deleted` flag, as Bubble and `BubbleEx.Model` expect. Buildprint's
-      own top-level members (`__bp_*`, `_index`) are dropped, and of
+      own top-level members (`__bp_*`, `_index`) are dropped (of the
+      installed plugins' definitions, `__bp_plugins__`, only the types of
+      their elements' states are kept, `BubbleEx.Plugins.States`), and of
       `settings` only `client_safe` is kept. The app is marked as Bubble
       editor JSON (`BubbleEx.Frontend.EditorGeometry.mark/1`), so
       `BubbleEx.Frontend.normalize/2` reads its layout as Bubble does.
@@ -88,7 +90,8 @@ defmodule BubbleEx.Buildprint.V5 do
   The manifest's `snapshotJsonSha256` hashes Buildprint's serialization of
   the snapshot, which is not reproducible from the stored rows (member
   order and number formatting are not recorded); `load/2` reports whether
-  the canonical JSON of the merged app (without its editor-JSON mark)
+  the canonical JSON of the merged app (without its editor-JSON mark and
+  plugin state types)
   matches it (`snapshot.reproduced`)
   and emits an informational `:buildprint_snapshot_unverified` diagnostic
   when it does not. The per-row hashes above are verified instead.
@@ -104,6 +107,7 @@ defmodule BubbleEx.Buildprint.V5 do
   alias BubbleEx.{CanonicalJson, Diagnostic, Error, Model}
   alias BubbleEx.Buildprint.V5.Sqlite
   alias BubbleEx.Frontend.EditorGeometry
+  alias BubbleEx.Plugins.States, as: PluginStates
 
   # Defined only when the optional `exqlite` dependency is loaded.
   @compile {:no_warn_undefined, Sqlite}
@@ -219,7 +223,9 @@ defmodule BubbleEx.Buildprint.V5 do
           sha256_hex(read.metadata["snapshotJsonSha256"])
 
       reproduced =
-        is_binary(expected) and CanonicalJson.sha256(EditorGeometry.unmark(app)) == expected
+        is_binary(expected) and
+          CanonicalJson.sha256(app |> EditorGeometry.unmark() |> PluginStates.delete()) ==
+            expected
 
       diagnostics =
         merge_diagnostics ++
@@ -251,11 +257,13 @@ defmodule BubbleEx.Buildprint.V5 do
     acc = Enum.reduce(fragments, acc, &apply_fragment/2)
 
     {settings, dropped_settings} = client_safe_only(acc.app["settings"])
+    {plugin_states, dropped_states} = PluginStates.from_definitions(preamble["__bp_plugins__"])
 
     {app, handles} =
       acc.app
       |> put_settings(settings)
       |> drop_buildprint_members()
+      |> PluginStates.put(plugin_states)
       |> redact()
       |> then(fn {app, handles} -> {EditorGeometry.mark(app), handles} end)
 
@@ -285,6 +293,15 @@ defmodule BubbleEx.Buildprint.V5 do
             :buildprint_settings_dropped,
             ["settings"],
             "settings other than client_safe were dropped unread",
+            details: %{count: &1}
+          )
+        ) ++
+        counted(
+          dropped_states,
+          &Diagnostic.new(
+            :buildprint_plugin_states_dropped,
+            ["__bp_plugins__"],
+            "plugin element states whose code or type is not a known form were dropped",
             details: %{count: &1}
           )
         ) ++
