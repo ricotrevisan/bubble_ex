@@ -1666,41 +1666,45 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # (`popup_races/3`).
   defp read_outside?(popup, workflows, page_data, ctx) do
     ids = for {id, _} <- ctx.raw_elements, within?(id, popup, ctx), do: ~s("#{id}")
-    inner = List.delete(ids, ~s("#{popup}"))
 
-    names? = fn term, ids ->
-      ids != [] and
-        String.contains?(inspect(term, limit: :infinity, printable_limit: :infinity), ids)
-    end
+    nodes_read?(popup, ids, ctx) or sources_read?(popup, ids, page_data, ctx) or
+      workflows_read?(popup, ids, workflows, ctx)
+  end
 
-    nodes? =
-      Enum.any?(ctx.nodes, fn {id, node} ->
-        not within?(id, popup, ctx) and
-          names?.(
-            {node.bindings, node.content, node.attributes, without_parent_record(node.unmapped)},
-            ids
-          )
+  defp names?(_term, []), do: false
+
+  defp names?(term, ids),
+    do: String.contains?(inspect(term, limit: :infinity, printable_limit: :infinity), ids)
+
+  defp nodes_read?(popup, ids, ctx) do
+    Enum.any?(ctx.nodes, fn {id, node} ->
+      not within?(id, popup, ctx) and
+        names?(
+          {node.bindings, node.content, node.attributes, without_parent_record(node.unmapped)},
+          ids
+        )
+    end)
+  end
+
+  defp sources_read?(_popup, _ids, nil, _ctx), do: false
+
+  defp sources_read?(popup, ids, page_data, ctx),
+    do:
+      Enum.any?(page_data.sources, fn s ->
+        not within?(s.element, popup, ctx) and names?(s.value, ids)
       end)
 
-    sources? =
-      page_data != nil and
-        Enum.any?(page_data.sources, fn s ->
-          not within?(s.element, popup, ctx) and names?.(s.value, ids)
-        end)
-
+  defp workflows_read?(popup, ids, workflows, ctx) do
+    inner = List.delete(ids, ~s("#{popup}"))
     by_id = Map.new(workflows, &{&1.bubble_id, &1})
     callers = starts_callers(workflows)
 
-    workflows? =
-      Enum.any?(workflows, fn w ->
-        {before, later} = split_at_display(w.steps, popup)
+    Enum.any?(workflows, fn w ->
+      {before, later} = split_at_display(w.steps, popup)
 
-        not while_open?(w, popup, by_id, callers, MapSet.new(), ctx) and
-          (names?.(w.condition, ids) or names?.(reads(before), ids) or
-             names?.(reads(later), inner))
-      end)
-
-    nodes? or sources? or workflows?
+      not while_open?(w, popup, by_id, callers, MapSet.new(), ctx) and
+        (names?(w.condition, ids) or names?(reads(before), ids) or names?(reads(later), inner))
+    end)
   end
 
   # An element's unmapped keys without the editor's `current_parent`
