@@ -120,6 +120,35 @@ defmodule BubbleEx.Expression.TypingTest do
       assert :unknown = context.(%{"parameter_name" => %{"type" => "CurrentUser"}})
     end
 
+    test "a breakpoint is a number: its width in the app's breakpoint settings" do
+      settings = %{
+        "client_safe" => %{
+          "responsive_breakpoints" => %{"built-in-tablet" => %{"size" => 992}}
+        }
+      }
+
+      tree = app() |> Map.put("settings", settings) |> Tree.build()
+      assert Tree.breakpoint(tree, "built-in-tablet") == 992
+      assert Tree.breakpoint(tree, "built-in-mobile") == nil
+
+      known = src("Breakpoint", %{"breakpoint_id" => "built-in-tablet"})
+      {ast, []} = typed(known, tree: tree)
+      assert %Scope{kind: :breakpoint, type: "number"} = ast
+      assert {:constant, 992, "number"} = Typing.context(ast, env(tree: tree))
+
+      # Not in the settings: untyped, Bubble's default widths not assumed.
+      {ast, [diag]} =
+        typed(src("Breakpoint", %{"breakpoint_id" => "built-in-mobile"}), tree: tree)
+
+      assert %Scope{type: nil} = ast
+
+      assert diag.details == %{
+               scope: :breakpoint,
+               source: "Breakpoint",
+               reason: :breakpoint_not_in_settings
+             }
+    end
+
     test "an untyped context source is diagnosed" do
       {ast, [diag]} = typed(chain(src("ElementParent"), [msg("title_text")]), host: "bP1")
       assert %Property{type: nil} = ast

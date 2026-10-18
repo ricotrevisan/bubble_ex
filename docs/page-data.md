@@ -800,6 +800,17 @@ otherwise decide on an empty width. The page's `workflows.ex` is
 scaffolded once: an app generated before this keeps its `@surface`
 without `page_width: true` until it is added by hand.
 
+A width compared to a named breakpoint (`Current page width < Tablet`,
+`Current page width >= Custom and …`) compares it to that breakpoint's
+width in pixels, from the app's breakpoint settings
+(`settings.client_safe.responsive_breakpoints`: built-in and custom
+breakpoints alike, each with its `size`, the width the breakpoints'
+media rules read too). The width is fixed when the app is compiled
+(`Expression.Tree.breakpoints`, typed as a number). A breakpoint the
+settings do not define, or define without a size, does not compile
+(`expr_untyped_scope`, `reason: :breakpoint_not_in_settings`): Bubble's
+default widths are not assumed.
+
 ## Reusable instances in repeating group cells (WTF-494)
 
 A reusable-element instance in a repeating group's cell is rendered once

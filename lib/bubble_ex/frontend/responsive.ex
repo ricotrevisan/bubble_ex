@@ -72,12 +72,8 @@ defmodule BubbleEx.Frontend.Responsive do
   defp breakpoint_width(width, _breakpoints) when is_number(width) and width >= 0,
     do: {:ok, width}
 
-  defp breakpoint_width(%{"%x" => "Breakpoint", "%p" => %{"breakpoint_id" => id}}, breakpoints) do
-    case breakpoints[id] do
-      %{"size" => width} when is_number(width) and width >= 0 -> {:ok, width}
-      _ -> :error
-    end
-  end
+  defp breakpoint_width(%{"%x" => "Breakpoint", "%p" => %{"breakpoint_id" => id}}, breakpoints),
+    do: width(breakpoints[id])
 
   defp breakpoint_width(_value, _breakpoints), do: :error
 
@@ -88,6 +84,24 @@ defmodule BubbleEx.Frontend.Responsive do
       _ -> %{}
     end
   end
+
+  @doc """
+  The width of each of the app's breakpoints (`settings.client_safe.
+  responsive_breakpoints`, built-in and custom alike): breakpoint ID =>
+  its `size` in pixels. A breakpoint without a usable size is left out;
+  no default width is assumed for it.
+  """
+  @spec widths(map()) :: %{String.t() => number()}
+  def widths(payload) do
+    for {id, breakpoint} <- breakpoints(payload),
+        is_binary(id),
+        {:ok, width} <- [width(breakpoint)],
+        into: %{},
+        do: {id, width}
+  end
+
+  defp width(%{"size" => width}) when is_number(width) and width >= 0, do: {:ok, width}
+  defp width(_breakpoint), do: :error
 
   @spec extra_lengths(map()) :: map()
   def extra_lengths(overrides) do

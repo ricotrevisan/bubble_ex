@@ -142,6 +142,40 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     refute open =~ ~r/\shidden(\s|>|=)/
   end
 
+  test "a width compared to a breakpoint follows the app's breakpoint width", %{conn: conn} do
+    # bBpTablet: hidden below the app's Tablet (992); bBpWideTab: shown
+    # from the custom breakpoint (640) up, with the tab open.
+    {:ok, view, _html} =
+      conn |> put_connect_params(%{"bubble_page_width" => 1024}) |> live("/cells?tab=open")
+
+    refute hidden?(view, "bBpTablet")
+    refute hidden?(view, "bBpWideTab")
+
+    report_width(view, 991)
+    assert hidden?(view, "bBpTablet")
+    refute hidden?(view, "bBpWideTab")
+
+    report_width(view, 992)
+    refute hidden?(view, "bBpTablet")
+
+    report_width(view, 639)
+    assert hidden?(view, "bBpTablet")
+    assert hidden?(view, "bBpWideTab")
+
+    report_width(view, 640)
+    refute hidden?(view, "bBpWideTab")
+
+    # The other condition false: the width alone shows nothing.
+    {:ok, view, _html} =
+      conn |> put_connect_params(%{"bubble_page_width" => 1024}) |> live("/cells")
+
+    assert hidden?(view, "bBpWideTab")
+
+    # A breakpoint the app does not define: as on page load, whatever the width.
+    report_width(view, 100)
+    refute hidden?(view, "bBpMissing")
+  end
+
   defp disabled?(view, id) do
     html = view |> element(~s([data-bubble-id="#{id}"])) |> render()
     [open] = Regex.run(~r/\A<[^>]*>/s, html)

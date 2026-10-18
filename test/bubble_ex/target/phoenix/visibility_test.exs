@@ -281,7 +281,10 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
 
     residue = Frontend.residue(frontend, expressions)
 
+    # bBpMissing's breakpoint is not in the app's settings (see the
+    # breakpoint test).
     assert residue == [
+             %{subject: "element:bBpMissing", reason: :element_condition, detail: %{states: 1}},
              %{subject: "element:bBad", reason: :element_condition, detail: %{states: 1}}
            ]
 
@@ -388,6 +391,58 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     assert files["lib/shop_web/live/cells_live/workflows.ex"] =~ "page_width: true"
   end
 
+  test "a width compared to a breakpoint reads the breakpoint's width in the app's settings",
+       %{files: files} do
+    template = files["lib/shop_web/live/cells_live.html.heex"]
+    live = files["lib/shop_web/live/cells_live.ex"]
+
+    # `Current page width < Tablet`: the app's Tablet is 992 pixels.
+    assert tag(template, "bBpTablet") =~ "hidden={!visible_bbptablet(@bubble_page_width)}"
+
+    assert live =~ """
+             defp visible_bbptablet(page_data_current_page_width) do
+               cond do
+                 is_nil(page_data_current_page_width) -> true
+                 Shop.Bubble.Runtime.compare(:lt, page_data_current_page_width, 992) == true -> false
+                 true -> true
+               end
+             end
+           """
+
+    # With another condition: a custom breakpoint (640) and the URL.
+    assert tag(template, "bBpWideTab") =~
+             ~s|hidden={!visible_bbpwidetab(@bubble_page_width, Map.get(@bubble_url, "tab"))}|
+
+    assert squash(live) =~
+             squash("""
+             (Shop.Bubble.Runtime.compare(:gte, page_data_current_page_width, 640) and
+                Shop.Bubble.Runtime.unhidden(url_parameter_tab) == "open") == true ->
+               true
+             """)
+
+    # A breakpoint the app's settings do not define (here the built-in
+    # Mobile) does not compile: Bubble's default widths are not assumed.
+    assert template =~
+             "TODO(bubble:bBpMissing) visibility: 1 conditional not lowered (it does not compile)"
+
+    refute live =~ "visible_bbpmissing"
+  end
+
+  test "without breakpoint settings, no breakpoint compiles", %{} do
+    template =
+      app()
+      |> Map.delete("settings")
+      |> build()
+      |> Map.fetch!(:files)
+      |> Map.fetch!("lib/shop_web/live/cells_live.html.heex")
+
+    for id <- ~w(bBpTablet bBpWideTab bBpMissing) do
+      assert template =~
+               "TODO(bubble:#{id}) visibility: 1 conditional not lowered (it does not compile)",
+             id
+    end
+  end
+
   test "other page values a condition reads do not compile", %{} do
     for name <- ["Current Page Name", "Current Date/Time"] do
       template =
@@ -416,12 +471,13 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     # URL and loads no data: bFlagged's, bFlagOff's, bOpen's,
     # bCellNoProject's, bHasProject's, bTabOpen's, bCardTab's,
     # bBadgeTab's and the width's (bWidth, bNarrowTab, bBadgeNarrow and
-    # the cells page's five) conditionals are marked too (bKeep's only
-    # repeats its visibility on page load: compiled, whatever it reads).
-    # The panel's two "isn't clickable" states are other properties.
+    # the cells page's five, and its three breakpoint tests) conditionals
+    # are marked too (bKeep's only repeats its visibility on page load:
+    # compiled, whatever it reads). The panel's two "isn't clickable"
+    # states are other properties.
     assert %{
              "visibility_conditions_compiled" => 9,
-             "visibility_conditions_marked" => 17,
+             "visibility_conditions_marked" => 20,
              "conditions_other_properties" => 4
            } = report
   end

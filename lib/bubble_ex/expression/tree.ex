@@ -19,8 +19,15 @@ defmodule BubbleEx.Expression.Tree do
   its `id`, and its map key when that differs). Types are Bubble descriptors
   (`"custom.task"`, `"list.text"`, `"option.status"`), kept as supplied.
   Reads either key form for the members it uses.
+
+  It also keeps the width of each of the app's breakpoints
+  (`breakpoints`: breakpoint ID => pixels, from the app's
+  `settings.client_safe.responsive_breakpoints`,
+  `BubbleEx.Frontend.Responsive.widths/1`), which a `Breakpoint` value
+  (`Current page width < Tablet`) reads.
   """
 
+  alias BubbleEx.Frontend.Responsive
   alias BubbleEx.Plugins.States, as: PluginStates
   alias BubbleEx.Workflows.Source
 
@@ -89,9 +96,12 @@ defmodule BubbleEx.Expression.Tree do
           }
   end
 
-  defstruct nodes: %{}
+  defstruct nodes: %{}, breakpoints: %{}
 
-  @type t :: %__MODULE__{nodes: %{String.t() => Node.t()}}
+  @type t :: %__MODULE__{
+          nodes: %{String.t() => Node.t()},
+          breakpoints: %{String.t() => number()}
+        }
 
   @sections [
     {~w(pages %p3), :page},
@@ -130,7 +140,7 @@ defmodule BubbleEx.Expression.Tree do
         acc -> Map.put_new(acc, node.id, node)
       end
 
-    %__MODULE__{nodes: nodes}
+    %__MODULE__{nodes: nodes, breakpoints: Responsive.widths(app)}
   end
 
   def build(_), do: %__MODULE__{}
@@ -139,6 +149,13 @@ defmodule BubbleEx.Expression.Tree do
   @spec node(t(), String.t() | nil) :: Node.t() | nil
   def node(%__MODULE__{nodes: nodes}, id) when is_binary(id), do: Map.get(nodes, id)
   def node(_tree, _id), do: nil
+
+  @doc "The width in pixels of the app's breakpoint `id`, or nil when the app has no such breakpoint."
+  @spec breakpoint(t(), term()) :: number() | nil
+  def breakpoint(%__MODULE__{breakpoints: breakpoints}, id) when is_binary(id),
+    do: Map.get(breakpoints, id)
+
+  def breakpoint(_tree, _id), do: nil
 
   @doc "The enclosing nodes of `id`, innermost first (not including `id` itself)."
   @spec ancestors(t(), String.t() | nil) :: [Node.t()]

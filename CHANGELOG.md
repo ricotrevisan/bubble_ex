@@ -6,6 +6,19 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **A width compared to a named breakpoint compiles.** A conditional
+  such as `Current page width < Tablet` (kept as an element conditional,
+  or with another condition) did not compile: the `Breakpoint` value had
+  no type (`expr_untyped_scope`). It is now a number, the breakpoint's
+  width in the app's breakpoint settings
+  (`settings.client_safe.responsive_breakpoints`, built-in and custom
+  breakpoints alike), fixed when the app is compiled
+  (`Expression.Tree.breakpoints`), and the conditional reads the
+  viewport's width as other width tests do (WTF-520). A breakpoint the
+  settings do not define, or define without a size, still does not
+  compile, with `reason: :breakpoint_not_in_settings`: Bubble's default
+  widths are not assumed.
+
 - **Plugin code can be scanned for secrets (WTF-560).** A page's
   `static.js` holds Bubble's runtime and every installed plugin's
   definition and client-side code, which scans never read.

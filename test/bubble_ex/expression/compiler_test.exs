@@ -580,6 +580,57 @@ defmodule BubbleEx.Expression.CompilerTest do
     end
   end
 
+  describe "breakpoints" do
+    # The app's breakpoint settings, built-in and custom alike.
+    defp breakpoint_tree do
+      settings = %{
+        "client_safe" => %{
+          "responsive_breakpoints" => %{
+            "built-in-tablet" => %{"builtin" => true, "name" => "Tablet", "size" => 992},
+            "custom_bpA" => %{"builtin" => false, "name" => "Custom", "size" => 640},
+            "no_size" => %{"builtin" => false, "name" => "Custom"}
+          }
+        }
+      }
+
+      app() |> Map.put("settings", settings) |> BubbleEx.Expression.Tree.build()
+    end
+
+    defp width_vs(op, id) do
+      chain(src("PageData", %{"name" => "Current Page Width"}), [
+        msg(op, src("Breakpoint", %{"breakpoint_id" => id}))
+      ])
+    end
+
+    defp width, do: n(:input, [:page_data, %{"name" => "Current Page Width"}], "number")
+
+    test "a breakpoint is its width in the app's settings, a number" do
+      tree = breakpoint_tree()
+
+      assert ir(width_vs("less_than", "built-in-tablet"), tree: tree) ==
+               n(:lt, [width(), lit(992, "number")], "boolean")
+
+      assert ir(width_vs("greater_or_equal_than", "custom_bpA"), tree: tree) ==
+               n(:gte, [width(), lit(640, "number")], "boolean")
+    end
+
+    test "a breakpoint the settings do not define, or define without a width, does not compile" do
+      tree = breakpoint_tree()
+
+      for id <- ["built-in-mobile", "no_size"] do
+        assert %{ir: nil, diagnostics: [diag]} = compile(width_vs("less_than", id), tree: tree)
+        assert diag.code == :expr_untyped_scope
+        assert diag.details.reason == :breakpoint_not_in_settings
+        assert diag.message =~ ~s(breakpoint "#{id}")
+        assert diag.message =~ "default widths are not assumed"
+      end
+
+      # An app without breakpoint settings: none is known.
+      assert %{ir: nil, diagnostics: [%{details: %{reason: :breakpoint_not_in_settings}}]} =
+               compile(width_vs("less_than", "built-in-tablet"))
+    end
+  end
+
   describe "not compiled" do
     test "a raw operator, with its pointer" do
       raw = chain(cu(), [msg("name_text"), msg("mystery", "x")])
