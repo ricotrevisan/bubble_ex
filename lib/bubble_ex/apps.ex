@@ -14,6 +14,7 @@ defmodule BubbleEx.Apps do
   # Types
   @type fetch_option ::
           {:include_payload, boolean()}
+          | {:include_static_js, boolean()}
           | {:include_db_diagram, boolean()}
           | {:try_test, boolean()}
           | {:username, String.t()}
@@ -37,6 +38,8 @@ defmodule BubbleEx.Apps do
   @type app_attrs :: %{
           optional(:schema_diagnostics) => [BubbleEx.Diagnostic.t()],
           optional(:dbml_diagnostics) => [BubbleEx.Diagnostic.t()],
+          optional(:static_js) => String.t() | nil,
+          optional(:static_js_error) => Error.t(),
           app_plan: app_plan(),
           bubble_id: String.t(),
           url: String.t() | nil,
@@ -133,6 +136,11 @@ defmodule BubbleEx.Apps do
 
   ## Options
     * `:include_payload` - Include full app payload. Defaults to `false`.
+    * `:include_static_js` - Also fetch the page's `static.js` (the installed
+      plugins' definitions and client-side code) into `:static_js`, for secret
+      scanning (`BubbleEx.StaticJs`). Best-effort: when it cannot be found or
+      fetched, `:static_js` is nil and `:static_js_error` says why; the app
+      fetch still succeeds. Defaults to `false`.
     * `:include_db_diagram` - Include database diagram. Defaults to `false`.
     * `:try_test` - Try test version if live fails. Defaults to `true`.
     * `:username` - Username for authentication.
@@ -199,7 +207,8 @@ defmodule BubbleEx.Apps do
         with {:ok, dynamic_js_url} <- Parser.extract_dynamic_js_url(initial_payload),
              {:ok, app_payload} <- fetch_script(dynamic_js_url, opts),
              {:ok, app_data} <- Parser.parse_app_json(app_payload.body) do
-          {:ok, build_app_attrs(app_data, initial_payload, url, opts)}
+          attrs = build_app_attrs(app_data, initial_payload, url, opts)
+          {:ok, maybe_add_static_js(attrs, initial_payload, opts)}
         end
 
       {:error, %Error{kind: :request_failed, context: %{reason: :nxdomain}} = error} ->
@@ -232,9 +241,47 @@ defmodule BubbleEx.Apps do
          {:ok, %{"_id" => ^bubble_id} = app_data} <- Parser.parse_app_json(app_payload.body),
          true <- Map.get(app_data, "app_version", version) == version do
       Logger.info("Fetched #{bubble_id} (#{version}) bundle directly; its page redirect is dead")
-      {:ok, build_app_attrs(app_data, %{app_payload | domain: host}, url, opts)}
+      attrs = build_app_attrs(app_data, %{app_payload | domain: host}, url, opts)
+      {:ok, maybe_add_static_js(attrs, nil, opts)}
     else
       _ -> {:error, page_error}
+    end
+  end
+
+  # `static.js` is named only by the landing page; the direct bundle fallback
+  # has none, so it reports the script as not found.
+  defp maybe_add_static_js(attrs, initial_payload, opts) do
+    if Keyword.get(opts, :include_static_js, false) do
+      case fetch_static_js(initial_payload, opts) do
+        {:ok, body} -> Map.put(attrs, :static_js, body)
+        {:error, error} -> Map.merge(attrs, %{static_js: nil, static_js_error: error})
+      end
+    else
+      attrs
+    end
+  end
+
+  defp fetch_static_js(nil, _opts) do
+    {:error,
+     Error.new(:parse_failed, "could not find the app's static_js script", %{
+       phase: :discover_static_js,
+       reason: :no_landing_page
+     })}
+  end
+
+  defp fetch_static_js(initial_payload, opts) do
+    with {:ok, static_js_url} <- Parser.extract_static_js_url(initial_payload),
+         {:ok, %{body: body}} when is_binary(body) <- fetch_script(static_js_url, opts) do
+      {:ok, body}
+    else
+      {:error, %Error{} = error} ->
+        {:error, error}
+
+      _ ->
+        {:error,
+         Error.new(:parse_failed, "the app's static_js script is not text", %{
+           phase: :fetch_static_js
+         })}
     end
   end
 

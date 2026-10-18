@@ -6,6 +6,16 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Plugin code can be scanned for secrets (WTF-560).** A page's
+  `static.js` holds Bubble's runtime and every installed plugin's
+  definition and client-side code, which scans never read.
+  `BubbleEx.fetch_app/2` takes `include_static_js: true` and returns its
+  text as `:static_js` (best-effort: nil plus `:static_js_error` when it
+  cannot be found or fetched; the app fetch still succeeds).
+  `BubbleEx.StaticJs.scan/2` runs TruffleHog over it and adds to each
+  finding where it is (`"StaticJs"`: a marketplace plugin with its ID and
+  name, a plugin Bubble ships, or Bubble's runtime).
+
 - **A plugin element's states are typed, and what reads them says why it
   is left out.** An expression reading a plugin element's state (`Timer's
   running`) did not compile: the app JSON does not say what a plugin's
