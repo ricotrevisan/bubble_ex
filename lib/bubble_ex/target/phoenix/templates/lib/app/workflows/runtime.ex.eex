@@ -395,27 +395,50 @@ defmodule <%= @module %>.Workflows.Runtime do
 
   def load_page([%{__struct__: resource} | _] = values, loads, ctx, cap, opts) do
     if Enum.all?(values, &match?(%{__struct__: ^resource}, &1)) do
-      page_load(values, resource, loads, ctx, cap, opts)
+      values |> page_load(resource, loads, ctx, cap, opts) |> elem(1)
     else
       Enum.map(values, &load_page(&1, loads, ctx, cap, opts))
     end
   end
 
   def load_page(%{__struct__: resource} = value, loads, ctx, cap, opts),
-    do: page_load(value, resource, loads, ctx, cap, opts)
+    do: value |> page_load(resource, loads, ctx, cap, opts) |> elem(1)
 
   def load_page(value, _loads, _ctx, _cap, _opts), do: value
+
+  @doc """
+  As `load_page/5`, tagged: `{:error, value}` when the load failed (its
+  relationships read as empty, logged), else `{:ok, value}`.
+  """
+  def load_page_result(value, loads, ctx, cap, opts \\ [])
+
+  def load_page_result([%{__struct__: resource} | _] = values, loads, ctx, cap, opts)
+      when loads != [] do
+    if Enum.all?(values, &match?(%{__struct__: ^resource}, &1)),
+      do: page_load(values, resource, loads, ctx, cap, opts),
+      else: {:ok, load_page(values, loads, ctx, cap, opts)}
+  end
+
+  def load_page_result(%{__struct__: resource} = value, loads, ctx, cap, opts) when loads != [],
+    do: page_load(value, resource, loads, ctx, cap, opts)
+
+  def load_page_result(value, loads, ctx, cap, opts),
+    do: {:ok, load_page(value, loads, ctx, cap, opts)}
+
+  @doc "`value` with the relationships `loads` asks for empty, as when their load fails."
+  def unloaded_page(value, loads), do: empty(value, load_statement(loads))
 
   defp page_load(value, resource, loads, ctx, cap, opts) do
     statement = page_load_statement(resource, load_statement(loads), cap)
     lazy? = Keyword.get(opts, :lazy?, false)
 
     case Ash.load(value, statement, actor: ctx.actor, authorize?: true, lazy?: lazy?) do
-      {:ok, loaded} -> loaded
-      {:error, error} -> unloaded(value, statement, error)
+      {:ok, loaded} -> {:ok, loaded}
+      {:error, error} -> {:error, unloaded(value, statement, error)}
     end
   rescue
-    error -> unloaded(value, page_load_statement(resource, load_statement(loads), cap), error)
+    error ->
+      {:error, unloaded(value, page_load_statement(resource, load_statement(loads), cap), error)}
   end
 
   # A load that failed fails closed (logged): the relationships it was

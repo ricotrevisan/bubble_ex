@@ -1178,16 +1178,15 @@ defmodule <%= @web %>.BubbleData do
 
   # Values (a thing, a list of things, anything else) with relationships
   # `loads` loaded, one load per resource for all of them; in order.
-  defp load_values(values, loads, actor, opts \\ [])
-  defp load_values(values, [], _actor, _opts), do: values
+  defp load_values(values, [], _actor), do: values
 
-  defp load_values(values, loads, actor, opts) do
+  defp load_values(values, loads, actor) do
     by_resource =
       values
       |> Enum.flat_map(&records_in/1)
       |> Enum.group_by(& &1.__struct__)
       |> Map.new(fn {resource, records} ->
-        {resource, load_page(records, loads, actor, opts)}
+        {resource, load_page(records, loads, actor)}
       end)
 
     {loaded, _} = Enum.map_reduce(values, by_resource, &take_loaded/2)
@@ -1753,28 +1752,169 @@ defmodule <%= @web %>.BubbleData do
 
   # The current user with `loads`, read as the current user: once per read
   # of the page's data (`read_pass/1`, WTF-501) for the same paths, however
-  # many sources read them. Kept with the actor it was read as (the very
+  # many sources read them, each relationship on its own
+  # (`by_relationship/5`). Kept with the actor it was read as (the very
   # term), never served for another.
   defp actor_loads(actor, loads) do
-    once({:actor, Enum.sort(loads)}, actor, fn ->
-      Runtime.load_page(actor, loads, Runtime.root(nil, actor), related_cap())
+    by_relationship(actor, loads, actor, &{:actor, &1}, fn paths ->
+      Runtime.load_page_result(actor, paths, Runtime.root(nil, actor), related_cap())
     end)
   end
 
   # `value`'s relationships `loads` (paths of names), read as `actor` with
   # the related lists capped (`related_cap/0`): once per read of the
-  # page's data for the very same value and loads (`once/3`, WTF-501), so
+  # page's data (WTF-501) for the same records and relationship, so
   # sources (or the instances of one reusable element in a list's cells)
-  # showing the same records load their relationships once.
-  defp load_page(value, loads, actor, opts \\ [])
-  defp load_page(value, [], _actor, _opts), do: value
-  defp load_page(value, _loads, _actor, _opts) when value in [nil, []], do: value
+  # showing the same records load their relationships once. The same
+  # records are the same attributes (`attributes_key/2`): a record keeps
+  # its ID and attributes however many relationships an earlier load left
+  # on it (WTF-559). Anything else (a mixed list) is kept by the very
+  # term and loads (`once/3`).
+  defp load_page(value, [], _actor), do: value
+  defp load_page(value, _loads, _actor) when value in [nil, []], do: value
 
-  defp load_page(value, loads, actor, opts) do
-    once({:load, value, loads, opts}, actor, fn ->
-      Runtime.load_page(value, loads, Runtime.root(nil, actor), related_cap(), opts)
-    end)
+  defp load_page(value, loads, actor) do
+    case attributes_key(value) do
+      nil ->
+        once({:load, value, loads}, actor, fn ->
+          Runtime.load_page(value, loads, Runtime.root(nil, actor), related_cap())
+        end)
+
+      key ->
+        by_relationship(value, loads, actor, &{:load_relationship, key, &1}, fn paths ->
+          Runtime.load_page_result(value, paths, Runtime.root(nil, actor), related_cap())
+        end)
+    end
   end
+
+  # `value` (a record, or a list of one resource's records) with `loads`,
+  # kept per relationship in a read pass (WTF-559): the paths under each
+  # relationship it starts from (sorted, those another path extends
+  # dropped) are kept on their own, as `key.(paths)` with `actor`, so a
+  # load of `parent` and one of `parent` and `workspace` read `parent`
+  # once. What is not kept yet is one load (`load.(paths)`, tagged as
+  # `Runtime.load_page_result/5`). The same as one load of all the paths:
+  # a relationship's statement (its limit, its nested loads) depends only
+  # on its own paths (`Runtime.load_page/5`), and when one relationship
+  # fails to load, every relationship asked for reads as empty. Outside a
+  # pass, where nothing is kept, one load reads them all.
+  defp by_relationship(value, loads, actor, key, load) do
+    case Process.get(@pass) do
+      %{} = pass ->
+        groups =
+          loads
+          |> Enum.reject(&(&1 == []))
+          |> Enum.group_by(&hd/1)
+          |> Enum.sort()
+          |> Enum.map(fn {name, paths} -> {String.to_existing_atom(name), longest(paths)} end)
+
+        kept =
+          for {_name, paths} <- groups,
+              {:ok, {^actor, result}} <- [Map.fetch(pass, key.(paths))],
+              into: %{},
+              do: {paths, result}
+
+        missing = for {_name, paths} <- groups, not Map.has_key?(kept, paths), do: paths
+
+        loaded =
+          if Enum.all?(Map.values(kept), &match?({:ok, _}, &1)),
+            do: load_missing(missing, actor, key, load),
+            else: :error
+
+        case loaded do
+          {:ok, results} ->
+            results = Map.merge(kept, results)
+
+            Enum.reduce(groups, value, fn {name, paths}, acc ->
+              put_loaded(acc, elem(Map.fetch!(results, paths), 1), name)
+            end)
+
+          :error ->
+            Runtime.unloaded_page(value, loads)
+        end
+
+      _ ->
+        elem(load.(loads), 1)
+    end
+  end
+
+  # The relationships not kept yet, loaded together and kept each
+  # (`{:ok, loaded}`, or `:error` for one that failed to load):
+  # `{:ok, results}`, or `:error` when the load failed. When the load of
+  # several fails, each is loaded on its own to keep which one failed:
+  # the others may be asked for without it later.
+  defp load_missing([], _actor, _key, _load), do: {:ok, %{}}
+
+  defp load_missing(missing, actor, key, load) do
+    {results, outcome} =
+      case load.(Enum.concat(missing)) do
+        {:ok, loaded} -> {Map.new(missing, &{&1, {:ok, loaded}}), :ok}
+        {:error, _} when length(missing) == 1 -> {Map.new(missing, &{&1, :error}), :error}
+        {:error, _} -> {Map.new(missing, &{&1, load_alone(load, &1)}), :error}
+      end
+
+    pass =
+      Enum.reduce(results, Process.get(@pass), fn {paths, result}, acc ->
+        Map.put(acc, key.(paths), {actor, result})
+      end)
+
+    Process.put(@pass, pass)
+    if outcome == :ok, do: {:ok, results}, else: :error
+  end
+
+  defp load_alone(load, paths) do
+    case load.(paths) do
+      {:ok, loaded} -> {:ok, loaded}
+      {:error, _} -> :error
+    end
+  end
+
+  # The paths no other path extends, sorted: the same load statement.
+  defp longest(paths) do
+    paths
+    |> Enum.uniq()
+    |> Enum.reject(fn p ->
+      Enum.any?(paths, &(length(&1) > length(p) and Enum.take(&1, length(p)) == p))
+    end)
+    |> Enum.sort()
+  end
+
+  # `loaded`'s relationship `name` on `value` (the same records, in
+  # order), and the attributes the load read that `value` had not.
+  defp put_loaded(values, loaded, name) when is_list(values) and is_list(loaded),
+    do: Enum.zip_with(values, loaded, &put_loaded(&1, &2, name))
+
+  defp put_loaded(%{__struct__: resource} = record, %{__struct__: resource} = loaded, name) do
+    unread =
+      for {key, %Ash.NotLoaded{}} <- Map.take(record, attribute_names(resource)),
+          do: {key, Map.get(loaded, key)}
+
+    record |> Map.put(name, Map.get(loaded, name)) |> Map.merge(Map.new(unread))
+  end
+
+  defp put_loaded(_value, loaded, _name), do: loaded
+
+  # What a relationship load reads of `value`: its resource and each
+  # record's attributes (the ID and the source attributes among them,
+  # hidden fields as they were read), never its loaded relationships;
+  # nil when the term itself decides (see `load_page/3`).
+  defp attributes_key(%{__struct__: resource} = record) do
+    if Ash.Resource.Info.resource?(resource),
+      do: {resource, Map.take(record, attribute_names(resource))}
+  end
+
+  defp attributes_key([%{__struct__: resource} | _] = records) do
+    if Ash.Resource.Info.resource?(resource) and
+         Enum.all?(records, &match?(%{__struct__: ^resource}, &1)) do
+      names = attribute_names(resource)
+      {resource, Enum.map(records, &Map.take(&1, names))}
+    end
+  end
+
+  defp attributes_key(_value), do: nil
+
+  defp attribute_names(resource),
+    do: resource |> Ash.Resource.Info.attributes() |> Enum.map(& &1.name)
 
   @doc """
   `fun`'s result, read once per `read_pass/1` for `key` as `actor` (the

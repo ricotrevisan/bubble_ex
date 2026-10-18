@@ -367,6 +367,32 @@ defmodule PhxCheckWeb.EnforcedBehaviorTest do
     end
   end
 
+  # WTF-559: a read pass keeps a relationship load per actor. A member's
+  # Team, loaded in one pass as its lead and then as another user, shows
+  # its Secret to the lead only (the other is never served the lead's
+  # load).
+  test "a read pass never serves one actor's relationship load to another", %{
+    u1: u1,
+    u2: u2,
+    u3: u3
+  } do
+    data_access_on()
+    team = "1700000000000x500000000000000002"
+    Ash.Seed.seed!(PhxCheck.Team, %{id: team, name: "Blue", secret: "s3cret", lead_id: @u1})
+    member = Ash.Seed.update!(u3, %{team_id: team})
+
+    secret = fn actor ->
+      PhxCheckWeb.BubbleData.load_value(member, [["team"]], %{actor: actor}).team
+      |> then(&(&1 && &1.secret))
+    end
+
+    {lead, other} =
+      PhxCheckWeb.BubbleData.read_pass(fn -> {secret.(actor(u1)), secret.(actor(u2))} end)
+
+    assert lead == "s3cret"
+    assert other != "s3cret"
+  end
+
   # WTF-457: a search constrained or sorted on a field some users may not
   # view (Note's Flagged: its owner only) runs for everyone, and finds only
   # the records where the user may view that field. Bubble matches the

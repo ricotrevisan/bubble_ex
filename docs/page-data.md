@@ -656,7 +656,11 @@ modules list: the order changes, not what is read.
 
 **Queries.** The order changes when each source runs, not how often: a
 source reads once per load (and once for all the cells), and `once/3`
-shares its queries within a read as before. The order of the page's own
+shares its queries within a read as before. A relationship load is
+shared per relationship: within a read, the same records (the same
+resource and attributes, whatever relationships an earlier load left on
+them) load a relationship with the same paths below it once, however
+the loads asking for it combine it with others (WTF-559). The order of the page's own
 sources and its instances' is computed once per set of modules and kept
 (`:persistent_term`, again when a module is recompiled); the order of
 the instances in cells, which depends on the lists read, is computed at

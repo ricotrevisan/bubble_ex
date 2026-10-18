@@ -352,6 +352,134 @@ defmodule PhxCheckWeb.PageLoadBehaviorTest do
     assert :counters.get(ran, 1) == 5
   end
 
+  test "a read pass loads a record's relationship once, whatever else it has loaded (WTF-559)",
+       %{users: users} do
+    alias PhxCheckWeb.BubbleData
+
+    ctx = %{actor: users["Ada"]}
+    task = Ash.get!(PhxCheck.Task, "1700000000000x300000000000000001", authorize?: false)
+    tasks = PhxCheck.Task |> Ash.read!(authorize?: false) |> Enum.sort_by(& &1.title)
+    loads = [["owner"], ["team", "lead"]]
+    # (A record the user may not view reads as nil, with privacy enforced.)
+    name = &(&1 && &1.name)
+    shown = &{&1.title, name.(&1.owner), name.(&1.team), name.(&1.team && &1.team.lead)}
+
+    # Outside a pass every load is made.
+    {one, _} = queries(fn -> BubbleData.load_value(task, loads, ctx) end)
+    {_, owner_queries} = queries(fn -> BubbleData.load_value(task, [["owner"]], ctx) end)
+    {_, team_queries} = queries(fn -> BubbleData.load_value(task, [["team", "lead"]], ctx) end)
+    {list, list_queries} = queries(fn -> BubbleData.load_value(tasks, loads, ctx) end)
+
+    {loaded, pass_queries} =
+      queries(fn ->
+        BubbleData.read_pass(fn ->
+          owner = BubbleData.load_value(task, [["owner"]], ctx)
+
+          # The same task with its owner loaded reads only its team
+          # (and lead); the task as read then reads nothing.
+          both = BubbleData.load_value(owner, [["team"], ["owner"], ["team", "lead"]], ctx)
+          again = BubbleData.load_value(task, [["team", "lead"], ["owner"]], ctx)
+          {owner, both, again, BubbleData.load_value(tasks, loads, ctx)}
+        end)
+      end)
+
+    {owner, both, again, in_pass_list} = loaded
+    assert owner.owner.name == "Ada"
+    assert shown.(one) == {"Alpha", "Ada", "North", "Ada"}
+    assert shown.(both) == shown.(one) and shown.(again) == shown.(one)
+    assert Enum.map(in_pass_list, shown) == Enum.map(list, shown)
+    # In it: the task's owner, then its team and lead (the owner kept),
+    # then nothing; the list is other records.
+    sum = &Map.merge(&1, &2, fn _, a, b -> a + b end)
+    assert pass_queries == owner_queries |> sum.(team_queries) |> sum.(list_queries)
+  end
+
+  test "a read pass keeps each record's relationships apart (WTF-559)", %{users: users} do
+    alias PhxCheckWeb.BubbleData
+
+    ctx = %{actor: users["Cy"]}
+    get = &Ash.get!(PhxCheck.Task, "1700000000000x30000000000000000#{&1}", authorize?: false)
+    loads = [["owner"], ["team", "lead"]]
+    # (A record the user may not view reads as nil, with privacy enforced.)
+    name = &(&1 && &1.name)
+    shown = &{&1.title, name.(&1.owner), name.(&1.team), name.(&1.team && &1.team.lead)}
+
+    # Two tasks with the same paths, and two lists of the same length: each
+    # reads its own relationships, as outside a pass.
+    alone = for n <- 1..5, into: %{}, do: {n, shown.(BubbleData.load_value(get.(n), loads, ctx))}
+
+    {tasks, lists} =
+      BubbleData.read_pass(fn ->
+        {for(n <- [1, 4, 2, 5], do: {n, BubbleData.load_value(get.(n), loads, ctx)}),
+         for(
+           ns <- [[1, 2], [4, 5]],
+           do: {ns, BubbleData.load_value(Enum.map(ns, get), loads, ctx)}
+         )}
+      end)
+
+    for {n, task} <- tasks, do: assert(shown.(task) == alone[n])
+    for {ns, list} <- lists, do: assert(Enum.map(list, shown) == Enum.map(ns, &alone[&1]))
+    # (Different owners: a key that ignored the records would mix them.)
+    assert elem(alone[1], 1) != elem(alone[4], 1) and elem(alone[2], 1) != elem(alone[5], 1)
+  end
+
+  # A task whose ID cannot be read (a load reads the records again by
+  # ID): loading its relationships fails (logged), and fails closed.
+  defp broken(task, loads, ctx) do
+    loaded = PhxCheckWeb.BubbleData.load_value(task, loads, ctx)
+    %{loaded | id: %{"not" => "an ID"}}
+  end
+
+  test "a failed relationship load reads as empty, in a read pass too (WTF-559)", %{
+    users: users
+  } do
+    alias PhxCheckWeb.BubbleData
+
+    ctx = %{actor: users["Ada"]}
+    task = Ash.get!(PhxCheck.Task, "1700000000000x300000000000000001", authorize?: false)
+    # Its owner and team were loaded before its ID broke: a failed load
+    # never leaves them as they were.
+    bad = broken(task, [["owner"], ["team"]], ctx)
+    assert bad.owner.name == "Ada" and bad.team.name == "North"
+    empty? = &(&1.owner == nil and &1.team == nil)
+
+    ExUnit.CaptureLog.capture_log(fn ->
+      # Outside a pass.
+      assert empty?.(BubbleData.load_value(bad, [["owner"], ["team"]], ctx))
+
+      # What `fun` read and logged.
+      quiet = fn fun -> ExUnit.CaptureLog.with_log(fn -> queries(fun) end) end
+
+      # A failure is kept as one: the owner alone, then with the team,
+      # reads as empty, and the kept failure is not loaded (or logged) again.
+      BubbleData.read_pass(fn ->
+        {{owner, _read}, log} = quiet.(fn -> BubbleData.load_value(bad, [["owner"]], ctx) end)
+        assert owner.owner == nil and log =~ "a relationship load failed"
+
+        {{both, read}, log} =
+          quiet.(fn -> BubbleData.load_value(bad, [["owner"], ["team"]], ctx) end)
+
+        assert empty?.(both)
+        assert read == %{} and log == ""
+      end)
+
+      # Two that fail together are each kept as failed, never as loaded:
+      # asked for again, alone or together, they read as empty.
+      BubbleData.read_pass(fn ->
+        assert empty?.(BubbleData.load_value(bad, [["owner"], ["team"]], ctx))
+        {{owner, read}, log} = quiet.(fn -> BubbleData.load_value(bad, [["owner"]], ctx) end)
+        assert owner.owner == nil and read == %{} and log == ""
+        assert BubbleData.load_value(bad, [["team"]], ctx).team == nil
+      end)
+    end)
+
+    # The same task with its ID loads its relationships, in a pass.
+    BubbleData.read_pass(fn ->
+      ok = BubbleData.load_value(task, [["owner"], ["team"]], ctx)
+      assert ok.owner.name == "Ada" and ok.team.name == "North"
+    end)
+  end
+
   test "the next page load reads again: a changed record shows", %{conn: conn, users: users} do
     {view, html} = board(sign_in(conn, users["Ada"]))
     assert shown(html, "Team") == ["North"]
