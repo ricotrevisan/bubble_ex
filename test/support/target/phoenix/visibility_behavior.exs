@@ -53,6 +53,7 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
       case scope do
         nil -> ~s([data-bubble-id="#{id}"])
         {:cell, thing} -> ~s(#bubble-cell--bTasks-t-#{thing} [data-bubble-id="#{id}"])
+        {:cells, thing} -> ~s(#bubble-cell--bCellsTasks-t-#{thing} [data-bubble-id="#{id}"])
         scope -> ~s([data-bubble-scope="#{scope}"] [data-bubble-id="#{id}"])
       end
 
@@ -95,6 +96,108 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     assert hidden?(view, "bCardTab", "bMember")
     assert hidden?(view, "bBadgeTab", "bMember-bCardBadge")
     assert view |> element(~s([data-bubble-id="bTabText"])) |> render() =~ "Tab: closed"
+  end
+
+  # The viewport's width as the page's hook reports it (WTF-520).
+  defp report_width(view, width) do
+    render_hook(view, "bubble:page_width", %{"width" => width})
+    Process.sleep(250)
+  end
+
+  test "a condition on the viewport's width follows it, on the page and in a reusable element",
+       %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> put_connect_params(%{"bubble_page_width" => 1024}) |> live("/?tab=open")
+
+    refute hidden?(view, "bWidth")
+    assert hidden?(view, "bNarrowTab")
+    assert hidden?(view, "bBadgeNarrow", "bMember-bCardBadge")
+
+    {:ok, view, _html} =
+      conn |> put_connect_params(%{"bubble_page_width" => 500}) |> live("/?tab=open")
+
+    assert hidden?(view, "bWidth")
+    refute hidden?(view, "bNarrowTab")
+    refute hidden?(view, "bBadgeNarrow", "bMember-bCardBadge")
+
+    # With the other condition false, the width alone shows nothing.
+    {:ok, view, _html} = conn |> put_connect_params(%{"bubble_page_width" => 500}) |> live("/")
+    assert hidden?(view, "bNarrowTab")
+
+    # A resize the hook reports re-renders what reads it.
+    {:ok, view, html} =
+      conn |> put_connect_params(%{"bubble_page_width" => 1024}) |> live("/?tab=open")
+
+    assert html =~ "data-bubble-reads-width"
+    report_width(view, 599)
+    assert hidden?(view, "bWidth")
+    refute hidden?(view, "bBadgeNarrow", "bMember-bCardBadge")
+    report_width(view, 600)
+    refute hidden?(view, "bWidth")
+    assert hidden?(view, "bBadgeNarrow", "bMember-bCardBadge")
+
+    # The static render has no width: as on page load.
+    static = conn |> get("/?tab=open") |> html_response(200)
+    [open] = Regex.run(~r/<p[^>]*data-bubble-id="bWidth"[^>]*>/s, static)
+    refute open =~ ~r/\shidden(\s|>|=)/
+  end
+
+  defp disabled?(view, id) do
+    html = view |> element(~s([data-bubble-id="#{id}"])) |> render()
+    [open] = Regex.run(~r/\A<[^>]*>/s, html)
+    open =~ ~r/\sdisabled(\s|>|=)/
+  end
+
+  test "with no width yet, a condition reading it keeps the page-load value, whatever its shape",
+       %{conn: conn} do
+    data_access_on()
+
+    # No connect params: the page has no width until the hook reports.
+    {:ok, view, _html} = live(conn, "/cells?tab=open")
+    refute hidden?(view, "bWNot")
+    assert hidden?(view, "bWEmpty")
+    assert hidden?(view, "bWOr")
+    assert hidden?(view, "bWNo")
+    assert hidden?(view, "bCellNarrow", {:cells, @t1})
+    refute disabled?(view, "bPanelWide")
+
+    report_width(view, 1024)
+    assert hidden?(view, "bWNot")
+    assert hidden?(view, "bWEmpty")
+    refute hidden?(view, "bWOr")
+    refute hidden?(view, "bWNo")
+    assert hidden?(view, "bCellNarrow", {:cells, @t1})
+    refute disabled?(view, "bPanelWide")
+
+    report_width(view, 500)
+    refute hidden?(view, "bWOr")
+    assert hidden?(view, "bWNo")
+    refute hidden?(view, "bCellNarrow", {:cells, @t1})
+    refute hidden?(view, "bCellNarrow", {:cells, @t2})
+    assert disabled?(view, "bPanelWide")
+
+    report_width(view, 600)
+    refute hidden?(view, "bWNot")
+
+    # The static render has none either.
+    static = conn |> get("/cells?tab=open") |> html_response(200)
+    [open] = Regex.run(~r/<p[^>]*data-bubble-id="bWNot"[^>]*>/s, static)
+    refute open =~ ~r/\shidden(\s|>|=)/
+  end
+
+  test "a reusable element's \"isn't clickable\" conditionals read the width and the URL",
+       %{conn: conn} do
+    {:ok, view, _html} =
+      conn |> put_connect_params(%{"bubble_page_width" => 500}) |> live("/cells")
+
+    assert disabled?(view, "bPanelWide")
+    refute disabled?(view, "bPanelTab")
+
+    {:ok, view, _html} =
+      conn |> put_connect_params(%{"bubble_page_width" => 1024}) |> live("/cells?tab=open")
+
+    refute disabled?(view, "bPanelWide")
+    assert disabled?(view, "bPanelTab")
   end
 
   test "logged in: the other group, and in a reusable element", %{conn: conn, user: user} do
@@ -161,6 +264,7 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
   test "a conditional that did not compile keeps the visibility on page load", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/")
     assert hidden?(view, "bBad")
+    # bWidth compiles now (WTF-520); with no width yet it is as on page load.
     refute hidden?(view, "bWidth")
   end
 

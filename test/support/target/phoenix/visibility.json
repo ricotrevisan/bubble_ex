@@ -48,6 +48,42 @@
             }
           },
           "type": "Text"
+        },
+        "bBadgeNarrow": {
+          "id": "bBadgeNarrow",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 2,
+            "text": {
+              "entries": {
+                "0": "Badge narrow"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Width"
+                },
+                "type": "PageData",
+                "next": {
+                  "args": 600,
+                  "name": "less_than",
+                  "type": "Message"
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
         }
       },
       "id": "bBadge",
@@ -157,6 +193,97 @@
         "width": 300
       },
       "type": "CustomDefinition"
+    },
+    "panel": {
+      "id": "bPanel",
+      "name": "Panel",
+      "properties": {
+        "height": 80,
+        "width": 300
+      },
+      "type": "CustomDefinition",
+      "elements": {
+        "bPanelWide": {
+          "id": "bPanelWide",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "width": 200,
+            "text": {
+              "entries": {
+                "0": "Wide only"
+              },
+              "type": "TextExpression"
+            }
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Width"
+                },
+                "type": "PageData",
+                "next": {
+                  "name": "less_than",
+                  "type": "Message",
+                  "args": 600
+                }
+              },
+              "properties": {
+                "button_disabled": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Button"
+        },
+        "bPanelTab": {
+          "id": "bPanelTab",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "width": 200,
+            "text": {
+              "entries": {
+                "0": "Not on tab"
+              },
+              "type": "TextExpression"
+            }
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "parameter_name": {
+                    "entries": {
+                      "0": "tab"
+                    },
+                    "type": "TextExpression"
+                  }
+                },
+                "type": "GetParamFromUrl",
+                "next": {
+                  "args": {
+                    "entries": {
+                      "0": "open"
+                    },
+                    "type": "TextExpression"
+                  },
+                  "name": "equals",
+                  "type": "Message"
+                }
+              },
+              "properties": {
+                "button_disabled": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Button"
+        }
+      }
     }
   },
   "pages": {
@@ -1000,6 +1127,67 @@
             }
           },
           "type": "Text"
+        },
+        "bNarrowTab": {
+          "id": "bNarrowTab",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 27,
+            "text": {
+              "entries": {
+                "0": "Narrow tab"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Width"
+                },
+                "type": "PageData",
+                "next": {
+                  "args": 600,
+                  "name": "less_than",
+                  "type": "Message",
+                  "next": {
+                    "args": {
+                      "properties": {
+                        "parameter_name": {
+                          "entries": {
+                            "0": "tab"
+                          },
+                          "type": "TextExpression"
+                        }
+                      },
+                      "type": "GetParamFromUrl",
+                      "next": {
+                        "args": {
+                          "entries": {
+                            "0": "open"
+                          },
+                          "type": "TextExpression"
+                        },
+                        "name": "equals",
+                        "type": "Message"
+                      }
+                    },
+                    "name": "and_",
+                    "type": "Message"
+                  }
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
         }
       },
       "id": "bVis",
@@ -1202,6 +1390,258 @@
         "title": "Task"
       },
       "type": "Page"
+    },
+    "cells": {
+      "id": "bCellsPage",
+      "name": "cells",
+      "properties": {
+        "title": "Cells"
+      },
+      "type": "Page",
+      "elements": {
+        "bCellsTasks": {
+          "elements": {
+            "bCellNarrow": {
+              "id": "bCellNarrow",
+              "properties": {
+                "height": 40,
+                "is_visible": false,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Narrow cell"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "states": {
+                "0": {
+                  "condition": {
+                    "properties": {
+                      "name": "Current Page Width"
+                    },
+                    "type": "PageData",
+                    "next": {
+                      "name": "less_than",
+                      "type": "Message",
+                      "args": 600
+                    }
+                  },
+                  "properties": {
+                    "is_visible": true
+                  },
+                  "type": "State"
+                }
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bCellsTasks",
+          "properties": {
+            "columns": 1,
+            "data_source": {
+              "properties": {
+                "descending": false,
+                "sort_field": "title_text",
+                "type_to_find": "custom.task"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.task",
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "rows": 3,
+            "width": 300
+          },
+          "type": "RepeatingGroup"
+        },
+        "bWNot": {
+          "id": "bWNot",
+          "properties": {
+            "height": 40,
+            "is_visible": true,
+            "min_height_css": "40px",
+            "order": 2,
+            "text": {
+              "entries": {
+                "0": "Not 600"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Width"
+                },
+                "type": "PageData",
+                "next": {
+                  "name": "not_equals",
+                  "type": "Message",
+                  "args": 600
+                }
+              },
+              "properties": {
+                "is_visible": false
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bWEmpty": {
+          "id": "bWEmpty",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 3,
+            "text": {
+              "entries": {
+                "0": "No width"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Width"
+                },
+                "type": "PageData",
+                "next": {
+                  "name": "is_empty",
+                  "type": "Message"
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bWOr": {
+          "id": "bWOr",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 4,
+            "text": {
+              "entries": {
+                "0": "Narrow or tab"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Width"
+                },
+                "type": "PageData",
+                "next": {
+                  "name": "less_than",
+                  "type": "Message",
+                  "args": 600,
+                  "next": {
+                    "args": {
+                      "properties": {
+                        "parameter_name": {
+                          "entries": {
+                            "0": "tab"
+                          },
+                          "type": "TextExpression"
+                        }
+                      },
+                      "type": "GetParamFromUrl",
+                      "next": {
+                        "args": {
+                          "entries": {
+                            "0": "open"
+                          },
+                          "type": "TextExpression"
+                        },
+                        "name": "equals",
+                        "type": "Message"
+                      }
+                    },
+                    "name": "or_",
+                    "type": "Message"
+                  }
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bWNo": {
+          "id": "bWNo",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 5,
+            "text": {
+              "entries": {
+                "0": "Not narrow"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Width"
+                },
+                "type": "PageData",
+                "next": {
+                  "name": "less_than",
+                  "type": "Message",
+                  "args": 600,
+                  "next": {
+                    "name": "is_false",
+                    "type": "Message"
+                  }
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bPanelI": {
+          "id": "bPanelI",
+          "properties": {
+            "custom_id": "bPanel",
+            "height": 80,
+            "min_height_css": "80px",
+            "order": 6,
+            "width": 300
+          },
+          "type": "CustomElement"
+        }
+      }
     }
   },
   "user_types": {

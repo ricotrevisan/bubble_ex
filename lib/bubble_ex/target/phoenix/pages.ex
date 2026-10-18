@@ -1954,8 +1954,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # page's maps instead: see read_arg/2.)
   defp vars_below(%Node{} = node, surface, by_ref, base, seen) do
     own =
-      for {_slot, %{kind: kind, id: id}} <- node.bindings,
-          kind in [:value, :condition],
+      for {kind, id} <- binding_ids(node),
           %{bindings: vars} <- [base.expressions[id]],
           %{var: var} = binding <- vars,
           not kept?(binding, surface, base),
@@ -2290,15 +2289,17 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp node_reads_data?(%Node{} = node, surface, by_ref, seen, flows, expressions) do
     own =
-      Enum.any?(node.bindings, fn
-        {_slot, %{kind: kind, id: id}} when kind in [:value, :condition] ->
-          case expressions[id] do
-            %{bindings: vars} -> Enum.any?(vars, &(data_input?(&1.input) or url_input?(&1.input)))
-            _ -> false
-          end
+      Enum.any?(binding_ids(node), fn {_kind, id} ->
+        case expressions[id] do
+          %{bindings: vars} ->
+            Enum.any?(
+              vars,
+              &(data_input?(&1.input) or url_input?(&1.input) or width_input?(&1.input))
+            )
 
-        _ ->
-          false
+          _ ->
+            false
+        end
       end)
 
     own or
@@ -2329,6 +2330,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # `bubble_segments` its caller passes down.
   defp url_input?({:url_parameter, _}), do: true
   defp url_input?(_), do: false
+
+  # `Current page width` (WTF-520): the runtime keeps it, and a component
+  # reads it from the `bubble_page_width` its caller passes down.
+  defp width_input?({:page_data, %{"name" => "Current Page Width"}}), do: true
+  defp width_input?(_), do: false
 
   # The elements whose own data source reads an API Connector call
   # (WTF-533): marked, with the developer markers on, when it fails.
@@ -3852,7 +3858,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         {"bubble_inputs", {:expr, "@bubble_inputs"}},
         {"bubble_data", {:expr, "@bubble_data"}},
         {"bubble_url", {:expr, "@bubble_url"}},
-        {"bubble_segments", {:expr, "@bubble_segments"}}
+        {"bubble_segments", {:expr, "@bubble_segments"}},
+        {"bubble_page_width", {:expr, "@bubble_page_width"}}
       ],
       else: []
   end
@@ -3902,6 +3909,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
       {kind, _} = read when kind in [:url, :url_value] ->
         url_source(read)
+
+      # The viewport's width the runtime keeps (WTF-520).
+      {:page_width, _} ->
+        "@bubble_page_width"
 
       _ ->
         "@" <> var
@@ -4162,7 +4173,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
            containers: containers,
            loads: loads,
            instances: instances(entry.node, "", by_ref, base.flows, MapSet.new()),
-           cells: cell_templates(entry.node, by_ref, base.flows)
+           cells: cell_templates(entry.node, by_ref, base.flows),
+           reads_width: reads_width?(entry.node, by_ref, base, MapSet.new())
          }}
       end
 
@@ -4197,6 +4209,43 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       viewer_loads?: viewer_loads != [],
       surfaces: Map.merge(pages, reusables)
     }
+  end
+
+  # The IDs a node's compiled bindings are kept under (`base.expressions`):
+  # its values and visibility conditionals, and a button's "isn't
+  # clickable" conditionals (WTF-520), which read like a condition.
+  defp binding_ids(%Node{bindings: bindings}) do
+    for {_slot, %{kind: kind, id: id}} <- bindings,
+        kind in [:value, :condition],
+        pair <-
+          if(kind == :condition,
+            do: [{kind, id}, {kind, Conditions.disabled_id(id)}],
+            else: [{kind, id}]
+          ),
+        do: pair
+  end
+
+  # Whether a page's own bindings, or those of a reusable element it
+  # renders (at any depth, in cells too), read `Current page width`
+  # (WTF-520): then the page says so (`page_width: true` in its surface),
+  # so its hook reports the width and the helpers reading it render again
+  # when it changes.
+  defp reads_width?(%Node{kind: :reusable_instance, definition_ref: ref}, by_ref, base, seen) do
+    case by_ref[ref] do
+      %{node: %Node{map_key: key} = definition} ->
+        not MapSet.member?(seen, key) and
+          reads_width?(%{definition | kind: :group}, by_ref, base, MapSet.put(seen, key))
+
+      _ ->
+        false
+    end
+  end
+
+  defp reads_width?(%Node{} = node, by_ref, base, seen) do
+    Enum.any?(binding_ids(node), fn {_kind, id} ->
+      match?(%{bindings: vars} when is_list(vars), base.expressions[id]) and
+        Enum.any?(base.expressions[id].bindings, &width_input?(&1.input))
+    end) or Enum.any?(node.children, &reads_width?(&1, by_ref, base, seen))
   end
 
   # The relationships the pages' bindings read through each data source
@@ -4828,7 +4877,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
             {"bubble_inputs", "%{}"},
             {"bubble_data", "%{}"},
             {"bubble_url", "%{}"},
-            {"bubble_segments", "[]"}
+            {"bubble_segments", "[]"},
+            {"bubble_page_width", "nil"}
           ],
           else: []
       )

@@ -774,9 +774,23 @@ width the breakpoints' media rules read):
   reports, with or without data access. The same width again, or
   anything but a whole number of pixels from 0 to 100,000, is ignored.
 
-It is the same in every scope and cell. Conditionals of the page's own
-templates that read the width directly (not through page data) are not
-lowered yet; Bubble's breakpoints are media rules, as before.
+It is the same in every scope and cell. Bubble's breakpoints are media
+rules, as before. A visibility (or "isn't clickable") conditional of a
+page's or reusable element's template that reads the width directly,
+not as a breakpoint rule (with another condition, or a state the export
+keeps as an element conditional), reads `@bubble_page_width` (a
+reusable element gets it from its caller as `bubble_page_width`); the
+page's surface then says it reads the width, so the hook reports it and
+the conditional changes with a resize (a page whose only read is in a
+repeating group's cell, or in a reusable element's "isn't clickable"
+conditional, included). Bubble always knows the width; the page does
+not before its first connected render or the hook's first report. Until
+then such a conditional keeps the value on page load (each helper's
+first clause is `is_nil(width) -> <page-load value>`), whatever its
+shape: `is not 600`, `is empty`, `< 600 or X` and `(< 600) is no` would
+otherwise decide on an empty width. The page's `workflows.ex` is
+scaffolded once: an app generated before this keeps its `@surface`
+without `page_width: true` until it is added by hand.
 
 ## Reusable instances in repeating group cells (WTF-494)
 

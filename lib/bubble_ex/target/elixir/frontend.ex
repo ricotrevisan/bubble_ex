@@ -45,6 +45,15 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   workflows read it); a list parameter ("is a list", not replayed) does
   not compile.
 
+  A condition may also read `Current page width` (WTF-520): the page
+  keeps the viewport's width, so a width test that is not a breakpoint
+  rule of its own (`Current page width < 768 and …`, or one the export
+  keeps as an element conditional) decides with the width the browser
+  reports, again on a resize; while the page has no width yet, the
+  conditional keeps the value on page load (a first `is_nil` clause),
+  whatever its shape. Other page values (`Current page name`,
+  `Current date/time`) do not compile.
+
   A visibility conditional that does not compile (a condition with no IR
   or no Elixir, a non-literal visibility, an overlay's: a Popup, Group
   Focus or Floating Group is shown and hidden by workflows) is absent too;
@@ -207,7 +216,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
         end)
 
       source =
-        "cond do\n#{clauses}\ntrue -> #{initial}\nend"
+        "cond do\n#{width_guard(bindings, initial)}#{clauses}\ntrue -> #{initial}\nend"
         |> Code.format_string!()
         |> IO.iodata_to_binary()
 
@@ -251,7 +260,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
       results = Enum.map(parts, &elem(&1, 2))
 
       %{
-        source: fold_source(parts, initial),
+        source: fold_source(parts, bindings, initial),
         bindings: bindings,
         runtime: results |> Enum.flat_map(& &1.runtime) |> Enum.uniq() |> Enum.sort(),
         loads: merge_loads(results),
@@ -273,26 +282,39 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   # The states in Bubble's order as one `cond`: the last true one decides,
   # else the value on page load.
-  defp fold_source(parts, initial) do
+  defp fold_source(parts, bindings, initial) do
     clauses =
       parts
       |> Enum.reverse()
       |> Enum.map_join("\n", fn {source, value, _result} -> "#{truth(source)} -> #{value}" end)
 
-    "cond do\n#{clauses}\ntrue -> #{initial}\nend"
+    "cond do\n#{width_guard(bindings, initial)}#{clauses}\ntrue -> #{initial}\nend"
     |> Code.format_string!()
     |> IO.iodata_to_binary()
   end
 
+  # Bubble always knows the page's width; the page does not before its
+  # first connected render (the static render, a test's socket): until
+  # then a conditional reading it keeps the value on page load, whatever
+  # its shape (`is not`, `is empty`, `or`, `not` would otherwise decide on
+  # an empty width).
+  defp width_guard(bindings, initial) do
+    for %{var: var, input: {:page_data, %{"name" => "Current Page Width"}}} <- bindings,
+        into: "",
+        do: "is_nil(#{var}) -> #{initial}\n"
+  end
+
   # What a page can supply a condition with: the current user, an
   # element's state (custom states, input values, a group's data), the
-  # page's or the current cell's thing and what the URL holds (the target
-  # decides per page whether it does). Anything else (the
-  # page's width or name…) would be a value nothing sets, never the one
-  # Bubble reads.
+  # page's or the current cell's thing, what the URL holds and the
+  # viewport's width (`Current page width`, WTF-520) (the target decides
+  # per page whether it does). Anything else (the page's name, the current
+  # date and time…) would be a value nothing sets, never the one Bubble
+  # reads.
   @page_inputs [:element_state, :page_thing, :cell_thing, :cell_index, :url_parameter]
 
   defp page_input?(:current_user), do: true
+  defp page_input?({:page_data, %{"name" => "Current Page Width"}}), do: true
   defp page_input?({kind, _ref}) when kind in @page_inputs, do: true
   defp page_input?(_input), do: false
 
