@@ -251,7 +251,7 @@ defmodule PhxCheckWeb.PageLoadBehaviorTest do
     refute Map.has_key?(by_table, "task")
   end
 
-  test "a same-URL patch reads again when the user changed", %{
+  test "a same-URL patch reads again when the user, as read with privacy enforced, changed", %{
     conn: conn,
     users: users
   } do
@@ -265,6 +265,22 @@ defmodule PhxCheckWeb.PageLoadBehaviorTest do
       # The actor read again differs from the one the data was read as.
       assert shown(html, "Team") == ["South"]
       assert shown(html, "Task") == ["Delta", "Echo"]
+    else
+      # Without privacy the session's user is never read again, so the
+      # patch reads nothing: the page keeps what it showed until a
+      # change notice.
+      assert shown(html, "Team") == ["North"]
+      assert shown(html, "Task") == ["Alpha", "Beta", "Gamma"]
+
+      # A change notice reads the page again, and the user's team as it
+      # is now.
+      PhxCheck.Team
+      |> Ash.get!(@north, authorize?: false)
+      |> Ash.Changeset.for_update(:update, %{name: "Northwest"})
+      |> Ash.update!(authorize?: false)
+
+      Process.sleep(100)
+      assert shown(render(view), "Team") == ["South"]
     end
   end
 

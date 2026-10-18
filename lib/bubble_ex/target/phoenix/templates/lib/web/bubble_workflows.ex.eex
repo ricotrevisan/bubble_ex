@@ -418,8 +418,8 @@ defmodule <%= @web %>.BubbleWorkflows do
   conditionals see them) is read afresh, unless `mount/2` has just read
   it for this very page load (WTF-501): the first `handle_params` after a
   mount, never a later one (a patch, a URL parameter). A patch reads the
-  data again only when the URL it reads changed, or the user did
-  (`BubbleData.load_url/3`, WTF-562). A connected mount's page-loaded
+  data again only when the URL it reads changed, or the user as read with
+  privacy enforced did (`BubbleData.load_url/3`, WTF-562). A connected mount's page-loaded
   workflows run on the data this load read<%= if @enforced? do %>, as the actor read again<% end %> (`handle_info/3`).
   """
   def handle_params(socket, page, params, uri) do

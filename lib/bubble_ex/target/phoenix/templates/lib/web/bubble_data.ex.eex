@@ -120,6 +120,9 @@ defmodule <%= @web %>.BubbleData do
   Every read clears the flag and takes the change notifications already
   delivered to the page (sent after their writes committed, so the read
   sees them): a workflow's own write and its notification are one read.
+  A patch (`load_url/3`, WTF-562) reads again only when what the data
+  reads of the URL, or the user as read with privacy enforced, changed,
+  or the data is stale: a patch to the URL the page is on reads nothing.
 
   An input change (typing, WTF-475) is narrower: it reads again only the
   sources whose value or search constraints read that input (a source's
@@ -370,13 +373,14 @@ defmodule <%= @web %>.BubbleData do
   @doc """
   The page's data for a `handle_params` (WTF-562): read again only when
   what it reads of the URL (the query, the path and its segments, the
-  page's thing) or the current user differs from what the data was last
-  read with. A patch to the URL the page is on (a "Go to page" to the
-  current page with the same parameters, as a page-load workflow may run)
-  reads nothing, as in Bubble, where a data source is read again only
-  when what it reads changes; data already stale (`reload/3`) is read
-  again all the same. The first `handle_params` after a mount always
-  reads.
+  page's thing) or the user, as read with privacy enforced, differs from
+  what the data was last read with (without privacy the session's user is
+  never read again). A patch to the URL the page is on (a "Go to page" to
+  the current page with the same parameters, as a page-load workflow may
+  run) reads nothing; that Bubble does not run the searches again then
+  is an assumption, to confirm by replay. Data already stale (`reload/3`)
+  is read again all the same. The first `handle_params` after a mount
+  always reads.
   """
   def load_url(socket, page, opts \\ []) do
     if data_access?() and connected?(socket) and
