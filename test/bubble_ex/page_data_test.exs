@@ -2592,6 +2592,57 @@ defmodule BubbleEx.PageDataTest do
       end
     end
 
+    test "every query a condition reads is exact: contains and is empty read one record" do
+      {spec, _project, _frontend, _app, _model} = spec(app())
+
+      # `contains` (of the whole search and of a filtered one) reads the
+      # search constrained to the thing; `is not empty` its first record.
+      for {id, n} <- [{"wIfZulu", 2}, {"wIfZuluOpen", 2}, {"wIfAny", 1}, {"wIfEat", 1}] do
+        w = if_workflow(spec, id)
+        assert Spec.native?(w), "#{id}: #{inspect(w.residue)}"
+        assert length(w.condition.queries) == n
+        assert Enum.all?(w.condition.queries, &(&1.take == :first)), id
+      end
+
+      # The thing it contains: the constrained search's ID is the pinned thing.
+      [_zulu, narrowed] =
+        Enum.sort_by(if_workflow(spec, "wIfZulu").condition.queries, &(-&1.n))
+
+      assert inspect(narrowed.filter.expr) =~ ~s({:op, "==", {:ref, [], "id"}, {:pin, )
+      assert [%{ref: :one}] = narrowed.pins
+    end
+
+    test "a condition reading a search whole (a capped list) is residue, with its reason" do
+      {spec, _project, _frontend, _app, _model} = spec(app())
+      w = if_workflow(spec, "wCapped")
+      refute Spec.native?(w)
+      assert w.condition == nil
+
+      assert [
+               %{
+                 subject: "workflow:wCapped",
+                 reason: :uncompiled_expression,
+                 detail: %{constructs: ["elixir:capped_list"]}
+               }
+             ] = w.residue
+    end
+
+    test "a condition that also reads an API Connector call is left as it was" do
+      search = IR.node(:search, ["custom.task", nil], "list.custom.task")
+      found = IR.node(:not, [IR.node(:is_empty, [search], "boolean")], "boolean")
+      call = IR.node(:api_data, ["gEx", "cList", []], "boolean")
+
+      assert FrontendWorkflows.Data.condition(
+               %BubbleEx.Workflows.Lowering.Expr{
+                 path: "",
+                 ir: IR.node(:and, [found, call], "boolean")
+               },
+               "workflow:w",
+               %{},
+               %{}
+             ) == :none
+    end
+
     test "without page data the condition still reads its search" do
       {spec, _project, _frontend, _app, _model} = spec(app(), page_data: false)
       w = if_workflow(spec, "wIfEat")

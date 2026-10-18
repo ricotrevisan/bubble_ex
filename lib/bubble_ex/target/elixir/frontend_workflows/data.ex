@@ -1429,6 +1429,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   (`FrontendWorkflows.Lists`), each search under them read first as an
   Ash query (`queries`, read as `query_<n>`), the rest compiled in Elixir
   by `fns.compile` in the workflow's context `ctx` (`id` its subject).
+
+  A condition decides whether a workflow's steps (writes included) run,
+  so every query it reads is exact, never a capped list (`:max_items`):
+  `<search> is empty` reads its first record, `<search> contains <thing>`
+  the first record of the search that is that thing (`exact/1`). A
+  condition still reading a search whole (or `items until #`) is residue
+  (`elixir:capped_list`).
+
   `{:ok, compiled}` (with `queries`) when it reads a query and no API
   Connector call; `{:error, residue}` when it reads one but does not
   compile; `:none` when it reads neither.
@@ -1436,12 +1444,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   @spec condition(Lowering.Expr.t(), String.t(), map(), map()) ::
           {:ok, map()} | {:error, [map()]} | :none
   def condition(%Lowering.Expr{ir: %IR{} = ir} = expr, id, ctx, fns) do
-    ir = Lists.lower(ir)
+    ir = ir |> Lists.lower() |> exact()
 
     if queries?(ir) and not calls?(ir) do
       case compile_value(%{expr | ir: ir}, %{id: id, path: expr.path}, ctx, fns, new_acc()) do
         {:ok, compiled, %{queries: [_ | _] = queries}} ->
-          {:ok, Map.put(compiled, :queries, Enum.reverse(queries))}
+          exact_queries(compiled, Enum.reverse(queries), id)
 
         {:ok, _compiled, _acc} ->
           :none
@@ -1455,6 +1463,68 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   end
 
   def condition(_expr, _id, _ctx, _fns), do: :none
+
+  defp exact_queries(compiled, queries, id) do
+    if Enum.any?(queries, &capped_query?/1),
+      do:
+        {:error,
+         [
+           Residue.entry(id, :uncompiled_expression, %{
+             expressions: 1,
+             constructs: ["elixir:capped_list"]
+           })
+         ]},
+      else: {:ok, Map.put(compiled, :queries, queries)}
+  end
+
+  # A query read up to `:max_items` (or a page): what the user may find
+  # past it is not read. A listed query reads all of a list's records.
+  defp capped_query?(%{take: take} = q),
+    do: (take == :all or match?({:limit, _}, take)) and !Map.get(q, :listed)
+
+  # The exact reads of a condition: `<search> is empty` is its first
+  # record's, `<search> contains <thing>` (`:filtered` included, lowered
+  # into the search) the first record of the search constrained to that
+  # thing (`This thing is <thing>`): found only when the user may find
+  # it, as in the whole search. An empty thing is in no list, and no
+  # record is it.
+  defp exact(%IR{op: :is_empty, args: [list]} = ir) do
+    list = exact(list)
+
+    case query(list) do
+      {:query, _search, :all} -> %{ir | args: [first(list)]}
+      _ -> %{ir | args: [list]}
+    end
+  end
+
+  defp exact(%IR{op: :member, args: [list, item]} = ir) do
+    list = exact(list)
+    item = exact(item)
+
+    with {:query, _search, :all} <- query(list),
+         true <- Lists.search?(list),
+         %IR{} = this <- this(list.type) do
+      narrowed = Lists.constrain(list, IR.node(:eq, [this, item], "boolean"))
+
+      IR.node(:not, [IR.node(:is_empty, [first(narrowed)], "boolean")], "boolean")
+      |> Map.put(:path, ir.path)
+    else
+      _ -> %{ir | args: [list, item]}
+    end
+  end
+
+  defp exact(%IR{args: args} = ir),
+    do: %{ir | args: Enum.map(args, fn a -> if is_struct(a, IR), do: exact(a), else: a end)}
+
+  defp first(%IR{type: type} = list),
+    do: IR.node(:first, [list], Lists.item_type(type) || type) |> Map.put(:path, list.path)
+
+  defp this(type) do
+    case Lists.item_type(type) do
+      nil -> nil
+      item -> IR.node(:this, [:filter_item], item)
+    end
+  end
 
   # Compiles `expr` in Elixir, its searches first read as queries.
   defp compile_value(%Lowering.Expr{ir: ir} = expr, s, ctx, fns, acc) do

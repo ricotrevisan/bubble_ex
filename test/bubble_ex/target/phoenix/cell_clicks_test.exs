@@ -517,7 +517,7 @@ defmodule BubbleEx.Target.Phoenix.CellClicksTest do
       files = files(app())
       module = files["lib/shop_web/live/products_live/workflows.ex"]
 
-      assert module =~ "clicks: %{},"
+      assert module =~ ~s(clicks: %{"bIfPlum" => ["wIfPlum"]},)
       assert module =~ ~s("bShow" => {"bProducts", ["wShow"]})
       assert module =~ ~s(cell_changes: %{"bQty" => {"bProducts", ["wQty"]}})
       assert module =~ ~s(cell_inputs: %{"bQty" => {"bProducts", {:number, nil}}})

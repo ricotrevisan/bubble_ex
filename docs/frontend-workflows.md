@@ -454,6 +454,15 @@ the rest of the condition is tested. The search is read each time the
 event runs, as Bubble tests the condition when the event fires. Such a
 workflow reads stored data, so it runs only with data access on.
 
+A condition decides whether the workflow's steps (its writes included)
+run, so every query it reads is exact, never a list capped at
+`:max_items`: `<search> is empty` reads the search's first record, and
+`<search> contains <thing>` (a `:filtered` search included) reads the
+first record of the search constrained to that thing, so a thing past
+the first 100 records is found. A condition that still reads a search
+whole (a field of its records, `items until #`, ...) is residue
+(`elixir:capped_list`).
+
 Left as residue, as before: a search the Ash filter cannot compile (or
 one on a field the privacy rules hide further along a path,
 `:search_field_hidden`), a condition that also reads an API Connector

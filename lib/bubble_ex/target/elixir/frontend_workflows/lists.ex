@@ -77,10 +77,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
 
     cond do
       search?(list) ->
-        constrain(list, pred)
+        add_constraint(list, pred)
 
       thing(list.type) ->
-        IR.node(:intersect, [constrain(records(list), pred), list], ir.type)
+        IR.node(:intersect, [add_constraint(records(list), pred), list], ir.type)
         |> Map.put(:path, ir.path)
 
       true ->
@@ -186,19 +186,27 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
   defp pinned_member?(%IR{op: :member, args: [%IR{op: :pinned}, %IR{op: :this}]}), do: true
   defp pinned_member?(_pred), do: false
 
+  @doc """
+  `search` (sorted or not) with the constraint `pred` (over `{:this,
+  [:filter_item]}`) added, as a `:filtered` on it adds its constraints.
+  """
+  @spec constrain(IR.t(), IR.t() | nil) :: IR.t()
+  def constrain(search, pred), do: add_constraint(search, pred)
+
   # The constraints of a `:filtered` added to the search it filters
   # (under its sorts).
-  defp constrain(%IR{op: :sort, args: [inner | rest]} = ir, pred),
-    do: %{ir | args: [constrain(inner, pred) | rest]}
+  defp add_constraint(%IR{op: :sort, args: [inner | rest]} = ir, pred),
+    do: %{ir | args: [add_constraint(inner, pred) | rest]}
 
-  defp constrain(ir, nil), do: ir
+  defp add_constraint(ir, nil), do: ir
 
-  defp constrain(%IR{op: :search, args: [type, nil]} = ir, pred), do: %{ir | args: [type, pred]}
+  defp add_constraint(%IR{op: :search, args: [type, nil]} = ir, pred),
+    do: %{ir | args: [type, pred]}
 
-  defp constrain(%IR{op: :search, args: [type, %IR{op: :and, args: a}]} = ir, pred),
+  defp add_constraint(%IR{op: :search, args: [type, %IR{op: :and, args: a}]} = ir, pred),
     do: %{ir | args: [type, IR.node(:and, a ++ conjuncts(pred), "boolean")]}
 
-  defp constrain(%IR{op: :search, args: [type, p0]} = ir, pred),
+  defp add_constraint(%IR{op: :search, args: [type, p0]} = ir, pred),
     do: %{ir | args: [type, IR.node(:and, [p0 | conjuncts(pred)], "boolean")]}
 
   defp conjuncts(%IR{op: :and, args: args}), do: args
@@ -211,6 +219,15 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Lists do
     item = IR.node(:this, [:filter_item], item_type)
     pinned = IR.node(:pinned, [list], type)
     IR.node(:search, [data_type, IR.node(:member, [pinned, item], "boolean")], type)
+  end
+
+  @doc "The type of one item of a list of things of type `type`, else nil."
+  @spec item_type(String.t() | nil) :: String.t() | nil
+  def item_type(type) do
+    case thing(type) do
+      {_data_type, item} -> item
+      nil -> nil
+    end
   end
 
   # `{data type ID, item type}` of a list of things, else nil.

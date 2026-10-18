@@ -1949,6 +1949,71 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert_push_event(view, "bubble:exec", %{ops: [%{op: "show", to: @pop_if}]})
   end
 
+  # Over :max_items (100) records: "Zulu" sorts after 150 "Bulk" tasks,
+  # past the first page of the whole search. A condition reads exactly:
+  # `contains` reads the search constrained to the thing, `is empty` its
+  # first record, never a capped list.
+  @zulu "1700000000000x220000000000000001"
+
+  defp bulk do
+    for n <- 1..150 do
+      Ash.Seed.seed!(PhxCheck.Task, %{
+        id: "1700000000000x2100000000000#{String.pad_leading(Integer.to_string(n), 5, "0")}",
+        title: "Bulk #{String.pad_leading(Integer.to_string(n), 3, "0")}",
+        done: false
+      })
+    end
+
+    Ash.Seed.seed!(PhxCheck.Task, %{id: @zulu, title: "Zulu", done: false})
+  end
+
+  defp opens?(view, button) do
+    %{proxy: {ref, _topic, _}} = view
+    click(view, button)
+
+    receive do
+      {^ref, {:push_event, "bubble:exec", %{ops: [%{op: "show", to: @pop_if}]}}} -> true
+    after
+      300 -> false
+    end
+  end
+
+  test "a condition's search contains a thing past :max_items records, and is not empty", %{
+    conn: conn
+  } do
+    on()
+    bulk()
+    {:ok, view, _html} = live(conn, "/shown")
+
+    # The whole search, sorted by title, and filtered: Zulu is past the
+    # first 100 records of both.
+    assert opens?(view, "bIfZulu")
+    assert opens?(view, "bIfZuluOpen")
+    assert opens?(view, "bIfAny")
+
+    # Filtered out: the filtered search no longer contains it.
+    PhxCheck.Task
+    |> Ash.get!(@zulu, authorize?: false)
+    |> Ash.Changeset.for_update(:update, %{done: true})
+    |> Ash.update!(authorize?: false)
+
+    refute opens?(view, "bIfZuluOpen")
+    assert opens?(view, "bIfZulu")
+
+    # Gone: no search contains it, and the search for it is empty.
+    PhxCheck.Task |> Ash.get!(@zulu, authorize?: false) |> Ash.destroy!(authorize?: false)
+    refute opens?(view, "bIfZulu")
+    refute opens?(view, "bIfAny")
+  end
+
+  test "a condition that would read a capped list is not lowered: refused", %{conn: conn} do
+    on()
+    bulk()
+    {:ok, view, _html} = live(conn, "/shown")
+    refute opens?(view, "bCapped")
+    assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."})
+  end
+
   test "with data access off, a click whose condition reads a search is refused", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/shown")
     click(view, "bIfEat")

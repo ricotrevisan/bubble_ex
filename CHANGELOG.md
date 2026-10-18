@@ -15,7 +15,11 @@ All notable changes to this project are documented here.
   current user (what the user may find) when the event runs, before the
   rest of the condition is tested, as Bubble tests it when the event
   fires. Such a workflow reads stored data, so it runs only with data
-  access on. Still residue: a search the Ash filter cannot compile, a
+  access on. Its queries are exact, never capped at `:max_items`:
+  `<search> is empty` reads one record, `<search> contains <thing>`
+  (filtered or not) the search constrained to that thing; a condition
+  still reading a search whole is residue (`elixir:capped_list`). Still
+  residue: a search the Ash filter cannot compile, a
   condition that also reads an API Connector call, a step's own condition
   or value reading a search, and a "Do when condition is true"
   workflow's condition (the page tests it again only when its own data
