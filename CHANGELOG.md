@@ -251,6 +251,27 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Page data reads `contains`, `is empty` and `count > 0` over a search
+  exactly (WTF-565).** In a page data source, a conditional state's
+  condition or a search constraint's value, `<search> contains <thing>` read the search as a list capped
+  at `:max_items` (100), so it was "no" for a thing past the first 100
+  records; `<search> is empty` read up to 100 records to test for one.
+  As a workflow's condition already does (WTF-564), `is empty` / `is not
+  empty` now read the search's first record, `contains <thing>` (after
+  `:filtered` too) the first record of the search constrained to that
+  thing (`unique id = ^thing`), and `<search>:count` compared to 0 (`>
+  0`, `>= 1`, `is 0`, `< 1`, ...) is whether that first record is
+  empty: one record read instead of up to `:max_count` keys. Any other
+  count is still a count query, exact below `:max_count` (10,000, with
+  privacy enforced). `contains` over a list that reads a capped search
+  (merged searches, ...), `is empty` over one that removes items from it
+  (`:intersect`, `:minus list`, an Elixir `:filtered`, also under
+  `:unique elements`, `:sorted`, `:merged with` or `:first item`), and a
+  count, last item, `contains` or removal over `items until #n` of a
+  search with n past 100 (the default `:max_items`) are now residue
+  (`elixir:capped_list`) instead of a wrong answer. See
+  `docs/page-data.md`.
+
 - **A patch to the URL the page is on no longer reads the page's data
   again (WTF-562).** Every `handle_params` read all of a page's data
   sources, so a page-load workflow that runs "Go to page" to the current

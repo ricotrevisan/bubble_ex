@@ -2014,6 +2014,63 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."})
   end
 
+  # WTF-565: page data reads its searches exactly too. /shown's yes/no
+  # groups and bZuluState's condition: `contains` reads the search
+  # constrained to the thing, `is empty` and `count > 0` its first record,
+  # so Zulu, past the first 100 records of the whole search, is found.
+  defp flag(html, label) do
+    case Regex.run(~r/#{label}: (yes|no)/, html, capture: :all_but_first) do
+      [value] -> value
+      nil -> nil
+    end
+  end
+
+  test "page data's contains, is empty and count > 0 read past :max_items records", %{
+    conn: conn
+  } do
+    on()
+    bulk()
+    {:ok, _view, html} = live(conn, "/shown")
+    assert flag(html, "Has Zulu") == "yes"
+    assert flag(html, "Open has Zulu") == "yes"
+    assert flag(html, "Any Zulu") == "yes"
+    assert flag(html, "No Zulu") == "no"
+    assert html =~ "Zulu state: Zulu"
+    # A constraint's value reads the search exactly too: done = yes.
+    assert html =~ "Done if has: Answer"
+    # Minus one item: the other 151 tasks remain.
+    assert flag(html, "Minus Zulu empty") == "no"
+
+    # Filtered out: the filtered search no longer contains it.
+    PhxCheck.Task
+    |> Ash.get!(@zulu, authorize?: false)
+    |> Ash.Changeset.for_update(:update, %{done: true})
+    |> Ash.update!(authorize?: false)
+
+    {:ok, _view, html} = live(conn, "/shown")
+    assert flag(html, "Has Zulu") == "yes"
+    assert flag(html, "Open has Zulu") == "no"
+
+    # Gone: no search contains it, and the search for it is empty.
+    PhxCheck.Task |> Ash.get!(@zulu, authorize?: false) |> Ash.destroy!(authorize?: false)
+    {:ok, _view, html} = live(conn, "/shown")
+    assert flag(html, "Has Zulu") == "no"
+    assert flag(html, "Any Zulu") == "no"
+    assert flag(html, "No Zulu") == "yes"
+    refute html =~ "Zulu state: Zulu"
+    # done = no: Bake sorts first.
+    assert html =~ "Done if has: Bake"
+  end
+
+  test "page data reading a capped list is not lowered: not shown", %{conn: conn} do
+    on()
+    bulk()
+    {:ok, _view, html} = live(conn, "/shown")
+    assert flag(html, "Merged has Zulu") == nil
+    assert flag(html, "Intersect empty") == nil
+    refute html =~ ~r/Until count: \d/
+  end
+
   test "with data access off, a click whose condition reads a search is refused", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/shown")
     click(view, "bIfEat")

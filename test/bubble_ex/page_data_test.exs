@@ -80,8 +80,9 @@ defmodule BubbleEx.PageDataTest do
       # group reading the group a popup's "is opened" workflow sets
       # (WTF-520); the pair page's two instances of one reusable element,
       # one of whose data source does not compile (WTF-522); the popup a
-      # click shows and then displays data in (replay 2026-10-14).
-      assert PageData.coverage(pd)["sources"] == %{"total" => 32, "native" => 31, "residue" => 1}
+      # click shows and then displays data in (replay 2026-10-14); the
+      # shown page's ten read exactly (WTF-565).
+      assert PageData.coverage(pd)["sources"] == %{"total" => 42, "native" => 41, "residue" => 1}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -301,11 +302,12 @@ defmodule BubbleEx.PageDataTest do
       # (WTF-520: popup events); the pair page's two instances, one of
       # which does not load (WTF-522); the popup a click shows and then
       # displays data in, which its "is opened" workflow resets (replay
-      # 2026-10-14: the display wins, so it loads).
+      # 2026-10-14: the display wins, so it loads); the shown page's ten
+      # read exactly (WTF-565), three of which read a capped list (residue).
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 42,
-               "wired" => 41,
-               "residue" => 1
+               "total" => 52,
+               "wired" => 48,
+               "residue" => 4
              }
 
       # An empty constraint value: dropped in bList, matches nothing in
@@ -404,7 +406,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 39
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 46
     end
 
     test "a repeating group in a repeating group's cell is read per outer cell; a third level is residue" do
@@ -2718,6 +2720,156 @@ defmodule BubbleEx.PageDataTest do
       assert condition =~ "|> BubbleData.read(ctx, :first, nil)"
       assert condition =~ "query_1 ="
       assert module =~ "BubbleWorkflows.steps(ctx, &wf_w_if_eat__condition/1, ["
+    end
+  end
+
+  describe "page data reads its searches exactly where a capped list differs (WTF-565)" do
+    # /shown's flags (yes/no groups) and bZuluState: `contains`, `is
+    # empty` and `count > 0` over a whole search read one record, never
+    # a list capped at :max_items.
+    defp takes(%{read: {:value, %{queries: queries}}}),
+      do: queries |> Enum.sort_by(& &1.n) |> Enum.map(& &1.take)
+
+    test "contains reads the search constrained to the thing; is empty and count > 0 one record" do
+      {spec, _project, _frontend, _app, _model} = spec(app())
+
+      for {e, n} <- [{"bHasZulu", 2}, {"bOpenHasZulu", 2}, {"bAnyZulu", 1}, {"bNoZulu", 1}] do
+        d = data(spec, e)
+        assert d.residue == [], "#{e}: #{inspect(d.residue)}"
+        assert takes(d) == List.duplicate(:first, n), e
+      end
+
+      # The thing it contains: the constrained search's ID is the pinned
+      # thing (the filtered one keeps its constraint too).
+      for e <- ["bHasZulu", "bOpenHasZulu"] do
+        {:value, %{queries: queries}} = data(spec, e).read
+        narrowed = Enum.find(queries, &(&1.n == 1))
+        assert inspect(narrowed.filter.expr) =~ ~s({:op, "==", {:ref, [], "id"}, {:pin, ), e
+        assert [%{ref: :one}] = narrowed.pins
+      end
+
+      {:value, %{queries: [_, _] = open}} = data(spec, "bOpenHasZulu").read
+      assert Enum.any?(open, &(inspect(&1.filter.expr) =~ ~s({:ref, [], "done"})))
+    end
+
+    test "a conditional state's condition reads exactly too" do
+      {spec, _project, _frontend, _app, _model} = spec(app())
+      d = data(spec, "bZuluState")
+      assert d.residue == []
+      assert {:switch, %{cases: [%{when: condition}]}} = d.read
+      assert takes(%{read: condition}) == [:first, :first]
+    end
+
+    test "count against 0 or 1 is emptiness; any other count stays a count" do
+      search = IR.node(:search, ["custom.task", nil], "list.custom.task")
+      count = IR.node(:count, [search], "number")
+      lit = &IR.node(:literal, [&1], "number")
+
+      for {op, l, r, empty?} <- [
+            {:gt, count, lit.(0), false},
+            {:gte, count, lit.(1), false},
+            {:neq, count, lit.(0), false},
+            {:lt, lit.(0), count, false},
+            {:eq, count, lit.(0), true},
+            {:lte, count, lit.(0), true},
+            {:lt, count, lit.(1), true},
+            {:gt, lit.(1), count, true}
+          ] do
+        ir = IR.node(op, [l, r], "boolean")
+        empty = IR.node(:is_empty, [IR.node(:first, [search], "custom.task")], "boolean")
+        want = if empty?, do: empty, else: IR.node(:not, [empty], "boolean")
+        assert IR.strip_paths(FrontendWorkflows.Data.exact_ir(ir)) == want, inspect({op, l.op})
+      end
+
+      for {op, n} <- [{:gt, 1}, {:eq, 2}, {:gte, 0}, {:lt, 5}] do
+        ir = IR.node(op, [count, lit.(n)], "boolean")
+        assert FrontendWorkflows.Data.exact_ir(ir) == ir
+      end
+    end
+
+    test "a listed search (a list's records, read whole) is left as it is" do
+      ids = IR.node(:input, [:page_data, %{"n" => "x"}], "list.custom.task")
+      this = IR.node(:this, [:filter_item], "custom.task")
+      pinned = IR.node(:pinned, [ids], "list.custom.task")
+      pred = IR.node(:member, [pinned, this], "boolean")
+      listed = IR.node(:search, ["custom.task", pred], "list.custom.task")
+      one = IR.node(:input, [:page_data, %{"n" => "y"}], "custom.task")
+      count = IR.node(:count, [listed], "number")
+
+      for ir <- [
+            IR.node(:is_empty, [listed], "boolean"),
+            IR.node(:member, [listed, one], "boolean"),
+            IR.node(:gt, [count, IR.node(:literal, [0], "number")], "boolean")
+          ] do
+        assert FrontendWorkflows.Data.exact_ir(ir) == ir, inspect(ir.op)
+      end
+    end
+
+    test "contains of a predicate's own item is left as it is" do
+      search = IR.node(:search, ["custom.task", nil], "list.custom.task")
+      item = IR.node(:this, [:filter_item], "custom.task")
+      ir = IR.node(:member, [search, item], "boolean")
+      assert FrontendWorkflows.Data.exact_ir(ir) == ir
+    end
+
+    test "a constraint's value reading a search's contains reads it exactly first" do
+      {spec, _project, _frontend, _app, _model} = spec(app())
+      d = data(spec, "bDoneIfHas")
+      assert d.residue == []
+      assert {:query, %{take: :first, queries: [_, _] = pinned}} = d.read
+      assert Enum.all?(pinned, &(&1.take == :first))
+    end
+
+    test "reading a capped list where it would differ is residue, with its reason" do
+      {spec, _project, _frontend, _app, _model} = spec(app())
+
+      # contains over merged searches, intersected lists' emptiness (through
+      # unique), and a count of items until #150.
+      for e <- ["bMergedHas", "bInterEmpty", "bUntilCount"] do
+        assert [
+                 %{
+                   subject: "element:" <> ^e,
+                   reason: :uncompiled_expression,
+                   detail: %{constructs: ["elixir:capped_list"]}
+                 }
+               ] = data(spec, e).residue
+      end
+
+      # Minus one item keeps a capped list's emptiness.
+      assert data(spec, "bMinusZulu").residue == []
+    end
+
+    test "emptiness over a capped list: through what keeps it, to what removes items" do
+      q = IR.node(:input, [:query, %{"n" => "1"}], "list.custom.task")
+      x = IR.node(:input, [:page_data, %{"n" => "x"}], "list.custom.task")
+      one = IR.node(:input, [:page_data, %{"n" => "y"}], "custom.task")
+      pred = IR.node(:literal, [true], "boolean")
+      list = fn op, args -> IR.node(op, args, "list.custom.task") end
+      empty = &IR.node(:is_empty, [&1], "boolean")
+      capped? = &FrontendWorkflows.Data.capped_list?(&1, [1])
+
+      for removed <- [
+            list.(:intersect, [q, x]),
+            list.(:intersect, [x, q]),
+            list.(:minus_list, [q, x]),
+            list.(:filter, [q, pred])
+          ] do
+        assert capped?.(empty.(removed)), inspect(removed.op)
+        assert capped?.(empty.(list.(:unique, [removed])))
+        assert capped?.(empty.(list.(:sort, [removed, nil, false])))
+        assert capped?.(empty.(list.(:merge, [x, removed])))
+        assert capped?.(empty.(IR.node(:first, [removed], "custom.task")))
+        refute FrontendWorkflows.Data.capped_list?(empty.(removed), [])
+      end
+
+      refute capped?.(empty.(list.(:minus_item, [q, one])))
+      refute capped?.(empty.(list.(:unique, [list.(:merge, [q, x])])))
+      refute capped?.(empty.(q))
+
+      # contains over a capped list, or over one built on it.
+      assert capped?.(IR.node(:member, [q, one], "boolean"))
+      assert capped?.(IR.node(:member, [list.(:merge, [x, q]), one], "boolean"))
+      refute capped?.(IR.node(:member, [x, one], "boolean"))
     end
   end
 end
