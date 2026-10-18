@@ -387,6 +387,13 @@
             }
           }
         },
+        "bInitEmpty": {
+          "id": "bInitEmpty",
+          "type": "Text",
+          "properties": {"_comment": "WTF-563: not visible on page load; shown when bInitQuery (initial content: page data) is empty.", "order": 5, "width": 300, "height": 40, "is_visible": false,
+            "text": {"type": "TextExpression", "entries": {"0": "No query"}}},
+          "states": {"0": {"type": "State", "condition": {"type": "GetElement", "properties": {"element_id": "bInitQuery"}, "next": {"type": "Message", "name": "get_data", "next": {"type": "Message", "name": "is_empty"}}}, "properties": {"is_visible": true}}}
+        },
         "bInitReset": {
           "id": "bInitReset",
           "type": "Button",
@@ -784,6 +791,18 @@
           "id": "bSelf", "type": "Button",
           "properties": {"order": 3, "width": 300, "height": 40, "min_height_css": "40px",
             "text": {"type": "TextExpression", "entries": {"0": "Again"}}}
+        },
+        "bNoAccess": {
+          "id": "bNoAccess", "type": "Text",
+          "properties": {"_comment": "WTF-563: not visible on page load; shown when the page's task has no title (none loaded).", "order": 4, "width": 300, "height": 40, "min_height_css": "40px", "is_visible": false,
+            "text": {"type": "TextExpression", "entries": {"0": "No access"}}},
+          "states": {"0": {"type": "State", "condition": {"type": "CurrentPageItem", "next": {"type": "Message", "name": "title_text", "next": {"type": "Message", "name": "is_empty"}}}, "properties": {"is_visible": true}}}
+        },
+        "bHasTask": {
+          "id": "bHasTask", "type": "Text",
+          "properties": {"_comment": "WTF-563: visible on page load; hidden when the page's task has no title.", "order": 5, "width": 300, "height": 40, "min_height_css": "40px", "is_visible": true,
+            "text": {"type": "TextExpression", "entries": {"0": "Has task"}}},
+          "states": {"0": {"type": "State", "condition": {"type": "CurrentPageItem", "next": {"type": "Message", "name": "title_text", "next": {"type": "Message", "name": "is_empty"}}}, "properties": {"is_visible": false}}}
         },
         "bProjGroup": {
           "elements": {

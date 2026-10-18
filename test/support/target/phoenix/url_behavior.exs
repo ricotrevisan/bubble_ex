@@ -415,10 +415,12 @@ defmodule PhxCheckWeb.UrlBehaviorTest do
 
       assert hidden?(view, "bSideLabel", "bWideNav")
 
-      # The static render has no width: empty > 767 is no.
+      # The static render has no page data yet, so no Compact (WTF-563):
+      # the label keeps its page-load visibility, shown, or with policies
+      # hidden, since its conditional may hide it.
       static = conn |> get("/wide?compact=yes") |> html_response(200)
       [open] = Regex.run(~r/<p[^>]*data-bubble-id="bSideLabel"[^>]*>/s, static)
-      refute open =~ ~r/\shidden(\s|>|=)/
+      assert open =~ ~r/\shidden(\s|>|=)/ == enforced?()
 
       # Narrow, or no parameter: shown.
       {:ok, view, _html} =

@@ -527,6 +527,34 @@ defmodule BubbleEx.PageDataTest do
       assert runtime =~ "key not in ctx.kept"
     end
 
+    test "a conditional reading page data keeps its page-load value while the data is pending (WTF-563)",
+         %{files: files} do
+      template = files["lib/shop_web/live/task_live.html.heex"] |> String.replace(~r/\s+/, " ")
+      runtime = files["lib/shop_web/bubble_workflows.ex"]
+
+      # Not visible on page load: hidden until the data loads.
+      assert template =~
+               ~s|hidden={ if(@bubble_data_pending, do: true, else: !visible_bnoaccess(Bubble.data(@bubble_data, "", "bTaskPage")) ) }|
+
+      # Visible on page load (privacy :omit): shown until the data loads.
+      assert template =~
+               ~s|hidden={ if(@bubble_data_pending, do: false, else: !visible_bhastask(Bubble.data(@bubble_data, "", "bTaskPage")) ) }|
+
+      # An input whose initial content is page data reads it too.
+      initial = files["lib/shop_web/live/initial_live.html.heex"] |> String.replace(~r/\s+/, " ")
+
+      assert initial =~
+               ~s|hidden={ if(@bubble_data_pending, do: true, else: !visible_binitempty(Bubble.input(@bubble_inputs, @bubble_data, "", "bInitQuery")) ) }|
+
+      # Pending only in the static render, and only with data access on.
+      assert runtime =~
+               "assign(:bubble_data_pending, BubbleData.data_access?() and not connected?(socket))"
+
+      # A reusable element gets it from its caller.
+      card = files["lib/shop_web/components/reusables/task_card.ex"]
+      assert card =~ "attr :bubble_data_pending, :any, default: false"
+    end
+
     test "two reusable instances store data under their own nested scope", %{files: files} do
       index = files["lib/shop_web/live/index_live/workflows.ex"]
       template = files["lib/shop_web/components/reusables/task_card.html.heex"]

@@ -294,7 +294,9 @@ defmodule <%= @web %>.BubbleWorkflows do
   once connected, schedules its page-loaded workflows. It reads the
   current user for this page load (<%= if @enforced? do %>the actor, with data access on, and <% end %>the user as the visibility
   conditionals see them, WTF-501) and loads no data (`handle_params/4`
-  does, WTF-420).
+  does, WTF-420). With data access on, the static render never has the
+  data (`@bubble_data_pending`, WTF-563): a visibility conditional reading
+  it keeps its fallback there instead of deciding as if it were empty.
   """
   def mount(socket, page) do
     surfaces = surfaces(page)
@@ -334,6 +336,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_popups_expected, %{})
     |> assign(:bubble_conditions, %{})
     |> assign(:bubble_data, %{})
+    |> assign(:bubble_data_pending, BubbleData.data_access?() and not connected?(socket))
     |> assign(:bubble_data_stale, false)
     |> assign(:bubble_data_inputs, MapSet.new())
     |> assign(:bubble_displayed, %{})

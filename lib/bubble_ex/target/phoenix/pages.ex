@@ -761,6 +761,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         "visibility_conditions_marked" => 0,
         "visibility_conditions_unset_property" => 0,
         "visibility_conditions_plugin_state" => 0,
+        "visibility_conditions_pending_data" => 0,
         "conditions_other_properties" => 0
       }
     }
@@ -2906,11 +2907,21 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # the page-load visibility, or with privacy: :enforced hidden when a
   # conditional may hide the element: what a condition hides is never
   # shown for want of a value.
-  defp unset_visibility(node, compiled, states, _static, {[], []}, ctx, acc) do
+  defp unset_visibility(node, compiled, states, static, {[], []}, ctx, acc) do
     {call, acc} = add_helper(node, "visible", compiled, false, Map.put(ctx, :viewer, true), acc)
+    acc = count(acc, "visibility_conditions_compiled", states)
 
-    {visibility_attrs("{!" <> call <> "}", call),
-     count(acc, "visibility_conditions_compiled", states)}
+    if reads_page_data?(compiled.bindings, ctx) do
+      {fallback, _why} = unset_fallback(node, static, ctx)
+      {hidden, visible} = if fallback == [], do: {"false", "true"}, else: {"true", "false"}
+
+      {visibility_attrs(
+         "{if(@bubble_data_pending, do: #{hidden}, else: !#{call})}",
+         "if(@bubble_data_pending, do: #{visible}, else: #{call})"
+       ), count(acc, "visibility_conditions_pending_data", states)}
+    else
+      {visibility_attrs("{!" <> call <> "}", call), acc}
+    end
   end
 
   defp unset_visibility(node, _compiled, states, static, {[_ | _] = unset, _some}, ctx, acc) do
@@ -2954,6 +2965,29 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     visible = if fallback == [], do: "true", else: "false"
     {visibility_attrs(attr, "if(#{set}, do: #{call}, else: #{visible})"), acc}
   end
+
+  # Whether a condition reads the page's data (WTF-563): the static
+  # render has none yet (`@bubble_data_pending`: data access on, not yet
+  # connected), and a condition reading it there would decide as if it
+  # were empty (a notice shown when the page's thing lacks a participant
+  # showed until the socket connected). Until it loads, the element keeps
+  # the fallback of a property with no value: its page-load visibility,
+  # or with privacy: :enforced hidden when a conditional may hide it. (A
+  # condition reading only some instances' properties falls back there
+  # already: `Bubble.set?/3` is false on the static render's empty data.)
+  # An input whose initial content is page data (WTF-520) reads it too,
+  # until the user changes it (`input_source/2`).
+  defp reads_page_data?(vars, %{flows: %FlowSpec{} = flows} = ctx) do
+    Enum.any?(vars, fn %{input: input} ->
+      case FlowSpec.read(flows, ctx.entry.id, input, Map.get(ctx, :cell)) do
+        {:data, _} -> true
+        {:input, %{path: [], element: e}} -> initial?(e, ctx)
+        _ -> false
+      end
+    end)
+  end
+
+  defp reads_page_data?(_vars, _ctx), do: false
 
   # `hidden` and the condition-derived visibility, which the page hook
   # compares across renders: a workflow step holds until it changes
@@ -3960,6 +3994,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         {"bubble_states", {:expr, "@bubble_states"}},
         {"bubble_inputs", {:expr, "@bubble_inputs"}},
         {"bubble_data", {:expr, "@bubble_data"}},
+        {"bubble_data_pending", {:expr, "@bubble_data_pending"}},
         {"bubble_url", {:expr, "@bubble_url"}},
         {"bubble_segments", {:expr, "@bubble_segments"}},
         {"bubble_page_width", {:expr, "@bubble_page_width"}}
@@ -4979,6 +5014,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
             {"bubble_states", "%{}"},
             {"bubble_inputs", "%{}"},
             {"bubble_data", "%{}"},
+            {"bubble_data_pending", "false"},
             {"bubble_url", "%{}"},
             {"bubble_segments", "[]"},
             {"bubble_page_width", "nil"}
