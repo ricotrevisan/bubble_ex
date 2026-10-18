@@ -49,7 +49,9 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   keeps the viewport's width, so a width test that is not a breakpoint
   rule of its own (`Current page width < 768 and …`, or one the export
   keeps as an element conditional) decides with the width the browser
-  reports, again on a resize. Other page values (`Current page name`,
+  reports, again on a resize; while the page has no width yet, the
+  conditional keeps the value on page load (a first `is_nil` clause),
+  whatever its shape. Other page values (`Current page name`,
   `Current date/time`) do not compile.
 
   A visibility conditional that does not compile (a condition with no IR
@@ -214,7 +216,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
         end)
 
       source =
-        "cond do\n#{clauses}\ntrue -> #{initial}\nend"
+        "cond do\n#{width_guard(bindings, initial)}#{clauses}\ntrue -> #{initial}\nend"
         |> Code.format_string!()
         |> IO.iodata_to_binary()
 
@@ -258,7 +260,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
       results = Enum.map(parts, &elem(&1, 2))
 
       %{
-        source: fold_source(parts, initial),
+        source: fold_source(parts, bindings, initial),
         bindings: bindings,
         runtime: results |> Enum.flat_map(& &1.runtime) |> Enum.uniq() |> Enum.sort(),
         loads: merge_loads(results),
@@ -280,15 +282,26 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   # The states in Bubble's order as one `cond`: the last true one decides,
   # else the value on page load.
-  defp fold_source(parts, initial) do
+  defp fold_source(parts, bindings, initial) do
     clauses =
       parts
       |> Enum.reverse()
       |> Enum.map_join("\n", fn {source, value, _result} -> "#{truth(source)} -> #{value}" end)
 
-    "cond do\n#{clauses}\ntrue -> #{initial}\nend"
+    "cond do\n#{width_guard(bindings, initial)}#{clauses}\ntrue -> #{initial}\nend"
     |> Code.format_string!()
     |> IO.iodata_to_binary()
+  end
+
+  # Bubble always knows the page's width; the page does not before its
+  # first connected render (the static render, a test's socket): until
+  # then a conditional reading it keeps the value on page load, whatever
+  # its shape (`is not`, `is empty`, `or`, `not` would otherwise decide on
+  # an empty width).
+  defp width_guard(bindings, initial) do
+    for %{var: var, input: {:page_data, %{"name" => "Current Page Width"}}} <- bindings,
+        into: "",
+        do: "is_nil(#{var}) -> #{initial}\n"
   end
 
   # What a page can supply a condition with: the current user, an

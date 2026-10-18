@@ -1954,8 +1954,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # page's maps instead: see read_arg/2.)
   defp vars_below(%Node{} = node, surface, by_ref, base, seen) do
     own =
-      for {_slot, %{kind: kind, id: id}} <- node.bindings,
-          kind in [:value, :condition],
+      for {kind, id} <- binding_ids(node),
           %{bindings: vars} <- [base.expressions[id]],
           %{var: var} = binding <- vars,
           not kept?(binding, surface, base),
@@ -2290,21 +2289,17 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp node_reads_data?(%Node{} = node, surface, by_ref, seen, flows, expressions) do
     own =
-      Enum.any?(node.bindings, fn
-        {_slot, %{kind: kind, id: id}} when kind in [:value, :condition] ->
-          case expressions[id] do
-            %{bindings: vars} ->
-              Enum.any?(
-                vars,
-                &(data_input?(&1.input) or url_input?(&1.input) or width_input?(&1.input))
-              )
+      Enum.any?(binding_ids(node), fn {_kind, id} ->
+        case expressions[id] do
+          %{bindings: vars} ->
+            Enum.any?(
+              vars,
+              &(data_input?(&1.input) or url_input?(&1.input) or width_input?(&1.input))
+            )
 
-            _ ->
-              false
-          end
-
-        _ ->
-          false
+          _ ->
+            false
+        end
       end)
 
     own or
@@ -4216,6 +4211,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     }
   end
 
+  # The IDs a node's compiled bindings are kept under (`base.expressions`):
+  # its values and visibility conditionals, and a button's "isn't
+  # clickable" conditionals (WTF-520), which read like a condition.
+  defp binding_ids(%Node{bindings: bindings}) do
+    for {_slot, %{kind: kind, id: id}} <- bindings,
+        kind in [:value, :condition],
+        pair <-
+          if(kind == :condition,
+            do: [{kind, id}, {kind, Conditions.disabled_id(id)}],
+            else: [{kind, id}]
+          ),
+        do: pair
+  end
+
   # Whether a page's own bindings, or those of a reusable element it
   # renders (at any depth, in cells too), read `Current page width`
   # (WTF-520): then the page says so (`page_width: true` in its surface),
@@ -4233,13 +4242,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   defp reads_width?(%Node{} = node, by_ref, base, seen) do
-    ids =
-      for {_slot, %{kind: kind, id: id}} <- node.bindings,
-          kind in [:value, :condition],
-          id <- if(kind == :condition, do: [id, Conditions.disabled_id(id)], else: [id]),
-          do: id
-
-    Enum.any?(ids, fn id ->
+    Enum.any?(binding_ids(node), fn {_kind, id} ->
       match?(%{bindings: vars} when is_list(vars), base.expressions[id]) and
         Enum.any?(base.expressions[id].bindings, &width_input?(&1.input))
     end) or Enum.any?(node.children, &reads_width?(&1, by_ref, base, seen))

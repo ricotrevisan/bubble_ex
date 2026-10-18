@@ -307,6 +307,7 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     assert live =~ """
              defp visible_bwidth(page_data_current_page_width) do
                cond do
+                 is_nil(page_data_current_page_width) -> true
                  Shop.Bubble.Runtime.compare(:lt, page_data_current_page_width, 600) == true -> false
                  true -> true
                end
@@ -327,6 +328,64 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     # The page says it reads the width: its hook reports it.
     assert files["lib/shop_web/live/index_live/workflows.ex"] =~ "page_width: true"
     refute files["lib/shop_web/live/task_live/workflows.ex"] =~ "page_width: true"
+  end
+
+  test "until the page has a width, a condition reading it keeps the page-load value", %{
+    files: files
+  } do
+    live = files["lib/shop_web/live/cells_live.ex"]
+
+    # Whatever the shape (is not, is empty, or, is no): an empty width
+    # decides nothing.
+    for {helper, initial} <- [
+          {"visible_bwnot", true},
+          {"visible_bwempty", false},
+          {"visible_bwor", false},
+          {"visible_bwno", false},
+          {"visible_bcellnarrow", false}
+        ] do
+      assert live =~
+               ~r/defp #{helper}\(page_data_current_page_width[^)]*\) do\s+cond do\s+is_nil\(page_data_current_page_width\) ->\s+#{initial}\n/,
+             helper
+    end
+
+    # An "isn't clickable" conditional too: its value on page load.
+    panel = files["lib/shop_web/components/reusables/panel.ex"]
+    assert panel =~ "is_nil(page_data_current_page_width) -> false"
+  end
+
+  test "a reusable element whose only reads are \"isn't clickable\" conditionals gets them passed down",
+       %{files: files} do
+    # Its instance passes the width and the URL; without them the
+    # component would render on assigns it never got.
+    assert tag(files["lib/shop_web/live/cells_live.html.heex"], "bPanelI") =~
+             "bubble_page_width={@bubble_page_width}"
+
+    assert tag(files["lib/shop_web/live/cells_live.html.heex"], "bPanelI") =~
+             "bubble_url={@bubble_url}"
+
+    panel = files["lib/shop_web/components/reusables/panel.html.heex"]
+    assert tag(panel, "bPanelWide") =~ "disabled={disabled_bpanelwide(@bubble_page_width)}"
+
+    assert tag(panel, "bPanelTab") =~
+             ~s|disabled={disabled_bpaneltab(Map.get(@bubble_url, "tab"))}|
+
+    ex = files["lib/shop_web/components/reusables/panel.ex"]
+    assert ex =~ "attr :bubble_page_width, :any, default: nil"
+    assert ex =~ "attr :bubble_url, :any, default: %{}"
+  end
+
+  test "a page whose only width read is in a repeating group's cell reads the width", %{} do
+    files =
+      app()
+      |> update_in(["pages", "cells", "elements"], &Map.take(&1, ["bCellsTasks"]))
+      |> build()
+      |> Map.fetch!(:files)
+
+    assert tag(files["lib/shop_web/live/cells_live.html.heex"], "bCellNarrow") =~
+             "hidden={!visible_bcellnarrow(@bubble_page_width)}"
+
+    assert files["lib/shop_web/live/cells_live/workflows.ex"] =~ "page_width: true"
   end
 
   test "other page values a condition reads do not compile", %{} do
@@ -356,13 +415,14 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     # Without the workflows the page keeps no custom state, input value or
     # URL and loads no data: bFlagged's, bFlagOff's, bOpen's,
     # bCellNoProject's, bHasProject's, bTabOpen's, bCardTab's,
-    # bBadgeTab's and the width's (bWidth, bNarrowTab, bBadgeNarrow)
-    # conditionals are marked too (bKeep's only repeats its visibility on
-    # page load: compiled, whatever it reads).
+    # bBadgeTab's and the width's (bWidth, bNarrowTab, bBadgeNarrow and
+    # the cells page's five) conditionals are marked too (bKeep's only
+    # repeats its visibility on page load: compiled, whatever it reads).
+    # The panel's two "isn't clickable" states are other properties.
     assert %{
              "visibility_conditions_compiled" => 9,
-             "visibility_conditions_marked" => 12,
-             "conditions_other_properties" => 2
+             "visibility_conditions_marked" => 17,
+             "conditions_other_properties" => 4
            } = report
   end
 

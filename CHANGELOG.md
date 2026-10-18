@@ -13,11 +13,19 @@ All notable changes to this project are documented here.
   one) did not compile: the page kept its visibility on page load. It
   now reads the width the runtime already keeps for data sources and
   workflows (`@bubble_page_width`, passed down to reusable elements as
-  `bubble_page_width`), so it decides on the first connected render and
-  again on a resize; the page reports the width when any of its
-  templates or the reusable elements it renders reads it. The static
-  render has no width (as on page load). `Current page name` and
-  `Current date/time` in a conditional still do not compile.
+  `bubble_page_width`, also for a reusable element whose only reads are
+  "isn't clickable" conditionals), so it decides on the first connected
+  render and again on a resize; the page reports the width when any of
+  its templates or the reusable elements it renders reads it (in a
+  repeating group's cell too). Until the page has a width (the static
+  render, before the hook's first report) such a conditional keeps the
+  value on page load, whatever its shape (`is not`, `is empty`, `or`, `is
+  no`). `Current page name` and `Current date/time` in a conditional still
+  do not compile. **Existing generated apps:** `<page>_live/workflows.ex`
+  is scaffolded once, so regenerating does not add `page_width: true` to
+  its `@surface`; add it by hand on a page whose conditionals read the
+  width, or the page renders right at connect but does not follow a
+  resize.
 
 - **Buildprint index schema 17.** `BubbleEx.Buildprint.V5` accepts
   `schemaVersion` 17 (current Buildprint clones; first seen with format 35). It drops
