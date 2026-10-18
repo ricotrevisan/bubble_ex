@@ -2628,6 +2628,34 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert init_cells(render(view)) == ["Draw"]
   end
 
+  # WTF-563: the static render has no page data, so no initial content
+  # either: a conditional reading the input keeps its page-load
+  # visibility there.
+  test "a conditional reading an input whose initial content is page data waits for it", %{
+    conn: conn
+  } do
+    rename_project("ea")
+    on()
+    static = conn |> get("/initial") |> html_response(200)
+    assert hidden_in?(static, "bInitEmpty")
+
+    {:ok, view, html} = live(conn, "/initial")
+    assert hidden_in?(html, "bInitEmpty")
+
+    # Emptied by the user: shown.
+    render_change(view, "bubble:change", %{
+      "bubble" => %{"scope" => "", "element" => "bInitQuery", "value" => ""}
+    })
+
+    Process.sleep(100)
+    refute hidden_in?(render(view), "bInitEmpty")
+
+    # With data access off nothing is pending: empty, as before.
+    Application.delete_env(:phx_check, PhxCheckWeb.BubbleWorkflows)
+    static = conn |> get("/initial") |> html_response(200)
+    refute hidden_in?(static, "bInitEmpty")
+  end
+
   test "with data access off, an input whose initial content is page data is empty", %{
     conn: conn
   } do

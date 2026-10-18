@@ -2975,9 +2975,15 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # or with privacy: :enforced hidden when a conditional may hide it. (A
   # condition reading only some instances' properties falls back there
   # already: `Bubble.set?/3` is false on the static render's empty data.)
+  # An input whose initial content is page data (WTF-520) reads it too,
+  # until the user changes it (`input_source/2`).
   defp reads_page_data?(vars, %{flows: %FlowSpec{} = flows} = ctx) do
     Enum.any?(vars, fn %{input: input} ->
-      match?({:data, _}, FlowSpec.read(flows, ctx.entry.id, input, Map.get(ctx, :cell)))
+      case FlowSpec.read(flows, ctx.entry.id, input, Map.get(ctx, :cell)) do
+        {:data, _} -> true
+        {:input, %{path: [], element: e}} -> initial?(e, ctx)
+        _ -> false
+      end
     end)
   end
 

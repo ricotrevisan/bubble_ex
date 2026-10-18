@@ -841,17 +841,18 @@ static render's data is pending (`@bubble_data_pending`, set by
 `BubbleWorkflows.mount/2`; passed down to reusable elements as
 `bubble_data_pending`). A visibility conditional reading the page's data
 (a page's, group's or instance's thing, a list, a reusable element's
-property) does not decide there as if the data were empty: the element
+property, an input whose initial content is page data and that the user
+has not changed) does not decide there as if the data were empty: the element
 keeps the fallback of a property with no value, its visibility on page
 load, or with `privacy: :enforced` hidden when a conditional may hide it.
 The first connected render decides on the loaded data, as before. So a
 group not visible on page load and shown when the page's thing lacks
 something (an "access required" notice shown when the user is not among
-its participants) no longer shows while the socket connects, and nothing
-a condition hides is shown for want of the data. The static render shows no page data either
-way (none is read), and nothing that shows once connected is hidden for
-good. Conditionals reading only the current user, custom states, inputs
-or the URL decide in the static render as before; the width keeps its
+its participants) no longer shows while the socket connects, and
+nothing a condition hides is shown for want of the data. The static
+render shows no page data either way (none is read), and nothing that
+shows once connected is hidden for good. Conditionals reading only the current user, custom states, other
+inputs or the URL decide in the static render as before; the width keeps its
 own rule (above). With data access off nothing is pending: the data
 never loads, and the conditionals decide on it empty, as before. Counted
 in the frontend report's `visibility_conditions_pending_data`.

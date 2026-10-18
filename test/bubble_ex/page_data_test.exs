@@ -540,6 +540,12 @@ defmodule BubbleEx.PageDataTest do
       assert template =~
                ~s|hidden={ if(@bubble_data_pending, do: false, else: !visible_bhastask(Bubble.data(@bubble_data, "", "bTaskPage")) ) }|
 
+      # An input whose initial content is page data reads it too.
+      initial = files["lib/shop_web/live/initial_live.html.heex"] |> String.replace(~r/\s+/, " ")
+
+      assert initial =~
+               ~s|hidden={ if(@bubble_data_pending, do: true, else: !visible_binitempty(Bubble.input(@bubble_inputs, @bubble_data, "", "bInitQuery")) ) }|
+
       # Pending only in the static render, and only with data access on.
       assert runtime =~
                "assign(:bubble_data_pending, BubbleData.data_access?() and not connected?(socket))"

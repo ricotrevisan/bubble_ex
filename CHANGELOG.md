@@ -286,16 +286,19 @@ All notable changes to this project are documented here.
   when a conditional may hide the element (as #243 keeps the page-load
   value until the width is known). The first connected render decides
   as before; no page data is shown in the static render either way.
-  Conditionals reading only the user, states, inputs or the URL are
-  unchanged, as is everything with data access off. Counted in the
-  frontend report's `visibility_conditions_pending_data`. See
-  `docs/page-data.md`. On the private fixture app (privacy enforced,
-  counts only): 562 elements in 72 templates guarded; the static render
-  of the 6 pages measured shows 0 elements that the connected page hides
-  (before: up to 285 on a page), and the "access required" state no
-  longer shows before the socket connects (before: from 0.2 s to 2.4-3.9
-  s, until connected). **Existing generated apps:** the runtime files are
-  regenerated; no hand edits needed.
+  An input whose initial content is page data counts as page data
+  until the user changes it. Conditionals reading only the user, states,
+  other inputs or the URL are unchanged, as is everything with data
+  access off. Counted in the frontend report's
+  `visibility_conditions_pending_data`. See `docs/page-data.md`. On the
+  private fixture app (privacy enforced, counts only, measured before
+  inputs with page-data content were included): 562 elements in 72
+  templates guarded; the static render of the 6 pages measured shows 0
+  elements that the connected page hides (before: up to 285 on a page),
+  and the "access required" state no longer shows before the socket
+  connects (before: from 0.2 s to 2.4-3.9 s, until connected).
+  **Existing generated apps:** the runtime files are regenerated; no
+  hand edits needed.
 
 - **A patch to the URL the page is on no longer reads the page's data
   again (WTF-562).** Every `handle_params` read all of a page's data
