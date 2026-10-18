@@ -2036,6 +2036,10 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert flag(html, "Any Zulu") == "yes"
     assert flag(html, "No Zulu") == "no"
     assert html =~ "Zulu state: Zulu"
+    # A constraint's value reads the search exactly too: done = yes.
+    assert html =~ "Done if has: Answer"
+    # Minus one item: the other 151 tasks remain.
+    assert flag(html, "Minus Zulu empty") == "no"
 
     # Filtered out: the filtered search no longer contains it.
     PhxCheck.Task
@@ -2054,13 +2058,17 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert flag(html, "Any Zulu") == "no"
     assert flag(html, "No Zulu") == "yes"
     refute html =~ "Zulu state: Zulu"
+    # done = no: Bake sorts first.
+    assert html =~ "Done if has: Bake"
   end
 
-  test "page data's contains over a capped list is not lowered: not shown", %{conn: conn} do
+  test "page data reading a capped list is not lowered: not shown", %{conn: conn} do
     on()
     bulk()
     {:ok, _view, html} = live(conn, "/shown")
     assert flag(html, "Merged has Zulu") == nil
+    assert flag(html, "Intersect empty") == nil
+    refute html =~ ~r/Until count: \d/
   end
 
   test "with data access off, a click whose condition reads a search is refused", %{conn: conn} do
