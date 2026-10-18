@@ -327,6 +327,43 @@ may run (WTF-520):
   Bubble would set as it loads. A page-load step that runs sets the
   element right after the connected mount's read, and the page reads
   what depends on it again (one more read of the page's data).
+* **A popup always opened with its data.** A popup is kept whatever
+  else may display data in it (a workflow the page never triggers or
+  runs whole included: a plugin's event, a refused page-load or
+  condition-true workflow) when all of these hold:
+  * every workflow that may open it (a show or a toggle step) displays
+    data in it after its last opening step, with only client steps
+    (show, hide, toggle, focus, scroll to) between, and no condition on
+    that display;
+  * nothing else may open it: not its conditions, and no action this
+    target does not lower naming it or an element inside it;
+  * nothing outside it names it or an element inside it other than as a
+    step's target: no element's binding or property, no page data
+    source, no workflow's condition, no step's condition or value. A
+    workflow's steps after its own display in the popup with no
+    condition may read the popup itself (what that run just displayed),
+    never an element inside it; that display's own value counts as
+    before it. Exempt, as running only while the popup is open: a click
+    or an input change of an element inside it, and a custom event only
+    those call (not one anything schedules: it may run after the popup
+    closes). Exempt, as never running here: a
+    workflow of an event this target does not lower or wire (a plugin's
+    event, "User is logged in / out"). The popup's own "is opened"
+    workflow is not exempt: which of it and the opening run reads first
+    is not replayed (as for the popup races above).
+
+  Popups are closed as the page loads and what is inside one renders
+  only while it is open, so on every opening it shows what the opening
+  run displayed. While it stays open, a workflow that does not run here
+  could have displayed other data in Bubble: the popup then shows older
+  data. Those workflows (not triggered or not run whole, other than
+  page-load workflows, which run while every popup is closed) are listed
+  on its entry in `__bubble__(:data)` (`display: %{..., not_run: [<Bubble
+  IDs>]}`), in a `:frontend_workflow_residue` diagnostic (`reason`
+  `"display_not_run"`), in a `TODO(bubble:<popup>)` marker in the
+  template, and, with the developer markers on, in the popup's tooltip
+  ("Data may be older: ..."). Not a group (it may show as the page loads), and
+  not in a repeating group's cell.
 * **No step at all.** A group, popup, floating group, group focus or
   repeating group with a type of content, no data source and no step
   setting it, outside a repeating group's cell, shows nothing, ever:

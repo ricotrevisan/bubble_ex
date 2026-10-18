@@ -196,6 +196,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> Map.put(:required, required_vars(frontend, base))
       |> Map.put(:scoped, scoped(frontend, flows, base.expressions))
       |> Map.put(:data_blocked, data_blocked(flows))
+      |> Map.put(:display_not_run, display_not_run(flows))
       |> Map.put(:api_readers, api_readers(flows))
 
     pages = Enum.map(names.pages, &page(&1, base))
@@ -2403,9 +2404,37 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp data_notes(node, ctx) do
     texts = ctx |> Map.get(:data_blocked, %{}) |> Map.get(bid(node), [])
 
-    if Enum.any?(texts, &(&1 =~ "its data source is not loaded" and &1 =~ "page_data_in_cell")),
-      do: ["Data not loaded: it would be searched once per cell"],
-      else: []
+    cell =
+      if Enum.any?(texts, &(&1 =~ "its data source is not loaded" and &1 =~ "page_data_in_cell")),
+        do: ["Data not loaded: it would be searched once per cell"],
+        else: []
+
+    cell ++ Enum.map(not_run_texts(node, ctx), &("Data may be older: " <> &1))
+  end
+
+  # A popup kept as page data although workflows that do not run here may
+  # display data in it while it is open (WTF-520, `not_run`): Bubble ID =>
+  # their Bubble IDs.
+  defp display_not_run(nil), do: %{}
+
+  defp display_not_run(%FlowSpec{surfaces: surfaces}) do
+    for {_id, s} <- surfaces,
+        %{not_run: [_ | _] = ids, element: element} <- Map.get(s, :data, []),
+        into: %{},
+        do: {element, ids}
+  end
+
+  defp not_run_texts(node, ctx) do
+    case ctx |> Map.get(:display_not_run, %{}) |> Map.get(bid(node)) do
+      nil ->
+        []
+
+      ids ->
+        [
+          "workflows that do not run here may display data in it while it is open " <>
+            "(#{Enum.join(ids, ", ")})"
+        ]
+    end
   end
 
   # An element whose own data source reads an API Connector call (WTF-533,
@@ -2425,6 +2454,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     ctx
     |> Map.get(:data_blocked, %{})
     |> Map.get(bid(node), [])
+    |> Kernel.++(
+      Enum.map(not_run_texts(node, ctx), &("display: " <> &1 <> "; it may show older data"))
+    )
     |> Enum.reduce(acc, &mark(&2, node, &1))
   end
 

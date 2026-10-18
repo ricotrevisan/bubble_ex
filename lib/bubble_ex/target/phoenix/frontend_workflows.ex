@@ -866,6 +866,11 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   # An element a "Display data" step sets (WTF-492): what the step showed
   # wins over its own source until a reset; with no source of its own
   # (`read: :displayed`), it shows only that.
+  # A popup kept although workflows that do not run here may display data
+  # in it while it is open (WTF-520) lists them (`not_run`, Bubble IDs).
+  defp display_meta(%{displayed?: true, not_run: [_ | _] = ids} = d),
+    do: ", display: %{page_size: #{inspect(d.page_size)}, not_run: #{inspect(ids)}}"
+
   defp display_meta(%{displayed?: true} = d),
     do: ", display: %{page_size: #{inspect(d.page_size)}}"
 
