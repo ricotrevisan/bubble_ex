@@ -232,8 +232,10 @@ defmodule BubbleEx.PageDataTest do
       data = files["lib/shop_web/bubble_data.ex"]
       assert data =~ "true -> load_page(value, loads, ctx.actor)"
 
+      assert data =~ "Runtime.load_page(value, loads, Runtime.root(nil, actor), related_cap())"
+
       assert data =~
-               "Runtime.load_page(value, loads, Runtime.root(nil, actor), related_cap(), opts)"
+               "Runtime.load_page_result(value, paths, Runtime.root(nil, actor), related_cap())"
 
       assert page =~ "BubbleData.records("
       assert page =~ "Shop.Task"

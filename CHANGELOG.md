@@ -159,10 +159,12 @@ All notable changes to this project are documented here.
   (the same resource and attributes) and the same paths below it, and
   its value is put on the record the caller passed. The relationships
   not kept yet still load together, so a load never makes more queries
-  than before. The current user's loads are kept the same way. The
-  result is that of one load of all the paths: a relationship's limit
-  and nested loads depend only on its own paths, and when the load
-  fails, every relationship asked for reads as empty
+  than before, except when a load fails (each relationship is then
+  retried alone, so a later load knows which one failed). The current
+  user's loads are kept the same way. The result is that of one load
+  of all the paths: a relationship's limit and nested loads depend only
+  on its own paths, and when the load fails, every relationship asked
+  for reads as empty
   (`Runtime.load_page_result/5`). A relationship that failed is kept as
   failed. Outside a read pass, nothing changes.
   On the private fixture app's `/meeting/<id>` (dev, privacy enforced,

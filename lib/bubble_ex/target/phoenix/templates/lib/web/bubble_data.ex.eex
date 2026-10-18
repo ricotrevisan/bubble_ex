@@ -1178,16 +1178,15 @@ defmodule <%= @web %>.BubbleData do
 
   # Values (a thing, a list of things, anything else) with relationships
   # `loads` loaded, one load per resource for all of them; in order.
-  defp load_values(values, loads, actor, opts \\ [])
-  defp load_values(values, [], _actor, _opts), do: values
+  defp load_values(values, [], _actor), do: values
 
-  defp load_values(values, loads, actor, opts) do
+  defp load_values(values, loads, actor) do
     by_resource =
       values
       |> Enum.flat_map(&records_in/1)
       |> Enum.group_by(& &1.__struct__)
       |> Map.new(fn {resource, records} ->
-        {resource, load_page(records, loads, actor, opts)}
+        {resource, load_page(records, loads, actor)}
       end)
 
     {loaded, _} = Enum.map_reduce(values, by_resource, &take_loaded/2)
@@ -1769,23 +1768,21 @@ defmodule <%= @web %>.BubbleData do
   # showing the same records load their relationships once. The same
   # records are the same attributes (`attributes_key/2`): a record keeps
   # its ID and attributes however many relationships an earlier load left
-  # on it (WTF-559). Anything else (a mixed list, `lazy?: true`, which
-  # keeps what the term has loaded) is kept by the very term and loads
-  # (`once/3`).
-  defp load_page(value, loads, actor, opts \\ [])
-  defp load_page(value, [], _actor, _opts), do: value
-  defp load_page(value, _loads, _actor, _opts) when value in [nil, []], do: value
+  # on it (WTF-559). Anything else (a mixed list) is kept by the very
+  # term and loads (`once/3`).
+  defp load_page(value, [], _actor), do: value
+  defp load_page(value, _loads, _actor) when value in [nil, []], do: value
 
-  defp load_page(value, loads, actor, opts) do
-    case attributes_key(value, opts) do
+  defp load_page(value, loads, actor) do
+    case attributes_key(value) do
       nil ->
-        once({:load, value, loads, opts}, actor, fn ->
-          Runtime.load_page(value, loads, Runtime.root(nil, actor), related_cap(), opts)
+        once({:load, value, loads}, actor, fn ->
+          Runtime.load_page(value, loads, Runtime.root(nil, actor), related_cap())
         end)
 
       key ->
-        by_relationship(value, loads, actor, &{:load_relationship, key, &1, opts}, fn paths ->
-          Runtime.load_page_result(value, paths, Runtime.root(nil, actor), related_cap(), opts)
+        by_relationship(value, loads, actor, &{:load_relationship, key, &1}, fn paths ->
+          Runtime.load_page_result(value, paths, Runtime.root(nil, actor), related_cap())
         end)
     end
   end
@@ -1900,11 +1897,7 @@ defmodule <%= @web %>.BubbleData do
   # What a relationship load reads of `value`: its resource and each
   # record's attributes (the ID and the source attributes among them,
   # hidden fields as they were read), never its loaded relationships;
-  # nil when the term itself decides (see `load_page/4`).
-  defp attributes_key(value, opts) do
-    if Keyword.get(opts, :lazy?, false), do: nil, else: attributes_key(value)
-  end
-
+  # nil when the term itself decides (see `load_page/3`).
   defp attributes_key(%{__struct__: resource} = record) do
     if Ash.Resource.Info.resource?(resource),
       do: {resource, Map.take(record, attribute_names(resource))}
