@@ -627,6 +627,50 @@
             "width": 400,
             "height": 300
           }
+        },
+        "bPopPlum": {
+          "id": "bPopPlum",
+          "type": "Popup",
+          "properties": {
+            "_comment": "WTF-564: opened by a click whose condition searches for Plum, which only its owner may find when enforced.",
+            "order": 4,
+            "width": 300,
+            "height": 120
+          },
+          "elements": {
+            "bPopPlumText": {
+              "id": "bPopPlumText",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Plum popup"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bIfPlum": {
+          "id": "bIfPlum",
+          "type": "Button",
+          "properties": {
+            "order": 5,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Open if Plum"
+              }
+            }
+          }
         }
       },
       "workflows": {
@@ -720,6 +764,51 @@
                 "data_source": {
                   "type": "CurrentDataItem"
                 }
+              }
+            }
+          }
+        },
+        "wIfPlum": {
+          "id": "wIfPlum",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bIfPlum",
+            "condition": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.product",
+                "sort_field": "name_text",
+                "descending": false,
+                "ignore_empty_constraints": false,
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "name_text",
+                    "value": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Plum"
+                      }
+                    }
+                  }
+                }
+              },
+              "next": {
+                "type": "Message",
+                "name": "first_element",
+                "next": {
+                  "type": "Message",
+                  "name": "is_not_empty"
+                }
+              }
+            }
+          },
+          "actions": {
+            "0": {
+              "id": "aIfPlum1",
+              "type": "ShowElement",
+              "properties": {
+                "element_id": "bPopPlum"
               }
             }
           }

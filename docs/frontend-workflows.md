@@ -440,6 +440,36 @@ then.
   process) drops it. A malformed message, one for a surface the page does
   not render, or one without a well-formed budget is ignored and logged.
 
+## An "Only when" condition reading a search (WTF-564)
+
+A workflow's own condition may read a search (`Search for Requests
+(...):first item is not empty`), which the Elixir target does not
+compile. It is compiled as a page data source's conditional state is
+(`docs/page-data.md`): each search (with its constraints, sort and
+`first item`, `item #`, `items until #` or `count`, and the list
+operators page data reads as queries) is an Ash query, read through
+`<Web>.BubbleData.read/4` as the current user (what the user may find, as
+the page's searches), in the generated `__condition/1` function before
+the rest of the condition is tested. The search is read each time the
+event runs, as Bubble tests the condition when the event fires. Such a
+workflow reads stored data, so it runs only with data access on.
+
+A condition decides whether the workflow's steps (its writes included)
+run, so every query it reads is exact, never a list capped at
+`:max_items`: `<search> is empty` reads the search's first record, and
+`<search> contains <thing>` (a `:filtered` search included) reads the
+first record of the search constrained to that thing, so a thing past
+the first 100 records is found. A condition that still reads a search
+whole (a field of its records, `items until #`, ...) is residue
+(`elixir:capped_list`).
+
+Left as residue, as before: a search the Ash filter cannot compile (or
+one on a field the privacy rules hide further along a path,
+`:search_field_hidden`), a condition that also reads an API Connector
+call, a step's own condition or value reading a search, and a "Do when
+condition is true" workflow's condition (the page tests it again when its
+own data changes, not when the search's records do).
+
 ## A refused click shows a notice (WTF-453)
 
 When a click or an input change asks for a workflow the runtime refuses
@@ -498,7 +528,7 @@ are refused silently (logged), as they would show it on their own.
   most 1 MB.
 * **Data access fails closed twice.** A workflow is flagged as a data
   workflow when any value, condition or step condition loads a
-  relationship, or it writes or schedules; independently, the runtime's
+  relationship, its condition reads a search, or it writes or schedules; independently, the runtime's
   `load/3` and data steps read and write nothing with data access off.
 
 ## The overlay runtime (fixes latent T5 issues)

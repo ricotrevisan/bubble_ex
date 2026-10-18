@@ -2549,6 +2549,177 @@ defmodule BubbleEx.PageDataTest do
       assert files["lib/shop_web/bubble_workflows.ex"] =~ ":data -> Map.get(ctx.data, key)"
     end
   end
+
+  describe "a workflow's condition reading a search (WTF-564)" do
+    # /shown's bIfEat and bIfNone open bPopIf "Only when Search for Tasks
+    # (title = <text>):first item is not empty".
+    defp if_workflow(spec, id), do: Spec.workflow(spec, "bShownPage", id)
+
+    defp with_constraint_key(app, workflow, key),
+      do:
+        put_in(
+          app,
+          [
+            "pages",
+            "shown",
+            "workflows",
+            workflow,
+            "properties",
+            "condition",
+            "properties",
+            "constraints",
+            "0",
+            "key"
+          ],
+          key
+        )
+
+    test "the search is a query the condition reads first: the workflow runs" do
+      {spec, _project, _frontend, _app, _model} = spec(app())
+
+      for id <- ["wIfEat", "wIfNone"] do
+        w = if_workflow(spec, id)
+        assert Spec.native?(w), "#{id}: #{inspect(w.residue)}"
+        assert Spec.wired?(w)
+        # It reads stored data: it runs only with data access.
+        assert w.data?
+
+        assert %{source: source, queries: [%{n: 1, resource: "Task", take: :first} = q]} =
+                 w.condition
+
+        assert source =~ "query_1"
+        assert inspect(q.filter) =~ if(id == "wIfEat", do: "Eat", else: "Zzz")
+      end
+    end
+
+    test "every query a condition reads is exact: contains and is empty read one record" do
+      {spec, _project, _frontend, _app, _model} = spec(app())
+
+      # `contains` (of the whole search and of a filtered one) reads the
+      # search constrained to the thing; `is not empty` its first record.
+      for {id, n} <- [{"wIfZulu", 2}, {"wIfZuluOpen", 2}, {"wIfAny", 1}, {"wIfEat", 1}] do
+        w = if_workflow(spec, id)
+        assert Spec.native?(w), "#{id}: #{inspect(w.residue)}"
+        assert length(w.condition.queries) == n
+        assert Enum.all?(w.condition.queries, &(&1.take == :first)), id
+      end
+
+      # The thing it contains: the constrained search's ID is the pinned thing.
+      [_zulu, narrowed] =
+        Enum.sort_by(if_workflow(spec, "wIfZulu").condition.queries, &(-&1.n))
+
+      assert inspect(narrowed.filter.expr) =~ ~s({:op, "==", {:ref, [], "id"}, {:pin, )
+      assert [%{ref: :one}] = narrowed.pins
+    end
+
+    test "a condition reading a search whole (a capped list) is residue, with its reason" do
+      {spec, _project, _frontend, _app, _model} = spec(app())
+      w = if_workflow(spec, "wCapped")
+      refute Spec.native?(w)
+      assert w.condition == nil
+
+      assert [
+               %{
+                 subject: "workflow:wCapped",
+                 reason: :uncompiled_expression,
+                 detail: %{constructs: ["elixir:capped_list"]}
+               }
+             ] = w.residue
+    end
+
+    test "a condition that also reads an API Connector call is left as it was" do
+      search = IR.node(:search, ["custom.task", nil], "list.custom.task")
+      found = IR.node(:not, [IR.node(:is_empty, [search], "boolean")], "boolean")
+      call = IR.node(:api_data, ["gEx", "cList", []], "boolean")
+
+      assert FrontendWorkflows.Data.condition(
+               %BubbleEx.Workflows.Lowering.Expr{
+                 path: "",
+                 ir: IR.node(:and, [found, call], "boolean")
+               },
+               "workflow:w",
+               %{},
+               %{}
+             ) == :none
+    end
+
+    test "without page data the condition still reads its search" do
+      {spec, _project, _frontend, _app, _model} = spec(app(), page_data: false)
+      w = if_workflow(spec, "wIfEat")
+      assert Spec.native?(w)
+      assert %{queries: [%{resource: "Task"}]} = w.condition
+    end
+
+    test "a \"Do when condition is true\" workflow's search stays residue" do
+      app =
+        update_in(app(), ["pages", "shown", "workflows", "wIfEat"], fn w ->
+          w
+          |> Map.put("type", "ConditionTrue")
+          |> put_in(["properties", "run_when"], "every_time")
+        end)
+
+      {spec, _project, _frontend, _app, _model} = spec(app)
+      w = if_workflow(spec, "wIfEat")
+      assert w.kind == :condition_true
+      refute Spec.native?(w)
+      assert w.condition == nil
+      assert [%{reason: :uncompiled_expression}] = w.residue
+    end
+
+    test "a search the Ash filter cannot compile stays residue: the workflow does not run" do
+      {spec, _project, _frontend, _app, _model} =
+        spec(with_constraint_key(app(), "wIfNone", "missing_text"))
+
+      w = if_workflow(spec, "wIfNone")
+      refute Spec.native?(w)
+      assert w.condition == nil
+      assert [%{subject: "workflow:wIfNone"} | _] = w.residue
+      assert Enum.all?(w.residue, &(&1.reason in [:uncompiled_expression, :unresolved_reference]))
+
+      # The other one still runs.
+      assert Spec.native?(if_workflow(spec, "wIfEat"))
+    end
+
+    test "printed: the condition reads its query as the event runs, as the current user" do
+      {spec, project, frontend, app, model} = spec(app())
+
+      {:ok, compiled} =
+        BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend,
+          runtime: "Shop.Bubble.Runtime",
+          namespace: "Shop"
+        )
+
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, backend} = BubbleEx.Workflows.Backend.build(app, model, index)
+      {:ok, workflows} = BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "Shop")
+
+      {:ok, files} =
+        Phoenix.render(project,
+          name: "Shop",
+          frontend: frontend,
+          expressions: compiled,
+          workflows: workflows,
+          frontend_workflows: spec
+        )
+
+      module = files["lib/shop_web/live/shown_live/workflows.ex"]
+      assert module =~ "require Ash.Query"
+      assert module =~ "alias ShopWeb.BubbleData, warn: false"
+
+      assert module =~
+               ~s|"wIfEat" => %{run: :wf_w_if_eat, condition: nil, blocked: [], data: true}|
+
+      [_, condition] =
+        Regex.run(~r/defp wf_w_if_eat__condition\(ctx\) do\n(.*?)\n  end\n/s, module)
+
+      assert condition =~ "Shop.Task"
+      assert condition =~ ~s("Eat")
+      assert condition =~ "|> Ash.Query.filter("
+      assert condition =~ "|> BubbleData.read(ctx, :first, nil)"
+      assert condition =~ "query_1 ="
+      assert module =~ "BubbleWorkflows.steps(ctx, &wf_w_if_eat__condition/1, ["
+    end
+  end
 end
 
 defmodule BubbleEx.PageDataUnloadedInstanceTest do

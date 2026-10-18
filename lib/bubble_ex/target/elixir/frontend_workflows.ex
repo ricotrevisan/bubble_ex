@@ -948,7 +948,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     cell = event_cell(w, ctx)
     bctx = Map.merge(ctx, %{workflow: w, surface: surface, subject: w.id, cell: cell})
 
-    {condition, cr} = compile(w.condition, w.id, bctx)
+    {condition, cr} = condition(w, bctx)
     {interval, ir} = compile(w.interval, w.id, bctx)
     steps = Enum.map(w.steps, &step(&1, bctx))
 
@@ -962,9 +962,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     native? = residue == [] and Enum.all?(steps, &(&1.residue == []))
     client? = native? and client?(w, steps)
 
-    # Reading the page's data (WTF-420) reads stored data too.
+    # Reading the page's data (WTF-420) reads stored data too, and so
+    # does a condition's search (WTF-564).
     data? =
-      Enum.any?(steps, &(&1.op in @data_ops)) or
+      Enum.any?(steps, &(&1.op in @data_ops)) or queries?(condition) or
         Enum.any?(
           [condition, interval | Enum.flat_map(steps, &[&1.condition | Spec.step_values(&1)])],
           &(loads?(&1) or reads_data?(&1))
@@ -992,6 +993,34 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       diagnostics: diagnostics(w, residue, steps)
     }
   end
+
+  # A workflow's condition ("Only when"). One that reads a search (WTF-564),
+  # which the Elixir target does not compile, is compiled as a conditional
+  # state's condition is in the page's data (`Data.condition/4`): each
+  # search is an Ash query read as the event runs, as the current user
+  # (what the user may find, as the page's searches), before the
+  # condition is tested. Bubble tests the condition when the event fires,
+  # so the search is read then. Not a "Do when condition is true"
+  # workflow's: the page tests it again when its own data changes, not
+  # when the search's records do, as Bubble would.
+  defp condition(%Workflow{kind: :condition_true} = w, ctx), do: compile(w.condition, w.id, ctx)
+
+  defp condition(%Workflow{condition: expr, id: id}, ctx) do
+    with {nil, [_ | _] = residue} = uncompiled <- compile(expr, id, ctx),
+         true <- Enum.any?(residue, &(&1.reason == :uncompiled_expression)) do
+      case Data.condition(expr, id, ctx, %{compile: &compile/3, bind: &bind/2}) do
+        {:ok, compiled} -> {compiled, []}
+        {:error, residue} -> {nil, residue}
+        :none -> uncompiled
+      end
+    else
+      {_compiled, _residue} = compiled -> compiled
+      false -> compile(expr, id, ctx)
+    end
+  end
+
+  defp queries?(%{queries: [_ | _]}), do: true
+  defp queries?(_compiled), do: false
 
   # A workflow run in the browser: clicked, no condition, element steps only.
   defp client?(%Workflow{kind: :click, condition: nil, disabled?: false}, [_ | _] = steps),

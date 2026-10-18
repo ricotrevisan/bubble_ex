@@ -6,6 +6,31 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **An "Only when" condition that reads a search runs (WTF-564).** A
+  workflow whose condition read a search (`Search for ...:first item is
+  not empty`) was `uncompiled_expression` residue (`elixir:search`), so
+  the runtime refused it, and with it every popup only it opened. The
+  condition is now compiled as a page data source's conditional state:
+  each search is an Ash query, read through `BubbleData.read/4` as the
+  current user (what the user may find) when the event runs, before the
+  rest of the condition is tested, as Bubble tests it when the event
+  fires. Such a workflow reads stored data, so it runs only with data
+  access on. Its queries are exact, never capped at `:max_items`:
+  `<search> is empty` reads one record, `<search> contains <thing>`
+  (filtered or not) the search constrained to that thing; a condition
+  still reading a search whole is residue (`elixir:capped_list`). Still
+  residue: a search the Ash filter cannot compile, a
+  condition that also reads an API Connector call, a step's own condition
+  or value reading a search, and a "Do when condition is true"
+  workflow's condition (the page tests it again only when its own data
+  changes). See `docs/frontend-workflows.md`. On the private fixture app
+  (counts only, against main): frontend workflows native 936 to 941,
+  wired 648 to 653; `uncompiled_expression` residue 304 to 291 and
+  `unavailable_input` 648 to 652 (conditions that now compile and wait on
+  data the page does not load); 2 of the 13 popups marked "Data may be
+  older" can now be opened, and lose the marker (13 to 11; /meeting 12 to
+  10).
+
 - **A width compared to a named breakpoint compiles.** A conditional
   such as `Current page width < Tablet` (kept as an element conditional,
   or with another condition) did not compile: the `Breakpoint` value had

@@ -525,6 +525,25 @@ defmodule PhxCheckWeb.CellClicksBehaviorTest do
     assert scoped_text(cats, fruit, "bPickedName") == "Chosen: Apple"
   end
 
+  # WTF-564: bIfPlum opens bPopPlum "Only when Search for Products (name =
+  # Plum):first item is not empty". The search is read as the user who
+  # clicks: enforced, only Plum's owner (Bo) may find it.
+  test "a condition's search finds only what the clicking user may find", %{
+    conn: conn,
+    users: users
+  } do
+    pop = ~s([data-bubble-id="bPopPlum"])
+
+    for {name, finds?} <- [{"Bo", true}, {"Ada", not enforced?()}] do
+      view = products(conn, users[name])
+      render_click(view, "bubble:click", %{"scope" => "", "element" => "bIfPlum"})
+
+      if finds?,
+        do: assert_push_event(view, "bubble:exec", %{ops: [%{op: "show", to: ^pop}]}),
+        else: refute_push_event(view, "bubble:exec", %{ops: [%{to: ^pop}]})
+    end
+  end
+
   test "each user's rows are the products that user may read", %{conn: conn, users: users} do
     view = products(conn, users["Bo"])
     html = render(view)
