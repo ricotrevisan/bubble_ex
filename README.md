@@ -534,6 +534,22 @@ CLI. You can swap in your own scanner per call (`adapter:` option) or globally:
 config :bubble_ex, :secrets_adapter, MyApp.CustomScanner
 ```
 
+### Plugin code (`static.js`)
+
+A page's `dynamic.js` holds the app; its `static.js` holds Bubble's runtime and
+every installed plugin's definition and client-side code, so a key hard-coded in
+a plugin reaches every visitor too. Fetch it with the app and scan it:
+
+```elixir
+{:ok, app} = BubbleEx.fetch_app("my-app", include_payload: true, include_static_js: true)
+{:ok, findings} = BubbleEx.StaticJs.scan(app.static_js, verify: false)
+```
+
+Each finding gets `"StaticJs" => %{"kind", "line", "plugin_id", "plugin"}`: a
+marketplace plugin (`"plugin"`), a plugin Bubble ships (`"bubble_plugin"`) or
+Bubble's runtime (`"bubble_runtime"`). The fetch is best-effort: when `static.js`
+cannot be loaded, `app.static_js` is nil and `app.static_js_error` says why.
+
 ### BubbleEx.Secrets.Native
 
 `BubbleEx.Secrets.Native` is a pure-Elixir, zero-dependency offline scanner —

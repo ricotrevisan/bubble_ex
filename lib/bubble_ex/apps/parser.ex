@@ -24,6 +24,27 @@ defmodule BubbleEx.Apps.Parser do
     end
   end
 
+  @doc """
+  Extracts the URL of a Bubble app's `static.js` from its HTML payload: the
+  installed plugins' definitions and client-side code, beside `dynamic.js`.
+  """
+  @spec extract_static_js_url(map()) :: {:ok, String.t()} | {:error, BubbleEx.Error.t()}
+  def extract_static_js_url(%{body: html_content, url: base_url}) do
+    with {:ok, document} <- Floki.parse_document(html_content),
+         {:ok, relative_url} <- find_script(document, "/package/static_js", static_js_errors()),
+         {:ok, absolute_url} <- build_absolute_url(relative_url, base_url) do
+      {:ok, absolute_url}
+    else
+      {:error, reason} ->
+        {:error,
+         BubbleEx.Error.new(:parse_failed, "could not find the app's static_js script", %{
+           url: base_url,
+           phase: :discover_static_js,
+           reason: reason
+         })}
+    end
+  end
+
   # Bubble answers 200 with this notice, and no app, when a version is
   # password-protected but the app's plan no longer includes that feature.
   # Only the owner upgrading the plan unlocks it.
@@ -274,15 +295,25 @@ defmodule BubbleEx.Apps.Parser do
   @spec extract_json_string(String.t()) :: {:ok, String.t()} | {:error, term()}
   def extract_json_string(app_line), do: extract_json_string_internal(app_line)
 
-  defp find_dynamic_js_script(document) do
-    case Floki.find(document, "script[src*='/package/dynamic_js']") do
+  defp find_dynamic_js_script(document),
+    do:
+      find_script(
+        document,
+        "/package/dynamic_js",
+        {:dynamic_js_script_not_found, :dynamic_js_script_src_not_found}
+      )
+
+  defp static_js_errors, do: {:static_js_script_not_found, :static_js_script_src_not_found}
+
+  defp find_script(document, path, {not_found, src_not_found}) do
+    case Floki.find(document, "script[src*='#{path}']") do
       [] ->
-        {:error, :dynamic_js_script_not_found}
+        {:error, not_found}
 
       scripts ->
         case Floki.attribute(scripts, "src") do
           [src | _] -> {:ok, src}
-          [] -> {:error, :dynamic_js_script_src_not_found}
+          [] -> {:error, src_not_found}
         end
     end
   end
