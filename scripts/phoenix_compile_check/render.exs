@@ -402,7 +402,7 @@ case System.argv() do
     scratch? =
       File.exists?(marker) or File.ls!(dir) -- ~w(deps _build) == [] or
         (File.exists?(Path.join(dir, "mix.exs")) and
-           File.read!(Path.join(dir, "mix.exs")) =~ "app: :phx_check")
+           File.read!(Path.join(dir, "mix.exs")) =~ ~r/^\s*app: :phx_check,/m)
 
     if not scratch?,
       do: raise("#{dir} is not a phoenix_compile_check scratch project: not wiping it")
