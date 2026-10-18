@@ -428,6 +428,48 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     refute live =~ "visible_bbpmissing"
   end
 
+  # Real exports' compact form: a compound breakpoint test in `%s` is not
+  # a breakpoint rule, so it stays an element conditional and compiles.
+  test "a compact-form compound breakpoint state compiles as a conditional", %{} do
+    state = %{
+      "%x" => "State",
+      "%p" => %{"%iv" => true},
+      "%c" => %{
+        "%x" => "PageData",
+        "%p" => %{"%nm" => "Current Page Width"},
+        "%n" => %{
+          "%x" => "Message",
+          "%nm" => "less_than",
+          "%a" => %{"%x" => "Breakpoint", "%p" => %{"breakpoint_id" => "built-in-tablet"}},
+          "%n" => %{
+            "%x" => "Message",
+            "%nm" => "and_",
+            "%a" => %{"%x" => "CurrentUser", "%n" => %{"%x" => "Message", "%nm" => "logged_in"}}
+          }
+        }
+      }
+    }
+
+    element = %{
+      "id" => "bBpCompact",
+      "%x" => "Text",
+      "%p" => %{"%3" => "Compact", "%iv" => false, "order" => 10},
+      "%s" => %{"0" => state}
+    }
+
+    %{files: files} =
+      app() |> put_in(["pages", "cells", "elements", "bBpCompact"], element) |> build()
+
+    template = files["lib/shop_web/live/cells_live.html.heex"]
+    live = files["lib/shop_web/live/cells_live.ex"]
+    assert tag(template, "bBpCompact") =~ "hidden={!visible_bbpcompact("
+    refute template =~ "TODO(bubble:bBpCompact)"
+    assert live =~ "Shop.Bubble.Runtime.compare(:lt, page_data_current_page_width, 992)"
+    assert [helper] = Regex.run(~r/defp visible_bbpcompact\(.*?\n  end\n/s, live)
+    assert helper =~ "compare(:lt, page_data_current_page_width, 992)"
+    assert helper =~ "current_user"
+  end
+
   test "without breakpoint settings, no breakpoint compiles", %{} do
     template =
       app()

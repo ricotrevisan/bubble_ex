@@ -213,7 +213,10 @@ defmodule BubbleEx.Expression.Typing do
       when kind in [:workflow_parameter, :api_parameter] and is_binary(type),
       do: {:value, {:parameter, Map.delete(ref, "btype_id")}, type}
 
-  def context(%Scope{kind: :page_data, ref: %{"name" => name}}, _env) do
+  # The live payload's compact form names it `%nm`.
+  def context(%Scope{kind: :page_data, ref: ref}, _env) when is_map(ref) do
+    name = ref["name"] || ref["%nm"]
+
     case Map.get(@page_data, name) do
       nil -> :unknown
       type -> {:value, {:page_data, %{"name" => name}}, type}

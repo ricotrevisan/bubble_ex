@@ -77,6 +77,13 @@ defmodule BubbleEx.Expression.TypingTest do
       {date, []} = typed(src("PageData", %{"name" => "Current Date/Time"}), [])
       assert date.type == "date"
 
+      # The live payload's compact form names it `%nm`; the input is the same.
+      env = env([])
+      compact = parse!(src("PageData", %{"%nm" => "Current Page Width"}), env)
+
+      assert {:value, {:page_data, %{"name" => "Current Page Width"}}, "number"} =
+               Typing.context(compact, env)
+
       {param, []} = typed(src("GetParamFromUrl", %{"parameter_name" => text(["id"])}), [])
       assert param.type == "text"
     end

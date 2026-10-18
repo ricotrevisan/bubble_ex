@@ -20,6 +20,30 @@ defmodule BubbleEx.Frontend.ResponsiveTest do
     assert length(Responsive.breakpoint_states(chained, breakpoints)) == 1
   end
 
+  test "widths keeps each breakpoint's numeric size, 0 included, and drops any other" do
+    breakpoints = %{
+      "tablet" => %{"builtin" => true, "size" => 992},
+      "custom" => %{"builtin" => false, "size" => 640.5},
+      # 0 is a width like any other (the media rules accept it too).
+      "zero" => %{"size" => 0},
+      "negative" => %{"size" => -1},
+      "text" => %{"size" => "768"},
+      "empty" => %{"size" => nil},
+      "list" => %{"size" => [768]},
+      "unsized" => %{"name" => "Custom"},
+      "not_a_map" => 768
+    }
+
+    payload = %{"settings" => %{"client_safe" => %{"responsive_breakpoints" => breakpoints}}}
+
+    assert Responsive.widths(payload) == %{"tablet" => 992, "custom" => 640.5, "zero" => 0}
+    assert Responsive.widths(%{}) == %{}
+
+    assert Responsive.widths(%{
+             "settings" => %{"client_safe" => %{"responsive_breakpoints" => []}}
+           }) == %{}
+  end
+
   test "normalization and CSS preserve strict breakpoints, local paint and partial padding" do
     conditional = state("less_than", 24)
 
