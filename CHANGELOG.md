@@ -101,24 +101,37 @@ All notable changes to this project are documented here.
   popup that "Display data" steps set was kept only when every workflow
   that might start one of those steps ran whole here (as the page loads)
   or was triggered (on events). One the page never triggers, such as a
-  plugin's event, left the popup and everything reading it unloaded,
-  even when that event's own display was the only part missing. Now a
-  popup is kept whatever may display in it when every workflow that may
-  open it (a show or a toggle step) displays data in it after its last
-  opening step, with no condition on that step; nothing else may open it
-  (its conditions, an action this target does not lower); and nothing
-  outside it reads it or an element inside it (bindings, page data
-  sources, and workflows that may run while it is closed). A popup is
-  closed as the page loads and its contents render only while it is
-  open, so what it shows is what the opening run displayed, the same as
-  in Bubble for every workflow the page runs. A workflow that doesn't
-  run stays residue of its own. Groups, cells and the other cases keep
-  the old rule. On the private fixture app (counts only), visibility
-  markers reading page data that is not loaded went from 79 to 52 on
-  /meeting and from 167 to 140 app-wide; 1 more marker now reads a value
-  the page does not keep (37 to 38, app 58 to 59); "does not compile" is
-  unchanged (80, 145). See `docs/frontend-workflows.md`, "A popup always
-  opened with its data".
+  plugin's event, left the popup and everything reading it unloaded. Now
+  a popup is kept whatever else may display in it when:
+  - every workflow that may open it (a show or a toggle step) displays
+    data in it after its last opening step, with only client steps
+    (show, hide, toggle, focus, scroll to) between and no condition on
+    the display;
+  - nothing else may open it (its conditions, an action this target
+    does not lower naming it or an element inside it);
+  - nothing outside it reads it or an element inside it: bindings,
+    properties (not the editor's `current_parent` record), page data
+    sources, workflow and step conditions and values. Exempt: a click or
+    input change of an element inside it and a custom event only those
+    call (they run while it is open), workflows the page never triggers,
+    and a workflow's reads of the popup itself after its own display in
+    it with no condition. Its "is opened" workflow is not exempt.
+
+  On every opening it then shows what the opening run displayed. A
+  workflow that does not run here (other than a page-load one, which
+  runs while popups are closed) and may display in it while it is open
+  is listed on its `__bubble__(:data)` entry (`display: %{..., not_run:
+  [...]}`) and in a `display_not_run` diagnostic: the popup may show
+  older data meanwhile. Groups and cells keep the old rule. On the
+  private fixture app (counts only, against main with #244), visibility
+  markers reading page data that is not loaded went from 80 to 55 on
+  /meeting and from 172 to 147 app-wide. 3 of the markers that now load
+  the popup's data wait on something else: 2 read an element's "is
+  visible" state, which the page does not keep (37 to 39; app 58 to 60),
+  and 1 reads a plugin element's state (19 to 20). "Does not compile" is
+  unchanged (59; app 105). 13 popups list workflows that do not run.
+  See `docs/frontend-workflows.md`, "A popup always opened with its
+  data".
 
 - **Replay of 2026-10-14 applied** (WTF-387, WTF-520).
   - **Keyword searches match whole words** (`contains keyword(s)`).

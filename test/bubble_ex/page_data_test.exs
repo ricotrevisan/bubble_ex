@@ -1100,8 +1100,9 @@ defmodule BubbleEx.PageDataTest do
              )
     end
 
-    # bDetail as a popup: bDetailProj, inside it, reads its thing.
-    defp popup_kept?(workflows, extra \\ %{}, outside \\ %{}) do
+    # bDetail as a popup: bDetailProj, inside it, reads its thing. The
+    # spec, or nil when bDetail is not kept.
+    defp popup_spec(workflows, extra \\ %{}, outside \\ %{}, at \\ ["pages", "shown", "elements"]) do
       app =
         Enum.reduce(outside, app(), fn {id, el}, acc ->
           put_in(acc, ["pages", "shown", "elements", id], el)
@@ -1109,68 +1110,147 @@ defmodule BubbleEx.PageDataTest do
 
       app =
         workflows
-        |> detail_app(app)
-        |> update_in(["pages", "shown", "elements", "bDetail"], &Map.merge(&1, extra))
-        |> put_in(["pages", "shown", "elements", "bDetail", "type"], "Popup")
+        |> detail_app(app, at)
+        |> update_in(at ++ ["bDetail"], &Map.merge(&1, extra))
+        |> put_in(at ++ ["bDetail", "type"], "Popup")
 
       {spec, _project, _frontend, _app, _model} = spec(app)
 
       case data(spec, "bDetail") do
         %{read: :displayed, residue: []} ->
           assert %{residue: []} = data(spec, "bDetailProj")
-          true
+          spec
 
-        nil ->
-          assert %{residue: [%{reason: :unavailable_input}]} = data(spec, "bDetailProj")
-          false
+        _ ->
+          assert %{residue: [_ | _]} = data(spec, "bDetailProj")
+          nil
       end
     end
 
-    defp open_detail(id, condition \\ nil) do
-      props = %{"element_id" => "bDetail"}
-      props = if condition, do: Map.put(props, "condition", condition), else: props
-      %{"id" => id, "type" => "ShowElement", "properties" => props}
-    end
+    defp popup_kept?(
+           workflows,
+           extra \\ %{},
+           outside \\ %{},
+           at \\ ["pages", "shown", "elements"]
+         ),
+         do: popup_spec(workflows, extra, outside, at) != nil
+
+    defp open_detail(id, type \\ "ShowElement"),
+      do: %{"id" => id, "type" => type, "properties" => %{"element_id" => "bDetail"}}
 
     defp plugin_event(id, actions),
       do: wf(id, "1700000000000x100000000000000000-AAA", %{}, actions)
+
+    @read_detail %{
+      "type" => "GetElement",
+      "properties" => %{"element_id" => "bDetail"},
+      "next" => %{"type" => "Message", "name" => "get_group_data"}
+    }
+
+    @read_inner %{
+      "type" => "GetElement",
+      "properties" => %{"element_id" => "bDetailProj"},
+      "next" => %{"type" => "Message", "name" => "get_group_data"}
+    }
+
+    # A step showing `value` in bShown (outside the popup).
+    defp show_in_shown(id, value),
+      do: %{
+        "id" => id,
+        "type" => "DisplayGroupData",
+        "properties" => %{"element_id" => "bShown", "data_source" => value}
+      }
+
+    defp when_logged_in(step), do: put_in(step, ["properties", "condition"], @user_logged_in)
 
     test "a popup always opened with its data is kept, whatever else may display in it (WTF-520)" do
       opens = event("wE", [open_detail("aEo"), show_detail("aD")])
       click = clicked("wC", [call("aC", "wE")])
       plugin = plugin_event("wP", [call("aP", "wE")])
 
-      # A plugin's event the page never triggers also opens it with data:
-      # as a group, that keeps it unloaded (it may fire as the page loads).
+      # As a group, a plugin's event the page never triggers keeps it
+      # unloaded (it may fire as the page loads).
       refute kept?([opens, click, plugin])
 
       # A popup is closed as the page loads and what is inside it renders
-      # only while it is open; every opening displays its data, so what it
-      # shows is what a run the page runs displayed. The plugin's event is
-      # residue of its own.
-      assert popup_kept?([opens, click, plugin])
+      # only while it is open; every opening displays its data. The
+      # plugin's event is listed on its data: it may display while open.
+      spec = popup_spec([opens, click, plugin])
+      assert %{not_run: ["wP"]} = data(spec, "bDetail")
 
-      # Displaying in it without opening it, as the page loads: what the
-      # next opening displays replaces it.
-      assert popup_kept?([opens, click, plugin_event("wP", [show_detail("aP")])])
+      assert Enum.any?(
+               spec.diagnostics,
+               &match?(%{details: %{reason: "display_not_run", detail: %{workflows: ["wP"]}}}, &1)
+             )
 
-      # Refused as the page loads, likewise.
-      assert popup_kept?([opens, click, loaded("wL", [show_detail("aL"), mail("aLm")])])
+      # Every workflow that may display in it runs: nothing listed.
+      refute Map.has_key?(data(popup_spec([opens, click]), "bDetail"), :not_run)
 
-      # An opening with no display after it shows what was displayed
-      # before, which the page may not know.
-      no_data = clicked("wO", [open_detail("aO")])
-      refute popup_kept?([opens, click, plugin, no_data])
+      # Displaying in it without opening it, from a plugin's event or a
+      # refused condition-true workflow: listed. A refused page-load
+      # workflow runs while every popup is closed: kept, not listed.
+      spec = popup_spec([opens, click, plugin_event("wP", [show_detail("aP")])])
+      assert %{not_run: ["wP"]} = data(spec, "bDetail")
+
+      cond = %{"condition" => @user_logged_in, "run_when" => "every_time"}
+      refused = wf("wT", "ConditionTrue", cond, [show_detail("aT"), mail("aTm")])
+      assert %{not_run: ["wT"]} = data(popup_spec([opens, click, refused]), "bDetail")
+
+      spec = popup_spec([opens, click, loaded("wL", [show_detail("aL"), mail("aLm")])])
+      refute Map.has_key?(data(spec, "bDetail"), :not_run)
+
+      # Only client steps between the opening and the display.
+      focus = %{
+        "id" => "aEf",
+        "type" => "SetFocusToElement",
+        "properties" => %{"element_id" => "bShown"}
+      }
+
+      assert popup_kept?([
+               event("wE", [open_detail("aEo"), focus, show_detail("aD")]),
+               click,
+               plugin
+             ])
+
+      terminate = %{"id" => "aEt", "type" => "TerminateWorkflow", "properties" => %{}}
+
+      refute popup_kept?([
+               event("wE", [open_detail("aEo"), terminate, show_detail("aD")]),
+               click,
+               plugin
+             ])
+
+      refute popup_kept?([
+               event("wE", [open_detail("aEo"), mail("aEm"), show_detail("aD")]),
+               click,
+               plugin
+             ])
+
+      # An opening with no display after it, or before it, or a display
+      # with a condition.
+      refute popup_kept?([opens, click, plugin, clicked("wO", [open_detail("aO")])])
       refute popup_kept?([event("wE", [show_detail("aD"), open_detail("aEo")]), click, plugin])
 
-      # A display with a condition may not run.
-      maybe =
-        event("wE", [
-          open_detail("aEo"),
-          put_in(show_detail("aD"), ["properties", "condition"], @user_logged_in)
-        ])
+      refute popup_kept?([
+               event("wE", [open_detail("aEo"), when_logged_in(show_detail("aD"))]),
+               click,
+               plugin
+             ])
 
-      refute popup_kept?([maybe, click, plugin])
+      # A toggle opens it too.
+      refute popup_kept?([
+               opens,
+               click,
+               plugin,
+               clicked("wO", [open_detail("aO", "ToggleElement")])
+             ])
+    end
+
+    test "what else may open a popup always opened with its data, or read it (WTF-520)" do
+      opens = event("wE", [open_detail("aEo"), show_detail("aD")])
+      click = clicked("wC", [call("aC", "wE")])
+      plugin = plugin_event("wP", [call("aP", "wE")])
+      base = [opens, click, plugin]
 
       # Its conditions may open it.
       visible = %{
@@ -1179,40 +1259,164 @@ defmodule BubbleEx.PageDataTest do
         }
       }
 
-      refute popup_kept?([opens, click, plugin], visible)
+      refute popup_kept?(base, visible)
 
-      # Something outside it reads its data while it is closed.
-      reader = %{
+      # An action this target does not lower naming it, or an element
+      # inside it.
+      for target <- ["bDetail", "bDetailProj"] do
+        animate = %{
+          "id" => "aAnim",
+          "type" => "AnimateElement",
+          "properties" => %{"element_id" => target, "animation" => "fadeIn"}
+        }
+
+        refute popup_kept?(base ++ [clicked("wA", [animate])]), target
+      end
+
+      # Outside it: a group's source, a text, a click's step, a
+      # condition-true workflow's condition.
+      group = %{
         "id" => "bOutside",
         "type" => "Group",
         "properties" => %{
           "group_type" => "custom.task",
           "width" => 300,
           "height" => 40,
-          "data_source" => %{
-            "type" => "GetElement",
-            "properties" => %{"element_id" => "bDetail"},
-            "next" => %{"type" => "Message", "name" => "get_group_data"}
+          "data_source" => @read_detail
+        }
+      }
+
+      refute popup_kept?(base, %{}, %{"bOutside" => group})
+
+      # The editor's record of where an element was (`current_parent`, an
+      # ID or `<ID>.elements`) is no expression: not a read.
+      for parent <- ["bDetailProj", "bDetail.elements"] do
+        moved = %{
+          "id" => "bMoved",
+          "type" => "Button",
+          "current_parent" => parent,
+          "properties" => %{"width" => 30}
+        }
+
+        assert popup_kept?(base, %{}, %{"bMoved" => moved}), parent
+
+        moved =
+          moved
+          |> Map.delete("current_parent")
+          |> put_in(["properties", "current_parent"], parent)
+
+        assert popup_kept?(base, %{}, %{"bMoved" => moved}), parent
+      end
+
+      text = %{
+        "id" => "bOutsideText",
+        "type" => "Text",
+        "properties" => %{
+          "width" => 300,
+          "height" => 40,
+          "text" => %{
+            "type" => "TextExpression",
+            "entries" => %{
+              "0" => "Detail: ",
+              "1" =>
+                Map.put(@read_inner, "next", %{
+                  "type" => "Message",
+                  "name" => "get_group_data",
+                  "next" => %{"type" => "Message", "name" => "title_text"}
+                })
+            }
           }
         }
       }
 
-      refute popup_kept?([opens, click, plugin], %{}, %{"bOutside" => reader})
+      refute popup_kept?(base, %{}, %{"bOutsideText" => text})
+      refute popup_kept?(base ++ [clicked("wR", [show_in_shown("aR", @read_detail)])])
 
-      # A click outside it reads it, whenever.
-      reads =
-        clicked("wR", [
-          %{
-            "id" => "aR",
-            "type" => "DisplayGroupData",
-            "properties" => %{
-              "element_id" => "bShown",
-              "data_source" => reader["properties"]["data_source"]
-            }
-          }
-        ])
+      is_shown = %{
+        "type" => "GetElement",
+        "properties" => %{"element_id" => "bDetail"},
+        "next" => %{"type" => "Message", "name" => "is_visible"}
+      }
 
-      refute popup_kept?([opens, click, plugin, reads])
+      cond = %{"condition" => is_shown, "run_when" => "every_time"}
+      refute popup_kept?(base ++ [wf("wT", "ConditionTrue", cond, [mail("aTm")])])
+
+      # After its own display with no condition, a workflow may read the
+      # popup (what it just displayed), not an element inside it; after a
+      # display with a condition, neither.
+      reads_after = fn display, value ->
+        clicked("wR", [display, show_in_shown("aR", value)])
+      end
+
+      assert popup_kept?(base ++ [reads_after.(show_detail("aRd"), @read_detail)])
+      refute popup_kept?(base ++ [reads_after.(show_detail("aRd"), @read_inner)])
+      refute popup_kept?(base ++ [reads_after.(when_logged_in(show_detail("aRd")), @read_detail)])
+    end
+
+    test "what runs while a popup always opened with its data is open may read it (WTF-520)" do
+      opens = event("wE", [open_detail("aEo"), show_detail("aD")])
+      click = clicked("wC", [call("aC", "wE")])
+      base = [opens, click, plugin_event("wP", [call("aP", "wE")])]
+
+      button = %{"id" => "bDetailBtn", "type" => "Button", "properties" => %{"width" => 30}}
+
+      app_with_button = fn workflows ->
+        {spec, _project, _frontend, _app, _model} =
+          workflows
+          |> detail_app(app())
+          |> put_in(["pages", "shown", "elements", "bDetail", "type"], "Popup")
+          |> put_in(["pages", "shown", "elements", "bDetail", "elements", "bDetailBtn"], button)
+          |> spec()
+
+        match?(%{read: :displayed, residue: []}, data(spec, "bDetail"))
+      end
+
+      inside_click = fn actions ->
+        wf("wI", "ButtonClicked", %{"element_id" => "bDetailBtn"}, actions)
+      end
+
+      # A click inside it, and a custom event only that click calls.
+      assert app_with_button.(base ++ [inside_click.([show_in_shown("aI", @read_detail)])])
+
+      assert app_with_button.(
+               base ++
+                 [
+                   event("wF", [show_in_shown("aF", @read_detail)]),
+                   inside_click.([call("aI", "wF")])
+                 ]
+             )
+
+      # The same custom event also called from outside it.
+      refute app_with_button.(
+               base ++
+                 [
+                   event("wF", [show_in_shown("aF", @read_detail)]),
+                   inside_click.([call("aI", "wF")]),
+                   clicked("wO", [call("aO", "wF")])
+                 ]
+             )
+
+      # Its own "is opened" workflow, or a custom event only that calls:
+      # which reads first is not replayed.
+      opened = fn actions -> wf("wPo", "PopupOpened", %{"element_id" => "bDetail"}, actions) end
+      refute app_with_button.(base ++ [opened.([show_in_shown("aPo", @read_detail)])])
+
+      refute app_with_button.(
+               base ++
+                 [event("wF", [show_in_shown("aF", @read_detail)]), opened.([call("aPo", "wF")])]
+             )
+    end
+
+    test "a popup in a repeating group's cell keeps the rule of cells (WTF-520)" do
+      opens = event("wE", [open_detail("aEo"), show_detail("aD")])
+      at = ["pages", "shown", "elements", "bSrcList", "elements"]
+
+      refute popup_kept?(
+               [opens, clicked("wC", [call("aC", "wE")]), plugin_event("wP", [call("aP", "wE")])],
+               %{},
+               %{},
+               at
+             )
     end
 
     test "a popup the page cannot follow keeps what its workflows set unloaded (WTF-520)" do

@@ -276,7 +276,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         (lowered.diagnostics ++
            state_diags ++
            Enum.flat_map(Map.values(bound), &Enum.flat_map(&1, fn w -> w.diagnostics end)) ++
-           data_diagnostics(data, page_data))
+           data_diagnostics(data, page_data) ++
+           not_run_diagnostics(data))
         |> Diagnostic.normalize()
 
       {:ok,
@@ -400,8 +401,51 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       end)
 
     if map_size(kept) == map_size(displayed),
-      do: {ctx, data, bound},
+      do: {ctx, not_run(data, displayed, %{all: all, runs: runs}), bound},
       else: bind_data_and_workflows(kept, lowered, page_data, ctx)
+  end
+
+  # Lists on each popup kept by `opened_with_data?/5` the workflows that do
+  # not run here and may display data in it while it is open
+  # (`display_not_run/2`): `not_run`, Bubble IDs.
+  defp not_run(data, displayed, workflows) do
+    lists =
+      for {element, %{opened_with_data?: true} = holder} <- displayed,
+          ids = display_not_run(holder, workflows),
+          ids != [],
+          into: %{},
+          do: {element, Enum.sort(ids)}
+
+    Map.new(data, fn {surface, sources} ->
+      {surface,
+       Enum.map(sources, fn d ->
+         case d do
+           %{displayed?: true, kind: kind, element: e}
+           when kind != :param and is_map_key(lists, e) ->
+             Map.put(d, :not_run, lists[e])
+
+           d ->
+             d
+         end
+       end)}
+    end)
+  end
+
+  defp not_run_diagnostics(data) do
+    for {_surface, sources} <- data,
+        %{not_run: [_ | _] = ids, element: element} <- sources do
+      Diagnostic.new(
+        :frontend_workflow_residue,
+        "",
+        "element:#{element}: kept as page data, but workflows that do not run here may " <>
+          "display data in it while it is open (#{Enum.join(ids, ", ")}): it may show older data",
+        details: %{
+          subject: "element:" <> element,
+          reason: "display_not_run",
+          detail: %{workflows: ids}
+        }
+      )
+    end
   end
 
   # Binds the page data. An instance whose own data source does not load
@@ -1553,16 +1597,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # keeps it even when some of them do not run here (`kept?/4`). Popups
   # are closed as the page loads, and what is inside one renders only
   # while it is open. When every workflow that may open it (a show or a
-  # toggle) displays data in it, with no condition, after its last
-  # opening step, nothing else may open it (its conditions, an action
-  # this target does not lower) and nothing outside it reads it or
-  # anything inside it, then whatever it shows open is what the opening
-  # run displayed, or what a later run displayed while it stayed open.
-  # Both are the same here as in Bubble for a workflow the page runs; one
-  # that does not run (a plugin's event, a refused page-load workflow) is
-  # residue of its own, and what it would display is lost with it, as
-  # what it would set in a custom state is. Not in a repeating group's
-  # cell (kept by the steps that run there).
+  # toggle) displays data in it after its last opening step, with only
+  # client steps (show, hide, toggle, focus, scroll to) between and no
+  # condition on the display; nothing else may open it (its conditions,
+  # an action this target does not lower naming it or an element inside
+  # it); and nothing outside it reads it or anything inside it, then what
+  # it shows on opening is what the opening run displayed. A workflow
+  # that does not run here and may display data in it while it is open
+  # (a plugin's event, a refused condition-true workflow, ...) is listed
+  # on its data (`not_run`, `display_not_run/2`): what it would show is
+  # lost, and the popup may show older data meanwhile. Not in a repeating
+  # group's cell (kept by the steps that run there).
   defp opened_with_data?(popup, holder, workflows, page_data, ctx) do
     active = Enum.reject(workflows, & &1.disabled?)
     openers = Enum.filter(active, &opens?(&1, popup))
@@ -1577,18 +1622,23 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   defp opens?(w, popup),
     do: Enum.any?(w.steps, &(&1.op in [:show, :toggle] and match?(%{element: ^popup}, &1.args)))
 
-  # Whether a workflow that opens `popup` displays data in it, with no
-  # condition, after its last opening step.
+  @client_steps [:show, :hide, :toggle, :focus, :scroll_to]
+
+  # Whether a workflow that opens `popup` displays data in it after its
+  # last opening step, with only client steps between (no data step, no
+  # terminate, nothing that may end the run or change what it reads) and
+  # no condition on the display.
   defp opens_with_data?(w, popup) do
-    steps = Enum.with_index(w.steps)
+    after_open =
+      w.steps
+      |> Enum.reverse()
+      |> Enum.take_while(
+        &(not (&1.op in [:show, :toggle] and match?(%{element: ^popup}, &1.args)))
+      )
+      |> Enum.reverse()
 
-    last_open =
-      for {%Step{op: op, args: %{element: ^popup}}, i} <- steps, op in [:show, :toggle], do: i
-
-    Enum.any?(steps, fn {%Step{op: op, args: args, condition: condition}, i} ->
-      op == :display_data and match?(%{element: ^popup}, args) and condition == nil and
-        i > Enum.max(last_open)
-    end)
+    rest = Enum.drop_while(after_open, &(&1.op in @client_steps))
+    match?([%Step{op: :display_data, args: %{element: ^popup}, condition: nil} | _], rest)
   end
 
   # An action this target does not lower naming the popup (or an element
@@ -1602,33 +1652,40 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   # Whether anything outside `popup` names the popup or an element inside
   # it, other than as the target of a step: an element's binding or
-  # property (not `current_parent`, the editor's static record of a
-  # parent, never an expression), a page data source, a workflow's
-  # condition or a step's value. A workflow's steps after its own display
-  # in the popup read what it just displayed (the same run). A workflow
-  # that runs only while the popup is open is not outside: one of an
-  # element inside it, the popup's own "is opened" workflow, or a custom
-  # event only those call. Nor is one the page never triggers (an event
-  # this target does not lower or wire).
+  # property (not `current_parent`: the editor's static record of where
+  # the element was, an ID or `<ID>.elements`, never an expression), a
+  # page data source, a workflow's condition or a step's condition or
+  # value. After a workflow's own display in the popup with no
+  # condition, its steps may read the popup itself (what it just
+  # displayed, in the same run), not the elements inside it. A workflow
+  # of an element inside the popup (a click, an input change) runs only
+  # while it is open, and so does a custom event only those call: not
+  # outside. Nor is one the page never triggers (an event this target
+  # does not lower or wire). The popup's own "is opened" workflow is
+  # outside: which of it and the opening run reads first is not replayed
+  # (`popup_races/3`).
   defp read_outside?(popup, workflows, page_data, ctx) do
-    ids =
-      for {id, _} <- ctx.raw_elements, within?(id, popup, ctx), do: ~s("#{id}")
+    ids = for {id, _} <- ctx.raw_elements, within?(id, popup, ctx), do: ~s("#{id}")
+    inner = List.delete(ids, ~s("#{popup}"))
 
-    names? = &String.contains?(inspect(&1, limit: :infinity, printable_limit: :infinity), ids)
+    names? = fn term, ids ->
+      ids != [] and
+        String.contains?(inspect(term, limit: :infinity, printable_limit: :infinity), ids)
+    end
 
     nodes? =
       Enum.any?(ctx.nodes, fn {id, node} ->
         not within?(id, popup, ctx) and
           names?.(
-            {node.bindings, node.content, node.attributes,
-             Map.delete(node.unmapped, "current_parent")}
+            {node.bindings, node.content, node.attributes, without_parent_record(node.unmapped)},
+            ids
           )
       end)
 
     sources? =
       page_data != nil and
         Enum.any?(page_data.sources, fn s ->
-          not within?(s.element, popup, ctx) and names?.(s.value)
+          not within?(s.element, popup, ctx) and names?.(s.value, ids)
         end)
 
     by_id = Map.new(workflows, &{&1.bubble_id, &1})
@@ -1636,11 +1693,26 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
     workflows? =
       Enum.any?(workflows, fn w ->
+        {before, later} = split_at_display(w.steps, popup)
+
         not while_open?(w, popup, by_id, callers, MapSet.new(), ctx) and
-          (names?.(w.condition) or names?.(before_display(w.steps, popup)))
+          (names?.(w.condition, ids) or names?.(reads(before), ids) or
+             names?.(reads(later), inner))
       end)
 
     nodes? or sources? or workflows?
+  end
+
+  # An element's unmapped keys without the editor's `current_parent`
+  # (on the element, or among its properties).
+  defp without_parent_record(unmapped) do
+    case Map.delete(unmapped, "current_parent") do
+      %{"properties" => %{} = props} = rest ->
+        Map.put(rest, "properties", Map.delete(props, "current_parent"))
+
+      rest ->
+        rest
+    end
   end
 
   # Whether a workflow runs only while `popup` is open, or never here.
@@ -1653,9 +1725,6 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
       is_binary(w.element) and w.kind in [:click, :input_change] ->
         within?(w.element, popup, ctx)
-
-      w.kind == :popup_opened ->
-        w.element == popup
 
       w.kind == :custom_event and not MapSet.member?(seen, w.bubble_id) ->
         seen = MapSet.put(seen, w.bubble_id)
@@ -1672,12 +1741,32 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     end
   end
 
-  # The steps' conditions and values (not their targets) up to the
-  # workflow's first display in `popup`.
-  defp before_display(steps, popup) do
-    steps
-    |> Enum.take_while(&(not (&1.op == :display_data and match?(%{element: ^popup}, &1.args))))
-    |> Enum.map(&{&1.condition, Map.delete(&1.args, :element)})
+  # A workflow's steps before its first display in `popup` with no
+  # condition, and from it on.
+  defp split_at_display(steps, popup),
+    do:
+      Enum.split_while(
+        steps,
+        &(not match?(%Step{op: :display_data, args: %{element: ^popup}, condition: nil}, &1))
+      )
+
+  # What steps read: their conditions and values, not their targets.
+  defp reads(steps), do: Enum.map(steps, &{&1.condition, Map.delete(&1.args, :element)})
+
+  # The workflows that do not run here and may display data in a popup
+  # kept by `opened_with_data?/5` while it is open (WTF-520): its roots
+  # neither triggered and run whole (`runs`), other than page-load
+  # workflows, which run while every popup is closed. Their Bubble IDs,
+  # sorted.
+  defp display_not_run(%{roots: roots}, %{all: all, runs: runs}) do
+    for {_mode, symbol} <- roots,
+        is_binary(symbol),
+        w = all[symbol],
+        w != nil,
+        w.kind != :page_load,
+        not wired?(runs[symbol]),
+        uniq: true,
+        do: w.workflow
   end
 
   # Elements whose data a popup's own workflow may undo (WTF-520): a
