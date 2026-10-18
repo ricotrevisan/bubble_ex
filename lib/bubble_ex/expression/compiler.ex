@@ -202,6 +202,9 @@ defmodule BubbleEx.Expression.Compiler do
       {:value, {kind, ref}, type} when is_binary(type) ->
         {IR.node(:input, [kind, ref], type), base, []}
 
+      {:constant, value, type} ->
+        {IR.node(:literal, [value], type), base, []}
+
       {:element, %{}} ->
         {:error, base, [uncompiled(base, "an element used as a value", :element)]}
 

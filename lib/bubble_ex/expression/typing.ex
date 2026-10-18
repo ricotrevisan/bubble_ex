@@ -110,6 +110,7 @@ defmodule BubbleEx.Expression.Typing do
   @type input :: {atom(), %{String.t() => term()}}
   @type context ::
           {:value, input(), String.t() | nil}
+          | {:constant, number(), String.t()}
           | {:element, Tree.Node.t() | nil}
           | {:returns, String.t(), [BubbleEx.Workflows.Lowering.Return.t()]}
           | :unknown
@@ -138,6 +139,8 @@ defmodule BubbleEx.Expression.Typing do
   What a context source (`Ast.Scope`) denotes in `env`: a value supplied by
   context (`{:value, input, type}`, where `input` names it stack-neutrally,
   e.g. `{:element_state, %{"element" => id, "state" => "get_group_data"}}`),
+  a value the app fixes when it is compiled (`{:constant, value, type}`:
+  a `Breakpoint` is its width in the app's breakpoint settings, a number),
   an element whose states are read by the accessor after it
   (`{:element, node}`), the return values of a custom event a step
   triggered, read by the accessor after it (`{:returns, action,
@@ -210,10 +213,25 @@ defmodule BubbleEx.Expression.Typing do
       when kind in [:workflow_parameter, :api_parameter] and is_binary(type),
       do: {:value, {:parameter, Map.delete(ref, "btype_id")}, type}
 
-  def context(%Scope{kind: :page_data, ref: %{"name" => name}}, _env) do
+  # The live payload's compact form names it `%nm`.
+  def context(%Scope{kind: :page_data, ref: ref}, _env) when is_map(ref) do
+    name = ref["name"] || ref["%nm"]
+
     case Map.get(@page_data, name) do
       nil -> :unknown
       type -> {:value, {:page_data, %{"name" => name}}, type}
+    end
+  end
+
+  # A breakpoint (`Current page width < Tablet`) is its width, in pixels,
+  # as the app's settings define it (`settings.client_safe.
+  # responsive_breakpoints`, built-in breakpoints included). One the
+  # settings do not define stays untyped: Bubble's default widths are not
+  # assumed.
+  def context(%Scope{kind: :breakpoint, ref: %{"breakpoint_id" => id}}, env) do
+    case Tree.breakpoint(env.tree, id) do
+      nil -> :unknown
+      width -> {:constant, width, "number"}
     end
   end
 
@@ -503,6 +521,9 @@ defmodule BubbleEx.Expression.Typing do
       {:value, _input, type} when is_binary(type) ->
         {%{n | type: type}, base, []}
 
+      {:constant, _value, type} ->
+        {%{n | type: type}, base, []}
+
       {:element, %Tree.Node{}} ->
         {n, base, []}
 
@@ -774,6 +795,19 @@ defmodule BubbleEx.Expression.Typing do
   end
 
   # --- diagnostics -------------------------------------------------------------------
+
+  defp untyped_scope(%Scope{kind: :breakpoint, ref: ref, source_type: source}, path) do
+    id = if is_map(ref), do: ref["breakpoint_id"]
+
+    Diagnostic.new(
+      :expr_untyped_scope,
+      path,
+      "breakpoint #{inspect(id)} is not one of the app's breakpoints " <>
+        "(settings.client_safe.responsive_breakpoints), so its width is not known; " <>
+        "Bubble's default widths are not assumed",
+      details: %{scope: :breakpoint, source: source, reason: :breakpoint_not_in_settings}
+    )
+  end
 
   defp untyped_scope(%Scope{kind: kind, source_type: source}, path) do
     Diagnostic.new(

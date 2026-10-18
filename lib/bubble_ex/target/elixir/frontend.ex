@@ -51,8 +51,11 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   keeps as an element conditional) decides with the width the browser
   reports, again on a resize; while the page has no width yet, the
   conditional keeps the value on page load (a first `is_nil` clause),
-  whatever its shape. Other page values (`Current page name`,
-  `Current date/time`) do not compile.
+  whatever its shape. A width compared to a named breakpoint
+  (`Current page width < Tablet`) compares it to that breakpoint's width
+  in the app's breakpoint settings, fixed at compile time; a breakpoint
+  the settings do not define does not compile. Other page values
+  (`Current page name`, `Current date/time`) do not compile.
 
   A visibility conditional that does not compile (a condition with no IR
   or no Elixir, a non-literal visibility, an overlay's: a Popup, Group

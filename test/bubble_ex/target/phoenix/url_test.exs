@@ -12,7 +12,10 @@ defmodule BubbleEx.Target.Phoenix.UrlTest do
   @fixture "test/support/target/phoenix/url.json"
 
   setup_all do
-    app = @fixture |> File.read!() |> Jason.decode!()
+    @fixture |> File.read!() |> Jason.decode!() |> build()
+  end
+
+  defp build(app) do
     {:ok, model} = Model.build(app)
     {:ok, index} = Index.build(app, model: model)
     {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :enforced)
@@ -129,6 +132,41 @@ defmodule BubbleEx.Target.Phoenix.UrlTest do
 
   # The wide page (WTF-520): an instance's property `Current page width >
   # 767 and compact`: a side panel hidden below a width when a URL flag is set.
+  test "a workflow condition comparing the width to a breakpoint reads the breakpoint's width" do
+    settings = %{
+      "client_safe" => %{
+        "responsive_breakpoints" => %{"custom_bpW" => %{"builtin" => false, "size" => 640}}
+      }
+    }
+
+    breakpoint = fn id -> %{"type" => "Breakpoint", "properties" => %{"breakpoint_id" => id}} end
+    path = ["pages", "wide", "workflows", "wWideCond", "properties", "condition", "next", "args"]
+
+    app =
+      @fixture
+      |> File.read!()
+      |> Jason.decode!()
+      |> Map.put("settings", settings)
+      |> put_in(path, breakpoint.("custom_bpW"))
+
+    %{files: files, spec: spec} = build(app)
+    assert [[], [], []] = for(w <- spec.surfaces["bWide"].workflows, do: w.residue)
+    workflows = files["lib/shop_web/live/wide_live/workflows.ex"]
+    assert workflows =~ "Shop.Bubble.Runtime.compare(:gt, page_data_current_page_width, 640)"
+    assert workflows =~ "page_width: true"
+
+    # A breakpoint the settings lack: the workflow's condition is residue.
+    %{spec: spec} = app |> put_in(path, breakpoint.("built-in-tablet")) |> build()
+    flow = Enum.find(spec.surfaces["bWide"].workflows, &(&1.symbol == "workflow:wWideCond"))
+
+    assert [
+             %{
+               reason: :uncompiled_expression,
+               detail: %{constructs: ["expr_untyped_scope:breakpoint"]}
+             }
+           ] = flow.residue
+  end
+
   test "Current page width is the width the browser reports, read again when it changes", %{
     files: files,
     spec: spec

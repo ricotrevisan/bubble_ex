@@ -1640,6 +1640,154 @@
             "width": 300
           },
           "type": "CustomElement"
+        },
+        "bBpTablet": {
+          "id": "bBpTablet",
+          "properties": {
+            "height": 40,
+            "is_visible": true,
+            "min_height_css": "40px",
+            "order": 7,
+            "text": {
+              "entries": {
+                "0": "Below tablet"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Width"
+                },
+                "type": "PageData",
+                "next": {
+                  "name": "less_than",
+                  "type": "Message",
+                  "args": {
+                    "type": "Breakpoint",
+                    "properties": {
+                      "breakpoint_id": "built-in-tablet"
+                    }
+                  }
+                }
+              },
+              "properties": {
+                "is_visible": false
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bBpWideTab": {
+          "id": "bBpWideTab",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 8,
+            "text": {
+              "entries": {
+                "0": "Wide and tab"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Width"
+                },
+                "type": "PageData",
+                "next": {
+                  "name": "greater_or_equal_than",
+                  "type": "Message",
+                  "args": {
+                    "type": "Breakpoint",
+                    "properties": {
+                      "breakpoint_id": "custom_bpA"
+                    }
+                  },
+                  "next": {
+                    "args": {
+                      "properties": {
+                        "parameter_name": {
+                          "entries": {
+                            "0": "tab"
+                          },
+                          "type": "TextExpression"
+                        }
+                      },
+                      "type": "GetParamFromUrl",
+                      "next": {
+                        "args": {
+                          "entries": {
+                            "0": "open"
+                          },
+                          "type": "TextExpression"
+                        },
+                        "name": "equals",
+                        "type": "Message"
+                      }
+                    },
+                    "name": "and_",
+                    "type": "Message"
+                  }
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bBpMissing": {
+          "id": "bBpMissing",
+          "properties": {
+            "height": 40,
+            "is_visible": true,
+            "min_height_css": "40px",
+            "order": 9,
+            "text": {
+              "entries": {
+                "0": "Missing breakpoint"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Width"
+                },
+                "type": "PageData",
+                "next": {
+                  "name": "less_than",
+                  "type": "Message",
+                  "args": {
+                    "type": "Breakpoint",
+                    "properties": {
+                      "breakpoint_id": "built-in-mobile"
+                    }
+                  }
+                }
+              },
+              "properties": {
+                "is_visible": false
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
         }
       }
     }
@@ -1691,6 +1839,24 @@
               "email"
             ]
           }
+        }
+      }
+    }
+  },
+  "settings": {
+    "client_safe": {
+      "responsive_breakpoints": {
+        "built-in-tablet": {
+          "builtin": true,
+          "default": false,
+          "name": "Tablet",
+          "size": 992
+        },
+        "custom_bpA": {
+          "builtin": false,
+          "default": false,
+          "name": "Custom",
+          "size": 640
         }
       }
     }
