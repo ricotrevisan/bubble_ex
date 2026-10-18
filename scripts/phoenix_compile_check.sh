@@ -85,8 +85,10 @@
 # Every fixture renders with the same module and app name, so the
 # dependencies compile once. The scratch project lives in
 # _build/phoenix_compile_check (or $PHOENIX_COMPILE_CHECK_DIR) and is never
-# committed. Set PHOENIX_COMPILE_CHECK_FIXTURES to a space-separated list to
-# check only some fixtures. When the pins change, refresh the lock with
+# committed; each render wipes everything in it but deps and _build
+# (render.exs, WTF-561), so no fixture runs another one's files. Set
+# PHOENIX_COMPILE_CHECK_FIXTURES to a space-separated list to check only
+# some fixtures. When the pins change, refresh the lock with
 # PHOENIX_COMPILE_CHECK_UPDATE_LOCK=1.
 set -euo pipefail
 

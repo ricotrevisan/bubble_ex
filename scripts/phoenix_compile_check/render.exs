@@ -391,9 +391,26 @@ case System.argv() do
     {:ok, files} = Phoenix.render(project, opts)
     {:ok, ^files} = Phoenix.render(project, opts)
 
-    # The previous fixture's files (the scratch keeps deps and _build).
-    for entry <- ~w(lib test priv config assets .wtf),
+    # The previous fixture's files, all of them (WTF-561): a scaffolded
+    # test, a copied behavior test or anything else one left would run
+    # with this fixture. The scratch keeps only deps and _build, which
+    # make the next fixture fast. Only a scratch project of this check
+    # (its marker, or a PhxCheck project from before the marker) is wiped.
+    marker = Path.join(dir, ".phoenix_compile_check")
+    File.mkdir_p!(dir)
+
+    scratch? =
+      File.exists?(marker) or File.ls!(dir) -- ~w(deps _build) == [] or
+        (File.exists?(Path.join(dir, "mix.exs")) and
+           File.read!(Path.join(dir, "mix.exs")) =~ ~r/^\s*app: :phx_check,/m)
+
+    if not scratch?,
+      do: raise("#{dir} is not a phoenix_compile_check scratch project: not wiping it")
+
+    for entry <- File.ls!(dir), entry not in ~w(deps _build),
         do: File.rm_rf!(Path.join(dir, entry))
+
+    File.write!(marker, "")
 
     for {path, content} <- files do
       file = Path.join(dir, path)
@@ -409,8 +426,6 @@ case System.argv() do
     # in matrix/<name>/ and matrix_index.json for
     # scripts/ash_compile_check/matrix_results.exs, which scores the
     # observations the tests write (WTF_VERIFY_OBSERVATIONS).
-    for entry <- ~w(matrix matrix_index.json observations), do: File.rm_rf!(Path.join(dir, entry))
-
     with :enforced <- project.privacy,
          %BubbleEx.Model{} = model <- Process.get(:phoenix_check_model),
          true <- model.data_types |> Enum.flat_map(& &1.rules) |> Enum.any?() do

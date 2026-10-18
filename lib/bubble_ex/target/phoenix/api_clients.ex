@@ -1045,8 +1045,12 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
     """
     defmodule #{ctx.root}Test do
       # The runtime of the generated API clients (WTF-374), against a
-      # Req.Test stub: never the network.
-      use ExUnit.Case, async: true
+      # Req.Test stub: never the network. Not async: its "Req warns
+      # nothing" tests capture stderr, which is global, and async tests run
+      # while other test files still compile (their warnings would be
+      # captured too, WTF-561); sync modules run after every file loaded
+      # and alone.
+      use ExUnit.Case, async: false
 
       alias #{ctx.root}
 
@@ -1325,8 +1329,7 @@ defmodule BubbleEx.Target.Phoenix.ApiClients do
           assert {:error, {:redirect_refused, 302, ^location}} = local(port, follow_redirects: true)
         end
 
-        # (Process and atom counts are checked in bubble_ex's own suite: this
-        # module is async.)
+        # (Process and atom counts are checked in bubble_ex's own suite.)
         assert DynamicSupervisor.count_children(Req.FinchSupervisor) == finch
       end
 

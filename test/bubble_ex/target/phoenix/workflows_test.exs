@@ -137,6 +137,19 @@ defmodule BubbleEx.Target.Phoenix.WorkflowsTest do
              ["workflow:wCreate", "workflow:wPing"]
   end
 
+  test "without a workflow to run, the smoke test has no unused alias or helper (WTF-561)",
+       %{backend: backend, project: project} do
+    {:ok, spec} = Workflows.map(%{backend | workflows: []}, project, namespace: "Acme")
+    {:ok, files} = render(%{project: project, spec: spec})
+    smoke = files["test/acme/bubble_workflows_test.exs"]
+
+    assert smoke =~ "defmodule Acme.BubbleWorkflowsTest do"
+    assert {:ok, _} = Code.string_to_quoted(smoke)
+    refute smoke =~ "alias Acme.Workflows"
+    refute smoke =~ "ran?"
+    refute smoke =~ ~r/^\s*test /m
+  end
+
   test "deterministic", %{files: files} = built do
     assert render(built) == {:ok, files}
   end
