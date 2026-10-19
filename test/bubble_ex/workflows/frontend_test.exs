@@ -300,12 +300,12 @@ defmodule BubbleEx.Workflows.FrontendTest do
     lowered: lowered
   } do
     w = workflow(lowered, "wResidue")
-    assert [%{residue: []}, %{op: nil, type: "SendEmail", residue: [residue]}] = w.steps
+    assert [%{residue: []}, %{op: nil, type: "AlertShowMessage", residue: [residue]}] = w.steps
 
     assert residue == %{
              subject: "action:aRes2",
              reason: :unsupported_action,
-             detail: %{type: "SendEmail"}
+             detail: %{type: "AlertShowMessage"}
            }
 
     refute Workflow.native?(w)
@@ -319,6 +319,35 @@ defmodule BubbleEx.Workflows.FrontendTest do
              lowered.diagnostics,
              &(&1.code == :frontend_workflow_disabled and &1.subject.workflow == "wOpenOff")
            )
+  end
+
+  test "Send email lowers its values; a reply-to only when a different one is set" do
+    text = &%{"type" => "TextExpression", "entries" => %{"0" => &1}}
+
+    email = %{
+      "id" => "aMail",
+      "type" => "SendEmail",
+      "properties" => %{
+        "to" => text.("a@example.com"),
+        "subject" => text.("Hi"),
+        "body" => text.("Body"),
+        "sender_name" => text.("Shop"),
+        "replyTo" => text.("r@example.com"),
+        "different_reply_to" => false
+      }
+    }
+
+    lowered = app() |> edit("wResidue", &put_in(&1, ["actions", "1"], email)) |> lower()
+    assert [_, %{op: :send_email, residue: [], args: args}] = workflow(lowered, "wResidue").steps
+    assert %{to: %{ir: %{op: :literal, args: ["a@example.com"]}}, reply_to: nil} = args
+    assert %{subject: %{ir: %{}}, body: %{ir: %{}}, sender_name: %{ir: %{}}} = args
+
+    email = put_in(email, ["properties", "different_reply_to"], true)
+    email = put_in(email, ["properties", "cc"], text.("c@example.com"))
+    lowered = app() |> edit("wResidue", &put_in(&1, ["actions", "1"], email)) |> lower()
+    assert [_, step] = workflow(lowered, "wResidue").steps
+    assert %{reply_to: %{ir: %{op: :literal, args: ["r@example.com"]}}} = step.args
+    assert [%{reason: :unsupported_option, detail: %{options: ["cc"]}}] = step.residue
   end
 
   test "an action's editor display name has no semantics" do

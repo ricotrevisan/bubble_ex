@@ -1939,14 +1939,14 @@
             "1": {
               "id": "aRes2",
               "properties": {
-                "to": {
+                "message": {
                   "entries": {
-                    "0": "a@example.com"
+                    "0": "Saved"
                   },
                   "type": "TextExpression"
                 }
               },
-              "type": "SendEmail"
+              "type": "AlertShowMessage"
             }
           },
           "id": "wResidue",
