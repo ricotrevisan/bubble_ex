@@ -1237,9 +1237,12 @@ defmodule BubbleEx.Frontend.Normalize do
     end
   end
 
+  # Without `contents` the preset status is the editor's default,
+  # unchecked: served payloads spell only "checked" (mixxy: 8 checkboxes
+  # without it, 2 "checked", none "unchecked").
   defp classify_checkbox(raw) do
     case Payload.prop(raw, "contents") do
-      contents when contents in ["checked", "unchecked"] ->
+      contents when contents in ["checked", "unchecked", nil] ->
         {:native, :checkbox, :static}
 
       _ ->
