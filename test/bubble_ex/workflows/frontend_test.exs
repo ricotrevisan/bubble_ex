@@ -346,6 +346,15 @@ defmodule BubbleEx.Workflows.FrontendTest do
     assert {:unresolved_reference, %{reference: "element"}} in reasons.("wClose")
   end
 
+  test "an event's editor display name has no semantics" do
+    lowered =
+      app()
+      |> edit("wState", &put_in(&1, ["properties", "name"], "Select a fiberhood"))
+      |> lower()
+
+    assert lowered |> workflow("wState") |> Workflow.residue() == []
+  end
+
   test "a condition-true workflow without \"run this\" runs once (unverified default)" do
     lowered =
       app()
