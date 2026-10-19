@@ -284,6 +284,143 @@
           "type": "Button"
         }
       }
+    },
+    "hostin": {
+      "elements": {
+        "bHostInIs": {
+          "id": "bHostInIs",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Inner on cells"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Name"
+                },
+                "type": "PageData",
+                "next": {
+                  "name": "equals",
+                  "type": "Message",
+                  "args": {
+                    "entries": {
+                      "0": "cells"
+                    },
+                    "type": "TextExpression"
+                  }
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        }
+      },
+      "id": "bHostIn",
+      "name": "HostIn",
+      "properties": {
+        "height": 40,
+        "width": 300
+      },
+      "type": "CustomDefinition"
+    },
+    "host": {
+      "elements": {
+        "bHostIs": {
+          "id": "bHostIs",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "On cells"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Name"
+                },
+                "type": "PageData",
+                "next": {
+                  "name": "equals",
+                  "type": "Message",
+                  "args": {
+                    "entries": {
+                      "0": "cells"
+                    },
+                    "type": "TextExpression"
+                  }
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bHostName": {
+          "id": "bHostName",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "text": {
+              "entries": {
+                "0": "Page: ",
+                "1": {
+                  "properties": {
+                    "name": "Current Page Name"
+                  },
+                  "type": "PageData"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bHostInI": {
+          "id": "bHostInI",
+          "properties": {
+            "custom_id": "bHostIn",
+            "height": 80,
+            "min_height_css": "80px",
+            "order": 3,
+            "width": 300
+          },
+          "type": "CustomElement"
+        }
+      },
+      "id": "bHost",
+      "name": "Host",
+      "properties": {
+        "height": 120,
+        "width": 300
+      },
+      "type": "CustomDefinition"
     }
   },
   "pages": {
@@ -1188,6 +1325,222 @@
             }
           },
           "type": "Text"
+        },
+        "bHostI": {
+          "id": "bHostI",
+          "properties": {
+            "custom_id": "bHost",
+            "height": 80,
+            "min_height_css": "80px",
+            "order": 30,
+            "width": 300
+          },
+          "type": "CustomElement"
+        },
+        "bPageName": {
+          "id": "bPageName",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 31,
+            "text": {
+              "entries": {
+                "0": "Named"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Page Name"
+                },
+                "type": "PageData",
+                "next": {
+                  "name": "is_not_empty",
+                  "type": "Message"
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bPageNameText": {
+          "id": "bPageNameText",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 32,
+            "text": {
+              "entries": {
+                "0": "Page: ",
+                "1": {
+                  "properties": {
+                    "name": "Current Page Name"
+                  },
+                  "type": "PageData"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text"
+        },
+        "bNow": {
+          "id": "bNow",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 33,
+            "text": {
+              "entries": {
+                "0": "Now set"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Date/Time"
+                },
+                "type": "PageData",
+                "next": {
+                  "name": "is_not_empty",
+                  "type": "Message"
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bNowEmpty": {
+          "id": "bNowEmpty",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 34,
+            "text": {
+              "entries": {
+                "0": "Now empty"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "properties": {
+                  "name": "Current Date/Time"
+                },
+                "type": "PageData",
+                "next": {
+                  "name": "is_empty",
+                  "type": "Message"
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bLoaded": {
+          "id": "bLoaded",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 35,
+            "text": {
+              "entries": {
+                "0": "Loaded"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "get_loading_status",
+                  "next": {
+                    "name": "is_false",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bTasks"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bLoading": {
+          "id": "bLoading",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 36,
+            "text": {
+              "entries": {
+                "0": "Loading"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "get_loading_status",
+                  "next": {
+                    "name": "is_true",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bTasks"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
         }
       },
       "id": "bVis",
@@ -1786,6 +2139,39 @@
               },
               "type": "State"
             }
+          },
+          "type": "Text"
+        },
+        "bHostC": {
+          "id": "bHostC",
+          "properties": {
+            "custom_id": "bHost",
+            "height": 80,
+            "min_height_css": "80px",
+            "order": 20,
+            "width": 300
+          },
+          "type": "CustomElement"
+        },
+        "bBpText": {
+          "id": "bBpText",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 21,
+            "text": {
+              "entries": {
+                "0": "Tablet: ",
+                "1": {
+                  "properties": {
+                    "breakpoint_id": "built-in-tablet"
+                  },
+                  "type": "Breakpoint"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
           },
           "type": "Text"
         }

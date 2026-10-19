@@ -1528,9 +1528,16 @@ defmodule BubbleEx.Frontend.Export.Css do
           "  #{selector(node, opts)} {\n#{indent_decls(decls)}  }"
         end)
 
-      "@media (max-width: #{width}px) {\n#{inner}\n}\n"
+      "@media (width <= #{width}px) {\n#{inner}\n}\n"
     end)
   end
+
+  # A collapsed responsive rule's width (`"max_viewport_width"`) comes
+  # from Bubble's `Current page width <= N` (`less_or_equal_than`), so its
+  # media rule is `<=`, written as the breakpoint rules are, in range
+  # syntax. A strict `<` (`Current page width < Tablet`) is a breakpoint
+  # rule of its own (`breakpoint_css/2`): at exactly the width it is false,
+  # as in Bubble (replayed 2026-10-19).
 
   defp media_width(%{"when" => %{"max_viewport_width" => w}}), do: w
   defp media_width(%{"when" => %{max_viewport_width: w}}), do: w

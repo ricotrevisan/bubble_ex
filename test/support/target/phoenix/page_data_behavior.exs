@@ -611,7 +611,9 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     {:ok, view, html} = live(conn, "/task/#{@t1}")
     assert html =~ "Title: Bake"
     render_click(view, "bubble:click", %{"scope" => "", "element" => "bSelf"})
-    assert_patch(view, "/task/#{@t1}")
+    # The URL the page is on: as in Bubble (replay 2026-10-19), nothing.
+    refute_patched(view)
+    assert render(view) =~ "Title: Bake"
 
     # A query parameter named like the route's segment is not the page's
     # thing: its own path stays /task (review M1: it went to "/", another

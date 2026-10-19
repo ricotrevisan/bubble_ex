@@ -631,6 +631,21 @@ defmodule BubbleEx.Expression.CompilerTest do
     end
   end
 
+  # Replay 2026-10-19: a repeating group's "is loading" is no while a
+  # search runs, yes only for a few milliseconds as rows render.
+  describe "a repeating group's is loading" do
+    test "is a constant no" do
+      assert ir(chain(el("bR1"), [msg("get_loading_status")])) == lit(false, "boolean")
+
+      assert ir(chain(el("bR1"), [msg("get_loading_status"), msg("is_true")])) ==
+               n(:eq, [lit(false, "boolean"), lit(true, "boolean")], "boolean")
+    end
+
+    test "of an element that is not a repeating group does not compile" do
+      assert %{ir: nil} = compile(chain(el("bI1"), [msg("get_loading_status")]))
+    end
+  end
+
   describe "not compiled" do
     test "a raw operator, with its pointer" do
       raw = chain(cu(), [msg("name_text"), msg("mystery", "x")])

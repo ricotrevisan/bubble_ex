@@ -338,6 +338,12 @@ defmodule BubbleEx.Expression.Compiler do
 
   defp lower(%Property{subject: %Scope{} = scope, name: name, type: type} = n, base, ctx) do
     case Typing.context(scope, ctx.env) do
+      # A repeating group's "is loading" is no (replayed 2026-10-19): in
+      # Bubble it stays no while a search waits, the old rows shown, and is
+      # yes only for a few milliseconds as rows render. Never an input.
+      {:element, %{type: "RepeatingGroup"}} when name == "get_loading_status" ->
+        {IR.node(:literal, [false], "boolean"), base ++ [link(n)], []}
+
       {:element, %{id: id}} ->
         input = IR.node(:input, [:element_state, %{"element" => id, "state" => name}], type)
         {input, base ++ [link(n)], []}
