@@ -54,6 +54,7 @@ defmodule BubbleEx.Workflows.Frontend do
   | Set state(s) (`SetCustomState`) | `:set_state` | `element`, `states` (`%{state, value}`, state `custom.<id>`) |
   | Go to page (`ChangePage`) | `:navigate` | `page` (a page's Bubble ID, or `:current`), `params` (`%{key, value}`), `thing` (the data to send, the index page and the current page included), `untyped?` (true when `thing` goes to a page with no type of content: Bubble appends it as a path segment, a thing's unique ID or a text, WTF-466), `keep_params?`, `replace?`, `new_tab?` |
   | Open an external website (`OpenURL`) | `:open_url` | `url`, `new_tab?` |
+  | Send email (`SendEmail`) | `:send_email` | `to`, `subject`, `body`, `sender_name` (nil when unset), `reply_to` (nil unless a different reply-to is set) |
   | Refresh the page | `:refresh` | |
   | Log the user out | `:log_out` | |
   | the data operations of `BubbleEx.Workflows.Lowering` | `:create` … `:delete_list` | as there |
@@ -155,6 +156,7 @@ defmodule BubbleEx.Workflows.Frontend do
     "SetCustomState" => :set_state,
     "ChangePage" => :navigate,
     "OpenURL" => :open_url,
+    "SendEmail" => :send_email,
     "RefreshPage" => :refresh,
     "LogOut" => :log_out,
     "TriggerCustomEvent" => :call,
@@ -184,6 +186,7 @@ defmodule BubbleEx.Workflows.Frontend do
     navigate:
       ~w(element_id url_parameters add_parameters keep_current_page_params replace_history open_in_new_tab data_to_send),
     open_url: ~w(url open_in_new_tab),
+    send_email: ~w(to subject body sender_name replyTo different_reply_to),
     refresh: [],
     log_out: [],
     call: ~w(custom_event arguments),
@@ -786,6 +789,20 @@ defmodule BubbleEx.Workflows.Frontend do
     {%{
        url: Lowering.expr(props["url"], path ++ ["url"], env),
        new_tab?: props["open_in_new_tab"] == true
+     }, []}
+  end
+
+  # Values are as authored; cc, bcc, attachments and other members are
+  # options residue (`unknown_members/2`).
+  defp lower(:send_email, props, path, _id, env, _ctx) do
+    value = fn key -> if props[key], do: Lowering.expr(props[key], path ++ [key], env) end
+
+    {%{
+       to: value.("to"),
+       subject: value.("subject"),
+       body: value.("body"),
+       sender_name: value.("sender_name"),
+       reply_to: if(props["different_reply_to"] == true, do: value.("replyTo"))
      }, []}
   end
 

@@ -417,7 +417,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
              ~s|BubbleWorkflows.set_state(ctx, "aState1", [\n      {[], "bHome", "custom.label_", element_state_bin_get_data}|
 
     assert module =~
-             ~s|defp wf_w_residue__step(2, ctx),\n    do: BubbleWorkflows.not_lowered(ctx, "aRes2", "SendEmail")|
+             ~s|defp wf_w_residue__step(2, ctx),\n    do: BubbleWorkflows.not_lowered(ctx, "aRes2", "AlertShowMessage")|
 
     assert module =~ "# TODO(bubble:action:aRes2) not lowered: unsupported_action"
 
