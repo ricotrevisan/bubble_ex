@@ -31,6 +31,45 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     on_exit(fn -> Application.delete_env(:phx_check, PhxCheckWeb.BubbleWorkflows) end)
   end
 
+  # WTF-559: bPop renders its contents only while open; bPopName is a
+  # tracked input in it.
+  defp overlay(view, open?, inputs \\ nil) do
+    params = %{"scope" => "", "element" => "bPop", "open" => open?}
+    params = if inputs, do: Map.put(params, "inputs", inputs), else: params
+    render_hook(view, "bubble:overlay", params)
+  end
+
+  defp pop_name(view, value),
+    do: view |> element(~s([data-bubble-id="bPopName"][value="#{value}"])) |> has_element?()
+
+  test "a popup's tracked input comes back as typed when it opens again (WTF-559)", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/")
+    refute html =~ ~s(data-bubble-id="bPopName")
+
+    overlay(view, true)
+    change(view, "bPopName", "Ann")
+    refute overlay(view, false) =~ ~s(data-bubble-id="bPopName")
+    overlay(view, true)
+    assert pop_name(view, "Ann")
+  end
+
+  test "after a reconnect, an open popup renders again with what was typed in it (WTF-559)",
+       %{conn: conn} do
+    # A new LiveView process, as after a reconnect: the hook asks again
+    # for the popup still open, with the values its inputs show.
+    {:ok, view, _html} = live(conn, "/")
+
+    overlay(view, true, [
+      %{"scope" => "", "element" => "bPopName", "value" => "Typed"},
+      # Not an input the page lists, or not in a scope it renders: ignored.
+      %{"scope" => "", "element" => "bNope", "value" => "x"},
+      %{"scope" => "bNope", "element" => "bPopName", "value" => "x"},
+      "junk"
+    ])
+
+    assert pop_name(view, "Typed")
+  end
+
   test "custom states start at their defaults; page load runs", %{conn: conn} do
     {:ok, view, html} = live(conn, "/")
     assert html =~ "Label: start"

@@ -20,11 +20,14 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
       surface targets an element inside it (the overlay itself may be
       targeted): a hidden element, or a focus, would be lost on closing,
       and a step right after opening would find nothing
-    * every input inside it is one the page tracks (its value is the
-      page's, `inputs` and `cell_inputs` of the surface), so its value is
-      rendered again as the user left it; any other control (a date, a
-      file, a slider, radio buttons, a search, an input whose first value
-      is dynamic) keeps the overlay as before
+    * every control inside it is a text or multiline input the page
+      tracks (`inputs` and `cell_inputs` of the surface), whose value the
+      page renders from what it keeps, so it comes back as the user left
+      it. Any other control keeps the overlay as before: a checkbox or a
+      dropdown (tracked or not, the page renders their first value), radio
+      buttons, a date, a file, a slider, a search, or an input the page
+      does not track (one whose first value is set by an expression that
+      is not page data, `FrontendWorkflows`' `@dynamic_slots`)
     * every reusable instance inside it renders a reusable element (and
       nested ones) that has none of those either
 
@@ -38,7 +41,8 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
 
   @element_ops [:show, :hide, :toggle, :focus, :scroll_to]
 
-  # Controls whose value or selection lives in the browser's DOM.
+  # Controls whose value or selection lives in the browser's DOM; of
+  # them, those whose tracked value the page renders (`Pages.kept_value`).
   @controls [
     :input,
     :multiline_input,
@@ -49,6 +53,8 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
     :slider,
     :search
   ]
+
+  @rendered_values [:input, :multiline_input]
 
   @doc """
   The lazy overlays, by surface Bubble ID: a `MapSet` of their Bubble IDs.
@@ -150,7 +156,9 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
   defp keeps_state?(%Node{kind: kind, placeholder?: false} = node, local, env, _seen)
        when kind in @controls do
     id = env.bid.(node)
-    MapSet.member?(local.targets, id) or not MapSet.member?(local.tracked, id)
+
+    MapSet.member?(local.targets, id) or kind not in @rendered_values or
+      not MapSet.member?(local.tracked, id)
   end
 
   defp keeps_state?(%Node{} = node, local, env, _seen),

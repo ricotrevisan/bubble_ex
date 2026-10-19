@@ -835,6 +835,12 @@ defmodule <%= @web %>.Bubble do
           on("bubble:overlay-closed", (el) => this.popupEvent(el, "closed"))
           const keydown = (e) => {
             if (e.key !== "Escape" || e.defaultPrevented) return
+            // An overlay still loading its contents (WTF-559) is the top
+            // one: Escape cancels its opening, if it closes on Escape.
+            if (this.loading) {
+              if (this.loading.hasAttribute("data-bubble-escape")) this.cancelled = this.loading
+              return
+            }
             this.stack = this.stack.filter(isOpen)
             const top =
               this.stack[this.stack.length - 1] ||
@@ -844,6 +850,18 @@ defmodule <%= @web %>.Bubble do
           }
           window.addEventListener("keydown", keydown)
           this.listeners.push(["keydown", keydown])
+          // While disconnected, what the user types in an open overlay
+          // rendered only while open is kept for the reconnect (WTF-559).
+          const typed = () => { if (this.snapshot) this.snapshot = this.lazyValues() }
+          window.addEventListener("input", typed)
+          window.addEventListener("change", typed)
+          this.listeners.push(["input", typed], ["change", typed])
+          // Lazy overlays closing (WTF-559): their contents are being
+          // dropped, so a show before the page replied asks for them again.
+          this.closing = new WeakSet()
+          this.loading = null
+          this.cancelled = null
+          this.snapshot = null
           // Element steps of server-side workflows, in order.
           this.handleEvent("bubble:exec", ({ ops }) => (ops || []).forEach((op) => this.exec(op)))
           // A refused click or input change (WTF-453): a short notice, as text.
@@ -866,12 +884,44 @@ defmodule <%= @web %>.Bubble do
         // A reconnected page is mounted afresh on the server: it knows no
         // width until it is told again, nor which overlays rendered only
         // while open are still open here (their contents come back).
+        // The values of the tracked inputs in the open lazy overlays, as
+        // the DOM has them now, by overlay.
+        disconnected() {
+          this.snapshot = this.lazyValues()
+        },
         reconnected() {
           this.pageWidth = null
           this.reportWidth()
+          // The page mounted afresh: it renders the open lazy overlays'
+          // contents again, with the values typed in them (the join's own
+          // form recovery cannot see them: they are not in its render).
+          const snapshot = this.snapshot || this.lazyValues()
+          this.snapshot = null
           document.querySelectorAll("[data-bubble-lazy]").forEach((el) => {
-            if (!el.hidden) this.overlayPush(el, true).catch(() => {})
+            if (el.hidden) return
+            const inputs = snapshot.get(this.overlayKey(el)) || []
+            this.overlayPush(el, true, inputs).catch(() => {})
           })
+        },
+        overlayKey(el) {
+          return JSON.stringify([this.scopeOf(el), el.getAttribute("data-bubble-id")])
+        },
+        lazyValues() {
+          const values = new Map()
+          document.querySelectorAll("[data-bubble-lazy]").forEach((el) => {
+            if (el.hidden) return
+            const inputs = []
+            el.querySelectorAll('form[phx-change="bubble:change"]').forEach((form) => {
+              const element = form.querySelector('input[type="hidden"][name="bubble[element]"]')
+              const scope = form.querySelector('input[type="hidden"][name="bubble[scope]"]')
+              const field = form.querySelector('[name="bubble[value]"]:not([type="hidden"])')
+              if (!element || !scope || !field) return
+              const value = field.type === "checkbox" ? String(field.checked) : field.value
+              inputs.push({ scope: scope.value, element: element.value, value })
+            })
+            values.set(this.overlayKey(el), inputs)
+          })
+          return values
         },
         run(fn) {
           if (this.queue) this.queue.push(fn)
@@ -885,24 +935,31 @@ defmodule <%= @web %>.Bubble do
         // the overlay stays closed.
         load(el) {
           this.queue = this.queue || []
+          this.loading = el
           const done = () => {
+            const cancelled = this.cancelled === el
+            this.loading = null
+            this.cancelled = null
+            // Escape while it loaded: it never opens, and its contents go.
+            if (cancelled) this.overlayPush(el, false).catch(() => {})
+            else if (el.isConnected && el.hidden && this.loaded(el)) this.show(el)
             const queue = this.queue || []
             this.queue = null
             queue.forEach((fn) => this.run(fn))
           }
-          this.overlayPush(el, true).then(
-            () => {
-              if (el.isConnected && el.hidden && el.hasAttribute("data-bubble-loaded")) this.show(el)
-              done()
-            },
-            () => done()
-          )
+          this.overlayPush(el, true).then(done, done)
         },
-        overlayPush(el, open) {
+        // Its contents are rendered, and not being dropped.
+        loaded(el) {
+          return el.hasAttribute("data-bubble-loaded") && !this.closing.has(el)
+        },
+        overlayPush(el, open, inputs) {
           const element = el.getAttribute("data-bubble-id")
           if (!element) return Promise.reject(new Error("no element"))
+          const payload = { scope: this.scopeOf(el), element, open }
+          if (inputs && inputs.length) payload.inputs = inputs
           try {
-            return Promise.resolve(this.pushEvent("bubble:overlay", { scope: this.scopeOf(el), element, open }))
+            return Promise.resolve(this.pushEvent("bubble:overlay", payload))
           } catch (e) {
             return Promise.reject(e)
           }
@@ -1004,8 +1061,7 @@ defmodule <%= @web %>.Bubble do
             if (overlay === "popup") this.popupEvent(el, "opened", true)
             return
           }
-          if (overlay && el.hasAttribute("data-bubble-lazy") && !el.hasAttribute("data-bubble-loaded"))
-            return this.load(el)
+          if (overlay && el.hasAttribute("data-bubble-lazy") && !this.loaded(el)) return this.load(el)
           if (overlay === "popup" || overlay === "group_focus") {
             document.querySelectorAll('[data-overlay="group_focus"]').forEach((other) => {
               if (other !== el && !other.hidden) this.hide(other)
@@ -1033,8 +1089,13 @@ defmodule <%= @web %>.Bubble do
           const hadFocus = el.contains(document.activeElement)
           this.js().setAttribute(el, "hidden", "")
           this.stack = this.stack.filter((open) => open !== el)
-          // Its contents are the page's again: it stops rendering them.
-          if (el.hasAttribute("data-bubble-lazy")) this.overlayPush(el, false).catch(() => {})
+          // Its contents are the page's again: it stops rendering them. Until
+          // the page replied, a show asks for them again.
+          if (el.hasAttribute("data-bubble-lazy")) {
+            this.closing.add(el)
+            const closed = () => this.closing.delete(el)
+            this.overlayPush(el, false).then(closed, closed)
+          }
           el.dispatchEvent(new CustomEvent("bubble:overlay-closed", { bubbles: true }))
           if (el.getAttribute("aria-modal") !== "true" && !hadFocus) return
           // Back to the opener; one hidden since then gives way to what

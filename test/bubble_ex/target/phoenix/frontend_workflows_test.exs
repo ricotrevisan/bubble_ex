@@ -567,6 +567,35 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
       assert files["lib/shop_web/live/index_live/workflows.ex"] =~ "overlays: []"
       assert files["test/shop_web/bubble_surfaces_test.exs"] =~ ~s("bPopTitle")
     end
+
+    # The page renders a tracked checkbox's and dropdown's first value
+    # (`checked`, `selected`), not the one kept: rendered again on opening,
+    # a ticked box would come back unticked. Their popup stays rendered,
+    # so closing and opening it keeps what the user chose.
+    for {type, props} <- [
+          {"Checkbox", %{"contents" => "unchecked"}},
+          {"Dropdown", %{"choices_style" => "static", "static_choices" => "a\nb"}}
+        ] do
+      test "a popup with a tracked #{type} renders as before" do
+        app =
+          put_in(app(), ["pages", "home", "elements", "bPop", "elements", "bPopChoice"], %{
+            "id" => "bPopChoice",
+            "type" => unquote(type),
+            "properties" =>
+              Map.merge(
+                %{"height" => 40, "width" => 200, "order" => 4},
+                unquote(Macro.escape(props))
+              )
+          })
+
+        %{files: files, spec: spec} = render(app)
+        assert Map.has_key?(spec.surfaces["bHome"].inputs, "bPopChoice")
+        template = files["lib/shop_web/live/index_live.html.heex"]
+        refute template =~ ~s|Bubble.open?(@bubble_open, "", "bPop")|
+        assert template =~ ~s(data-bubble-id="bPopChoice")
+        assert template =~ ~s|Bubble.open?(@bubble_open, "", "bFocus")|
+      end
+    end
   end
 
   test "without frontend workflows the pages are T5's" do

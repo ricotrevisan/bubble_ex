@@ -205,6 +205,8 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   @max_rounds 10
   @max_input_bytes Application.compile_env(:<%= @app %>, [__MODULE__, :max_input_bytes], 100_000)
+  # The tracked inputs a reconnected hook may send with an overlay (WTF-559).
+  @max_seeded_inputs 100
   @max_depth 100
 
   # The widest viewport a page takes as reported (CSS pixels), and what the
@@ -538,13 +540,17 @@ defmodule <%= @web %>.BubbleWorkflows do
   # it, and tells the page when it closed it. The reply comes after the
   # render, so the hook shows the overlay with its contents. An overlay
   # the surface does not list, or a scope the page does not render, stays
-  # closed.
+  # closed. After a reconnect the hook asks again for those still open,
+  # with what was typed in their tracked inputs (`inputs`, at most
+  # @max_seeded_inputs): taken as typing is (`bubble:change` before a
+  # commit, no workflow runs), so the contents render with them.
   def handle_event(socket, page, "bubble:overlay", %{"scope" => scope, "element" => element} = params)
       when is_binary(scope) and is_binary(element) do
     open? = Map.get(params, "open") == true
 
     with {:ok, module} <- surface(socket, page, scope),
          true <- element in Map.get(module.__bubble__(:surface), :overlays, []) do
+      socket = if open?, do: seed_inputs(socket, page, Map.get(params, "inputs")), else: socket
       {:reply, %{open: open?}, put_open(socket, [{scope, element}], open?)}
     else
       _ -> {:reply, %{open: false}, socket}
@@ -616,6 +622,32 @@ defmodule <%= @web %>.BubbleWorkflows do
   end
 
   def handle_event(socket, _page, _event, _params), do: {:noreply, socket}
+
+  # Values a reconnected hook sends for the tracked inputs of an open
+  # overlay rendered only while open (WTF-559): each checked as a typed
+  # value is (an input the page lists, in a scope it renders, of its
+  # type); the sources reading them read again, as after typing.
+  defp seed_inputs(socket, page, [_ | _] = inputs) do
+    seeded =
+      inputs
+      |> Enum.take(@max_seeded_inputs)
+      |> Enum.reduce(socket, fn
+        %{"scope" => _, "element" => _} = input, acc ->
+          case input_event(acc, page, input) do
+            {:ok, _module, scope, element, value, _cell} -> put_input(acc, scope, element, value)
+            _ -> acc
+          end
+
+        _, acc ->
+          acc
+      end)
+
+    if seeded.assigns.bubble_inputs == socket.assigns.bubble_inputs,
+      do: seeded,
+      else: event(seeded, page, [], nil, :deferred)
+  end
+
+  defp seed_inputs(socket, _page, _inputs), do: socket
 
   # The overlays the page renders the contents of (WTF-559).
   defp put_open(socket, [], _open?), do: socket

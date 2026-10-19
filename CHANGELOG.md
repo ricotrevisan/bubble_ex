@@ -167,12 +167,15 @@ All notable changes to this project are documented here.
   takes the hook's round trip. Closing it hides it at
   once, then the page drops its contents; Escape, outside clicks,
   "is closed", the focus given back to the opener and resets behave as
-  before, and nothing new is reset on close. A reconnect asks again for
-  the ones still open. An overlay keeps the old rendering when something
+  before, and nothing new is reset on close; a hide and a show in one
+  event reopen it with its contents, and Escape while one loads cancels
+  it. A reconnect asks again for the ones still open, with what was typed
+  in their tracked inputs. An overlay keeps the old rendering when something
   inside it keeps state only the browser has: an element a show, hide,
-  toggle, focus or scroll step targets, a control the page does not track
-  (a date, a file, a slider, radio buttons, a search, a dynamic first
-  value), or a reusable instance that has either; so does one in a
+  toggle, focus or scroll step targets, a control whose value the page does not render from what it keeps
+  (a checkbox or a dropdown, whose first value the page renders; a
+  date, a file, a slider, radio buttons, a search, or an untracked text
+  input), or a reusable instance that has either; so does one in a
   repeating group's cell, on a page without workflows, or in a reusable
   element without a Workflows module. The surface test no longer
   expects the contents of those overlays on page load. No animation is

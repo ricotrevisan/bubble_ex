@@ -19,7 +19,7 @@ const html = `<!doctype html><body>
   <div data-bubble-scope="inst1"><div data-overlay="popup" data-bubble-id="Q" data-bubble-events="opened" hidden ${box}></div></div>
   <div data-overlay="popup" data-bubble-id="R" hidden ${box}></div>
   <div data-overlay="popup" data-bubble-id="L" data-bubble-lazy data-bubble-events="closed opened"
-       role="dialog" aria-modal="true" hidden ${box}></div>
+       data-bubble-escape="${escape}" role="dialog" aria-modal="true" hidden ${box}></div>
   <div data-overlay="popup" data-bubble-id="M" data-bubble-lazy hidden ${box}></div>
   <button id="opener">Open</button>
   <div id="bubble-runtime" data-bubble-reads-width hidden></div>
@@ -50,7 +50,10 @@ try {
           const el = document.querySelector(`[data-bubble-id="${payload.element}"]`);
           if (payload.element === "L" && payload.open) {
             el.setAttribute("data-bubble-loaded", "");
-            el.innerHTML = '<button id="inside">Inside</button>';
+            el.innerHTML =
+              '<button id="inside">Inside</button>' +
+              '<form phx-change="bubble:change"><input type="hidden" name="bubble[element]" value="LIn">' +
+              '<input type="hidden" name="bubble[scope]" value=""><input id="lin" name="bubble[value]"></form>';
           } else if (payload.element === "L") {
             el.removeAttribute("data-bubble-loaded");
             el.innerHTML = "";
@@ -174,13 +177,75 @@ try {
   assert.equal(await page.evaluate(() => document.querySelector('[data-bubble-id="R"]').hidden), false, "the next step ran");
   await step("R", "bubble:hide");
 
-  // A reconnect asks again for the lazy popups still open.
+  // A hide and a show in one tick (WTF-559): the show does not take the
+  // contents being dropped for rendered; it asks for them again, after the
+  // close. In the browser, then from the server.
+  const visible = () =>
+    page.evaluate(() => {
+      const l = document.querySelector('[data-bubble-id="L"]');
+      return { hidden: l.hidden, filled: !!l.querySelector("#inside") };
+    });
+  for (const via of ["browser", "server"]) {
+    await step("L", "bubble:show");
+    await page.waitForTimeout(150);
+    await take();
+    if (via === "browser") {
+      await page.evaluate(() => {
+        const l = document.querySelector('[data-bubble-id="L"]');
+        l.dispatchEvent(new CustomEvent("bubble:hide", { bubbles: true }));
+        l.dispatchEvent(new CustomEvent("bubble:show", { bubbles: true }));
+      });
+    } else {
+      await page.evaluate(() =>
+        window.__handlers["bubble:exec"]({
+          ops: [{ op: "hide", to: '[data-bubble-id="L"]' }, { op: "show", to: '[data-bubble-id="L"]' }]
+        })
+      );
+    }
+    await page.waitForTimeout(250);
+    assert.deepEqual(
+      await take(),
+      [overlay("L", false), report("", "L", "closed"), overlay("L", true), report("", "L", "opened")],
+      `hide then show (${via}): closed, then asked for again`
+    );
+    assert.deepEqual(await visible(), { hidden: false, filled: true }, `hide then show (${via}): open with its contents`);
+    await step("L", "bubble:hide");
+    await page.waitForTimeout(150);
+    await take();
+  }
+
+  // Escape while a popup loads cancels its opening, not the one beneath.
+  await step("P", "bubble:show");
+  await take();
+  await step("L", "bubble:show");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(250);
+  assert.deepEqual(await take(), [overlay("L", true), overlay("L", false)], "Escape while loading: never opened");
+  assert.equal((await visible()).hidden, true, "the loading popup stays closed");
+  assert.equal(await page.evaluate(() => document.querySelector('[data-bubble-id="P"]').hidden), false, "the one beneath stays open");
+  await step("P", "bubble:hide");
+  await take();
+
+  // A reconnect asks again for the lazy popups still open, with what was
+  // typed in them, also while disconnected (the join drops their contents).
   await step("L", "bubble:show");
   await page.waitForTimeout(150);
   await take();
-  await page.evaluate(() => window.__h.reconnected());
+  await page.fill("#lin", "abc");
+  await page.evaluate(() => window.__h.disconnected());
+  await page.fill("#lin", "abcd");
+  await page.evaluate(() => {
+    const l = document.querySelector('[data-bubble-id="L"]');
+    l.removeAttribute("data-bubble-loaded");
+    l.innerHTML = "";
+    window.__h.reconnected();
+  });
   const again = (await take()).filter(([name]) => name === "bubble:overlay");
-  assert.deepEqual(again, [overlay("L", true)], "a reconnect renders the open lazy popup again");
+  assert.deepEqual(
+    again,
+    [["bubble:overlay", { scope: "", element: "L", open: true, inputs: [{ scope: "", element: "LIn", value: "abcd" }] }]],
+    "a reconnect renders the open lazy popup again, with what was typed"
+  );
   await page.waitForTimeout(100);
   await step("L", "bubble:hide");
   await page.waitForTimeout(100);
@@ -217,7 +282,7 @@ try {
   assert.deepEqual(await take(), [], "a page not reading the width reports nothing");
 
   assert.deepEqual(errors, []);
-  console.log("PASS popup reports: steps, Escape, toggle, open twice, instance scope, server steps, lazy popups, page width (mount, resize, reconnect, off)");
+  console.log("PASS popup reports: steps, Escape, toggle, open twice, instance scope, server steps, lazy popups (hide+show, Escape while loading, reconnect values), page width (mount, resize, reconnect, off)");
 } finally {
   await browser.close();
 }

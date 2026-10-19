@@ -596,7 +596,10 @@ a round trip:
   An overlay the surface does not list (`overlays` in
   `__bubble__(:surface)`), or a scope the page does not render, is not
   rendered and stays closed; the steps waiting run all the same. With
-  the connection down it does not open.
+  the connection down it does not open. Escape while it loads cancels
+  the opening (when it closes on Escape): it never opens, and no
+  overlay beneath it closes. An outside click while a Group Focus loads
+  does not cancel it: it opens when the page replies.
 * a server-side show step of a lazy overlay of its own surface marks it
   open in the same event: its contents render with the event's other
   changes ("Display data in popup" before or after the show included),
@@ -606,9 +609,16 @@ a round trip:
 * closing it (a step, Escape, an outside click) hides it at once, as
   before, then sends `bubble:overlay` with `open: false`: the page drops
   its contents, then "is closed" runs. The focus goes back to its opener
-  as before.
+  as before. A show before the page replied (a hide and a show in one
+  event, in the browser or from the server) asks for the contents again,
+  after the close, so it never opens empty.
 * a reconnect mounts the page afresh with nothing open: the hook asks
-  again for the lazy overlays still open in the browser.
+  again for the lazy overlays still open in the browser, with the values
+  of the tracked inputs in them as the browser showed them when the
+  connection dropped, typing while disconnected included (`inputs`, at
+  most 100; LiveView's own form recovery cannot see these forms, which
+  the new render does not have). The page takes them as typing (no
+  workflow runs) and renders the contents with them.
 
 The contents are rendered again from what the page keeps: the inputs it
 tracks show the values the user left, custom states and "Display data"
@@ -618,9 +628,11 @@ before. An overlay stays rendered as before (hidden, opened in the
 browser, no round trip) when something inside it keeps state only the
 browser has (`BubbleEx.Target.Phoenix.Overlays`): an element a show,
 hide, toggle, focus or scroll step of its surface targets (the overlay
-itself excepted), a control the page does not track (a date, a file, a
-slider, radio buttons, a search, an input whose first value is dynamic),
-or a reusable instance whose reusable element has either. So does an
+itself excepted), a control whose value the page does not render from
+what it keeps (a checkbox or a dropdown, tracked or not: the page renders
+their first value; radio buttons, a date, a file, a slider, a search, or
+a text input the page does not track), or a reusable instance whose
+reusable element has either. So does an
 overlay inside a runtime container (a repeating group's cell), of a page
 without workflows, or of a reusable element with no Workflows module or
 no `scope`. Opening a lazy overlay shows it at once when its contents

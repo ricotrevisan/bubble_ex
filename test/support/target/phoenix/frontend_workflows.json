@@ -825,6 +825,18 @@
               },
               "type": "Button"
             },
+            "bPopName": {
+              "id": "bPopName",
+              "properties": {
+                "_comment": "WTF-559: a tracked input in a popup rendered only while open",
+                "content_format": "text",
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 3,
+                "width": 200
+              },
+              "type": "Input"
+            },
             "bPopTitle": {
               "id": "bPopTitle",
               "properties": {
