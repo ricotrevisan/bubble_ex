@@ -716,8 +716,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # change, and keep the display they have when shown (WTF-477).
   defp shown(%Node{} = root), do: shown(root, MapSet.new())
 
-  # An element a breakpoint shows keeps its `hidden` class: the media
-  # rule's display must win over it, which the attribute's rule would not.
+  # An element a breakpoint shows keeps its `hidden` class (`invisible`
+  # when it does not collapse): the media rule's display and visibility
+  # must win over it, which the attribute's rule would not.
   defp shown(%Node{} = node, hidden) do
     {node, hidden} =
       if is_map(node.box) and node.box[:hidden?] == true and not breakpoint_display?(node),

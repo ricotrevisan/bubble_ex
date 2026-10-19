@@ -1675,13 +1675,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     match?([%Step{op: :display_data, args: %{element: ^popup}, condition: nil} | _], rest)
   end
 
+  # Steps this target does not run: an action that does not lower, or an
+  # animation (lowered, but residue here: `args(:animate, ...)`).
+  @unlowered_ops [nil, :animate]
+
   # An action this target does not lower naming the popup (or an element
   # in it): it may open the popup, or change it, at any time.
   defp unknown_step?(w, popup, ctx),
     do:
       Enum.any?(
         w.steps,
-        &(&1.op == nil and is_binary(&1.element) and within?(&1.element, popup, ctx))
+        &(&1.op in @unlowered_ops and is_binary(&1.element) and within?(&1.element, popup, ctx))
       )
 
   # Whether anything outside `popup` names the popup or an element inside
@@ -2077,7 +2081,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     unknown =
       for w <- workflows,
           not w.disabled?,
-          %Step{op: nil, element: element} <- w.steps,
+          %Step{op: op, element: element} <- w.steps,
+          op in @unlowered_ops,
           is_binary(element),
           into: MapSet.new(),
           do: element

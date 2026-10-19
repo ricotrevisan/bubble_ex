@@ -313,7 +313,7 @@ defmodule BubbleEx.Expression.Tree do
   @spec page_size(map()) :: pos_integer() | nil
   def page_size(props) when is_map(props) do
     rows = positive(props["rows"] || props["%rs"])
-    columns = positive(props["columns"] || props["%cs"]) || 1
+    columns = positive(props["columns"] || props["%c5"]) || 1
 
     if rows && props["show_all_items"] != true, do: rows * columns
   end

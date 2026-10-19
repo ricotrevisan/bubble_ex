@@ -556,7 +556,7 @@ defmodule BubbleEx.Buildprint.V5Test do
     test "passes through version, WAL, tamper and index-cap failures without fallback", %{
       tmp_dir: dir
     } do
-      version = write_workspace(dir, name: "version", metadata: %{"schemaVersion" => "17"})
+      version = write_workspace(dir, name: "version", metadata: %{"schemaVersion" => "99"})
       wal = write_workspace(dir, name: "wal")
       File.write!(Path.join([wal, ".buildprint", "index.sqlite-wal"]), "frames")
 
