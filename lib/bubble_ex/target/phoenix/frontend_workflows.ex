@@ -239,6 +239,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       conditions: #{source(for w <- wired, w.kind == :condition_true, do: {w.workflow, w.run_when})},
       intervals: #{intervals_source(intervals)},
       popups: #{popups_source(popups)},
+      overlays: #{source(Map.get(s, :overlays, []))},
       states: #{states_source(states)},
       cell_clicks: #{cell_map_source(cell_clicks)},
       cell_changes: #{cell_map_source(cell_changes)},

@@ -201,6 +201,50 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **A popup's contents render only while it is open (WTF-559).** Every
+  Popup and Group Focus was rendered whole, hidden, and opened in the
+  browser: on the private fixture app's `/meeting/<id>` the closed ones
+  were 58% of the join reply. With workflows, a Popup or Group Focus
+  closed as the page loads now renders its shell only (the overlay
+  element, with `hidden`, its dialog and dismissal attributes); the page
+  renders what is inside it while it keeps it open (`@bubble_open`,
+  `<Web>.Bubble.open?/3`, `<Bubble.contents :if={...}>`). Opening one is a
+  round trip: the page's hook asks for its contents (`bubble:overlay`),
+  the page renders them and replies, then the hook opens it as before
+  and reports it opened, so "is opened" still runs after it opened;
+  later steps wait for the reply and run in order. A server-side show
+  renders them in the same event, so "Display data" in it (before or
+  after the show) renders with the contents; a server-side toggle still
+  takes the hook's round trip. Closing it hides it at
+  once, then the page drops its contents; Escape, outside clicks,
+  "is closed", the focus given back to the opener and resets behave as
+  before, and nothing new is reset on close; a hide and a show in one
+  event reopen it with its contents, and Escape while one loads cancels
+  it. A reconnect asks again for the ones still open, with what was typed
+  in their tracked inputs. An overlay keeps the old rendering when something
+  inside it keeps state only the browser has: an element a show, hide,
+  toggle, focus or scroll step targets, a control whose value the page does not render from what it keeps
+  (a checkbox or a dropdown, whose first value the page renders; a
+  date, a file, a slider, radio buttons, a search, or an untracked text
+  input), or a reusable instance that has either; so does one in a
+  repeating group's cell, on a page without workflows, or in a reusable
+  element without a Workflows module. The surface test no longer
+  expects the contents of those overlays on page load. No animation is
+  lost: none was lowered. See `docs/frontend-workflows.md`, "Overlays
+  rendered only while open".
+  On the private fixture app's `/meeting/<id>` (dev, privacy enforced,
+  the same server and data, median of 6 interleaved visits): 124 of its
+  153 Popups and Group Focuses render only while open; the join reply
+  went from 1,654,508 to 1,258,946 bytes (-24%), the static render from
+  1,897,200 to 1,547,816 bytes, the join from 2,294 to 2,128 ms and the
+  time to connected from 3,021 to 2,792 ms. Opening one costs a round
+  trip: a server-side toggle (click to the popup shown with its
+  contents) went from 151 to 323 ms. The 29 kept as before (about 40% of
+  the connected page's markup) have a focus step on an element inside
+  (14), an input the page does not track (9), a reusable element that
+  shows or hides its own elements (4), or are a reusable element that is
+  itself a popup (2).
+
 - **A page load reads a record's relationship once, whatever else the
   record has loaded (WTF-559).** In a read pass, `BubbleData` kept a
   relationship load keyed by the very record term and load list. The

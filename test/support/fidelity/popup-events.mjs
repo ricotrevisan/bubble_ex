@@ -18,6 +18,10 @@ const html = `<!doctype html><body>
        data-bubble-escape="${escape}" role="dialog" aria-modal="true" hidden ${box}><button>Ok</button></div>
   <div data-bubble-scope="inst1"><div data-overlay="popup" data-bubble-id="Q" data-bubble-events="opened" hidden ${box}></div></div>
   <div data-overlay="popup" data-bubble-id="R" hidden ${box}></div>
+  <div data-overlay="popup" data-bubble-id="L" data-bubble-lazy data-bubble-events="closed opened"
+       data-bubble-escape="${escape}" role="dialog" aria-modal="true" hidden ${box}></div>
+  <div data-overlay="popup" data-bubble-id="M" data-bubble-lazy hidden ${box}></div>
+  <button id="opener">Open</button>
   <div id="bubble-runtime" data-bubble-reads-width hidden></div>
 </body>`;
 
@@ -36,7 +40,28 @@ try {
     window.__connected = true;
     window.__pushed = [];
     window.__handlers = {};
-    h.pushEvent = (name, payload) => window.__pushed.push([name, payload]);
+    // The page renders a lazy overlay's contents (WTF-559) and replies
+    // after the render; it does not list M, so M gets none.
+    h.pushEvent = (name, payload) => {
+      window.__pushed.push([name, payload]);
+      if (name !== "bubble:overlay") return;
+      return new Promise((resolve) =>
+        setTimeout(() => {
+          const el = document.querySelector(`[data-bubble-id="${payload.element}"]`);
+          if (payload.element === "L" && payload.open) {
+            el.setAttribute("data-bubble-loaded", "");
+            el.innerHTML =
+              '<button id="inside">Inside</button>' +
+              '<form phx-change="bubble:change"><input type="hidden" name="bubble[element]" value="LIn">' +
+              '<input type="hidden" name="bubble[scope]" value=""><input id="lin" name="bubble[value]"></form>';
+          } else if (payload.element === "L") {
+            el.removeAttribute("data-bubble-loaded");
+            el.innerHTML = "";
+          }
+          resolve({ open: payload.element === "L" && payload.open });
+        }, 50)
+      );
+    };
     h.handleEvent = (name, fn) => (window.__handlers[name] = fn);
     h.js = () => ({
       removeAttribute: (el, a) => el.removeAttribute(a),
@@ -98,6 +123,134 @@ try {
   );
   assert.deepEqual(await take(), [report("", "P", "opened")], "a server-side step's show");
 
+  // An overlay rendered only while open (WTF-559): the hook asks the page
+  // for its contents, opens it once they are rendered, and the steps after
+  // it wait for them (a focus inside finds its element).
+  const overlay = (element, open) => ["bubble:overlay", { scope: "", element, open }];
+  const state = () =>
+    page.evaluate(() => ({
+      hidden: document.querySelector('[data-bubble-id="L"]').hidden,
+      focused: document.activeElement && document.activeElement.id
+    }));
+  await page.focus("#opener");
+  await page.evaluate(() => {
+    const l = document.querySelector('[data-bubble-id="L"]');
+    l.dispatchEvent(new CustomEvent("bubble:show", { bubbles: true }));
+    l.dispatchEvent(new CustomEvent("bubble:focus", { bubbles: true }));
+  });
+  assert.deepEqual(await take(), [overlay("L", true)], "a lazy popup asks for its contents first");
+  assert.equal((await state()).hidden, true, "closed until they are rendered");
+  await page.waitForTimeout(150);
+  assert.deepEqual(await state(), { hidden: false, focused: "inside" }, "opened with its contents, then the focus step");
+  assert.deepEqual(await take(), [report("", "L", "opened")], "then reported opened");
+
+  await step("L", "bubble:show");
+  assert.deepEqual(await take(), [skipped("", "L", "opened")], "showing an open lazy popup asks nothing");
+
+  await step("L", "bubble:hide");
+  assert.deepEqual(await take(), [overlay("L", false), report("", "L", "closed")], "closing drops its contents");
+  await page.waitForTimeout(150);
+  assert.deepEqual(await state(), { hidden: true, focused: "opener" }, "closed; the focus back to its opener");
+
+  // A toggle while it loads waits: open, then closed again.
+  await page.evaluate(() => {
+    const l = document.querySelector('[data-bubble-id="L"]');
+    l.dispatchEvent(new CustomEvent("bubble:show", { bubbles: true }));
+    l.dispatchEvent(new CustomEvent("bubble:toggle", { bubbles: true }));
+  });
+  await page.waitForTimeout(150);
+  assert.deepEqual(
+    await take(),
+    [overlay("L", true), report("", "L", "opened"), overlay("L", false), report("", "L", "closed")],
+    "steps after a loading popup run in order"
+  );
+
+  // The page does not render M's contents: it stays closed, and the steps
+  // waiting on it still run.
+  await page.evaluate(() => {
+    document.querySelector('[data-bubble-id="M"]').dispatchEvent(new CustomEvent("bubble:show", { bubbles: true }));
+    document.querySelector('[data-bubble-id="R"]').dispatchEvent(new CustomEvent("bubble:show", { bubbles: true }));
+  });
+  await page.waitForTimeout(150);
+  assert.deepEqual(await take(), [overlay("M", true)], "an unlisted lazy popup is asked for once");
+  assert.equal(await page.evaluate(() => document.querySelector('[data-bubble-id="M"]').hidden), true);
+  assert.equal(await page.evaluate(() => document.querySelector('[data-bubble-id="R"]').hidden), false, "the next step ran");
+  await step("R", "bubble:hide");
+
+  // A hide and a show in one tick (WTF-559): the show does not take the
+  // contents being dropped for rendered; it asks for them again, after the
+  // close. In the browser, then from the server.
+  const visible = () =>
+    page.evaluate(() => {
+      const l = document.querySelector('[data-bubble-id="L"]');
+      return { hidden: l.hidden, filled: !!l.querySelector("#inside") };
+    });
+  for (const via of ["browser", "server"]) {
+    await step("L", "bubble:show");
+    await page.waitForTimeout(150);
+    await take();
+    if (via === "browser") {
+      await page.evaluate(() => {
+        const l = document.querySelector('[data-bubble-id="L"]');
+        l.dispatchEvent(new CustomEvent("bubble:hide", { bubbles: true }));
+        l.dispatchEvent(new CustomEvent("bubble:show", { bubbles: true }));
+      });
+    } else {
+      await page.evaluate(() =>
+        window.__handlers["bubble:exec"]({
+          ops: [{ op: "hide", to: '[data-bubble-id="L"]' }, { op: "show", to: '[data-bubble-id="L"]' }]
+        })
+      );
+    }
+    await page.waitForTimeout(250);
+    assert.deepEqual(
+      await take(),
+      [overlay("L", false), report("", "L", "closed"), overlay("L", true), report("", "L", "opened")],
+      `hide then show (${via}): closed, then asked for again`
+    );
+    assert.deepEqual(await visible(), { hidden: false, filled: true }, `hide then show (${via}): open with its contents`);
+    await step("L", "bubble:hide");
+    await page.waitForTimeout(150);
+    await take();
+  }
+
+  // Escape while a popup loads cancels its opening, not the one beneath.
+  await step("P", "bubble:show");
+  await take();
+  await step("L", "bubble:show");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(250);
+  assert.deepEqual(await take(), [overlay("L", true), overlay("L", false)], "Escape while loading: never opened");
+  assert.equal((await visible()).hidden, true, "the loading popup stays closed");
+  assert.equal(await page.evaluate(() => document.querySelector('[data-bubble-id="P"]').hidden), false, "the one beneath stays open");
+  await step("P", "bubble:hide");
+  await take();
+
+  // A reconnect asks again for the lazy popups still open, with what was
+  // typed in them, also while disconnected (the join drops their contents).
+  await step("L", "bubble:show");
+  await page.waitForTimeout(150);
+  await take();
+  await page.fill("#lin", "abc");
+  await page.evaluate(() => window.__h.disconnected());
+  await page.fill("#lin", "abcd");
+  await page.evaluate(() => {
+    const l = document.querySelector('[data-bubble-id="L"]');
+    l.removeAttribute("data-bubble-loaded");
+    l.innerHTML = "";
+    window.__h.reconnected();
+  });
+  const again = (await take()).filter(([name]) => name === "bubble:overlay");
+  assert.deepEqual(
+    again,
+    [["bubble:overlay", { scope: "", element: "L", open: true, inputs: [{ scope: "", element: "LIn", value: "abcd" }] }]],
+    "a reconnect renders the open lazy popup again, with what was typed"
+  );
+  await page.waitForTimeout(100);
+  await step("L", "bubble:hide");
+  await page.waitForTimeout(100);
+  await take();
+
   // A resize reports the new width once, after its debounce; the same
   // width again reports nothing.
   await page.setViewportSize({ width: 700, height: 600 });
@@ -129,7 +282,7 @@ try {
   assert.deepEqual(await take(), [], "a page not reading the width reports nothing");
 
   assert.deepEqual(errors, []);
-  console.log("PASS popup reports: steps, Escape, toggle, open twice, instance scope, server steps, page width (mount, resize, reconnect, off)");
+  console.log("PASS popup reports: steps, Escape, toggle, open twice, instance scope, server steps, lazy popups (hide+show, Escape while loading, reconnect values), page width (mount, resize, reconnect, off)");
 } finally {
   await browser.close();
 }

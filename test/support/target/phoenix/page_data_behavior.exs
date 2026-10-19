@@ -1834,11 +1834,23 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
         Map.merge(%{"scope" => "", "element" => element, "event" => event}, extra)
       )
 
+  # WTF-559: a popup's contents render only while it is open. The hook
+  # asks the page for them before it opens one (`bubble:overlay`), and
+  # tells it when it closed it.
+  defp overlay(view, element, open?, scope \\ ""),
+    do:
+      render_hook(view, "bubble:overlay", %{
+        "scope" => scope,
+        "element" => element,
+        "open" => open?
+      })
+
   test "a popup's \"is opened\" workflow shows data in a group inside it; \"is closed\" resets it",
        %{conn: conn} do
     on()
     {:ok, view, html} = live(conn, "/shown")
     assert shown(html, "Popup inner") == []
+    refute html =~ ~s(data-bubble-id="bPopInner")
 
     # The button opens the popup in the browser; the popup carries the
     # events its hook reports.
@@ -1848,13 +1860,42 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
            |> element(~s([data-bubble-id="bPopOpen"][data-bubble-events="closed opened"]))
            |> has_element?()
 
+    # The hook opens it: its contents render, before "is opened" runs.
+    html = overlay(view, "bPopOpen", true)
+    assert html =~ ~s(data-bubble-id="bPopInner")
+    assert shown(html, "Popup inner") == []
+
     html = popup(view, "bPopOpen", "opened")
     assert shown(html, "Popup inner") == ["Eat"]
     assert shown(html, "Popup inner project") == ["Apollo"]
 
-    html = popup(view, "bPopOpen", "closed")
+    # Closed: the contents are dropped, and "is closed" resets the group.
+    refute overlay(view, "bPopOpen", false) =~ ~s(data-bubble-id="bPopInner")
+    popup(view, "bPopOpen", "closed")
+    html = overlay(view, "bPopOpen", true)
     assert shown(html, "Popup inner") == []
     assert shown(html, "Popup inner project") == []
+  end
+
+  test "a popup renders its contents only while open (WTF-559)", %{conn: conn} do
+    on()
+    {:ok, view, html} = live(conn, "/shown")
+    # Closed as the page loads: its shell only, marked as rendered when open.
+    assert html =~ ~s(data-bubble-id="bPopOpen")
+    refute html =~ ~s(data-bubble-id="bPopInner")
+    refute view |> element(~s([data-bubble-id="bPopOpen"][data-bubble-loaded])) |> has_element?()
+    assert view |> element(~s([data-bubble-id="bPopOpen"][data-bubble-lazy])) |> has_element?()
+
+    assert overlay(view, "bPopOpen", true) =~ ~s(data-bubble-id="bPopInner")
+    assert view |> element(~s([data-bubble-id="bPopOpen"][data-bubble-loaded])) |> has_element?()
+    refute overlay(view, "bPopOpen", false) =~ ~s(data-bubble-id="bPopInner")
+
+    # An overlay the page does not list, or a scope it does not render,
+    # opens nothing.
+    for {element, scope} <- [{"bNope", ""}, {"bPopInner", ""}, {"bPopOpen", "bPanel1"}] do
+      refute overlay(view, element, true, scope) =~ ~s(data-bubble-id="bPopInner"),
+             inspect({element, scope})
+    end
   end
 
   # Replay 2026-10-14 (WTF-387): bOpenPopKeep's click shows bPopKeep
@@ -1868,8 +1909,12 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
   } do
     on()
     {:ok, view, html} = live(conn, "/shown")
-    assert shown(html, "Keep popup") == ["Answer"]
+    # Closed: its contents are not rendered (WTF-559).
+    assert shown(html, "Keep popup") == []
+    assert shown(overlay(view, "bPopKeep", true), "Keep popup") == ["Answer"]
+    overlay(view, "bPopKeep", false)
 
+    # The server-side show renders its contents with the display.
     assert shown(click(view, "bOpenPopKeep"), "Keep popup") == ["Eat"]
     assert shown(popup(view, "bPopKeep", "opened"), "Keep popup") == ["Eat"]
 
@@ -2167,6 +2212,8 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
   test "a later step reads the data a Display data step just set", %{conn: conn} do
     on()
     {:ok, view, _html} = live(conn, "/shown")
+    # The popup open (its contents render only while open, WTF-559).
+    overlay(view, "bPop", true)
     # Step 1 shows B in bShown; step 2 shows bShown's thing in the popup.
     html = click(view, "bChain")
     assert shown(html, "Shown") == ["Eat"]

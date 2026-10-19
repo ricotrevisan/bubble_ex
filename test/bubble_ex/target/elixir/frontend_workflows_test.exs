@@ -102,7 +102,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsTest do
     assert spec.surfaces["bHome"].inputs == %{
              "bIn" => :text,
              "bNum" => :number,
-             "bCheck" => :boolean
+             "bCheck" => :boolean,
+             "bPopName" => :text
            }
 
     assert spec.surfaces["bCard"].inputs == %{"bCardNote" => :text}
