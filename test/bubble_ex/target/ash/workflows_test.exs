@@ -32,6 +32,14 @@ defmodule BubbleEx.Target.Ash.WorkflowsTest do
            ]
   end
 
+  test "a parameter referenced by its key binds to the workflow's argument" do
+    ref = %{"type" => "APIEventParameter", "properties" => %{"key" => "title", "value" => "text"}}
+    path = ["api", "wCreate", "actions", "0", "properties", "initial_values", "0", "value"]
+    spec = spec(put_in(app(), path, ref))
+
+    assert Spec.native?(action(spec, "wCreate"))
+  end
+
   test "authorization: bypassed only for a workflow that ignores privacy rules" do
     spec = spec(app())
 

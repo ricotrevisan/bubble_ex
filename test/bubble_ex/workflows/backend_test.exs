@@ -124,6 +124,26 @@ defmodule BubbleEx.Workflows.BackendTest do
              workflow(backend, "wNotify").steps
   end
 
+  test "a parameter referenced by its definition's key and type compiles" do
+    ref = %{
+      "type" => "APIEventParameter",
+      "properties" => %{"key" => "title", "value" => "text", "optional" => false}
+    }
+
+    app =
+      put_in(app(), ["api", "wCreate", "actions", "0", "properties", "initial_values", "0"], %{
+        "key" => "title_text",
+        "value" => ref
+      })
+
+    [%Step{op: :create, residue: [], args: create} | _] = workflow(build(app), "wCreate").steps
+
+    assert %Change{field: "title_text", value: %Expr{ir: %{op: :input, args: [:parameter, ref]}}} =
+             hd(create.changes)
+
+    assert ref["key"] == "title"
+  end
+
   test "unsupported steps are residue with a diagnostic, never dropped" do
     backend = build(app())
     external = workflow(backend, "wExternal")

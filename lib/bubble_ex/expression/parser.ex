@@ -156,8 +156,7 @@ defmodule BubbleEx.Expression.Parser do
         {ref, ref_keys} =
           Keys.readable_members(ref || %{}, %{"%ei" => "element_id", "%ai" => "action_id"})
 
-        btype = if is_binary(ref["btype_id"]), do: ref["btype_id"]
-        node = %Scope{kind: kind, source_type: type, ref: ref, type: btype}
+        node = %Scope{kind: kind, source_type: type, ref: ref, type: scope_type(kind, ref)}
 
         {%{node | meta: %{keys: used, extra: extra, ref_keys: ref_keys}},
          extra_diags(extra, path)}
@@ -166,6 +165,20 @@ defmodule BubbleEx.Expression.Parser do
         shape(raw, path, "#{type} properties must be an object")
     end
   end
+
+  # `btype_id`; an API workflow's parameter may instead copy its
+  # definition's `{key, value, is_list, optional}` (`value` its type).
+  defp scope_type(_kind, %{"btype_id" => type}) when is_binary(type), do: type
+
+  defp scope_type(:api_parameter, %{"key" => key, "value" => type} = ref)
+       when is_binary(key) and is_binary(type),
+       do:
+         if(ref["is_list"] == true and not String.starts_with?(type, "list."),
+           do: "list." <> type,
+           else: type
+         )
+
+  defp scope_type(_kind, _ref), do: nil
 
   defp simple(node, raw, path) do
     {used, extra} = Keys.split(raw, [:type])

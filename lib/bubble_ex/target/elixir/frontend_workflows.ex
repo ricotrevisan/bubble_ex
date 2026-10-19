@@ -2476,7 +2476,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp bind({:parameter, ref}, ctx) do
     event = ref["event_id"]
-    param = ref["param_id"] || ref["param_key"]
+    param = ref["param_id"] || ref["param_key"] || ref["key"]
 
     cond do
       event not in [nil, ctx.workflow.bubble_id] -> {:error, "parameter_of_other_workflow"}
