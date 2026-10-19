@@ -29,8 +29,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   | Bubble | kept as |
   |--------|---------|
   | Current user | the LiveView's `current_user` |
-  | Current date/time | the time the workflow started |
-  | Current page width | the browser's viewport width in CSS pixels, as the page's hook reports it once connected (and again when it changes); empty before that |
+  | Current date/time | the time the workflow started (Bubble computes it once per evaluation and never again on its own, replay 2026-10-19) |
+  | Current page width | the browser's viewport width in CSS pixels without a vertical scrollbar (`document.documentElement.clientWidth`, as Bubble, replay 2026-10-19), as the page's hook reports it once connected (and again when it changes); empty before that |
   | a custom event's parameter | its argument |
   | Result of step N | the step's result |
   | an element's custom state | the page's state map, per reusable-element instance |

@@ -40,6 +40,13 @@ defmodule BubbleEx.Expression.Env do
       compiled), `true` (ignored) or `false` (compared). A page's
       `:filtered` (`searches: :page`) follows the page rule instead
       (replay 2026-10-07).
+    * `loading_status` - what a repeating group's `is loading` is:
+      `:residue` (the default: not compiled) or `:constant` (a constant
+      no, for a page's visibility conditionals and shown values). In
+      Bubble it stays no while a search waits and flashes yes for a few
+      milliseconds after each response (replay 2026-10-19): what is shown
+      cannot rely on that flash, but a workflow's trigger or condition
+      ("Do when … is loading") may fire on it, so there it stays residue.
 
   Build it with `new/2`.
   """
@@ -60,7 +67,8 @@ defmodule BubbleEx.Expression.Env do
             subject: %{},
             path: [],
             searches: nil,
-            ignore_empty_constraints: nil
+            ignore_empty_constraints: nil,
+            loading_status: :residue
 
   @type t :: %__MODULE__{
           model: Model.t() | nil,
@@ -75,7 +83,8 @@ defmodule BubbleEx.Expression.Env do
           subject: BubbleEx.Diagnostic.subject(),
           path: [String.t() | integer()],
           searches: searches(),
-          ignore_empty_constraints: boolean() | nil
+          ignore_empty_constraints: boolean() | nil,
+          loading_status: :residue | :constant
         }
 
   @type searches :: :page | :backend | nil

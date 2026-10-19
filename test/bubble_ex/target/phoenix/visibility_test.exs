@@ -485,22 +485,71 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     end
   end
 
-  test "other page values a condition reads do not compile", %{} do
-    for name <- ["Current Page Name", "Current Date/Time"] do
-      template =
-        app()
-        |> put_in(
-          ["pages", "index", "elements", "bWidth", "states", "0", "condition", "properties"],
-          %{"name" => name}
-        )
-        |> build()
-        |> Map.fetch!(:files)
-        |> Map.fetch!("lib/shop_web/live/index_live.html.heex")
+  # Replay 2026-10-19: Bubble offers Current page name only inside a
+  # reusable element, where it is the host page's name.
+  test "a reusable element reads its host page's name, passed down", %{files: files} do
+    host = files["lib/shop_web/components/reusables/host.html.heex"]
+    host_ex = files["lib/shop_web/components/reusables/host.ex"]
+    inner = files["lib/shop_web/components/reusables/host_in.html.heex"]
 
-      assert template =~
-               "TODO(bubble:bWidth) visibility: 1 conditional not lowered (it does not compile)",
-             name
-    end
+    assert tag(host, "bHostIs") =~ "hidden={!visible_bhostis(@bubble_page_name)}"
+    assert host =~ "{text_bhostname(@bubble_page_name)}"
+    assert host_ex =~ "attr :bubble_page_name, :any, default: nil"
+    assert squash(host_ex) =~ squash(~s|unhidden(page_data_current_page_name) == "cells"|)
+
+    # Each page passes its own Bubble name; a reusable element passes it on.
+    assert tag(host, "bHostInI") =~ "bubble_page_name={@bubble_page_name}"
+    assert tag(inner, "bHostInIs") =~ "hidden={!visible_bhostinis(@bubble_page_name)}"
+
+    assert tag(files["lib/shop_web/live/index_live.html.heex"], "bHostI") =~
+             ~s(bubble_page_name="index")
+
+    assert tag(files["lib/shop_web/live/cells_live.html.heex"], "bHostC") =~
+             ~s(bubble_page_name="cells")
+
+    refute host =~ "TODO(bubble:bHost"
+  end
+
+  test "Current page name on a page itself is marked with why", %{files: files} do
+    template = files["lib/shop_web/live/index_live.html.heex"]
+    why = "it reads Current page name on a page: Bubble offers it only inside a reusable element"
+
+    assert template =~
+             "TODO(bubble:bPageName) visibility: 1 conditional not lowered (#{why}); " <>
+               "shown as on page load"
+
+    assert tag(template, "bPageName") =~ ~r/\shidden[\s>]/
+    assert template =~ "TODO(bubble:bPageNameText) text: #{why}"
+    refute files["lib/shop_web/live/index_live.ex"] =~ "visible_bpagename"
+  end
+
+  # Replay 2026-10-19: computed once per evaluation, no timer, never empty.
+  test "Current date/time compiles against the time of the render", %{files: files} do
+    template = files["lib/shop_web/live/index_live.html.heex"]
+    live = files["lib/shop_web/live/index_live.ex"]
+
+    assert tag(template, "bNow") =~ "hidden={!visible_bnow(DateTime.utc_now())}"
+    assert tag(template, "bNowEmpty") =~ "hidden={!visible_bnowempty(DateTime.utc_now())}"
+    assert live =~ "Shop.Bubble.Runtime.empty?(page_data_current_date_time) == true -> true"
+    refute template =~ "TODO(bubble:bNow"
+    refute live =~ "setInterval"
+  end
+
+  # Replay 2026-10-19: no while a search runs, yes only for a flicker.
+  test "a repeating group's is loading is a constant no", %{files: files} do
+    template = files["lib/shop_web/live/index_live.html.heex"]
+    live = files["lib/shop_web/live/index_live.ex"]
+
+    assert tag(template, "bLoaded") =~ "hidden={!visible_bloaded()}"
+    assert tag(template, "bLoading") =~ "hidden={!visible_bloading()}"
+    assert live =~ "false == false == true -> true"
+    assert live =~ "false == true == true -> true"
+    refute template =~ "TODO(bubble:bLoad"
+  end
+
+  test "a breakpoint shown as text is its width", %{files: files} do
+    assert files["lib/shop_web/live/cells_live.ex"] =~
+             ~s|"Tablet: " <> Shop.Bubble.Runtime.display(992)|
   end
 
   test "the report counts compiled, marked and other conditional properties", %{
@@ -513,13 +562,15 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     # URL and loads no data: bFlagged's, bFlagOff's, bOpen's,
     # bCellNoProject's, bHasProject's, bTabOpen's, bCardTab's,
     # bBadgeTab's and the width's (bWidth, bNarrowTab, bBadgeNarrow and
-    # the cells page's five, and its three breakpoint tests) conditionals
-    # are marked too (bKeep's only repeats its visibility on page load:
-    # compiled, whatever it reads). The panel's two "isn't clickable"
-    # states are other properties.
+    # the cells page's five, and its three breakpoint tests), the page
+    # name's (bHostIs, bHostInIs, bPageName) and the date/time's (bNow,
+    # bNowEmpty) conditionals are marked too (bKeep's only repeats its
+    # visibility on page load: compiled, whatever it reads; bLoaded's and
+    # bLoading's read a repeating group's "is loading", a constant). The
+    # panel's two "isn't clickable" states are other properties.
     assert %{
-             "visibility_conditions_compiled" => 9,
-             "visibility_conditions_marked" => 20,
+             "visibility_conditions_compiled" => 11,
+             "visibility_conditions_marked" => 25,
              "conditions_other_properties" => 4
            } = report
   end

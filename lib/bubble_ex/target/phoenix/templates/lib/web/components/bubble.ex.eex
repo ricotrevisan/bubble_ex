@@ -844,7 +844,7 @@ defmodule <%= @web %>.Bubble do
           // Disconnected: nothing is sent; `reconnected` reports again.
           const socket = this.liveSocket
           if (socket && typeof socket.isConnected === "function" && !socket.isConnected()) return
-          const width = Math.round(window.innerWidth)
+          const width = Math.round(document.documentElement.clientWidth)
           if (!Number.isFinite(width) || width === this.pageWidth) return
           this.pageWidth = width
           this.pushEvent("bubble:page_width", { width }, () => {})

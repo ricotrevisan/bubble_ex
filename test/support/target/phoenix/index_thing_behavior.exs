@@ -42,7 +42,8 @@ defmodule PhxCheckWeb.IndexThingBehaviorTest do
   test "the current page's thing stays under /index", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/index/#{@t1}")
     click(view, "bIdxSelf")
-    assert_patch(view, "/index/#{@t1}")
+    # The URL the page is on: as in Bubble (replay 2026-10-19), no patch.
+    refute_patched(view)
     assert render(view) =~ "Index thing: Bake"
   end
 

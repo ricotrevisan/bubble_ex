@@ -169,6 +169,32 @@ defmodule BubbleEx.Frontend.Export.CssTest do
     refute mobile =~ "--bubble-image-border-top:"
   end
 
+  # Bubble's breakpoint comparisons are strict (replay 2026-10-19: at
+  # exactly 992 px "< Tablet" is no, "<= Tablet" yes): a collapsed rule
+  # from `Current page width <= N` keeps `<=`, a breakpoint rule its own
+  # operator, both in range syntax.
+  test "page-width media rules keep Bubble's operators" do
+    collapsed =
+      node("nav",
+        responsive: [%{"when" => %{"max_viewport_width" => 768}, "visibility" => "collapsed"}]
+      )
+
+    css = Css.page(collapsed)
+    assert css =~ "@media (width <= 768px) {"
+    refute css =~ "max-width: 768px"
+
+    for {op, media} <- [{"<", "(width < 992px)"}, {"<=", "(width <= 992px)"}] do
+      strict =
+        node("tab",
+          responsive: [
+            %{"media" => %{"operator" => op, "width" => 992}, "paint" => %{"display" => "none"}}
+          ]
+        )
+
+      assert Css.page(strict) =~ "@media #{media} {", op
+    end
+  end
+
   test "preserves user color and font tokens referenced by live shared styles" do
     model = %Normalized{
       styles: [],

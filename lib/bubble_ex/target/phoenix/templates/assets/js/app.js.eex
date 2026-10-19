@@ -12,9 +12,11 @@ const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute
 // mount, page data and first render) is done. A slow page then showed the
 // error state and rejoined; the websocket now waits for the join.
 const liveSocket = new LiveSocket("/live", Socket, {
-  // The viewport's width (Bubble's "Current page width"), read again at
-  // every (re)connect, so the first connected render has it.
-  params: () => ({_csrf_token: csrfToken, bubble_page_width: Math.round(window.innerWidth)}),
+  // Bubble's "Current page width": the viewport's width without a vertical
+  // scrollbar (`document.documentElement.clientWidth`, as Bubble's
+  // `$(window).width()`; replay 2026-10-19), read again at every
+  // (re)connect, so the first connected render has it.
+  params: () => ({_csrf_token: csrfToken, bubble_page_width: Math.round(document.documentElement.clientWidth)}),
   hooks: {...colocatedHooks},
 })
 

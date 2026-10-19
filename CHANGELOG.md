@@ -6,6 +6,57 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **The replay of 2026-10-19 applied: the current date/time, the page's
+  name, page width and breakpoints, "is loading", same-URL "Go to
+  page".** Each was observed in Bubble on a synthetic page, then
+  implemented:
+  - `Current date/time` in a visibility conditional or a shown value
+    compiles. Bubble computes it once per evaluation, with no timer (not
+    even on a resize), and it is never empty: the page reads the time
+    when it renders, with no timer, and `is empty` is no.
+  - `Current page name` compiles inside a reusable element, as the host
+    page's Bubble name: each page passes its name down
+    (`bubble_page_name`), and a reusable element passes it on. Bubble
+    offers it only there, so on a page it stays unlowered, marked with
+    that reason. A reusable element on the index page was not replayed.
+  - A repeating group's `is loading` is a constant no in what a page
+    shows (visibility conditionals, shown values). In Bubble it stays no
+    while a search runs (old rows shown) and is yes only for a few
+    milliseconds after each response, so nothing shown can rely on it. A
+    workflow's trigger or condition reading it stays residue
+    (`expr_uncompiled:loading_status`): Bubble may fire it on that flash.
+  - `Current page width` is `document.documentElement.clientWidth`
+    (Bubble's `$(window).width()`, no vertical scrollbar), in the
+    scaffolded `app.js` and the page's hook, no longer
+    `window.innerWidth`. `assets/js/app.js` is scaffolded once: an
+    existing project keeps sending `window.innerWidth` at connect until
+    its `bubble_page_width` param is changed by hand to
+    `Math.round(document.documentElement.clientWidth)` (the hook's
+    reports after a resize use the new width either way). Breakpoint comparisons stay strict (at 992 px
+    `< Tablet` is no). The collapsed-rule media query is written in range
+    syntax (`width <= N`, the `<=` it comes from), like the breakpoint
+    rules. A breakpoint shown as text is its width (`992`), in the pages
+    and in the app tree's outline.
+  - A "Go to page" to the URL the page is on (same path and parameters)
+    no longer patches: as in Bubble, no search, no reload, no history
+    entry. It compares the parameters as the page reads them, so URLs
+    that differ only in parameter order, an empty versus absent
+    parameter, or a repeated versus comma-joined key also do nothing
+    here, where Bubble would still change the address bar and history. A same-page one that changes the URL patches as before
+    (WTF-562 reads again only what reads the changed URL); the WTF-562
+    assumption is now confirmed in `docs/page-data.md` and
+    `BubbleData.load_url/3`.
+  On the private fixture app (counts only, against main): elements whose
+  visibility conditionals are not lowered 358 to 309 (conditionals 479
+  to 405), "does not compile" 85 to 33: 13 elements reading the page's
+  name (30 conditionals), 16 reading the date/time (21) and 13 reading
+  "is loading" now compile, 7 more compile as constant, and 3 now name
+  what is left (data not loaded, a plugin's state). On `/meeting` and the
+  reusable elements it renders: 180 to 147 (262 to 205 conditionals).
+  Workflow and page data counts are unchanged (no workflow there reads
+  "is loading"). See `docs/page-data.md` and
+  `docs/frontend-workflows.md`.
+
 - **An "Only when" condition that reads a search runs (WTF-564).** A
   workflow whose condition read a search (`Search for ...:first item is
   not empty`) was `uncompiled_expression` residue (`elixir:search`), so

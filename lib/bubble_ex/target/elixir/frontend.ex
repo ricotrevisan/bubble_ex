@@ -54,8 +54,22 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   whatever its shape. A width compared to a named breakpoint
   (`Current page width < Tablet`) compares it to that breakpoint's width
   in the app's breakpoint settings, fixed at compile time; a breakpoint
-  the settings do not define does not compile. Other page values
-  (`Current page name`, `Current date/time`) do not compile.
+  the settings do not define does not compile.
+
+  `Current date/time` and `Current page name` compile too (replayed
+  2026-10-19). Bubble computes the date/time once per evaluation and never
+  evaluates it again on its own (no timer, not even on a resize), and it
+  is never empty: the page reads the time when it renders, with no timer.
+  Bubble offers the page's name only inside a reusable element, where it
+  is the host page's Bubble name (the editor's, whatever else the path
+  holds); the page passes it down to the reusable element. On a page
+  itself the editor refuses it, so the page does not keep it there and
+  says why.
+
+  A repeating group's `is loading` compiles to a constant no (replayed
+  2026-10-19): in Bubble it stays no while a search waits for its
+  response, the old rows still shown, and is yes only for a few
+  milliseconds as rows render, a flicker no condition can rely on.
 
   A visibility conditional that does not compile (a condition with no IR
   or no Elixir, a non-literal visibility, an overlay's: a Popup, Group
@@ -103,7 +117,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   def compile(app, %Model{} = model, %Project{} = project, %Normalized{} = frontend, opts)
       when is_map(app) and not is_struct(app) and is_list(opts) do
-    env = Env.new(model, tree: Tree.build(app), searches: :page)
+    env = Env.new(model, tree: Tree.build(app), searches: :page, loading_status: :constant)
 
     nodes = Enum.flat_map(frontend.pages ++ frontend.reusables, &nodes/1)
 
@@ -309,15 +323,16 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   # What a page can supply a condition with: the current user, an
   # element's state (custom states, input values, a group's data), the
-  # page's or the current cell's thing, what the URL holds and the
-  # viewport's width (`Current page width`, WTF-520) (the target decides
-  # per page whether it does). Anything else (the page's name, the current
-  # date and time…) would be a value nothing sets, never the one Bubble
-  # reads.
+  # page's or the current cell's thing, what the URL holds, the
+  # viewport's width (`Current page width`, WTF-520), the current date and
+  # time and the host page's name (replayed 2026-10-19) (the target
+  # decides per page whether it does). Anything else (the app's version…)
+  # would be a value nothing sets, never the one Bubble reads.
   @page_inputs [:element_state, :page_thing, :cell_thing, :cell_index, :url_parameter]
+  @page_values ["Current Page Width", "Current Date/Time", "Current Page Name"]
 
   defp page_input?(:current_user), do: true
-  defp page_input?({:page_data, %{"name" => "Current Page Width"}}), do: true
+  defp page_input?({:page_data, %{"name" => name}}) when name in @page_values, do: true
   defp page_input?({kind, _ref}) when kind in @page_inputs, do: true
   defp page_input?(_input), do: false
 

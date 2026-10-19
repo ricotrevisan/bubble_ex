@@ -566,6 +566,38 @@ defmodule BubbleEx.Workflows.FrontendTest do
     end
   end
 
+  # Replay 2026-10-19: a repeating group's "is loading" flashes yes for a
+  # few milliseconds after each response, so a workflow's trigger may fire
+  # on it: there it is residue, never the constant no a page shows.
+  test "a condition-true workflow on a repeating group's is loading is residue" do
+    rg = %{
+      "id" => "bLoadRG",
+      "type" => "RepeatingGroup",
+      "properties" => %{"group_type" => "text", "rows" => 1, "columns" => 1}
+    }
+
+    loading = %{
+      "type" => "GetElement",
+      "properties" => %{"element_id" => "bLoadRG"},
+      "next" => %{
+        "type" => "Message",
+        "name" => "get_loading_status",
+        "next" => %{"type" => "Message", "name" => "is_true"}
+      }
+    }
+
+    lowered =
+      app()
+      |> put_in(["pages", "home", "elements", "bLoadRG"], rg)
+      |> edit("wCond", &put_in(&1, ["properties", "condition"], loading))
+      |> lower()
+
+    assert %Workflow{
+             kind: :condition_true,
+             condition: %{ir: nil, constructs: ["expr_uncompiled:loading_status"]}
+           } = workflow(lowered, "wCond")
+  end
+
   defp walk(%BubbleEx.Expression.IR{args: args} = ir), do: [ir | Enum.flat_map(args, &walk/1)]
   defp walk(_), do: []
 end

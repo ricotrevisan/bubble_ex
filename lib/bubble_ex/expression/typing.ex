@@ -329,6 +329,11 @@ defmodule BubbleEx.Expression.Typing do
     end
   end
 
+  # A repeating group's "is loading" (replayed 2026-10-19): a constant no
+  # (`BubbleEx.Expression.Compiler`).
+  def element_state(%Tree.Node{type: "RepeatingGroup"}, "get_loading_status", _env),
+    do: {:ok, "boolean"}
+
   def element_state(node, "get_data", _env), do: present(node.value)
   def element_state(_node, "page_number", _env), do: {:ok, "number"}
 

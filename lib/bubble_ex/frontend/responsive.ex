@@ -78,12 +78,13 @@ defmodule BubbleEx.Frontend.Responsive do
   defp breakpoint_width(_value, _breakpoints), do: :error
 
   @spec breakpoints(map()) :: map()
-  def breakpoints(payload) do
-    case get_in(payload, ["settings", "client_safe", "responsive_breakpoints"]) do
-      map when is_map(map) -> map
-      _ -> %{}
-    end
-  end
+  # Any other shape (a hostile or partial export: settings that are not
+  # objects) has none.
+  def breakpoints(%{"settings" => %{"client_safe" => %{"responsive_breakpoints" => map}}})
+      when is_map(map),
+      do: map
+
+  def breakpoints(_payload), do: %{}
 
   @doc """
   The width of each of the app's breakpoints (`settings.client_safe.
