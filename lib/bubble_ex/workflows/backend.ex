@@ -465,7 +465,8 @@ defmodule BubbleEx.Workflows.Backend do
     do: for({key, _} <- props, not Lowering.api_member?(key), do: key)
 
   defp unknown_members(op, props) do
-    known = ["condition" | Map.fetch!(@members, op)]
+    # `name` is the editor's display name of the action: no semantics.
+    known = ["condition", "name" | Map.fetch!(@members, op)]
 
     for {key, _} <- props,
         key not in known,
