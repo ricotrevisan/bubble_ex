@@ -136,9 +136,9 @@ defmodule BubbleEx.Workflows.Frontend do
 
   @element_events [:click, :input_change, :popup_opened, :popup_closed]
 
-  # Event members with a lowering, or without semantics (captions, colors,
-  # folders, debugger breakpoints).
-  @event_members ~w(element_id element_id_friendly condition wf_folder event_color breakpoint
+  # Event members with a lowering, or without semantics (captions, the
+  # editor's display name, colors, folders, debugger breakpoints).
+  @event_members ~w(element_id element_id_friendly name condition wf_folder event_color breakpoint
                     workflow_disabled run_when event_name parameters return_types interval)
 
   @ops %{
