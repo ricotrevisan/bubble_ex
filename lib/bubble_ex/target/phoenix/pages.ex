@@ -2991,7 +2991,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     unloaded =
       own |> Enum.flat_map(&FlowSpec.unloaded_values(ctx.flows, &1)) |> Enum.uniq() |> Enum.sort()
 
-    guard = "!Bubble.instance_in?(#{scope_var(ctx)}, #{source(unloaded)})"
+    guard =
+      "!Bubble.instance_in?(#{scope_var(ctx)}, [#{Enum.map_join(unloaded, ", ", &literal/1)}])"
 
     guard =
       if some == [],
