@@ -676,10 +676,19 @@ overlays (above), made stricter:
   was typed. No plugin element whose type declares states (any plugin
   element, when the app does not say). No reusable instance whose
   reusable element shows or hides its own elements, or has either.
-* nothing outside it reads an element inside it: no `GetElement` in an
+* nothing outside it reads what only the browser has of an element
+  inside it, or what depends on its being rendered: no `GetElement` in an
   expression of another element, of the element itself or of a workflow
-  (`Input X's value`, `Group X's thing`, a state of it), and no overlay
-  placed next to one. An element inside may read another.
+  reading its "is visible", "is hovered", "is pressed", a size, a list's
+  page or "is loading", a plugin element's state, an untracked input's
+  value, a reusable element's property or the element itself, and no
+  overlay placed next to one. Reads of what the server keeps whether the
+  element is rendered or not are no obstacle: `Group X's thing` and a
+  list (page data: `BubbleData.load` reads it by data source, not by
+  rendered element, and "Display data" sets it on the server), a custom
+  state (`@bubble_states`, from the surface's states at mount and the
+  steps that set them), a tracked input's value (`@bubble_inputs`). An
+  element inside may read anything of another.
 * not an overlay (an overlay's conditionals are not rendered), not in a
   runtime container (a repeating group's cell), on a page or reusable
   element with workflows.

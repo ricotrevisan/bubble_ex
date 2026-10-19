@@ -71,11 +71,18 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
       type declares states (any plugin element when the app does not say,
       `BubbleEx.Plugins.States`): the page renders a placeholder, which
       holds none, but the plugin's own code would
-    * nothing outside it reads an element inside it: no expression of
-      another element, the element itself (its conditionals) or a workflow
-      (`GetElement`: `Input X's value`, `Group X's thing`, a state of it),
-      and no overlay is placed next to one (`element_reads/1`). An element
-      inside it may read another: it is rendered only with it
+    * nothing outside it reads what only the browser has of an element
+      inside it, or what depends on its being rendered: no expression of
+      another element, of the element itself (its conditionals) or of a
+      workflow reads its "is visible", "is hovered", a size, a list's page,
+      a plugin element's state, an untracked input's value, the element
+      itself or a reusable element's property (`GetElement`,
+      `element_reads/1`), and no overlay is placed next to one. A read of
+      what the server keeps whether it is rendered or not is no obstacle:
+      `Group X's thing` or a list (page data, read by source, or set by a
+      "Display data" step), a custom state (`@bubble_states`), a tracked
+      input's value (`@bubble_inputs`). An element inside it may read
+      anything of another: it is rendered only with it
 
   The others are rendered as before: hidden, with their contents.
   """
@@ -197,13 +204,16 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
   end
 
   @doc """
-  The elements something reads by name, by Bubble ID: a `MapSet` of their
-  readers, the Bubble IDs of the elements whose expressions read them, or
-  `:workflow` (an event's or action's expression, or an overlay placed next
-  to it). It is every `GetElement` of the app's pages and reusable
-  elements (their properties, conditions and states, their workflows) and
-  of the normalized nodes' bindings, and the elements an overlay is placed
-  next to.
+  The elements something reads by name, by Bubble ID: a `MapSet` of
+  `{reader, state}`. `reader` is the Bubble ID of the element whose
+  expression reads it, or `:workflow` (an event's or action's expression,
+  or an overlay placed next to it); `state` what is read, Bubble's
+  accessor (`"get_group_data"`, `"custom.<state>"`, `"get_data"`,
+  `"is_visible"`, a plugin's `"get_<code>"`...), or nil (the element
+  itself, or where an overlay is placed). It is every `GetElement` of the
+  app's pages and reusable elements (their properties, conditions and
+  states, their workflows) and of the normalized nodes' bindings, and the
+  elements an overlay is placed next to.
   """
   @spec element_reads(Normalized.t()) :: %{String.t() => MapSet.t()}
   def element_reads(%Normalized{} = frontend) do
@@ -252,7 +262,7 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
 
   defp placed_next_to(acc, %Node{runtime: %{"placement" => %{"reference" => ref}}}) do
     case ref do
-      %{"bubble_id" => id} when is_binary(id) -> add_read(acc, id, :workflow)
+      %{"bubble_id" => id} when is_binary(id) -> add_read(acc, id, {:workflow, nil})
       _ -> acc
     end
   end
@@ -266,7 +276,7 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
     acc =
       case get_element(term) do
         nil -> acc
-        id -> add_read(acc, id, reader || :workflow)
+        {id, state} -> add_read(acc, id, {reader || :workflow, state})
       end
 
     Enum.reduce(term, acc, &member_reads(&1, &2, reader))
@@ -283,16 +293,26 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
 
   defp get_elements(acc, _term, _reader), do: acc
 
-  # The element a `GetElement` names, or nil.
+  # The element a `GetElement` names and what it reads of it (the name of
+  # the message that follows, nil when none does), or nil.
   defp get_element(term) do
     with "GetElement" <- Map.get(term, "type") || Map.get(term, "%x"),
          %{} = props <- Map.get(term, "properties") || Map.get(term, "%p"),
          id when is_binary(id) <- Map.get(props, "element_id") || Map.get(props, "%ei") do
-      id
+      {id, accessor(Map.get(term, "next") || Map.get(term, "%n"))}
     else
       _ -> nil
     end
   end
+
+  defp accessor(%{} = next) do
+    case Map.get(next, "name") || Map.get(next, "%nm") do
+      name when is_binary(name) -> name
+      _ -> nil
+    end
+  end
+
+  defp accessor(_next), do: nil
 
   # A child element reads for itself, a workflow as a workflow.
   defp member_reads({key, %{} = children}, acc, reader) when key in ["elements", "%el"] do
@@ -305,6 +325,14 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
     do: get_elements(acc, flows, :workflow)
 
   defp member_reads({_key, value}, acc, reader), do: get_elements(acc, value, reader)
+
+  # Every input a surface tracks, a cell's included.
+  defp tracked(%Spec{surfaces: surfaces}) do
+    for {_id, s} <- surfaces,
+        id <- Map.keys(Map.get(s, :inputs, %{})) ++ Map.keys(Map.get(s, :cell_inputs, %{})),
+        into: MapSet.new(),
+        do: id
+  end
 
   defp plugin_states(%{} = payload) do
     if Map.has_key?(payload, States.key()), do: States.get(payload), else: :unknown
@@ -327,6 +355,7 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
       surface_id: surface_id,
       controls: controls,
       reads: Keyword.get(opts, :reads, %{}),
+      tracked: tracked(flows),
       inside: MapSet.new(),
       touched: MapSet.new(),
       plugins: if(controls == :none, do: plugin_states(Keyword.get(opts, :payload)))
@@ -470,12 +499,33 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
   defp definition(%Node{kind: :reusable_instance, definition_ref: ref}, env), do: env.by_ref[ref]
   defp definition(_node, _env), do: nil
 
+  # A read from outside of what only the browser has, or what depends on
+  # the element being rendered. The server keeps the others whether it is
+  # rendered or not: an element's thing or list (page data, read by source
+  # in `BubbleData.load`, or what a "Display data" step set), its custom
+  # states (`@bubble_states`, from the surface's states at mount and the
+  # steps that set them) and a tracked input's value (`@bubble_inputs`).
+  # Anything else blocks: "is visible", "is hovered", sizes, a list's
+  # page, a plugin element's states, an input the page does not track,
+  # the element itself, a reusable element's property.
   defp read_outside?(id, env) do
     case env.reads do
-      %{^id => readers} -> not MapSet.subset?(readers, env.inside)
-      _ -> false
+      %{^id => reads} ->
+        Enum.any?(reads, fn {reader, state} ->
+          not MapSet.member?(env.inside, reader) and not server_kept?(id, state, env)
+        end)
+
+      _ ->
+        false
     end
   end
+
+  defp server_kept?(_id, state, _env) when state in ["get_group_data", "get_list_data"],
+    do: true
+
+  defp server_kept?(_id, "custom." <> _, _env), do: true
+  defp server_kept?(id, "get_data", env), do: MapSet.member?(env.tracked, id)
+  defp server_kept?(_id, _state, _env), do: false
 
   # Why a node inside keeps state only the browser has, or nil. Both rules
   # share it; `hidden_contents/4`'s also counts any control, plugin
@@ -484,10 +534,17 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
     id = env.bid.(node)
 
     cond do
-      MapSet.member?(local.targets, id) -> "a step shows, hides, focuses or scrolls to #{id}"
-      MapSet.member?(env.touched, id) -> "a step names #{id}"
-      read_outside?(id, env) -> "an expression outside it reads #{id}"
-      true -> kind_reason(node, local, env, seen)
+      MapSet.member?(local.targets, id) ->
+        "a step shows, hides, focuses or scrolls to #{id}"
+
+      MapSet.member?(env.touched, id) ->
+        "a step names #{id}"
+
+      read_outside?(id, env) ->
+        "an expression outside it reads what only the browser has of #{id}"
+
+      true ->
+        kind_reason(node, local, env, seen)
     end
   end
 

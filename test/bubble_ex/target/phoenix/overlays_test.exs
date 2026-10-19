@@ -183,17 +183,73 @@ defmodule BubbleEx.Target.Phoenix.OverlaysTest do
     assert hidden_contents(flows, [page.(plugin)], [], payload: %{})["p"] == MapSet.new()
   end
 
-  test "nothing outside reads an element inside; an element inside may" do
+  test "nothing outside reads what only the browser has of an element inside; an element inside may" do
     page = node("p", :page, [conditional("g", [node("in", :group, [node("t", :text)])])])
     flows = %Spec{surfaces: %{"p" => surface(:page)}}
     reads = fn readers -> [reads: %{"in" => MapSet.new(readers)}] end
 
-    assert hidden_contents(flows, [page], [], reads.(["t"]))["p"] == MapSet.new(["g"])
+    # Inside, anything of it.
+    assert hidden_contents(flows, [page], [], reads.([{"t", "is_visible"}]))["p"] ==
+             MapSet.new(["g"])
 
-    for readers <- [[:workflow], ["elsewhere"], ["g"], ["t", :workflow]] do
-      assert hidden_contents(flows, [page], [], reads.(readers))["p"] == MapSet.new(),
-             inspect(readers)
+    # What only the browser has, or what depends on its being rendered.
+    for state <- [
+          "is_visible",
+          "isnt_visible",
+          "is_hovered",
+          "get_width",
+          "page_number",
+          "get_AAC",
+          nil
+        ],
+        reader <- [:workflow, "elsewhere", "g"] do
+      assert hidden_contents(flows, [page], [], reads.([{reader, state}]))["p"] == MapSet.new(),
+             inspect({reader, state})
     end
+
+    # What the server keeps whether it is rendered or not: its thing or
+    # list (page data), a custom state.
+    for state <- ["get_group_data", "get_list_data", "custom.open_"],
+        reader <- [:workflow, "elsewhere", "g"] do
+      assert hidden_contents(flows, [page], [], reads.([{reader, state}]))["p"] ==
+               MapSet.new(["g"]),
+             inspect({reader, state})
+    end
+
+    # One browser-only read among server-kept ones blocks it.
+    mixed = reads.([{:workflow, "get_group_data"}, {"elsewhere", "is_visible"}])
+    assert hidden_contents(flows, [page], [], mixed)["p"] == MapSet.new()
+  end
+
+  test "an input's value read from outside: only a tracked input's is kept by the server" do
+    # A reusable element's input, behind an instance.
+    card = node("C", :reusable_definition, [node("cIn", :input)])
+    page = node("p", :page, [conditional("g", [instance("pC", "C")])])
+    read = [reads: %{"cIn" => MapSet.new([{:workflow, "get_data"}])}]
+
+    tracked = %Spec{
+      surfaces: %{"p" => surface(:page), "C" => surface(:reusable, [], %{"cIn" => :text})}
+    }
+
+    untracked = %Spec{surfaces: %{"p" => surface(:page), "C" => surface(:reusable)}}
+
+    reasons = fn flows ->
+      surfaces = Enum.map([page, card], &{&1.map_key, &1, &1.map_key})
+
+      Overlays.hidden_contents_reasons(
+        flows,
+        surfaces,
+        [card],
+        [bid: & &1.map_key, surface_id: & &1.map_key] ++ read
+      )[{"p", "g"}]
+    end
+
+    # Either way the input itself keeps it (no control at all), but only
+    # the untracked one's value is a read of what the browser has.
+    assert {:keep, "a control (input)"} = reasons.(tracked)
+
+    assert {:keep, "an expression outside it reads what only the browser has of cIn"} =
+             reasons.(untracked)
   end
 
   test "a reusable element inside that shows or hides its own elements keeps it" do
@@ -211,7 +267,7 @@ defmodule BubbleEx.Target.Phoenix.OverlaysTest do
     inner = node("C", :reusable_definition, [conditional("cg", [node("cT", :text)])])
     assert hidden_contents(plain, [page], [inner])["C"] == MapSet.new(["cg"])
 
-    read = [reads: %{"cT" => MapSet.new([:workflow])}]
+    read = [reads: %{"cT" => MapSet.new([{:workflow, "is_visible"}])}]
     assert hidden_contents(plain, [page], [inner], read)["C"] == MapSet.new()
   end
 
@@ -225,7 +281,14 @@ defmodule BubbleEx.Target.Phoenix.OverlaysTest do
           "elements" => %{
             "a" => %{
               "id" => "a",
-              "properties" => %{"text" => %{"entries" => %{"0" => get.("x")}}},
+              "properties" => %{
+                "text" => %{
+                  "entries" => %{
+                    "0" =>
+                      Map.put(get.("x"), "next", %{"type" => "Message", "name" => "is_visible"})
+                  }
+                }
+              },
               "elements" => %{
                 "b" => %{"id" => "b", "states" => %{"0" => %{"condition" => get.("y")}}}
               }
@@ -240,7 +303,13 @@ defmodule BubbleEx.Target.Phoenix.OverlaysTest do
           "elements" => %{
             "c" => %{
               "id" => "c",
-              "%p" => %{"v" => %{"%x" => "GetElement", "%p" => %{"%ei" => "x"}}}
+              "%p" => %{
+                "v" => %{
+                  "%x" => "GetElement",
+                  "%p" => %{"%ei" => "x"},
+                  "%n" => %{"%x" => "Message", "%nm" => "get_group_data"}
+                }
+              }
             }
           }
         }
@@ -254,9 +323,9 @@ defmodule BubbleEx.Target.Phoenix.OverlaysTest do
     }
 
     assert Overlays.element_reads(frontend) == %{
-             "x" => MapSet.new(["a", "c"]),
-             "y" => MapSet.new(["b"]),
-             "z" => MapSet.new([:workflow])
+             "x" => MapSet.new([{"a", "is_visible"}, {"c", "get_group_data"}]),
+             "y" => MapSet.new([{"b", nil}]),
+             "z" => MapSet.new([{:workflow, nil}])
            }
   end
 end

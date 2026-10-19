@@ -384,7 +384,9 @@ that nothing in the browser can show (`docs/frontend-workflows.md`,
 "Elements hidden by their conditions") renders its contents only while
 its visibility conditionals show it. What they read is page data as
 before, read with the rest whether the group shows or not, so a render
-that shows it has their data. Until the socket connects, a conditional
+that shows it has their data. For the same reason, an expression outside
+the group may read `Group X's thing` or a list of an element inside it:
+`BubbleData.load` reads by data source, never by rendered element. Until the socket connects, a conditional
 reading page data keeps its fallback (WTF-563): the static render has
 the contents of a group only when that fallback shows it.
 
