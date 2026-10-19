@@ -2024,6 +2024,21 @@ defmodule BubbleEx.FrontendTest do
       refute ml.placeholder?
     end
 
+    test "a checkbox without a preset status is a static unchecked one" do
+      payload =
+        page_with_elements(%{
+          "plain" => %{
+            "id" => "c2",
+            "type" => "Checkbox",
+            "properties" => %{"label" => "Interested"}
+          }
+        })
+
+      assert {:ok, %Normalized{pages: [page]}} = Frontend.normalize(payload)
+      assert [%{kind: :checkbox, variant: :static, placeholder?: false} = box] = page.children
+      refute match?(%{"checked" => %{resolved: true}}, box.content)
+    end
+
     test "keeps auto-height multiline and dynamic choice controls as placeholders" do
       payload =
         page_with_elements(%{
