@@ -534,6 +534,8 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
       assert runtime =~ ~s|"bubble:overlay",|
       assert runtime =~ "assign(:bubble_open, %{})"
       assert files["lib/shop_web/components/bubble.ex"] =~ "def open?(open, scope, id)"
+      # A static snapshot renders them all (scripts/heex_fidelity).
+      assert files["lib/shop_web/components/bubble.ex"] =~ ":bubble_overlays_rendered"
     end
 
     test "an overlay with state only the browser keeps renders as before" do

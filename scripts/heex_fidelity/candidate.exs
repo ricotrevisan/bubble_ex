@@ -28,6 +28,11 @@ path =
 File.rm_rf!(out)
 File.mkdir_p!(Path.join(out, "assets"))
 
+# The static page opens its overlays by removing `hidden`
+# (overlay-states.mjs), without the page: their contents are rendered, as
+# before overlays rendered only while open (WTF-559).
+Application.put_env(:phx_check, :bubble_overlays_rendered, true)
+
 conn =
   Phoenix.ConnTest.build_conn()
   |> Phoenix.ConnTest.dispatch(PhxCheckWeb.Endpoint, :get, path, nil)

@@ -215,9 +215,18 @@ defmodule <%= @web %>.Bubble do
   `scope` (WTF-559): an overlay rendered only while open
   (`data-bubble-lazy`), which the hook asked the page to open or a
   server-side step showed (`@bubble_open`).
+  `config :<%= @app %>, :bubble_overlays_rendered, true` renders every
+  overlay's contents, closed or not, as before WTF-559: for a static
+  snapshot of a page that opens its overlays without the page (off
+  unless set).
   """
-  def open?(open, scope, id) when is_map(open), do: Map.has_key?(open, {scope, id})
-  def open?(_open, _scope, _id), do: false
+  def open?(open, scope, id) when is_map(open),
+    do: Map.has_key?(open, {scope, id}) or overlays_rendered?()
+
+  def open?(_open, _scope, _id), do: overlays_rendered?()
+
+  defp overlays_rendered?,
+    do: Application.get_env(:<%= @app %>, :bubble_overlays_rendered, false) == true
 
   @doc """
   Its contents, with no element of its own: an overlay's contents, which

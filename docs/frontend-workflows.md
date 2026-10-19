@@ -638,7 +638,11 @@ without workflows, or of a reusable element with no Workflows module or
 no `scope`. Opening a lazy overlay shows it at once when its contents
 arrive: Bubble's open and close animations were not lowered before
 either, and none is added. The static (dead) render has every overlay
-closed, so it never has their contents.
+closed, so it never has their contents. `config :app,
+:bubble_overlays_rendered, true` renders every overlay's contents again,
+closed or not (`<Web>.Bubble.open?/3`): the HEEx fidelity candidate
+(`scripts/heex_fidelity/candidate.exs`) sets it, since it opens the
+static page's overlays without the page.
 
 ### Step results (WTF-520)
 
