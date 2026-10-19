@@ -555,6 +555,16 @@ defmodule <%= @web %>.Bubble do
   def set?(_data, _scope, _keys), do: false
 
   @doc """
+  Whether `scope` is the scope of one of reusable-element instances `ids`
+  (Bubble IDs): its last `nest/2` segment is one of theirs, in a
+  repeating group's cell too.
+  """
+  def instance_in?(scope, ids) when is_binary(scope),
+    do: (scope |> String.split("-") |> List.last()) in Enum.map(ids, &segment/1)
+
+  def instance_in?(_scope, _ids), do: false
+
+  @doc """
   The DOM ID of a repeating group's cell: its item's ID when it is a
   thing, its value (and occurrence and count, when listed more than once)
   in a list of options (`nth`, see `keyed_cells/3`), else its index.

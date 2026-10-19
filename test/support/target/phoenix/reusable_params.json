@@ -488,6 +488,84 @@
           },
           "type": "Text"
         },
+        "bMoodEmpty": {
+          "id": "bMoodEmpty",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 32,
+            "text": {
+              "entries": {
+                "0": "Has no mood"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "param_pMood",
+                  "next": {
+                    "name": "is_empty",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bCard"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bMoodShown": {
+          "id": "bMoodShown",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 31,
+            "text": {
+              "entries": {
+                "0": "Has a mood"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "param_pMood",
+                  "next": {
+                    "name": "is_not_empty",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bCard"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
         "bN": {
           "id": "bN",
           "properties": {
@@ -731,6 +809,20 @@
             "optional": true,
             "param_id": "pFlag",
             "param_name": "Flag"
+          },
+          "10": {
+            "btype_id": "text",
+            "default_value": {
+              "entries": {
+                "0": "calm"
+              },
+              "type": "TextExpression"
+            },
+            "editor_type": "DynamicValue",
+            "is_list": false,
+            "optional": true,
+            "param_id": "pMood",
+            "param_name": "Mood"
           },
           "2": {
             "btype_id": "number",
@@ -1981,6 +2073,9 @@
             "order": 2,
             "param_pCount": "7",
             "param_pFlag": "false",
+            "param_pMood": {
+              "type": "NoSuchExpression"
+            },
             "param_pNote": {
               "entries": {
                 "0": "Given B"

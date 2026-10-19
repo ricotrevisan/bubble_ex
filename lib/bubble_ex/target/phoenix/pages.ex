@@ -2883,12 +2883,19 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # user, its loaded data, custom states, input values): a value nothing
   # sets would decide the visibility as if empty. A property with no value
   # (`FlowSpec.unset_property/3` `:unset`) has nothing to load, whatever
-  # the other instances of its reusable element set: it is marked as such
-  # (WTF-505, `unset_visibility/7`), not as page data that is not loaded.
+  # the other instances of its reusable element set, nor has a group whose
+  # data source is one: it is marked as such (WTF-505,
+  # `unset_visibility/7`), not as page data that is not loaded.
   defp conditional_visibility(node, %{bindings: vars} = compiled, states, static, ctx, acc) do
-    case Enum.find(vars, &(not kept_input?(&1, ctx) and not unset_input?(&1, ctx))) do
+    case Enum.find(vars, &(not kept_input?(&1, ctx) and not settled_input?(&1, ctx))) do
       nil ->
-        unset_visibility(node, compiled, states, static, unset_reads(vars, ctx), ctx, acc)
+        case {own_defaults(vars, ctx), unset_reads(vars, ctx)} do
+          {[_ | _] = own, {[], some}} ->
+            own_default_visibility(node, compiled, states, static, {own, some}, ctx, acc)
+
+          {_own, unset} ->
+            unset_visibility(node, compiled, states, static, unset, ctx, acc)
+        end
 
       var ->
         acc = mark_visibility(acc, node, states, unkept(var, ctx))
@@ -2967,6 +2974,55 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     {visibility_attrs(attr, "if(#{set}, do: #{call}, else: #{visible})"), acc}
   end
 
+  # A condition reading `This <reusable>'s <property>` whose default loads
+  # while a value an instance sets does not (`FlowSpec.own_default/3`,
+  # WTF-505 follow-up): decided for the instances that set none, on their
+  # own default (Bubble's rule, whatever the others set); those whose value
+  # does not load keep the fallback (`Bubble.instance_in?/2`: they hold an
+  # empty value, never the default). With `some`, the properties only some
+  # instances set, an instance setting none of those keeps it too.
+  defp own_default_visibility(node, compiled, states, static, {own, some}, ctx, acc) do
+    {fallback, why} = unset_fallback(node, static, ctx)
+    ctx = ctx |> Map.put(:viewer, true) |> Map.put(:own_defaults?, true)
+    {call, acc} = add_helper(node, "visible", compiled, false, ctx, acc)
+    hidden = if fallback == [], do: "false", else: "true"
+    visible = if fallback == [], do: "true", else: "false"
+
+    unloaded =
+      own |> Enum.flat_map(&FlowSpec.unloaded_values(ctx.flows, &1)) |> Enum.uniq() |> Enum.sort()
+
+    guard = "!Bubble.instance_in?(#{scope_var(ctx)}, #{source(unloaded)})"
+
+    guard =
+      if some == [],
+        do: guard,
+        else:
+          "Bubble.set?(@bubble_data, #{scope_var(ctx)}, " <>
+            "[#{Enum.map_join(some, ", ", &literal/1)}]) and " <> guard
+
+    noun = if states == 1, do: "conditional", else: "conditionals"
+
+    also =
+      if some == [],
+        do: "",
+        else: " or that set none of #{Enum.join(some, ", ")} (no default)"
+
+    acc =
+      acc
+      |> mark(
+        node,
+        "visibility: #{states} #{noun} not lowered for the instances whose value of " <>
+          "#{Enum.join(own, ", ")} does not load (#{Enum.join(unloaded, ", ")})#{also}; " <>
+          "#{why} there"
+      )
+      |> count("visibility_conditions_compiled", states)
+
+    {visibility_attrs(
+       "{if(#{guard}, do: !#{call}, else: #{hidden})}",
+       "if(#{guard}, do: #{call}, else: #{visible})"
+     ), acc}
+  end
+
   # Whether a condition reads the page's data (WTF-563): the static
   # render has none yet (`@bubble_data_pending`: data access on, not yet
   # connected), and a condition reading it there would decide as if it
@@ -3013,11 +3069,16 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           uniq: true,
           do: {r, input}
 
-    {for({:unset, {_, ref}} <- reads, do: "element_state:" <> ref["state"]),
+    {for({:unset, input} <- reads, do: unset_name(input)),
      for({{:some, key}, _} <- reads, uniq: true, do: key)}
   end
 
   defp unset_reads(_vars, _ctx), do: {[], []}
+
+  # A property, or (WTF-505 follow-up) a group's or repeating group's
+  # thing whose data source is one with no value.
+  defp unset_name({:element_state, ref}), do: "element_state:" <> ref["state"]
+  defp unset_name({kind, _ref}), do: Atom.to_string(kind)
 
   # The visibility kept when a condition is not decided: as on page load,
   # or with privacy: :enforced hidden when a conditional may hide it.
@@ -3035,10 +3096,24 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       else: {static, "shown as on page load"}
   end
 
-  defp unset_input?(%{input: input}, %{flows: %FlowSpec{} = flows} = ctx),
-    do: FlowSpec.unset_property(flows, ctx.entry.id, input) == :unset
+  # An input with no value (`FlowSpec.unset_property/3` `:unset`), or the
+  # surface's own property read on its instance's own default
+  # (`FlowSpec.own_default/3`).
+  defp settled_input?(%{input: input}, %{flows: %FlowSpec{} = flows} = ctx) do
+    FlowSpec.unset_property(flows, ctx.entry.id, input) == :unset or
+      FlowSpec.own_default(flows, ctx.entry.id, input) != nil
+  end
 
-  defp unset_input?(_var, _ctx), do: false
+  defp settled_input?(_var, _ctx), do: false
+
+  defp own_defaults(vars, %{flows: %FlowSpec{} = flows} = ctx) do
+    for %{input: input} <- vars,
+        key = FlowSpec.own_default(flows, ctx.entry.id, input),
+        uniq: true,
+        do: key
+  end
+
+  defp own_defaults(_vars, _ctx), do: []
 
   defp kept_input?(%{input: :current_user}, _ctx), do: true
   defp kept_input?(_var, %{flows: nil}), do: false
@@ -4008,13 +4083,21 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp read_arg(%{input: :current_user}, %{viewer: true, flows: %FlowSpec{}}),
     do: "@bubble_viewer"
 
-  defp read_arg(%{var: var, input: input}, ctx),
-    do:
-      read_source(
-        ctx.flows && FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell)),
-        var,
-        ctx
-      )
+  defp read_arg(%{var: var, input: input}, ctx) do
+    read = ctx.flows && FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell))
+
+    # `own_default_visibility/7`: the instance's own default.
+    read =
+      with nil <- read,
+           true <- Map.get(ctx, :own_defaults?, false),
+           key when is_binary(key) <- FlowSpec.own_default(ctx.flows, ctx.entry.id, input) do
+        {:data, %{path: [], element: key}}
+      else
+        _ -> read
+      end
+
+    read_source(read, var, ctx)
+  end
 
   defp read_arg(%{var: var}, _ctx), do: "@" <> var
 

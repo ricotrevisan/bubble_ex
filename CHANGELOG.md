@@ -279,6 +279,39 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **A group whose data source is a property with no value passes the
+  WTF-505 marker on** (WTF-505 follow-up). A group or repeating group
+  whose data source is a reusable element's property that is not set and
+  has no default (or a field of one, or another such group's thing) has
+  nothing to read either. A visibility conditional reading its thing
+  (`<group>'s thing`, a repeating group's `Current cell's thing`) now
+  gets the WTF-505 marker ("it reads a reusable element's property that
+  is not set and has no default") and its fallback, not "it reads page
+  data that is not loaded"; with privacy: :enforced it may now be hidden.
+  A group whose source also fails for another reason keeps the old
+  marker (`Spec.with_unset_sources/2`, `data_index.unset_sources`).
+
+- **An instance reads its own default whatever the other instances set**
+  (WTF-505 follow-up; changes the WTF-520 "every value of the property
+  loads" rule for defaults). Bubble uses the instance's own value or
+  default regardless of other instances. When a property's default
+  loads, `<instance>'s <property>` read from outside an instance that
+  sets none (texts, conditions, data sources, workflows) now reads that
+  default even when another instance's value does not load. Inside the
+  reusable element, compiled once, a visibility conditional reading
+  `This <reusable>'s <property>` is decided per instance: on the default
+  for instances that set none, and the fallback for those whose value
+  does not load (`Bubble.instance_in?/2`; they hold an empty value).
+  Texts, data sources and workflows inside the reusable element still
+  need every value to load. See docs/page-data.md.
+
+  On the private fixture app (counts only), visibility markers reading
+  page data that is not loaded go from 39 to 32 on /meeting (app-wide 131
+  to 124): 6 move to the WTF-505 marker (5 elements reading a group's
+  thing, 1 through a repeating group's cell; 21 to 27, app-wide too) and
+  1 element is now decided per instance. 4 properties app-wide have a
+  default that loads while another instance's value does not.
+
 - **The generated API-client tests no longer catch other files' compile
   warnings (WTF-561).** The scaffolded `bubble_workflows_test.exs` of an
   app with no backend workflow to run defined an unused `ran?/1` and an

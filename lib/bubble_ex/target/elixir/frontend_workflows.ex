@@ -280,15 +280,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
            not_run_diagnostics(data))
         |> Diagnostic.normalize()
 
-      {:ok,
-       %Spec{
-         namespace: namespace,
-         surfaces: surfaces,
-         elements: elements,
-         diagnostics: diagnostics,
-         data_index: ctx.data,
-         cells: Data.cell_instances(in_cells, data, ctx.data, nested)
-       }}
+      spec = %Spec{
+        namespace: namespace,
+        surfaces: surfaces,
+        elements: elements,
+        diagnostics: diagnostics,
+        data_index: ctx.data,
+        cells: Data.cell_instances(in_cells, data, ctx.data, nested)
+      }
+
+      {:ok, Spec.with_unset_sources(spec, page_data)}
     end
   end
 

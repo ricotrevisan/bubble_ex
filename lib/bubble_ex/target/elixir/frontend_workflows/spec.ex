@@ -56,6 +56,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   element itself) names an element to show, hide, focus…
   """
 
+  alias BubbleEx.Expression.IR
+
   defstruct namespace: nil,
             surfaces: %{},
             elements: %{},
@@ -66,11 +68,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
               params: %{},
               set: %{},
               defaults: MapSet.new(),
+              loaded_defaults: MapSet.new(),
+              unloaded_values: %{},
               valued: MapSet.new(),
               instances: %{},
               unloaded: %{},
               nested_lists: %{},
-              option_lists: MapSet.new()
+              option_lists: MapSet.new(),
+              unset_sources: MapSet.new()
             },
             cells: %{}
 
@@ -440,16 +445,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   # An instance's property read from outside it (WTF-520), where the
   # instance sets none: its default, computed in the instance's scope. Only
   # for an instance rendered once (`index.instances`: outside a repeating
-  # group's cell or another runtime template), when every value of the
-  # property loads; the loader reads the default before what reads it,
-  # across the instance's boundary (`<Web>.BubbleData`).
+  # group's cell or another runtime template), when the default loads,
+  # whatever the other instances' values of the property: Bubble reads the
+  # instance's own (WTF-505 follow-up). The loader reads the default before
+  # what reads it, across the instance's boundary (`<Web>.BubbleData`).
   defp outside_default(index, surface, instance, param) do
     with %{surface: ^surface, holder: holder} <-
            Map.get(Map.get(index, :instances, %{}), instance),
          false <- MapSet.member?(Map.get(index, :valued, MapSet.new()), {instance, param}),
          key = param_key(holder, param),
-         true <- MapSet.member?(Map.get(index, :defaults, MapSet.new()), key),
-         true <- Map.get(Map.get(index, :params, %{}), key) == true do
+         true <- MapSet.member?(Map.get(index, :loaded_defaults, MapSet.new()), key) do
       key
     else
       _ -> nil
@@ -501,7 +506,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   sets (WTF-493), or nil. Only when every value of the property loads
   (`index.params`, so the instance's own value too, and the default), for
   an instance outside a repeating group's cell (rendered once, in one
-  scope). Read when the page renders, after its data loaded. The page's
+  scope). An instance rendered once that sets none of a property whose
+  default loads is read by `data_read/4` first, whatever the other
+  instances' values (WTF-505 follow-up). Read when the page renders, after its data loaded. The page's
   data sources and workflows read it through `data_read/4` (WTF-520),
   which the loader orders after the default.
   """
@@ -535,6 +542,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
       from a value that is empty
     * nil - it has a value (or a default) wherever it is read, or it is
       not a property
+
+  A group's or repeating group's thing (`get_group_data`,
+  `get_list_data`, and a repeating group's `Current cell's thing` and
+  index) whose data source is such a property, or a field of one, is
+  `:unset` too (`data_index.unset_sources`, `with_unset_sources/2`): it
+  has nothing to read either.
   """
   @spec unset_property(t(), String.t(), term()) :: :unset | {:some, String.t()} | nil
   def unset_property(
@@ -560,7 +573,80 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
     end
   end
 
+  def unset_property(
+        %__MODULE__{} = spec,
+        _surface,
+        {:element_state, %{"element" => e, "state" => s}}
+      )
+      when s in ["get_group_data", "get_list_data"] and is_binary(e),
+      do: unset_source(spec, e)
+
+  def unset_property(%__MODULE__{} = spec, _surface, {kind, %{"element" => rg}})
+      when kind in [:cell_thing, :cell_index] and is_binary(rg),
+      do: unset_source(spec, rg)
+
   def unset_property(_spec, _surface, _input), do: nil
+
+  defp unset_source(spec, e),
+    do: if(MapSet.member?(Map.get(spec.data_index, :unset_sources, MapSet.new()), e), do: :unset)
+
+  @doc """
+  `spec` with `data_index.unset_sources`: the groups and repeating groups
+  (`BubbleEx.PageData` sources `page_data`) whose data source does not
+  load because it is a reusable element's property with no value
+  (`unset_property/3` `:unset`), or a field of one, directly or through
+  another such group (WTF-505 follow-up). Bubble's value there is
+  nothing, so a visibility condition reading their thing is marked as
+  reading a property with no value, not page data that is not loaded. A
+  source that does not load for another reason too (its residue is not
+  only `:unavailable_input`) is not one.
+  """
+  @spec with_unset_sources(t(), map() | nil) :: t()
+  def with_unset_sources(%__MODULE__{} = spec, %{sources: sources}) do
+    candidates =
+      for %{kind: kind, residue: [], value: %{ir: %IR{} = ir}} = s <- sources,
+          kind in [:group, :list],
+          not Map.has_key?(spec.data_index.elements, s.element),
+          only_unavailable?(spec, s),
+          input = chain_input(ir),
+          input != nil,
+          do: {s, input}
+
+    unset_fixpoint(spec, candidates)
+  end
+
+  def with_unset_sources(spec, _page_data), do: spec
+
+  defp unset_fixpoint(spec, candidates) do
+    known = Map.get(spec.data_index, :unset_sources, MapSet.new())
+
+    found =
+      for {s, input} <- candidates,
+          unset_property(spec, s.surface, input) == :unset,
+          into: known,
+          do: s.element
+
+    if found == known,
+      do: spec,
+      else:
+        unset_fixpoint(
+          %{spec | data_index: Map.put(spec.data_index, :unset_sources, found)},
+          candidates
+        )
+  end
+
+  # The bound source's residue is only inputs the page does not provide.
+  defp only_unavailable?(spec, s) do
+    case Enum.find(data(spec, s.surface), &(&1.element == s.element and &1.kind == s.kind)) do
+      %{residue: [_ | _] = residue} -> Enum.all?(residue, &(&1.reason == :unavailable_input))
+      _ -> false
+    end
+  end
+
+  # The input a value is, or a field (of a field...) of.
+  defp chain_input(%IR{op: :input, args: [kind, ref]}), do: {kind, ref}
+  defp chain_input(%IR{op: :field, args: [record | _]}), do: chain_input(record)
+  defp chain_input(_ir), do: nil
 
   # `This <reusable>'s <property>`: unset when no instance sets it (and it
   # has no default), `{:some, key}` when only some do.
@@ -577,6 +663,38 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
       true -> :unset
     end
   end
+
+  @doc """
+  The key (`param_key/2`) of `This <reusable>'s <property>` read in
+  `surface`, its reusable element, when the property does not load for
+  every instance (a value an instance sets does not load) but its default
+  does (WTF-505 follow-up): an instance that sets none reads its own
+  default, whatever the others set (Bubble's rule). Only a visibility
+  condition reads it so, per instance: not in the instances whose value
+  does not load (`unloaded_values/2`). nil otherwise.
+  """
+  @spec own_default(t(), String.t(), term()) :: String.t() | nil
+  def own_default(
+        %__MODULE__{data_index: index},
+        surface,
+        {:element_state, %{"element" => surface, "state" => "param_" <> _ = param}}
+      ) do
+    key = param_key(surface, param)
+
+    if Map.get(index.params, key, true) == false and
+         MapSet.member?(Map.get(index, :loaded_defaults, MapSet.new()), key),
+       do: key
+  end
+
+  def own_default(_spec, _surface, _input), do: nil
+
+  @doc """
+  The instances (Bubble IDs, sorted) whose value of property `key`
+  (`param_key/2`) does not load.
+  """
+  @spec unloaded_values(t(), String.t()) :: [String.t()]
+  def unloaded_values(%__MODULE__{data_index: index}, key),
+    do: index |> Map.get(:unloaded_values, %{}) |> Map.get(key, [])
 
   @doc """
   Where the page keeps property `param` (`"param_<id>"`) of reusable
