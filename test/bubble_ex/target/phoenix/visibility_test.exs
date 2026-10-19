@@ -109,6 +109,35 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
            """
   end
 
+  test "a group hidden by its conditions renders its contents only while they show it (WTF-559)",
+       %{files: files, project: project, opts: opts} do
+    template = files["lib/shop_web/live/index_live.html.heex"]
+
+    # Nothing in the browser shows bIn or bOut, and nothing reads what is
+    # inside: their own element always, their contents with the same
+    # expression as `hidden`.
+    for {id, child, helper} <- [{"bIn", "bInT", "visible_bin"}, {"bOut", "bOutT", "visible_bout"}] do
+      [group] =
+        Regex.run(~r/<div[^>]*data-bubble-id="#{id}".*?<\/Bubble.contents>\s*<\/div>/s, template)
+
+      assert squash(group) =~
+               squash(
+                 ~s|<Bubble.contents :if={#{helper}(@bubble_viewer)}><p data-bubble-id="#{child}"|
+               )
+    end
+
+    # A text with conditionals has no contents to leave out.
+    refute tag(template, "bFlagged") =~ "Bubble.contents"
+
+    # The traceability test expects their contents only where they render.
+    surfaces = files["test/shop_web/bubble_surfaces_test.exs"]
+    refute surfaces =~ ~s("bInT")
+    assert surfaces =~ ~s("bIn")
+
+    {:ok, report} = Phoenix.frontend_report(project, opts)
+    assert %{"visibility_contents_skipped" => 2} = report
+  end
+
   test "a condition reads a custom state through the page's state map", %{files: files} do
     template = files["lib/shop_web/live/index_live.html.heex"]
 

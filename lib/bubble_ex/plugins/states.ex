@@ -112,6 +112,16 @@ defmodule BubbleEx.Plugins.States do
 
   def element(_states, _type, _props), do: %{}
 
+  @doc """
+  Whether the plugin element type `type` declares states (typed or not):
+  `false` for a type whose plugin is not defined, or that declares none.
+  """
+  @spec declares?(t(), String.t() | nil) :: boolean()
+  def declares?(states, type) when is_map(states) and is_binary(type),
+    do: match?(%{} = declared when map_size(declared) > 0, Map.get(states, unversioned(type)))
+
+  def declares?(_states, _type), do: false
+
   defp element_states(element) do
     Enum.reduce(objects(element["states"]), {%{}, 0}, fn {code, state}, {kept, dropped} ->
       value = state["value"]

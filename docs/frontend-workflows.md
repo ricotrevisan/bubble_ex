@@ -644,6 +644,51 @@ closed or not (`<Web>.Bubble.open?/3`): the HEEx fidelity candidate
 (`scripts/heex_fidelity/candidate.exs`) sets it, since it opens the
 static page's overlays without the page.
 
+### Elements hidden by their conditions (WTF-559)
+
+A group (or a repeating group laid out statically) whose visibility
+conditionals compiled, and that nothing in the browser can show, renders
+its contents only while those conditionals show it: its own element
+always (with `hidden` and `data-bubble-visible` as before), what is
+inside it in `<Bubble.contents :if={...}>`, with the same expression as
+its `hidden` attribute. A render that shows it brings its contents, one
+that hides it drops them. Before the socket connects, a conditional that
+reads page data keeps its fallback (`docs/page-data.md`, WTF-563), so the
+static render has the contents only of what it shows.
+
+`BubbleEx.Target.Phoenix.Overlays.hidden_contents/4` proves that nothing
+can show it from the browser side, with the state rule of the lazy
+overlays (above), made stricter:
+
+* no step of any workflow (every page and reusable element, every event
+  kind, custom events, disabled workflows, steps with residue or with no
+  lowering) names it, or anything inside it, with anything but a lowered
+  server-side action (display data, display a list, set a state, trigger
+  a reusable element's event, go to a page). A show, hide, toggle or
+  animation would override its conditionals in the browser and show
+  contents never rendered; a focus, a scroll or a reset needs what is
+  inside; an action this target does not lower (a plugin's, an unknown
+  one) may do any of those. Steps on an ancestor do not matter: they
+  change the ancestor's own `hidden`, never this element's, and find
+  nothing inside it while it is hidden.
+* no control inside it, not even a tracked text input: a reconnect
+  mounts the page afresh and may hide and show the element, losing what
+  was typed. No plugin element whose type declares states (any plugin
+  element, when the app does not say). No reusable instance whose
+  reusable element shows or hides its own elements, or has either.
+* nothing outside it reads an element inside it: no `GetElement` in an
+  expression of another element, of the element itself or of a workflow
+  (`Input X's value`, `Group X's thing`, a state of it), and no overlay
+  placed next to one. An element inside may read another.
+* not an overlay (an overlay's conditionals are not rendered), not in a
+  runtime container (a repeating group's cell), on a page or reusable
+  element with workflows.
+
+The others render as before: hidden, with their contents. The report
+counts the ones that render their contents only while shown
+(`visibility_contents_skipped`), and the surface test expects their
+contents only where they render.
+
 ### Step results (WTF-520)
 
 "Result of step N" is typed from step N's own definition, with the

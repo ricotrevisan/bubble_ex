@@ -242,6 +242,27 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     refute hidden?(view, "bCardT")
   end
 
+  # WTF-559: nothing in the browser shows bIn or bOut, nor reads inside
+  # them: their contents render only while their conditionals show them,
+  # in the static render too.
+  test "a group hidden by its conditions renders its contents only while shown",
+       %{conn: conn, user: user} do
+    dead = conn |> get("/") |> html_response(200)
+    refute dead =~ ~s(data-bubble-id="bInT")
+    assert dead =~ ~s(data-bubble-id="bOutT")
+
+    {:ok, view, _html} = live(conn, "/")
+    assert hidden?(view, "bIn")
+    refute has_element?(view, ~s([data-bubble-id="bInT"]))
+    assert has_element?(view, ~s([data-bubble-id="bOutT"]))
+
+    {:ok, view, _html} = live(sign_in(conn, user), "/")
+    refute hidden?(view, "bIn")
+    assert has_element?(view, ~s([data-bubble-id="bInT"]))
+    assert hidden?(view, "bOut")
+    refute has_element?(view, ~s([data-bubble-id="bOutT"]))
+  end
+
   test "a conditional on a custom state follows the state", %{conn: conn} do
     Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: true)
     {:ok, view, _html} = live(conn, "/")

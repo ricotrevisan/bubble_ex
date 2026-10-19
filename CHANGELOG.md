@@ -201,6 +201,49 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **A group hidden by its conditions renders its contents only while
+  they show it (WTF-559).** An element hidden by its visibility
+  conditionals was rendered whole, with `hidden`. A group (or a
+  repeating group laid out statically) whose conditionals compiled now
+  renders its own element always and its contents only while the
+  conditionals show it (`<Bubble.contents :if={...}>`, the expression of
+  its `hidden`): a render that shows it brings them. Only when nothing in
+  the browser can show it and nothing needs what is inside
+  (`BubbleEx.Target.Phoenix.Overlays.hidden_contents/4`, the lazy
+  overlays' state rule made stricter): no step of any workflow, kind or
+  surface (disabled ones, steps with residue and actions with no
+  lowering included) names it or anything inside it, except lowered
+  server-side ones (display data or a list, set a state, trigger a
+  reusable element's event, go to a page); nothing outside it reads an
+  element inside it (`GetElement` anywhere in the app, an overlay placed
+  next to one); no control inside it at all (a reconnect could hide and
+  show it, losing what was typed, so no reconnect seeding is needed);
+  no plugin element whose type declares states; no reusable instance
+  whose reusable element shows or hides its own elements; not in a
+  repeating group's cell, not an overlay. Steps on an ancestor do not
+  matter: they change the ancestor's own `hidden`. Before the socket
+  connects, a conditional that reads page data keeps its fallback, so the
+  static render has only the contents it shows. The report counts them
+  (`visibility_contents_skipped`), the surface test expects their
+  contents only where they render, and Spec steps keep the element their
+  action names (`element`). See `docs/frontend-workflows.md`, "Elements
+  hidden by their conditions".
+  On the private fixture app's `/meeting/<id>` (dev, privacy enforced,
+  the same server and data, interleaved visits, medians of 12 before and
+  9 after): of the 448 elements with visibility conditionals on the page
+  and the reusable elements it renders, 251 render their contents only
+  while shown. The join reply went from 1,274,190 to 1,183,870 bytes
+  (-7%) and the static render from 1,567,454 to 1,368,733 bytes (-13%);
+  the join (1,761 to 1,828 ms) and the time to connected (2,262 to
+  2,317 ms) did not change beyond noise: the page data dominates them.
+  Of the 34 outermost elements hidden at join by their conditionals, 8
+  qualify; the other 26 hold 98% of that markup (groups inside some of
+  them qualify) and stay as before because something outside reads an
+  element inside (8, mostly `Group's thing` and
+  `Popup's thing` in workflows and other elements), a step shows, hides,
+  focuses or names one inside (6), they hold a plugin element with
+  states (1), or they are not groups (11).
+
 - **A popup's contents render only while it is open (WTF-559).** Every
   Popup and Group Focus was rendered whole, hidden, and opened in the
   browser: on the private fixture app's `/meeting/<id>` the closed ones

@@ -1241,6 +1241,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       symbol: s.id,
       type: s.type,
       op: s.op,
+      element: s.element,
       condition: nil,
       args: %{},
       residue: s.residue
