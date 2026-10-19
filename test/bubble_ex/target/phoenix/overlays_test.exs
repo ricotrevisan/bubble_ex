@@ -185,7 +185,13 @@ defmodule BubbleEx.Target.Phoenix.OverlaysTest do
 
   test "nothing outside reads what only the browser has of an element inside; an element inside may" do
     page = node("p", :page, [conditional("g", [node("in", :group, [node("t", :text)])])])
-    flows = %Spec{surfaces: %{"p" => surface(:page)}}
+    state = %{element: "in", state: "custom.open_", default: nil}
+
+    flows = %Spec{
+      surfaces: %{"p" => %{surface(:page) | states: [state]}},
+      elements: %{"in" => %{surface: "p", instance_of: nil, root?: false}}
+    }
+
     reads = fn readers -> [reads: %{"in" => MapSet.new(readers)}] end
 
     # Inside, anything of it.
@@ -215,6 +221,10 @@ defmodule BubbleEx.Target.Phoenix.OverlaysTest do
                MapSet.new(["g"]),
              inspect({reader, state})
     end
+
+    # A custom state the page does not keep is not the server's.
+    assert hidden_contents(flows, [page], [], reads.([{:workflow, "custom.other_"}]))["p"] ==
+             MapSet.new()
 
     # One browser-only read among server-kept ones blocks it.
     mixed = reads.([{:workflow, "get_group_data"}, {"elsewhere", "is_visible"}])

@@ -523,8 +523,23 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
   defp server_kept?(_id, state, _env) when state in ["get_group_data", "get_list_data"],
     do: true
 
-  defp server_kept?(_id, "custom." <> _, _env), do: true
   defp server_kept?(id, "get_data", env), do: MapSet.member?(env.tracked, id)
+
+  # A custom state of the element, as the page keeps it (`Spec.read/4` in
+  # the element's own surface).
+  defp server_kept?(id, state, env) when is_binary(state) do
+    case env.flows.elements[id] do
+      %{surface: surface} ->
+        match?(
+          {:state, _},
+          Spec.read(env.flows, surface, {:element_state, %{"element" => id, "state" => state}})
+        )
+
+      _ ->
+        false
+    end
+  end
+
   defp server_kept?(_id, _state, _env), do: false
 
   # Why a node inside keeps state only the browser has, or nil. Both rules
