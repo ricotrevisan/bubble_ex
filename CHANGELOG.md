@@ -301,7 +301,9 @@ All notable changes to this project are documented here.
   reusable element, compiled once, a visibility conditional reading
   `This <reusable>'s <property>` is decided per instance: on the default
   for instances that set none, and the fallback for those whose value
-  does not load (`Bubble.instance_in?/2`; they hold an empty value).
+  does not load, one in a repeating group's cell included
+  (`Bubble.instance_in?/2`; their entry writes nil under their key, so
+  the loader never computes the default there).
   Texts, data sources and workflows inside the reusable element still
   need every value to load. See docs/page-data.md.
 

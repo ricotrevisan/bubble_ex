@@ -572,6 +572,15 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
                "TODO(bubble:bATaskT) visibility: 1 conditional not lowered (it reads page " <>
                  "data that is not loaded: element_state:get_group_data)"
 
+      # Card's bGroup reads This Card's Task, which bCardA sets (and does
+      # not load) and bCardB does not: one source for every instance, not
+      # loaded, not one with no value.
+      assert Spec.unset_property(
+               spec,
+               "bCard",
+               {:element_state, %{"element" => "bGroup", "state" => "get_group_data"}}
+             ) == nil
+
       # With privacy: :enforced, shown on page load and hidden by its
       # condition: hidden.
       %{files: enforced} = build(app, :enforced)
@@ -580,6 +589,34 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
                "TODO(bubble:bBTaskT) visibility: 1 conditional not lowered (it reads a " <>
                  "reusable element's property that is not set and has no default: " <>
                  "element_state:get_group_data); hidden (privacy: enforced, a conditional may hide it)"
+    end
+
+    test "a group failing for another reason too is not one with no value" do
+      # bG and bH are groups whose data source is bI's Prop (not set, no
+      # default). bH's binding also left it residue for another reason
+      # (a repeating group's cell): it is not read as having no value.
+      input = {:element_state, %{"element" => "bI", "state" => "param_pP"}}
+      ir = IR.node(:input, Tuple.to_list(input))
+
+      source = fn element ->
+        %{kind: :group, element: element, surface: "bPg", residue: [], value: %{ir: ir}}
+      end
+
+      bound = fn element, reason ->
+        %{element: element, kind: :group, residue: [%{reason: reason}]}
+      end
+
+      spec = %Spec{
+        surfaces: %{
+          "bPg" => %{
+            data: [bound.("bG", :unavailable_input), bound.("bH", :page_data_in_cell)]
+          }
+        },
+        elements: %{"bI" => %{surface: "bPg", instance_of: "bR"}}
+      }
+
+      spec = Spec.with_unset_sources(spec, %{sources: [source.("bG"), source.("bH")]})
+      assert spec.data_index.unset_sources == MapSet.new(["bG"])
     end
 
     test "the report counts the conditionals reading one", %{spec: spec} do
@@ -827,11 +864,44 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       # bCardB's Note does not compile; bCardA sets none and reads its
       # default: the condition reading it from the page is decided, and so
       # is bNoteShown's in Card (`This Card's Note`), for the instances
-      # that set none; bCardB keeps the fallback.
+      # that set none. bCardB keeps the fallback, and so does bCardC (in
+      # bList's cell, rendered once for every cell: its "C note" is not
+      # read). bBNoteShown reads bCardB's own Note from the page: not
+      # loaded, never its default.
       app =
         app()
         |> put_in_app(~w(pages task elements bCardB properties param_pNote), %{
           "type" => "NoSuchExpression"
+        })
+        |> put_in_app(~w(pages task elements bList elements bCardC properties param_pNote), %{
+          "type" => "TextExpression",
+          "entries" => %{"0" => "C note"}
+        })
+        |> put_in_app(~w(pages task elements bBNoteShown), %{
+          "id" => "bBNoteShown",
+          "type" => "Text",
+          "properties" => %{
+            "height" => 40,
+            "width" => 300,
+            "order" => 31,
+            "is_visible" => false,
+            "text" => %{"type" => "TextExpression", "entries" => %{"0" => "B has a note"}}
+          },
+          "states" => %{
+            "0" => %{
+              "type" => "State",
+              "condition" => %{
+                "type" => "GetElement",
+                "properties" => %{"element_id" => "bCardB"},
+                "next" => %{
+                  "type" => "Message",
+                  "name" => "param_pNote",
+                  "next" => %{"type" => "Message", "name" => "is_not_empty"}
+                }
+              },
+              "properties" => %{"is_visible" => true}
+            }
+          }
         })
         |> put_in_app(~w(element_definitions card elements bNoteShown), %{
           "id" => "bNoteShown",
@@ -871,18 +941,25 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       # Not where every value loads.
       assert Spec.own_default(build(app()).spec, "bCard", note) == nil
 
-      # bCardB's value does not load: it keeps the fallback.
-      assert Spec.unloaded_values(spec, "param_pNote/bCard") == ["bCardB"]
+      assert page =~
+               "TODO(bubble:bBNoteShown) visibility: 1 conditional not lowered (it reads page " <>
+                 "data that is not loaded: element_state:param_pNote)"
+
+      refute page =~ "visible_bbnoteshown("
+
+      # Every instance whose value does not load keeps the fallback, the
+      # one in a cell included.
+      assert Spec.unloaded_values(spec, "param_pNote/bCard") == ["bCardB", "bCardC"]
 
       template = files["lib/shop_web/components/reusables/card.html.heex"]
 
       assert template =~
                "TODO(bubble:bNoteShown) visibility: 1 conditional not lowered for the " <>
-                 "instances whose value of param_pNote/bCard does not load (bCardB); " <>
+                 "instances whose value of param_pNote/bCard does not load (bCardB, bCardC); " <>
                  "shown as on page load there"
 
       assert template =~
-               ~r/if\(!Bubble\.instance_in\?\(@scope, \["bCardB"\]\),\s+do: !visible_bnoteshown\(Bubble\.data\(@bubble_data, @scope, "param_pNote\/bCard"\)\),\s+else: true/
+               ~r/if\(!Bubble\.instance_in\?\(@scope, \["bCardB", "bCardC"\]\),\s+do: !visible_bnoteshown\(Bubble\.data\(@bubble_data, @scope, "param_pNote\/bCard"\)\),\s+else: true/
     end
 
     test "a cycle through an instance's boundary is not loaded" do

@@ -502,7 +502,10 @@ one, or another such group's thing) has nothing to read either: a
 condition reading its thing (`<group>'s thing`, `Parent group's thing`,
 a repeating group's `Current cell's thing`) gets this marker and
 fallback too, not "reads page data that is not loaded"; a group whose
-source does not load for another reason too keeps that marker. When only
+source does not load for another reason too keeps that marker, and so
+does a group reading a property some instances set and others do not
+(no value only in some of them, `{:some, key}`): its source is one for
+every instance. When only
 some instances set it, the
 helper decides for those, and an instance with no value keeps the
 fallback: `Bubble.set?/3` checks that the instance's scope has a value
@@ -590,13 +593,15 @@ an instance that sets none reads its own default whatever the others set
 other instances). The reusable element is compiled once, so this is
 decided per instance where a visibility condition reads it: the
 condition is decided for the instances that set none, and those whose
-value does not load keep the fallback (as for a property only some
-instances set, above: `Bubble.set?/3`). The loader does not compute the
-default in the scope of an instance that sets a value (`skip` on the
-default's `__bubble__(:data)` entry, the instances whose value does not
-load), so such an instance never reads the default in place of its own
-value. Texts, data sources and workflows inside the reusable element
-still read the property only when every value loads.
+value does not load keep the fallback. A value that does not load still
+has its entry in `__bubble__(:data)` (`fun: nil`), which writes nil under
+the instance's key, and the loader (`read_source/7`) computes a default
+only where no key is present: such an instance holds nil, never the
+default. The page tells it apart by its scope, `Bubble.instance_in?/2`
+over the instances whose value does not load (every value an instance
+sets, one in a cell it is not rendered per cell for included). Texts,
+data sources and workflows inside the reusable element still read the
+property only when every value loads.
 
 An instance in a repeating group's cell sets its properties per cell
 (below).

@@ -188,7 +188,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # keys of the properties with a default; `loaded_defaults`, those whose
   # default loads (an instance setting none reads it from outside whatever
   # the other instances set, WTF-505 follow-up); `unloaded_values`, the
-  # key => the instances whose value of it does not load; `valued`, every
+  # key => the instances whose value of it does not load (every value an
+  # instance sets, as `valued`: one in a cell it is not rendered per cell
+  # for too); `valued`, every
   # `{instance, param}` an instance sets (loaded or not, in a cell or not).
   defp params(sources, loads?) do
     # The lists that load: an instance in the cell of another is never
@@ -227,8 +229,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
           do: Spec.param_key(s.holder, s.param)
         ),
       unloaded_values:
-        values
-        |> Enum.filter(&(&1.element != &1.holder and not loads?.(&1)))
+        sources
+        |> Enum.filter(&(&1.kind == :param and &1.element != &1.holder and not loads?.(&1)))
         |> Enum.group_by(&Spec.param_key(&1.holder, &1.param), & &1.element)
         |> Map.new(fn {key, ids} -> {key, ids |> Enum.uniq() |> Enum.sort()} end),
       valued:
