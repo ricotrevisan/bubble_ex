@@ -214,9 +214,15 @@ All notable changes to this project are documented here.
   surface (disabled ones, steps with residue and actions with no
   lowering included) names it or anything inside it, except lowered
   server-side ones (display data or a list, set a state, trigger a
-  reusable element's event, go to a page); nothing outside it reads an
-  element inside it (`GetElement` anywhere in the app, an overlay placed
-  next to one); no control inside it at all (a reconnect could hide and
+  reusable element's event, go to a page); nothing outside it reads what
+  only the browser has of an element inside it (`GetElement` anywhere in
+  the app: "is visible", "is hovered", a size, a list's page, a plugin
+  element's state, an untracked input's value, a reusable element's
+  property, the element itself; an overlay placed next to one). Reads of
+  what the server keeps whether it is rendered or not are fine:
+  `Group X's thing` and lists (page data, read by data source, never by
+  rendered element), custom states (`@bubble_states`), tracked inputs'
+  values (`@bubble_inputs`). No control inside it at all (a reconnect could hide and
   show it, losing what was typed, so no reconnect seeding is needed);
   no plugin element whose type declares states; no reusable instance
   whose reusable element shows or hides its own elements; not in a
@@ -229,20 +235,20 @@ All notable changes to this project are documented here.
   action names (`element`). See `docs/frontend-workflows.md`, "Elements
   hidden by their conditions".
   On the private fixture app's `/meeting/<id>` (dev, privacy enforced,
-  the same server and data, interleaved visits, medians of 12 before and
-  9 after): of the 448 elements with visibility conditionals on the page
-  and the reusable elements it renders, 251 render their contents only
-  while shown. The join reply went from 1,274,190 to 1,183,870 bytes
-  (-7%) and the static render from 1,567,454 to 1,368,733 bytes (-13%);
-  the join (1,761 to 1,828 ms) and the time to connected (2,262 to
-  2,317 ms) did not change beyond noise: the page data dominates them.
-  Of the 34 outermost elements hidden at join by their conditionals, 8
-  qualify; the other 26 hold 98% of that markup (groups inside some of
-  them qualify) and stay as before because something outside reads an
-  element inside (8, mostly `Group's thing` and
-  `Popup's thing` in workflows and other elements), a step shows, hides,
-  focuses or names one inside (6), they hold a plugin element with
-  states (1), or they are not groups (11).
+  the same server and data, interleaved visits, medians of 15 before and
+  12 after): of the 448 elements with visibility conditionals on the page
+  and the reusable elements it renders, 274 render their contents only
+  while shown. The join reply went from 1,274,190 to 1,158,930 bytes
+  (-9%) and the static render from 1,567,454 to 1,342,743 bytes (-14%);
+  the join (1,799 to 1,761 ms) and the time to connected (2,302 to
+  2,335 ms) did not change beyond noise: the page data dominates them.
+  Of the 34 outermost elements hidden at join by their conditionals, 9
+  qualify; the other 25 hold 97% of that markup (groups inside some of
+  them qualify) and stay as before because something outside reads what
+  only the browser has of an element inside (5: mostly plugin elements'
+  states and the element itself), a step shows, hides, focuses or names
+  one inside (7), they hold a plugin element with states (2), or they
+  are not groups (11).
 
 - **A popup's contents render only while it is open (WTF-559).** Every
   Popup and Group Focus was rendered whole, hidden, and opened in the
