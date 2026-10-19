@@ -151,7 +151,8 @@ level, a list that does not load) stays `:trigger_in_runtime_template`
 residue.
 
 **Popup opened or closed (WTF-520).** The page's hook opens and closes
-overlays; when a Popup whose "is opened" or "is closed" workflows the
+overlays (one rendered only while open after the page rendered its
+contents, WTF-559, "Overlays rendered only while open" below); when a Popup whose "is opened" or "is closed" workflows the
 page runs (`data-bubble-events`, listed as `popups` in
 `__bubble__(:surface)`) actually opens or closes, by a step in the
 browser or sent by the server, or Escape, it sends
@@ -572,6 +573,60 @@ its visibility); a step on an element with no conditions holds until the
 page reloads. A LiveView reconnect mounts the page again (custom states
 and inputs start over); its render is compared with the last one like
 any other.
+
+### Overlays rendered only while open (WTF-559)
+
+A Popup or Group Focus closed as the page loads renders its shell only
+(the overlay element, with `hidden`, its dialog attributes and its
+dismissal); the page renders what is inside it only while it keeps it
+open (`@bubble_open`, `<Web>.Bubble.open?/3`, the contents wrapped in
+`<Bubble.contents :if={...}>`). The shell carries `data-bubble-lazy`,
+and `data-bubble-loaded` while its contents are rendered. Opening one is
+a round trip:
+
+* a show or toggle step (run in the browser, or sent by the server) on
+  a lazy overlay whose contents are not
+  rendered sends `bubble:overlay` (`scope`, `element`, `open: true`).
+  The page renders the contents and replies after the render; the hook
+  then opens the overlay as before (closing the Group Focuses, the
+  opener remembered, a modal's focus moved inside) and reports it opened
+  (`bubble:popup`), so "is opened" runs after the contents are there.
+  Until the reply, every later step of the page waits and then runs in
+  order, so "Show popup; Set focus to an input in it" finds the input.
+  An overlay the surface does not list (`overlays` in
+  `__bubble__(:surface)`), or a scope the page does not render, is not
+  rendered and stays closed; the steps waiting run all the same. With
+  the connection down it does not open.
+* a server-side show step of a lazy overlay of its own surface marks it
+  open in the same event: its contents render with the event's other
+  changes ("Display data in popup" before or after the show included),
+  and the hook opens it without asking. A server-side toggle is sent as
+  before, and the hook asks for the contents as for a step in the
+  browser (one more round trip).
+* closing it (a step, Escape, an outside click) hides it at once, as
+  before, then sends `bubble:overlay` with `open: false`: the page drops
+  its contents, then "is closed" runs. The focus goes back to its opener
+  as before.
+* a reconnect mounts the page afresh with nothing open: the hook asks
+  again for the lazy overlays still open in the browser.
+
+The contents are rendered again from what the page keeps: the inputs it
+tracks show the values the user left, custom states and "Display data"
+are the page's, and "Reset relevant inputs" or a reset group resets them
+on the server. On closing, the page resets nothing it did not reset
+before. An overlay stays rendered as before (hidden, opened in the
+browser, no round trip) when something inside it keeps state only the
+browser has (`BubbleEx.Target.Phoenix.Overlays`): an element a show,
+hide, toggle, focus or scroll step of its surface targets (the overlay
+itself excepted), a control the page does not track (a date, a file, a
+slider, radio buttons, a search, an input whose first value is dynamic),
+or a reusable instance whose reusable element has either. So does an
+overlay inside a runtime container (a repeating group's cell), of a page
+without workflows, or of a reusable element with no Workflows module or
+no `scope`. Opening a lazy overlay shows it at once when its contents
+arrive: Bubble's open and close animations were not lowered before
+either, and none is added. The static (dead) render has every overlay
+closed, so it never has their contents.
 
 ### Step results (WTF-520)
 

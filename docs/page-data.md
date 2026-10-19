@@ -365,6 +365,19 @@ opened" workflow is). Workflows that do not run here and may display
 in it while it is open are listed on its entry (`not_run`): it may show
 older data meanwhile (`docs/frontend-workflows.md`, "A popup always
 opened with its data").
+
+**Popup contents (WTF-559).** A Popup or Group Focus whose contents keep
+no state only the browser has (`BubbleEx.Target.Phoenix.Overlays`,
+`docs/frontend-workflows.md`, "Overlays rendered only while open") is
+rendered closed as its shell alone: the elements inside it render only
+while the page keeps it open (`@bubble_open`). What they read is page
+data as before: the page reads it with the rest, whether the popup is
+open or not, so opening it renders them with the data already read. A
+"Display data" in it by the run that opens it ("Display data in popup;
+Show popup", or the other order) renders with the contents in the same
+render: the server-side show marks it open with the event's other
+changes. One the popup's "is opened" workflow sets renders after it
+opens, as before.
 An element no step sets, with no data source, shows nothing and is
 listed too, so what reads it (a group inside it reading `Parent group's`
 field, a search constrained by it, a reusable property's default) loads,

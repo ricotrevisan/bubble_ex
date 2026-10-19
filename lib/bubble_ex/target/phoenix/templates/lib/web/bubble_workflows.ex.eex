@@ -11,9 +11,12 @@ defmodule <%= @web %>.BubbleWorkflows do
   A browser can only ask the page to run what the page lists
   (`__bubble__(:surface)` of its `Workflows` module and of the reusable
   elements it renders, `__bubble__(:instances)`): a click (`bubble:click`),
-  an input change (`bubble:change`, `bubble:commit`) or a Popup opened or
-  closed (`bubble:popup`, WTF-520) of an element the page renders in a
-  scope (reusable-element instance) it renders. Anything else is ignored.
+  an input change (`bubble:change`, `bubble:commit`), a Popup opened or
+  closed (`bubble:popup`, WTF-520) or an overlay rendered only while open
+  opened or closed (`bubble:overlay`, WTF-559: the page renders its
+  contents while it keeps it open, `@bubble_open`) of an element the page
+  renders in a scope (reusable-element instance) it renders. Anything
+  else is ignored.
 
   A Popup's "is opened" and "is closed" workflows run when the page's hook
   reports that it opened or closed it (`popups` in
@@ -278,6 +281,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       cells: %{},
       first: %{},
       js: [],
+      opened: [],
       messages: [],
       depth: 0,
       data_stale: false
@@ -334,6 +338,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_refused, false)
     |> assign(:bubble_pending_messages, 0)
     |> assign(:bubble_popups_expected, %{})
+    |> assign(:bubble_open, %{})
     |> assign(:bubble_conditions, %{})
     |> assign(:bubble_data, %{})
     |> assign(:bubble_data_pending, BubbleData.data_access?() and not connected?(socket))
@@ -528,6 +533,24 @@ defmodule <%= @web %>.BubbleWorkflows do
     end
   end
 
+  # An overlay rendered only while open (WTF-559, `overlays` in
+  # `__bubble__(:surface)`): the hook asks for its contents before it opens
+  # it, and tells the page when it closed it. The reply comes after the
+  # render, so the hook shows the overlay with its contents. An overlay
+  # the surface does not list, or a scope the page does not render, stays
+  # closed.
+  def handle_event(socket, page, "bubble:overlay", %{"scope" => scope, "element" => element} = params)
+      when is_binary(scope) and is_binary(element) do
+    open? = Map.get(params, "open") == true
+
+    with {:ok, module} <- surface(socket, page, scope),
+         true <- element in Map.get(module.__bubble__(:surface), :overlays, []) do
+      {:reply, %{open: open?}, put_open(socket, [{scope, element}], open?)}
+    else
+      _ -> {:reply, %{open: false}, socket}
+    end
+  end
+
   # A Popup the hook opened or closed (WTF-520): its "is opened" or "is
   # closed" workflows, when the page lists them. A report a server-side
   # step caused runs on the budgets the page kept for it; any other is a
@@ -593,6 +616,20 @@ defmodule <%= @web %>.BubbleWorkflows do
   end
 
   def handle_event(socket, _page, _event, _params), do: {:noreply, socket}
+
+  # The overlays the page renders the contents of (WTF-559).
+  defp put_open(socket, [], _open?), do: socket
+
+  defp put_open(socket, keys, open?) do
+    opened = Map.get(socket.assigns, :bubble_open) || %{}
+
+    opened =
+      if open?,
+        do: Enum.reduce(keys, opened, &Map.put(&2, &1, true)),
+        else: Map.drop(opened, keys)
+
+    assign(socket, :bubble_open, opened)
+  end
 
   # The workflows a click runs: those an element of the page, or of an
   # instance it renders, lists in its scope; or (WTF-520) those an element
@@ -997,6 +1034,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_first_inputs, put_new(drop_scopes(socket.assigns.bubble_first_inputs, gone), inputs))
     |> assign(:bubble_committed, drop_scopes(Map.get(socket.assigns, :bubble_committed) || %{}, gone))
     |> assign(:bubble_displayed, drop_scopes(Map.get(socket.assigns, :bubble_displayed) || %{}, gone))
+    |> assign(:bubble_open, drop_scopes(Map.get(socket.assigns, :bubble_open) || %{}, gone))
   end
 
   @doc """
@@ -1567,6 +1605,7 @@ defmodule <%= @web %>.BubbleWorkflows do
       |> assign(:bubble_inputs, ctx.inputs)
       |> assign(:bubble_displayed, ctx.displayed)
       |> assign(:bubble_committed, committed)
+      |> put_open(ctx.opened, true)
 
     socket =
       if ctx.js == [],
@@ -2092,8 +2131,21 @@ defmodule <%= @web %>.BubbleWorkflows do
   def element(ctx, op, path, element) do
     scope = scope(ctx, path)
     ctx = %{ctx | js: [%{op: op, to: Bubble.selector(scope, element)} | ctx.js]}
+    ctx = %{ctx | opened: opened(ctx, op, path, scope, element) ++ ctx.opened}
     {:cont, %{ctx | messages: expected_popups(ctx, op, path, scope, element) ++ ctx.messages}}
   end
+
+  # A show of an overlay rendered only while open (WTF-559): the page
+  # renders its contents with the event's other changes (a "Display data"
+  # in it included), so the hook opens it without asking.
+  defp opened(%Ctx{module: module}, "show", [], scope, element)
+       when is_atom(module) and module != nil and is_binary(element) do
+    if element in Map.get(module.__bubble__(:surface), :overlays, []),
+      do: [{scope, element}],
+      else: []
+  end
+
+  defp opened(_ctx, _op, _path, _scope, _element), do: []
 
   # A show, hide or toggle of a Popup of this surface whose events the
   # page runs (WTF-520): the report the hook will send, which runs on this

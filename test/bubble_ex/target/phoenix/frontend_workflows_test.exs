@@ -485,6 +485,90 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     assert Enum.all?(tags, &MapSet.member?(tasks, &1))
   end
 
+  describe "overlays rendered only while open (WTF-559)" do
+    @page "lib/shop_web/live/index_live.html.heex"
+
+    test "a popup's and a group focus's contents render while the page keeps them open", %{
+      files: files
+    } do
+      template = files[@page]
+
+      [popup] =
+        Regex.run(
+          ~r/<\.focus_wrap\s[^>]*data-bubble-id="bPop"[^>]*>.*?<\/\.focus_wrap>/s,
+          template
+        )
+
+      # The shell: hidden, marked, its contents only while open.
+      assert popup =~ "data-bubble-lazy"
+      assert popup =~ ~s|data-bubble-loaded={Bubble.open?(@bubble_open, "", "bPop")}|
+      assert popup =~ ~r/\shidden\s/
+      assert popup =~ ~s|<Bubble.contents :if={Bubble.open?(@bubble_open, "", "bPop")}>|
+      assert popup =~ ~s(data-bubble-id="bPopTitle")
+      assert template =~ ~s|<Bubble.contents :if={Bubble.open?(@bubble_open, "", "bFocus")}>|
+
+      # The page lists them, so the hook may ask for them; a reusable
+      # element's addresses its instance.
+      assert files["lib/shop_web/live/index_live/workflows.ex"] =~
+               ~s|overlays: ["bFocus", "bPop"]|
+
+      assert files["lib/shop_web/components/reusables/card/workflows.ex"] =~
+               ~s|overlays: ["bCardPop"]|
+
+      assert files["lib/shop_web/components/reusables/card.html.heex"] =~
+               ~s|<Bubble.contents :if={Bubble.open?(@bubble_open, @scope, "bCardPop")}>|
+
+      # The page passes what it keeps open to the components.
+      assert template =~ "bubble_open={@bubble_open}"
+
+      # Its contents are not rendered on page load: the surface test does
+      # not expect them; the shell it does.
+      surfaces = files["test/shop_web/bubble_surfaces_test.exs"]
+      assert surfaces =~ ~s("bPop")
+      refute surfaces =~ ~s("bPopTitle")
+      # ...nor those of an instance's: the page renders the card closed.
+      assert surfaces =~ ~s("bCardPop")
+      refute surfaces =~ ~s("bCardPopText")
+
+      runtime = files["lib/shop_web/bubble_workflows.ex"]
+      assert runtime =~ ~s|"bubble:overlay",|
+      assert runtime =~ "assign(:bubble_open, %{})"
+      assert files["lib/shop_web/components/bubble.ex"] =~ "def open?(open, scope, id)"
+    end
+
+    test "an overlay with state only the browser keeps renders as before" do
+      app = app()
+
+      # A step that hides an element inside bPop; an input inside bFocus
+      # whose first value the page does not know (a date).
+      app =
+        app
+        |> put_in(["pages", "home", "workflows", "wClose", "actions", "1"], %{
+          "id" => "aClose2",
+          "type" => "HideElement",
+          "properties" => %{"element_id" => "bPopTitle"}
+        })
+        |> put_in(["pages", "home", "elements", "bFocus", "elements", "bFocusDate"], %{
+          "id" => "bFocusDate",
+          "type" => "Input",
+          "properties" => %{
+            "content_format" => "date",
+            "height" => 40,
+            "width" => 200,
+            "order" => 2
+          }
+        })
+
+      %{files: files} = render(app)
+      template = files["lib/shop_web/live/index_live.html.heex"]
+      refute template =~ "Bubble.contents"
+      refute template =~ "data-bubble-lazy"
+      assert template =~ ~s(data-bubble-id="bPopTitle")
+      assert files["lib/shop_web/live/index_live/workflows.ex"] =~ "overlays: []"
+      assert files["test/shop_web/bubble_surfaces_test.exs"] =~ ~s("bPopTitle")
+    end
+  end
+
   test "without frontend workflows the pages are T5's" do
     app = app()
     {:ok, model} = Model.build(app)

@@ -40,7 +40,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       `<Web>.Bubble.show_overlay/2` and `hide_overlay/2` (JS commands),
       dismissed by an outside click or Escape (one hook per page closes
       the topmost open overlay only), modal Popups named dialogs in a
-      focus trap that give the focus back when they close. Runtime
+      focus trap that give the focus back when they close. With
+      workflows, a Popup or Group Focus whose contents keep no state only
+      the browser has renders them only while the page keeps it open
+      (WTF-559, `BubbleEx.Target.Phoenix.Overlays`): its shell always,
+      its contents in `<Bubble.contents :if={Bubble.open?(...)}>`. Runtime
       containers (dynamic Repeating Groups) render their template once per
       item of an assign that starts empty
     * visibility (WTF-477): an element not visible on page load has the
@@ -118,7 +122,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   alias BubbleEx.Frontend.Normalized.Node
   alias BubbleEx.Target.Ash.Naming
   alias BubbleEx.Target.Elixir.FrontendWorkflows.Spec, as: FlowSpec
-  alias BubbleEx.Target.Phoenix.{FrontendWorkflows, Tailwind, Templates}
+  alias BubbleEx.Target.Phoenix.{FrontendWorkflows, Overlays, Tailwind, Templates}
 
   @names_version 1
 
@@ -198,6 +202,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> Map.put(:data_blocked, data_blocked(flows))
       |> Map.put(:display_not_run, display_not_run(flows))
       |> Map.put(:api_readers, api_readers(flows))
+
+    base = Map.put(base, :lazy, lazy_overlays(names, base))
 
     pages = Enum.map(names.pages, &page(&1, base))
     reusables = Enum.map(names.reusables, &reusable(&1, base))
@@ -593,7 +599,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         entry: entry,
         lowered: lowered,
         stack: MapSet.new(),
-        hidden: hidden
+        hidden: hidden,
+        lazy_overlays: Map.get(base.lazy, entry.id, MapSet.new())
       })
       |> Map.merge(surface_flows(base, entry.id))
 
@@ -639,7 +646,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         entry: entry,
         lowered: lowered,
         stack: MapSet.new([definition.map_key]),
-        hidden: hidden
+        hidden: hidden,
+        lazy_overlays: Map.get(base.lazy, entry.id, MapSet.new())
       })
       |> Map.merge(surface_flows(base, entry.id))
 
@@ -746,6 +754,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       ids: [],
       dom_ids: MapSet.new(),
       template: false,
+      lazy: false,
       counts: %{
         "elements" => 0,
         "native" => 0,
@@ -886,8 +895,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
               :reusable_definition,
               :repeating_group
             ] do
-    {inner, acc} = children(node, ctx, acc)
-    element("div", node, [], inner, ctx, acc)
+    if lazy?(node, ctx, acc) do
+      lazy_overlay(node, ctx, acc)
+    else
+      {inner, acc} = children(node, ctx, acc)
+      element("div", node, [], inner, ctx, acc)
+    end
   end
 
   defp emit(%Node{kind: :shape} = node, ctx, acc), do: element("div", node, [], "", ctx, acc)
@@ -1713,33 +1726,44 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # The data-bubble-ids an instance renders: its definition's elements.
   defp add_expected(acc, definition, ctx) do
-    if acc.template do
+    if acc.template or acc.lazy do
       acc
     else
       ids =
         definition.children
-        |> Enum.flat_map(&static_ids(&1, ctx, MapSet.new([definition.map_key])))
+        |> Enum.flat_map(&static_ids(&1, ctx, MapSet.new([definition.map_key]), definition))
 
       %{acc | ids: Enum.reverse(ids) ++ acc.ids}
     end
   end
 
-  defp static_ids(%Node{kind: :placeholder, runtime: %{"type" => "Table"}} = n, ctx, stack),
+  # `surface`: the reusable element whose tree it is; the contents of its
+  # overlays rendered only while open are not rendered (WTF-559).
+  defp static_ids(%Node{kind: :placeholder, runtime: %{"type" => "Table"}} = n, ctx, stack, s),
     do:
       [bid(n) | Enum.map(Table.structure(n), &bid/1)] ++
-        Enum.flat_map(Table.once(n), &static_ids(&1, ctx, stack))
+        Enum.flat_map(Table.once(n), &static_ids(&1, ctx, stack, s))
 
-  defp static_ids(%Node{kind: :placeholder, runtime: %{"boundary" => "container"}} = n, _ctx, _s),
-    do: [bid(n)]
+  defp static_ids(
+         %Node{kind: :placeholder, runtime: %{"boundary" => "container"}} = n,
+         _ctx,
+         _s,
+         _surface
+       ),
+       do: [bid(n)]
 
-  defp static_ids(%Node{kind: :reusable_instance} = node, ctx, stack) do
+  defp static_ids(%Node{kind: :reusable_instance} = node, ctx, stack, _surface) do
     case ctx.names.reusable_by_ref[node.definition_ref] do
       %{node: definition} ->
         if MapSet.member?(stack, definition.map_key) or unrendered_id?(bid(node), ctx) do
           [bid(node)]
         else
           stack = MapSet.put(stack, definition.map_key)
-          [bid(node) | Enum.flat_map(definition.children, &static_ids(&1, ctx, stack))]
+
+          [
+            bid(node)
+            | Enum.flat_map(definition.children, &static_ids(&1, ctx, stack, definition))
+          ]
         end
 
       _ ->
@@ -1747,8 +1771,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
-  defp static_ids(%Node{} = node, ctx, stack),
-    do: [bid(node) | Enum.flat_map(node.children, &static_ids(&1, ctx, stack))]
+  defp static_ids(%Node{} = node, ctx, stack, surface) do
+    if MapSet.member?(Map.get(ctx.lazy, surface_id(surface), MapSet.new()), bid(node)),
+      do: [bid(node)],
+      else: [bid(node) | Enum.flat_map(node.children, &static_ids(&1, ctx, stack, surface))]
+  end
 
   # Later declarations win; a later shorthand also drops earlier longhands.
   defp merge_declarations(first, second) do
@@ -2053,6 +2080,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     {rest, acc} =
       attrs
       |> Kernel.++(overlay_attrs(node))
+      |> Kernel.++(lazy_attrs(node, ctx, acc))
       |> Kernel.++(popups)
       |> Kernel.++(visibility)
       |> Kernel.++(overlay_dismissal(node, ctx))
@@ -2128,11 +2156,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         &(&1 + 1)
       )
 
-    ids = if acc.template, do: acc.ids, else: [bid(node) | acc.ids]
+    ids = if acc.template or acc.lazy, do: acc.ids, else: [bid(node) | acc.ids]
     %{acc | counts: counts, ids: ids}
   end
 
-  defp track(acc, node, _placeholder?), do: %{acc | ids: [bid(node) | acc.ids]}
+  defp track(acc, node, _placeholder?),
+    do: if(acc.lazy, do: acc, else: %{acc | ids: [bid(node) | acc.ids]})
 
   defp style_class(%Node{style: style} = node, ctx) do
     key = is_map(style) && (style[:style_key] || style["style_key"])
@@ -2181,6 +2210,54 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   defp overlay_attrs(_node), do: []
+
+  # An overlay rendered only while open (WTF-559, `Overlays`): its shell
+  # always, its contents while the page keeps it open (`@bubble_open`).
+  # The hook asks the page for them before it opens one not loaded.
+  defp lazy?(node, ctx, acc),
+    do:
+      not acc.template and
+        MapSet.member?(Map.get(ctx, :lazy_overlays, MapSet.new()), bid(node))
+
+  defp lazy_overlay(node, ctx, acc) do
+    was = acc.lazy
+    {inner, acc} = children(node, ctx, %{acc | lazy: true})
+    acc = %{acc | lazy: was}
+
+    inner =
+      if blank?(inner),
+        do: inner,
+        else: [
+          "<Bubble.contents :if={",
+          open_expr(node, ctx),
+          "}>\n",
+          indent(inner, 1),
+          "</Bubble.contents>"
+        ]
+
+    element("div", node, [], inner, ctx, acc)
+  end
+
+  defp lazy_attrs(node, ctx, acc) do
+    if lazy?(node, ctx, acc),
+      do: [{"data-bubble-lazy", true}, {"data-bubble-loaded", {:expr, open_expr(node, ctx)}}],
+      else: []
+  end
+
+  defp open_expr(node, ctx),
+    do: "Bubble.open?(@bubble_open, #{scope_var(ctx)}, #{literal(bid(node))})"
+
+  # The lazy overlays of every page and reusable element (`Overlays.lazy/4`).
+  defp lazy_overlays(names, base) do
+    surfaces =
+      Enum.map(names.pages ++ names.reusables, &{&1.id, &1.node, &1.node.map_key})
+
+    Overlays.lazy(base.flows, surfaces, base.frontend.reusables,
+      bid: &bid/1,
+      scoped: base.scoped,
+      surface_id: &surface_id/1
+    )
+  end
 
   # A Popup whose "is opened" / "is closed" workflows the page runs
   # (WTF-520): the hook reports those events of it (`bubble:popup`).
@@ -3997,7 +4074,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         {"bubble_data_pending", {:expr, "@bubble_data_pending"}},
         {"bubble_url", {:expr, "@bubble_url"}},
         {"bubble_segments", {:expr, "@bubble_segments"}},
-        {"bubble_page_width", {:expr, "@bubble_page_width"}}
+        {"bubble_page_width", {:expr, "@bubble_page_width"}},
+        {"bubble_open", {:expr, "@bubble_open"}}
       ],
       else: []
   end
@@ -4312,7 +4390,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
            loads: loads,
            instances: instances(entry.node, "", by_ref, base.flows, MapSet.new()),
            cells: cell_templates(entry.node, by_ref, base.flows),
-           reads_width: reads_width?(entry.node, by_ref, base, MapSet.new())
+           reads_width: reads_width?(entry.node, by_ref, base, MapSet.new()),
+           overlays: lazy_list(base, entry.id)
          }}
       end
 
@@ -4333,7 +4412,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
            containers: containers,
            loads: loads,
            instances: [],
-           cells: cell_templates(entry.node, by_ref, base.flows)
+           cells: cell_templates(entry.node, by_ref, base.flows),
+           overlays: lazy_list(base, entry.id)
          }}
       end
 
@@ -4348,6 +4428,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       surfaces: Map.merge(pages, reusables)
     }
   end
+
+  defp lazy_list(base, id), do: base.lazy |> Map.get(id, MapSet.new()) |> Enum.sort()
 
   # The IDs a node's compiled bindings are kept under (`base.expressions`):
   # its values and visibility conditionals, and a button's "isn't
@@ -5017,7 +5099,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
             {"bubble_data_pending", "false"},
             {"bubble_url", "%{}"},
             {"bubble_segments", "[]"},
-            {"bubble_page_width", "nil"}
+            {"bubble_page_width", "nil"},
+            {"bubble_open", "%{}"}
           ],
           else: []
       )

@@ -52,6 +52,13 @@ defmodule <%= @web %>.Bubble do
       (`data-bubble-events`) has the hook report each time it actually
       opens or closes, by a step or Escape (WTF-520,
       `bubble:popup`, below)
+    * an overlay rendered only while open (WTF-559, `data-bubble-lazy`):
+      the page renders its contents while it keeps it open (`open?/3`,
+      `contents/1`); the hook asks for them (`bubble:overlay`) before it
+      opens one whose contents are not rendered (`data-bubble-loaded`),
+      opens it once the page replied, and tells the page when it closed
+      it. The steps after an opening wait for the reply, then run in
+      order. A server-side show renders them in the same event
     * `show_overlay/2` and `hide_overlay/2` act on every element with a
       Bubble ID (the page's own overlays)
     * `dismiss_overlay/1` and `dismiss_modal/1` close the overlay they run
@@ -202,6 +209,23 @@ defmodule <%= @web %>.Bubble do
   end
 
   defp option_value?(value), do: is_binary(value) and value != ""
+
+  @doc """
+  Whether the page renders the contents of overlay `id` of instance
+  `scope` (WTF-559): an overlay rendered only while open
+  (`data-bubble-lazy`), which the hook asked the page to open or a
+  server-side step showed (`@bubble_open`).
+  """
+  def open?(open, scope, id) when is_map(open), do: Map.has_key?(open, {scope, id})
+  def open?(_open, _scope, _id), do: false
+
+  @doc """
+  Its contents, with no element of its own: an overlay's contents, which
+  the page renders only while it is open (WTF-559, `open?/3`).
+  """
+  slot :inner_block, required: true
+
+  def contents(assigns), do: ~H"{render_slot(@inner_block)}"
 
   @doc "Opens element `id` of instance `scope` (an overlay, or any element)."
   def show(js \\ %JS{}, scope, id), do: JS.dispatch(js, "bubble:show", to: selector(scope, id))
@@ -789,17 +813,23 @@ defmodule <%= @web %>.Bubble do
             attributeFilter: ["data-bubble-visible"],
             attributeOldValue: true
           })
+          // Steps wait while an overlay rendered only while open is loading
+          // (WTF-559, `load`), then run in order.
+          this.queue = null
           // A step sees the conditions of the render it runs after.
-          const step = (fn) => (el) => {
-            this.conditionsChanged(this.conditions.takeRecords())
-            fn(el)
-          }
+          const step = (fn) => (el) =>
+            this.run(() => {
+              this.conditionsChanged(this.conditions.takeRecords())
+              fn(el)
+            })
           on("bubble:show", step((el) => this.show(el)))
           on("bubble:hide", step((el) => this.hide(el)))
           on("bubble:toggle", step((el) => (el.hidden ? this.show(el) : this.hide(el))))
-          on("bubble:focus", (el) => (el.matches(FOCUSABLE) ? el : focusable(el) || el).focus())
-          on("bubble:scroll", (el) => el.scrollIntoView({ block: "nearest" }))
-          on("bubble:reset", (el) => this.reset(el))
+          on("bubble:focus", (el) =>
+            this.run(() => (el.matches(FOCUSABLE) ? el : focusable(el) || el).focus())
+          )
+          on("bubble:scroll", (el) => this.run(() => el.scrollIntoView({ block: "nearest" })))
+          on("bubble:reset", (el) => this.run(() => this.reset(el)))
           // A Popup's "is opened" / "is closed" workflows (WTF-520).
           on("bubble:overlay-opened", (el) => this.popupEvent(el, "opened"))
           on("bubble:overlay-closed", (el) => this.popupEvent(el, "closed"))
@@ -834,10 +864,53 @@ defmodule <%= @web %>.Bubble do
           this.raiseNotice()
         },
         // A reconnected page is mounted afresh on the server: it knows no
-        // width until it is told again.
+        // width until it is told again, nor which overlays rendered only
+        // while open are still open here (their contents come back).
         reconnected() {
           this.pageWidth = null
           this.reportWidth()
+          document.querySelectorAll("[data-bubble-lazy]").forEach((el) => {
+            if (!el.hidden) this.overlayPush(el, true).catch(() => {})
+          })
+        },
+        run(fn) {
+          if (this.queue) this.queue.push(fn)
+          else fn()
+        },
+        // An overlay rendered only while open (WTF-559) whose contents the
+        // page has not rendered: ask for them, then open it. The page
+        // replies after the render. Until then the steps after it wait, so
+        // a step on what is inside finds it. When the page does not render
+        // them (it does not list the overlay, or the connection is down),
+        // the overlay stays closed.
+        load(el) {
+          this.queue = this.queue || []
+          const done = () => {
+            const queue = this.queue || []
+            this.queue = null
+            queue.forEach((fn) => this.run(fn))
+          }
+          this.overlayPush(el, true).then(
+            () => {
+              if (el.isConnected && el.hidden && el.hasAttribute("data-bubble-loaded")) this.show(el)
+              done()
+            },
+            () => done()
+          )
+        },
+        overlayPush(el, open) {
+          const element = el.getAttribute("data-bubble-id")
+          if (!element) return Promise.reject(new Error("no element"))
+          try {
+            return Promise.resolve(this.pushEvent("bubble:overlay", { scope: this.scopeOf(el), element, open }))
+          } catch (e) {
+            return Promise.reject(e)
+          }
+        },
+        // The reusable-element instance around an element ("" on the page).
+        scopeOf(el) {
+          const holder = el.parentElement && el.parentElement.closest("[data-bubble-scope]")
+          return (holder && holder.getAttribute("data-bubble-scope")) || ""
         },
         reportWidth() {
           if (!this.el.hasAttribute("data-bubble-reads-width")) return
@@ -931,6 +1004,8 @@ defmodule <%= @web %>.Bubble do
             if (overlay === "popup") this.popupEvent(el, "opened", true)
             return
           }
+          if (overlay && el.hasAttribute("data-bubble-lazy") && !el.hasAttribute("data-bubble-loaded"))
+            return this.load(el)
           if (overlay === "popup" || overlay === "group_focus") {
             document.querySelectorAll('[data-overlay="group_focus"]').forEach((other) => {
               if (other !== el && !other.hidden) this.hide(other)
@@ -958,6 +1033,8 @@ defmodule <%= @web %>.Bubble do
           const hadFocus = el.contains(document.activeElement)
           this.js().setAttribute(el, "hidden", "")
           this.stack = this.stack.filter((open) => open !== el)
+          // Its contents are the page's again: it stops rendering them.
+          if (el.hasAttribute("data-bubble-lazy")) this.overlayPush(el, false).catch(() => {})
           el.dispatchEvent(new CustomEvent("bubble:overlay-closed", { bubbles: true }))
           if (el.getAttribute("aria-modal") !== "true" && !hadFocus) return
           // Back to the opener; one hidden since then gives way to what
@@ -1003,8 +1080,7 @@ defmodule <%= @web %>.Bubble do
           const events = (el.getAttribute("data-bubble-events") || "").split(" ")
           const element = el.getAttribute("data-bubble-id")
           if (!element || !events.includes(event)) return
-          const holder = el.parentElement && el.parentElement.closest("[data-bubble-scope]")
-          const scope = (holder && holder.getAttribute("data-bubble-scope")) || ""
+          const scope = this.scopeOf(el)
           this.pushEvent("bubble:popup", skipped ? { scope, element, event, skipped } : { scope, element, event })
         },
         reset(el) {
