@@ -344,10 +344,11 @@ defmodule BubbleEx.Workflows.Lowering do
 
   @doc """
   Whether `key` is a member an API Connector action may hold: a parameter
-  value (`api_call/6`), its condition, or a debugger breakpoint.
+  value (`api_call/6`), its condition, a debugger breakpoint or its
+  display name.
   """
   @spec api_member?(String.t()) :: boolean()
-  def api_member?(key) when key in ["condition", "breakpoint"], do: true
+  def api_member?(key) when key in ["condition", "breakpoint", "name"], do: true
 
   def api_member?(key), do: Model.ConnectorCall.member?(key)
 

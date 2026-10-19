@@ -350,6 +350,15 @@ defmodule BubbleEx.Workflows.FrontendTest do
     assert [%{reason: :unsupported_option, detail: %{options: ["cc"]}}] = step.residue
   end
 
+  test "an action's editor display name has no semantics" do
+    lowered =
+      app()
+      |> edit("wState", &put_in(&1, ["actions", "0", "properties", "name"], "Remember choice"))
+      |> lower()
+
+    assert lowered |> workflow("wState") |> Workflow.residue() == []
+  end
+
   test "unresolved references, unknown options and plugin events are residue" do
     lowered =
       app()

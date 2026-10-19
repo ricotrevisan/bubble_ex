@@ -200,7 +200,7 @@ defmodule BubbleEx.Workflows.Frontend do
     pause: ~w(length hide_status_bar)
   }
 
-  @ignored_members ~w(condition breakpoint element_id_friendly)
+  @ignored_members ~w(condition breakpoint element_id_friendly name)
 
   @doc """
   Lowers the page and reusable-element workflows of decoded app JSON.
