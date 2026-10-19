@@ -634,11 +634,20 @@ defmodule BubbleEx.Expression.CompilerTest do
   # Replay 2026-10-19: a repeating group's "is loading" is no while a
   # search runs, yes only for a few milliseconds as rows render.
   describe "a repeating group's is loading" do
-    test "is a constant no" do
-      assert ir(chain(el("bR1"), [msg("get_loading_status")])) == lit(false, "boolean")
+    test "is a constant no where a page shows it" do
+      opts = [loading_status: :constant]
+      assert ir(chain(el("bR1"), [msg("get_loading_status")]), opts) == lit(false, "boolean")
 
-      assert ir(chain(el("bR1"), [msg("get_loading_status"), msg("is_true")])) ==
+      assert ir(chain(el("bR1"), [msg("get_loading_status"), msg("is_true")]), opts) ==
                n(:eq, [lit(false, "boolean"), lit(true, "boolean")], "boolean")
+    end
+
+    # A workflow's trigger may fire on Bubble's flash of yes.
+    test "is not compiled elsewhere, with why" do
+      assert %{ir: nil, diagnostics: diags} =
+               compile(chain(el("bR1"), [msg("get_loading_status")]))
+
+      assert Enum.any?(diags, &(&1.details == %{construct: :loading_status}))
     end
 
     test "of an element that is not a repeating group does not compile" do

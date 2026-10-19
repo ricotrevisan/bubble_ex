@@ -848,14 +848,16 @@ default widths are not assumed.
 Answered by the replay of 2026-10-19 on a synthetic page and reusable
 element (observed in Bubble, then implemented):
 
-* **`Current date/time`** is computed once per evaluation and never
-  evaluated again on its own: no timer, not even on a resize (a
-  condition on its seconds never flipped over a minute). It is never
-  empty. A visibility (or "isn't clickable") conditional or a shown
-  value reading it compiles, and reads the time when the page renders
-  (`DateTime.utc_now()` in the template), with no timer: it changes only
-  when something else renders it again. `is empty` is no. A workflow
-  reads the time it started, as before.
+* **`Current date/time`** is never evaluated again on its own: no timer,
+  not even on a resize (a condition on its seconds never flipped over a
+  minute). It is never empty. That Bubble computes it once per
+  evaluation is inferred from its code (the value is set once per
+  evaluation context), not measured. A visibility (or "isn't
+  clickable") conditional or a shown value reading it compiles
+  (`DateTime.utc_now()` in the template), with no timer: it is read on
+  the first render, and again only when another value in the same
+  expression changes. `is empty` is no. A workflow reads the time it
+  started, as before.
 * **`Current page name`** is offered only inside a reusable element; on a
   page the editor refuses it. In a reusable element it is the host page's
   Bubble name (the editor's), whatever else the path holds
@@ -863,7 +865,9 @@ element (observed in Bubble, then implemented):
   change it. It is fixed per page: the page passes its name down to the
   reusable elements it renders (`bubble_page_name`, which each passes to
   those it renders), so a reusable element on several pages reads each
-  host's. On a page it is not kept: a conditional reading it is marked
+  host's. Not replayed: a reusable element on the index page (here the
+  index page's Bubble name, `index`, like any other page's). On a page
+  it is not kept: a conditional reading it is marked
   (`it reads Current page name on a page: Bubble offers it only inside a
   reusable element`), and so is a value. Workflows reading it are still
   `:unavailable_input`.
@@ -872,9 +876,13 @@ element (observed in Bubble, then implemented):
   shown during a search again), and is yes only for a few milliseconds
   as rows render after a response (on the first load also just after the
   search is sent, then the group is blank until the data arrives). It
-  compiles to a constant no: a condition reading it is no longer residue.
-  Bubble's own value is unreliable and only flickers, so nothing should
-  depend on it.
+  compiles to a constant no in what a page shows (visibility and "isn't
+  clickable" conditionals, shown values): a condition reading it there
+  is no longer residue. Bubble's own value is unreliable and only
+  flickers, so nothing shown should depend on it. A workflow's trigger
+  or condition reading it ("Do when … is loading") stays residue
+  (`expr_uncompiled`, construct `:loading_status`): Bubble's yes flash
+  after each response may fire it, and a constant no never would.
 
 ## The static render: data not loaded yet (WTF-563)
 
@@ -1274,7 +1282,13 @@ search, reloads nothing and adds no history entry (and the generated
 "Go to page" then does not patch at all, `docs/frontend-workflows.md`);
 one that changes only the URL (a parameter, the path after the page's
 name) updates the address bar and reads the URL's parameters again,
-without a reload, as a patch does here. Every read also takes the change notifications already
+without a reload, as a patch does here. "The URL the page is on"
+compares the path and the parameters as the page reads them
+(`Bubble.url_query/1`), not the URL's text: a parameter's order, an
+empty parameter and an absent one, a key repeated and its values joined
+with commas count as the same. Where Bubble's URLs differ only so, it
+pushes a history entry and changes the address bar, and here nothing
+happens; what the page reads is the same either way. Every read also takes the change notifications already
 delivered to the page (each is sent after its write committed, so the
 read sees it): a workflow's own write and its notification cost one read,
 not two; a write in owned code that goes through Ash counts too.
