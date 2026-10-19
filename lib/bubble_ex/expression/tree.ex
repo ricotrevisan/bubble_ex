@@ -120,7 +120,12 @@ defmodule BubbleEx.Expression.Tree do
     "email" => "text",
     "password" => "text",
     "url" => "text",
-    "text" => "text"
+    "text" => "text",
+    # Bubble's docs: US phone and Text (numbers only) return text, Euro
+    # date a date.
+    "us_phone" => "text",
+    "numerical_ref" => "text",
+    "date_2" => "date"
   }
 
   @doc "Builds the tree from decoded app JSON. Never fails: unusable nodes are skipped."

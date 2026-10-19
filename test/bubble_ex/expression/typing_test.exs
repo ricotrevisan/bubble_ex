@@ -316,4 +316,26 @@ defmodule BubbleEx.Expression.TypingTest do
 
     assert %Tree.Node{value: "text"} = Tree.node(static, "RadioButtons")
   end
+
+  test "inputs' values follow their content format" do
+    input = fn id, format ->
+      %{"id" => id, "type" => "Input", "properties" => %{"content_format" => format}}
+    end
+
+    formats = %{
+      "bPhone" => {"us_phone", "text"},
+      "bRef" => {"numerical_ref", "text"},
+      "bEuro" => {"date_2", "date"},
+      "bInt" => {"int_number", "number"}
+    }
+
+    elements = Map.new(formats, fn {id, {format, _}} -> {id, input.(id, format)} end)
+
+    tree =
+      Tree.build(%{
+        "pages" => %{"p" => %{"id" => "bP9", "type" => "Page", "elements" => elements}}
+      })
+
+    for {id, {_, type}} <- formats, do: assert(%Tree.Node{value: ^type} = Tree.node(tree, id))
+  end
 end
