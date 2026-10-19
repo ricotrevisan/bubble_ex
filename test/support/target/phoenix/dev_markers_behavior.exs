@@ -12,7 +12,8 @@ defmodule PhxCheckWeb.DevMarkersBehaviorTest do
   # parts.
   use PhxCheckWeb.ConnCase, async: false
 
-  import Phoenix.LiveViewTest
+  # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
+  use PhxCheckWeb.BubbleBehavior
 
   # Element ID => the tooltip with the markers on.
   @marked %{

@@ -10,7 +10,8 @@ defmodule PhxCheckWeb.PluginStatesBehaviorTest do
   # whose condition reads one is refused. None is read as empty.
   use PhxCheckWeb.ConnCase, async: false
 
-  import Phoenix.LiveViewTest
+  # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
+  use PhxCheckWeb.BubbleBehavior
 
   setup do
     on_exit(fn -> Application.delete_env(:phx_check, :bubble_dev_markers) end)

@@ -6,7 +6,8 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
   # test/page_data_behavior_test.exs, with a database).
   use PhxCheckWeb.ConnCase, async: false
 
-  import Phoenix.LiveViewTest
+  # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
+  use PhxCheckWeb.BubbleBehavior
 
   alias PhxCheck.Workflows.Runtime
 
@@ -2717,5 +2718,458 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     # A reset leaves it empty too.
     click(view, "bInitReset")
     assert query_shown(render(view)) == [""]
+  end
+
+  # --- The first connected load, in a task (WTF-559) ----------------------------------------
+
+  # A page whose waiting events tell the test what they saw: its
+  # page-loaded workflow and a click report the page's thing (from the
+  # URL) and the query input; with `Process.put(:wait_page_leaves, true)`
+  # the page-loaded workflow logs out (it leaves the page).
+  defmodule WaitPage do
+    def __bubble__(:instances), do: []
+
+    def __bubble__(:surface),
+      do: %{
+        states: %{},
+        inputs: %{"query" => {:text, nil}},
+        loaded: ["loaded"],
+        intervals: [],
+        clicks: %{"see" => ["see"], "other" => ["other"], "jump" => ["jump"]},
+        changes: %{},
+        conditions: []
+      }
+
+    def __bubble__(:data),
+      do: [
+        %{
+          element: "task",
+          instance: nil,
+          fun: :task,
+          read: :url_thing,
+          cell: nil,
+          loads: [],
+          cell_loads: [],
+          topic: "Task",
+          blocked: []
+        }
+      ]
+
+    def __bubble__(:workflows),
+      do: %{
+        "loaded" => %{condition: nil, run: :loaded, blocked: [], data: true},
+        "see" => %{condition: nil, run: :see, blocked: [], data: true},
+        "other" => %{condition: nil, run: :other, blocked: [], data: true},
+        "jump" => %{condition: nil, run: :jump, blocked: [], data: true}
+      }
+
+    def task(ctx), do: PhxCheckWeb.BubbleData.url_thing(ctx, PhxCheck.Task)
+
+    defp title(ctx),
+      do: PhxCheckWeb.BubbleWorkflows.data(ctx, [], "task") |> then(&(&1 && &1.title))
+
+    def loaded(ctx) do
+      send(self(), {:ran, :loaded, title(ctx)})
+
+      if Process.get(:wait_page_leaves) do
+        {:cont, ctx} = PhxCheckWeb.BubbleWorkflows.log_out(ctx)
+        {:done, ctx}
+      else
+        {:done, ctx}
+      end
+    end
+
+    def see(ctx) do
+      send(self(), {:ran, :see, title(ctx), PhxCheckWeb.BubbleWorkflows.input(ctx, [], "query")})
+      {:done, ctx}
+    end
+
+    def other(ctx) do
+      send(self(), {:ran, :other, title(ctx)})
+      {:done, ctx}
+    end
+
+    # "Go to page" this page, with another task: a patch.
+    def jump(ctx) do
+      send(self(), {:ran, :jump, title(ctx)})
+
+      {:cont, ctx} =
+        PhxCheckWeb.BubbleWorkflows.navigate(
+          ctx,
+          :current,
+          [],
+          false,
+          false,
+          false,
+          "1700000000000x200000000000000005"
+        )
+
+      {:done, ctx}
+    end
+  end
+
+  # A connected page outside a LiveView (no hook: it loads in place), then
+  # made to wait as if its first load were running (`@bubble_data_loading`).
+  defp waiting_page(path, params) do
+    socket = %Phoenix.LiveView.Socket{transport_pid: self(), private: %{live_temp: %{}}}
+    socket = PhxCheckWeb.BubbleWorkflows.mount(socket, WaitPage)
+
+    socket =
+      PhxCheckWeb.BubbleWorkflows.handle_params(
+        socket,
+        WaitPage,
+        params,
+        "http://localhost" <> path
+      )
+
+    Phoenix.Component.assign(socket, :bubble_data_loading, {make_ref(), make_ref()})
+  end
+
+  defp wait_click(socket, element) do
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_event(socket, WaitPage, "bubble:click", %{
+        "scope" => "",
+        "element" => element
+      })
+
+    socket
+  end
+
+  defp wait_event(socket, event, params) do
+    {:noreply, socket} = PhxCheckWeb.BubbleWorkflows.handle_event(socket, WaitPage, event, params)
+    socket
+  end
+
+  defp wait_typing(socket, value, element \\ "query"),
+    do:
+      wait_event(socket, "bubble:change", %{
+        "bubble" => %{"scope" => "", "element" => element, "value" => value, "on" => "blur"}
+      })
+
+  defp notices(socket),
+    do:
+      Enum.count(socket.private.live_temp[:push_events] || [], &match?(["bubble:notice", _], &1))
+
+  defp wait_loaded(socket) do
+    {:noreply, socket} =
+      PhxCheckWeb.BubbleWorkflows.handle_info(socket, WaitPage, {:bubble, :page_loaded})
+
+    socket
+  end
+
+  # What the waiting page's workflows reported, in order.
+  defp ran(acc \\ []) do
+    receive do
+      {:ran, _, _} = r -> ran([Tuple.delete_at(r, 0) | acc])
+      {:ran, _, _, _} = r -> ran([Tuple.delete_at(r, 0) | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
+  end
+
+  test "the join shows the page as its static render does; the data follows (WTF-559)", %{
+    conn: conn
+  } do
+    on()
+    {:ok, view, html} = Phoenix.LiveViewTest.live(conn, "/")
+    assert cells(html) == []
+    refute html =~ "First open: Bake"
+
+    html = render_async(view, 5_000)
+    assert cells(html) == ["Answer", "Bake", "Clean"]
+    assert html =~ "First open: Bake"
+  end
+
+  test "page-load workflows run once the first load's data is in (WTF-559)", %{conn: conn} do
+    on()
+    {:ok, view, html} = Phoenix.LiveViewTest.live(conn, "/loaded")
+    assert shown(html, "Loaded") == []
+
+    html = render_async(view, 5_000)
+    assert shown(html, "Loaded") == ["Eat"]
+    assert shown(html, "Load row") == ["Eat"]
+  end
+
+  test "with async_data: false the join waits for the data, as before (WTF-559)", %{conn: conn} do
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows,
+      data_access: true,
+      async_data: false
+    )
+
+    {:ok, _view, html} = Phoenix.LiveViewTest.live(conn, "/")
+    assert cells(html) == ["Answer", "Bake", "Clean"]
+  end
+
+  test "a click before the data waits for it, then runs on it (WTF-559)", %{conn: conn} do
+    on()
+
+    view =
+      hold_first_load(fn ->
+        {:ok, view, html} = Phoenix.LiveViewTest.live(conn, "/shown")
+        await_held()
+        assert shown(html, "SrcA") == []
+        # It waits: nothing runs on data not read yet.
+        assert shown(click(view, "bOverride"), "SrcA") == []
+        view
+      end)
+
+    # The data, then the click's Display data on it (run on empty data, it
+    # would have shown nothing, and kept showing it).
+    assert shown(render_async(view, 5_000), "SrcA") == ["Eat"]
+  end
+
+  test "typing before the data waits, one value per input, then reads its sources (WTF-559)", %{
+    conn: conn
+  } do
+    on()
+
+    view =
+      hold_first_load(fn ->
+        {:ok, view, _html} = Phoenix.LiveViewTest.live(conn, "/")
+        await_held()
+
+        for value <- ["e", "ea"],
+            do:
+              render_change(view, "bubble:change", %{
+                "bubble" => %{
+                  "scope" => "",
+                  "element" => "bQuery",
+                  "value" => value,
+                  "on" => "blur"
+                }
+              })
+
+        # The keystrokes of one input wait as one, its last value.
+        queued = :sys.get_state(view.pid).socket.assigns.bubble_queued
+
+        assert [{:event, "bubble:change", %{"bubble" => %{"value" => "ea"}}}] =
+                 Enum.filter(queued, &match?({:event, _, _}, &1))
+
+        view
+      end)
+
+    render_async(view, 5_000)
+    Process.sleep(250)
+    assert cells(render(view)) == ["Clean"]
+  end
+
+  test "past 100 waiting clicks a click is refused with the notice (WTF-559)", %{conn: conn} do
+    on()
+
+    hold_first_load(fn ->
+      {:ok, view, _html} = Phoenix.LiveViewTest.live(conn, "/shown")
+      await_held()
+      for _ <- 1..100, do: click(view, "bOverride")
+      refute_push_event(view, "bubble:notice", _)
+      click(view, "bOverride")
+      assert_push_event(view, "bubble:notice", %{text: "This action isn't available yet."})
+    end)
+  end
+
+  test "a patch before the first data arrives reads the patched URL (WTF-559)", %{conn: conn} do
+    on()
+
+    view =
+      hold_first_load(fn ->
+        {:ok, view, _html} = Phoenix.LiveViewTest.live(conn, "/task/#{@t1}")
+        await_held()
+        render_patch(view, "/task/1700000000000x200000000000000005")
+        view
+      end)
+
+    html = render_async(view, 5_000)
+    assert html =~ "Title: Eat"
+    refute html =~ "Title: Bake"
+  end
+
+  test "a first load past :data_timeout is logged and still waited for (WTF-559)", %{conn: conn} do
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows,
+      data_access: true,
+      data_timeout: 20
+    )
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        view =
+          hold_first_load(fn ->
+            {:ok, view, _html} = Phoenix.LiveViewTest.live(conn, "/")
+            await_held()
+            Process.sleep(100)
+            # Still pending: nothing read it again.
+            assert cells(render(view)) == []
+            view
+          end)
+
+        send(self(), {:html, render_async(view, 5_000)})
+      end)
+
+    assert_received {:html, html}
+    assert cells(html) == ["Answer", "Bake", "Clean"]
+    assert log =~ "the first load is still running after 20 ms"
+  end
+
+  test "what waited runs in the order it came: page load, clicks, a patch (WTF-559)" do
+    on()
+    socket = waiting_page("/task/#{@t1}", %{"bubble_thing" => @t1})
+    _ = ran()
+
+    socket = socket |> wait_loaded() |> wait_click("see") |> wait_click("other")
+
+    socket =
+      PhxCheckWeb.BubbleWorkflows.handle_params(
+        socket,
+        WaitPage,
+        %{"bubble_thing" => "1700000000000x200000000000000005"},
+        "http://localhost/task/1700000000000x200000000000000005"
+      )
+
+    socket = wait_click(socket, "see")
+    assert ran() == []
+
+    _socket = PhxCheckWeb.BubbleWorkflows.handle_async(socket, WaitPage, {:exit, :held})
+
+    assert ran() == [
+             {:loaded, "Bake"},
+             {:see, "Bake", nil},
+             {:other, "Bake"},
+             {:see, "Eat", nil}
+           ]
+  end
+
+  test "a page-load workflow that leaves the page drops the clicks that waited (WTF-559)" do
+    on()
+    Process.put(:wait_page_leaves, true)
+    socket = waiting_page("/task/#{@t1}", %{"bubble_thing" => @t1})
+    _ = ran()
+
+    socket = socket |> wait_loaded() |> wait_click("see")
+    socket = PhxCheckWeb.BubbleWorkflows.handle_async(socket, WaitPage, {:exit, :held})
+
+    assert {:redirect, %{to: "/sign-out"}} = socket.redirected
+    assert ran() == [{:loaded, "Bake"}]
+    assert socket.assigns.bubble_queued == []
+  after
+    Process.delete(:wait_page_leaves)
+  end
+
+  test "a first load's task that crashes is read again in the page (WTF-559)" do
+    on()
+    socket = waiting_page("/task/#{@t1}", %{"bubble_thing" => @t1})
+    socket = Phoenix.Component.assign(socket, :bubble_data, %{})
+    _ = ran()
+    socket = wait_loaded(socket)
+
+    {socket, log} =
+      ExUnit.CaptureLog.with_log(fn ->
+        PhxCheckWeb.BubbleWorkflows.handle_async(socket, WaitPage, {:exit, :boom})
+      end)
+
+    assert log =~ "the first load failed"
+    assert %{title: "Bake"} = socket.assigns.bubble_data[{"", "task"}]
+    refute socket.assigns.bubble_data_pending
+    assert ran() == [{:loaded, "Bake"}]
+  end
+
+  test "a first load read as another actor is dropped and read again (WTF-559)" do
+    on()
+    socket = waiting_page("/task/#{@t1}", %{"bubble_thing" => @t1})
+    actor = socket.assigns.bubble_data_actor
+    bogus = {%{{"", "task"} => :not_this_users}, %{}, []}
+
+    for {as, kept?} <- [{actor, true}, {:another_actor, false}] do
+      result = {:ok, %{read: bogus, actor: as, capped: nil, api: nil}}
+      done = PhxCheckWeb.BubbleWorkflows.handle_async(socket, WaitPage, result)
+      assert done.assigns.bubble_data[{"", "task"}] == :not_this_users == kept?
+      unless kept?, do: assert(%{title: "Bake"} = done.assigns.bubble_data[{"", "task"}])
+    end
+  end
+
+  test "only the first mount loads in a task; a reconnect loads in place (WTF-559)" do
+    on()
+
+    for {mounts, async?} <- [{0, true}, {1, false}, {3, false}] do
+      socket = %Phoenix.LiveView.Socket{
+        transport_pid: self(),
+        private: %{
+          connect_params: %{"_mounts" => mounts},
+          lifecycle: %Phoenix.LiveView.Lifecycle{}
+        }
+      }
+
+      socket = PhxCheckWeb.BubbleWorkflows.mount(socket, WaitPage)
+      assert socket.assigns.bubble_data_async == async?
+    end
+  end
+
+  test "a waiting event that patches the page: what waited after it runs on the patched data (WTF-559)" do
+    on()
+    socket = waiting_page("/task/#{@t1}", %{"bubble_thing" => @t1})
+    _ = ran()
+
+    socket = socket |> wait_click("jump") |> wait_click("see")
+    socket = PhxCheckWeb.BubbleWorkflows.handle_async(socket, WaitPage, {:exit, :held})
+
+    # The patch stops the replay; the click after it still waits.
+    assert {:live, :patch, %{to: "/task/1700000000000x200000000000000005"}} = socket.redirected
+    assert ran() == [{:jump, "Bake"}]
+    assert [{:event, "bubble:click", %{"element" => "see"}}] = socket.assigns.bubble_queued
+
+    # LiveView then calls handle_params for that patch: it reads the
+    # patched URL, then the rest runs.
+    _socket =
+      PhxCheckWeb.BubbleWorkflows.handle_params(
+        %{socket | redirected: nil},
+        WaitPage,
+        %{"bubble_thing" => "1700000000000x200000000000000005"},
+        "http://localhost/task/1700000000000x200000000000000005"
+      )
+
+    assert ran() == [{:see, "Eat", nil}]
+  end
+
+  test "typing, a click, more typing: the click sees the first value, also past the cap (WTF-559)" do
+    on()
+
+    for others <- [0, 98] do
+      socket = waiting_page("/task/#{@t1}", %{"bubble_thing" => @t1})
+      _ = ran()
+
+      socket = socket |> wait_typing("a") |> wait_click("see")
+      socket = Enum.reduce(List.duplicate("other", others), socket, &wait_click(&2, &1))
+      # Typing just after typing waits as one, its last value.
+      socket = socket |> wait_typing("ab") |> wait_typing("abc")
+
+      typing =
+        Enum.filter(socket.assigns.bubble_queued, &match?({:event, "bubble:change", _}, &1))
+
+      assert [%{"value" => "a"}, %{"value" => "abc"}] = Enum.map(typing, &elem(&1, 2)["bubble"])
+
+      socket = PhxCheckWeb.BubbleWorkflows.handle_async(socket, WaitPage, {:exit, :held})
+      assert [{:see, "Bake", "a"} | _] = ran()
+      assert socket.assigns.bubble_inputs[{"", "query"}] == "abc"
+    end
+  end
+
+  test "past the cap, waiting input events are bounded and only of tracked inputs (WTF-559)" do
+    on()
+    socket = waiting_page("/task/#{@t1}", %{"bubble_thing" => @t1})
+    socket = Enum.reduce(1..99, socket, fn _, s -> wait_click(s, "other") end)
+
+    socket =
+      Enum.reduce(1..1_000, socket, fn i, s ->
+        s
+        |> wait_event("bubble:change", %{
+          "bubble" => %{"scope" => "", "element" => "query", "value" => "v#{i}"}
+        })
+        |> wait_click("other")
+        |> wait_event("bubble:commit", %{"scope" => "", "element" => "query", "value" => "c#{i}"})
+        |> wait_event("bubble:commit", %{"scope" => "", "element" => "nope#{i}", "value" => "x"})
+        |> wait_typing("t#{i}", "made-up#{i}")
+      end)
+
+    queued = socket.assigns.bubble_queued
+    assert length(queued) <= 200
+    refute Enum.any?(queued, fn {:event, _, p} -> inspect(p) =~ ~r/nope|made-up/ end)
+    assert notices(socket) > 0
   end
 end

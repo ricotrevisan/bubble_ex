@@ -11,7 +11,8 @@ defmodule PhxCheckWeb.ListOpsBehaviorTest do
   # project's list sorted, not filtered on Done.
   use PhxCheckWeb.ConnCase, async: false
 
-  import Phoenix.LiveViewTest
+  # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
+  use PhxCheckWeb.BubbleBehavior
 
   alias PhxCheck.Bubble.Runtime
 

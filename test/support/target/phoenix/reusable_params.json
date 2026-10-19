@@ -1488,6 +1488,29 @@
             "width": 300
           },
           "type": "CustomElement"
+        },
+        "bRowPop": {
+          "id": "bRowPop",
+          "type": "Popup",
+          "properties": {
+            "_comment": "WTF-559: a popup rendered only while open, in a reusable instance in a repeating group's cell: its scope exists only once the page's data is in.",
+            "order": 17,
+            "width": 300,
+            "height": 80
+          },
+          "elements": {
+            "bRowPopT": {
+              "id": "bRowPopT",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "min_height_css": "40px",
+                "text": "Row popup open"
+              }
+            }
+          }
         }
       },
       "id": "bRowDef",

@@ -113,6 +113,8 @@ for fixture in $fixtures; do
   cd "$root"
   mix run --no-compile scripts/phoenix_compile_check/render.exs "$scratch" "$fixture"
   cd "$scratch"
+  # What the behavior tests share (WTF-559: live/2 waits for the first load).
+  cp "$root/test/support/target/phoenix/behavior_helpers.exs" test/support/bubble_behavior.ex
 
   if [[ $first == 1 ]]; then
     if [[ -n "${PHOENIX_COMPILE_CHECK_UPDATE_LOCK:-}" ]]; then
@@ -388,6 +390,8 @@ for fixture in $enforced_fixtures; do
   cd "$root"
   mix run --no-compile scripts/phoenix_compile_check/render.exs "$enforced_scratch" "enforced_$fixture"
   cd "$enforced_scratch"
+  # What the behavior tests share (WTF-559: live/2 waits for the first load).
+  cp "$root/test/support/target/phoenix/behavior_helpers.exs" test/support/bubble_behavior.ex
 
   if [[ $first == 1 ]]; then
     mix deps.get --check-locked

@@ -14,7 +14,8 @@ defmodule PhxCheckWeb.PageLoadBehaviorTest do
   # once, and shows the same as before.
   use PhxCheckWeb.ConnCase, async: false
 
-  import Phoenix.LiveViewTest
+  # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
+  use PhxCheckWeb.BubbleBehavior
 
   @north "1700000000000x100000000000000001"
   @south "1700000000000x100000000000000002"
