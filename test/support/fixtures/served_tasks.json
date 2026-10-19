@@ -1,0 +1,356 @@
+{
+  "_id": "rubble-rg-example",
+  "app_version": "test",
+  "user_types": {
+    "task": {
+      "%d": "Task",
+      "%f3": {
+        "done_boolean": {
+          "%d": "Done",
+          "%v": "boolean"
+        },
+        "title_text": {
+          "%d": "Title",
+          "%v": "text"
+        }
+      }
+    },
+    "user": {
+      "%d": "User",
+      "%f3": {}
+    }
+  },
+  "%p3": {
+    "bTGLm": {
+      "%el": {
+        "bTGLs": {
+          "%dn": "Rubble header A",
+          "%p": {
+            "%3f": "top",
+            "%ci": "bTGLn",
+            "%h": 200,
+            "%l": 0,
+            "%t": 0,
+            "%w": 200,
+            "%z": 2,
+            "fit_height": true,
+            "fit_width": false,
+            "floating_reference_horizontal": "none",
+            "floating_reference_horizontal_resp": "left",
+            "horiz_alignment": "flex-start",
+            "max_width": 100,
+            "min_height_css": "0px",
+            "min_width": 0,
+            "min_width_css": "0px",
+            "order": 1,
+            "single_height": false,
+            "single_width": false
+          },
+          "%x": "CustomElement",
+          "id": "bTGLr"
+        },
+        "bTGLu": {
+          "%dn": "Input A",
+          "%p": {
+            "%h": 48,
+            "%l": 0,
+            "%ps": "New task title",
+            "%t": 0,
+            "%w": 250,
+            "%z": 3,
+            "collapse_when_hidden": true,
+            "fit_height": true,
+            "fit_width": false,
+            "horiz_alignment": "flex-start",
+            "min_height_css": "44px",
+            "min_width_css": "0px",
+            "order": 2,
+            "single_height": false,
+            "single_width": false
+          },
+          "%s1": "Input_standard_input_",
+          "%x": "Input",
+          "id": "bTGLt"
+        },
+        "bTGLw": {
+          "%dn": "Button A",
+          "%p": {
+            "%3": "Add",
+            "%9i": "material outlined star_border",
+            "%h": 44,
+            "%l": 0,
+            "%t": 0,
+            "%w": 150,
+            "%z": 4,
+            "collapse_when_hidden": true,
+            "fit_height": true,
+            "fit_width": true,
+            "horiz_alignment": "flex-start",
+            "min_height_css": "44px",
+            "min_width_css": "0px",
+            "order": 3,
+            "single_height": false,
+            "single_width": false
+          },
+          "%s1": "Button_filled_light_primary_",
+          "%x": "Button",
+          "id": "bTGLv"
+        },
+        "bTGLy": {
+          "%dn": "RepeatingGroup A",
+          "%el": {
+            "bTGMA": {
+              "%dn": "Text A",
+              "%p": {
+                "%3": {
+                  "%e": {
+                    "0": {
+                      "%n": {
+                        "%nm": "title_text",
+                        "%x": "Message"
+                      },
+                      "%x": "ElementParent"
+                    }
+                  },
+                  "%x": "TextExpression"
+                },
+                "%h": 36,
+                "%l": 0,
+                "%t": 0,
+                "%w": 100,
+                "%z": 2,
+                "collapse_when_hidden": true,
+                "fit_height": true,
+                "fit_width": false,
+                "horiz_alignment": "flex-start",
+                "min_height_css": "0px",
+                "min_width_css": "0px",
+                "order": 1,
+                "single_height": false,
+                "single_width": false
+              },
+              "%s": {
+                "0": {
+                  "%c": {
+                    "%n": {
+                      "%n": {
+                        "%nm": "is_true",
+                        "%x": "Message"
+                      },
+                      "%nm": "done_boolean",
+                      "%x": "Message"
+                    },
+                    "%x": "ElementParent"
+                  },
+                  "%p": {
+                    "%bas": "bgcolor",
+                    "%bgc": "#d1f0d1"
+                  },
+                  "%x": "State"
+                }
+              },
+              "%s1": "Text_body_16_",
+              "%x": "Text",
+              "id": "bTGLz"
+            },
+            "bTGMC": {
+              "%dn": "Button B",
+              "%p": {
+                "%3": "Done",
+                "%9i": "material outlined star_border",
+                "%h": 44,
+                "%l": 0,
+                "%t": 0,
+                "%w": 150,
+                "%z": 3,
+                "collapse_when_hidden": true,
+                "fit_height": true,
+                "fit_width": true,
+                "horiz_alignment": "flex-start",
+                "min_height_css": "44px",
+                "min_width_css": "0px",
+                "order": 2,
+                "single_height": false,
+                "single_width": false
+              },
+              "%s1": "Button_filled_light_primary_",
+              "%x": "Button",
+              "id": "bTGMB"
+            }
+          },
+          "%p": {
+            "%c5": 1,
+            "%ds": {
+              "%p": {
+                "%d2": true,
+                "%sf": "Created Date",
+                "%t5": "custom.task"
+              },
+              "%x": "Search"
+            },
+            "%gt": "custom.task",
+            "%h": 350,
+            "%l": 0,
+            "%t": 0,
+            "%w": 280,
+            "%z": 5,
+            "cell_min_height_css": "56px",
+            "collapse_when_hidden": true,
+            "container_layout": "row",
+            "fit_height": true,
+            "fit_width": false,
+            "fixed_rows": false,
+            "horiz_alignment": "flex-start",
+            "min_height_css": "0px",
+            "min_width_css": "0px",
+            "order": 4,
+            "single_height": false,
+            "single_width": false
+          },
+          "%s1": "RepeatingGroup_transparent_",
+          "%x": "RepeatingGroup",
+          "id": "bTGLx"
+        }
+      },
+      "%nm": "rubble_fixture",
+      "%p": {
+        "%h": 767,
+        "%t1": {
+          "%e": {
+            "0": "Rubble RG Example"
+          },
+          "%x": "TextExpression"
+        },
+        "%w": 1080,
+        "container_layout": "column",
+        "default_width": 1080,
+        "element_version": 5,
+        "fixed_width": true,
+        "min_height_px": 767,
+        "min_width_px": 0,
+        "new_responsive": true,
+        "responsive_version": 1
+      },
+      "%wf": {
+        "bTGME": {
+          "%p": {
+            "%ei": "bTGLv"
+          },
+          "%x": "ButtonClicked",
+          "actions": {
+            "0": {
+              "%p": {
+                "%i2": {
+                  "0": {
+                    "%k": "title_text",
+                    "%v": {
+                      "%n": {
+                        "%nm": "get_data",
+                        "%x": "Message"
+                      },
+                      "%p": {
+                        "%ei": "bTGLt"
+                      },
+                      "%x": "GetElement"
+                    }
+                  },
+                  "1": {
+                    "%k": "done_boolean",
+                    "%v": false
+                  }
+                },
+                "%tt": "custom.task"
+              },
+              "%x": "NewThing",
+              "id": "bTGMH"
+            },
+            "1": {
+              "%x": "ResetInputs",
+              "id": "bTGMI"
+            }
+          },
+          "id": "bTGMD"
+        },
+        "bTGMG": {
+          "%p": {
+            "%ei": "bTGMB"
+          },
+          "%x": "ButtonClicked",
+          "actions": {
+            "0": {
+              "%p": {
+                "%cs": {
+                  "0": {
+                    "%k": "done_boolean",
+                    "%v": {
+                      "%n": {
+                        "%n": {
+                          "%nm": "is_false",
+                          "%x": "Message"
+                        },
+                        "%nm": "done_boolean",
+                        "%x": "Message"
+                      },
+                      "%x": "ElementParent"
+                    }
+                  }
+                },
+                "%tc": {
+                  "%x": "ElementParent"
+                }
+              },
+              "%x": "ChangeThing",
+              "id": "bTGMJ"
+            }
+          },
+          "id": "bTGMF"
+        }
+      },
+      "%x": "Page",
+      "id": "bTGLl"
+    }
+  },
+  "%ed": {
+    "bTGLo": {
+      "%el": {
+        "bTGLq": {
+          "%dn": "Text A",
+          "%p": {
+            "%3": "Rubble Tasks",
+            "%h": 36,
+            "%l": 0,
+            "%t": 0,
+            "%w": 100,
+            "%z": 2,
+            "collapse_when_hidden": true,
+            "fit_height": true,
+            "fit_width": false,
+            "horiz_alignment": "flex-start",
+            "min_height_css": "0px",
+            "min_width_css": "0px",
+            "order": 1,
+            "single_height": false,
+            "single_width": false
+          },
+          "%s1": "Text_body_16_",
+          "%x": "Text",
+          "id": "bTGLp"
+        }
+      },
+      "%nm": "Rubble header",
+      "%p": {
+        "%et": "Group",
+        "%h": 200,
+        "%w": 200,
+        "container_layout": "column",
+        "custom_element_platform": "web",
+        "default_width": 200,
+        "element_version": 5,
+        "min_height_px": 40,
+        "min_width_px": 0
+      },
+      "%x": "CustomDefinition",
+      "id": "bTGLn"
+    }
+  }
+}

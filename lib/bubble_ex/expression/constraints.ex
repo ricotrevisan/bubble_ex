@@ -20,12 +20,21 @@ defmodule BubbleEx.Expression.Constraints do
          true <- is_binary(data_type) or is_nil(data_type),
          item_ctx = %{ctx | this_type: data_type, this_binder: :filter_item},
          {:ok, constraints, meta, diags} <- collection(props, path ++ [pkey], item_ctx) do
+      {options, option_keys} =
+        Keys.readable_members(options, %{"%sf" => "sort_field", "%d2" => "descending"})
+
       node = %Search{
         data_type: data_type,
         constraints: constraints,
         options: options,
         type: data_type && "list." <> data_type,
-        meta: Map.merge(meta, %{keys: used, extra: extra, prop_keys: prop_keys})
+        meta:
+          Map.merge(meta, %{
+            keys: used,
+            extra: extra,
+            prop_keys: prop_keys,
+            option_keys: option_keys
+          })
       }
 
       {node, Parser.extra_diags(extra, path) ++ diags}

@@ -3903,6 +3903,19 @@ All notable changes to this project are documented here.
   Trufflehog inputs now live in random private temporary directories instead of
   payload-derived paths. The fidelity harness uses Playwright 1.55.1, which fixes
   its browser download certificate-validation advisory.
+- **Dynamic Repeating Group cell templates lower as group cells**
+  (`Frontend.cell_template/1`). A dynamic Repeating Group placeholder now
+  normalizes its authored cell minima (`cell_min_width_css`,
+  `cell_min_height_css`) and columns (`%c5`) onto the same layout keys the
+  static list uses, and `cell_template/1` projects its one per-item template
+  as a synthetic group node (`variant: :repeating_cell`, identity
+  `<group id>/cells/template`): the group's per-cell container layout with
+  the cell minimum height on the cell's box, without the group's outer fill
+  flags, cell minima or columns. Lowering the cell (`Export.Css.lower/2`)
+  styles each rendered row as a flex cell and gives the template children the
+  cell's parent mode, so a fill-width Text grows beside a sibling instead of
+  stacking over it; the group's own lowering still stops at the runtime
+  boundary. Static lists expand their own cells as before.
 
 ### Changed
 

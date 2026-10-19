@@ -57,6 +57,46 @@ defmodule BubbleEx.Workflows.FrontendTest do
     assert [%{id: "rWord", name: "Result"}] = evt.returns
   end
 
+  test "captured entrance animations retain their final visibility and motion" do
+    source =
+      edit(app(), "wLoad", fn workflow ->
+        Map.put(workflow, "actions", %{
+          "0" => %{
+            "id" => "anim",
+            "type" => "AnimateElement",
+            "properties" => %{
+              "element_id" => "bFocus",
+              "animation" => "transition.slideUpIn",
+              "duration" => 900
+            }
+          }
+        })
+      end)
+
+    [step] = source |> lower() |> workflow("wLoad") |> Map.fetch!(:steps)
+    assert step.op == :animate
+
+    assert step.args == %{
+             element: "bFocus",
+             animation: "transition.slideUpIn",
+             duration: 900,
+             visibility: :show
+           }
+
+    assert step.residue == []
+
+    unknown =
+      edit(
+        source,
+        "wLoad",
+        &put_in(&1, ["actions", "0", "properties", "animation"], "unknown.motion")
+      )
+
+    [step] = unknown |> lower() |> workflow("wLoad") |> Map.fetch!(:steps)
+    assert step.args.visibility == nil
+    assert Enum.any?(step.residue, &(&1.reason == :unsupported_option))
+  end
+
   test "steps lower to the shared vocabulary", %{lowered: lowered} do
     [set, show] = workflow(lowered, "wState").steps
     assert %{index: 1, op: :set_state, type: "SetCustomState", residue: []} = set

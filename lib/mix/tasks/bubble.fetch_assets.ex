@@ -26,6 +26,7 @@ defmodule Mix.Tasks.Bubble.FetchAssets do
 
   use Mix.Task
 
+  alias BubbleEx.AppDefinition
   alias BubbleEx.Frontend.StaticAssets
 
   @strict [store: :string, app_url: :string, max_asset_bytes: :integer]
@@ -38,9 +39,10 @@ defmodule Mix.Tasks.Bubble.FetchAssets do
         unless is_binary(opts[:store]), do: Mix.raise(@usage)
         Mix.Task.run("app.start")
 
-        with {:ok, app} <- load_app(source),
-             {:ok, frontend} <- BubbleEx.Frontend.normalize(app),
+        with {:ok, definition} <- AppDefinition.load(source),
+             {:ok, frontend} <- BubbleEx.Frontend.normalize(definition.app),
              {:ok, report} <- StaticAssets.fetch(frontend, opts[:store], fetch_opts(opts)) do
+          print_diagnostics(definition.diagnostics)
           print(report, opts[:store])
         else
           {:error, %BubbleEx.Error{} = error} -> Mix.raise(Exception.message(error))
@@ -59,22 +61,16 @@ defmodule Mix.Tasks.Bubble.FetchAssets do
     end)
   end
 
-  defp load_app(path) do
-    cond do
-      BubbleEx.Buildprint.V5.workspace?(path) ->
-        with {:ok, %{app: app}} <- BubbleEx.Buildprint.V5.load(path), do: {:ok, app}
+  defp print_diagnostics([]), do: :ok
 
-      File.regular?(path) ->
-        with {:ok, body} <- File.read(path),
-             {:ok, app} when is_map(app) <- Jason.decode(body) do
-          {:ok, app}
-        else
-          _ -> Mix.raise("#{path} is not an app JSON file")
-        end
+  defp print_diagnostics(diagnostics) do
+    counts =
+      diagnostics
+      |> Enum.frequencies_by(& &1.code)
+      |> Enum.sort_by(fn {code, _count} -> Atom.to_string(code) end)
+      |> Enum.map_join(", ", fn {code, count} -> "#{code}=#{count}" end)
 
-      true ->
-        Mix.raise("not a Buildprint v5 workspace or an app JSON file: #{path}")
-    end
+    Mix.shell().info("Import diagnostics: " <> counts)
   end
 
   defp print(report, dir) do

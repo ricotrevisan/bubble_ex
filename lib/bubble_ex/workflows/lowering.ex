@@ -133,7 +133,7 @@ defmodule BubbleEx.Workflows.Lowering do
     entries
     |> ordered()
     |> Enum.map_reduce([], fn {k, entry}, residue ->
-      entry = map(entry)
+      entry = change_entry(map(entry))
 
       change(
         entry,
@@ -147,6 +147,14 @@ defmodule BubbleEx.Workflows.Lowering do
       )
     end)
     |> then(fn {changes, residue} -> {Enum.reject(changes, &is_nil/1), Enum.uniq(residue)} end)
+  end
+
+  # Compact change-entry keys observed in served payloads.
+  defp change_entry(entry) do
+    {entry, _keys} =
+      BubbleEx.Expression.Keys.readable_members(entry, %{"%k" => "key", "%v" => "value"})
+
+    entry
   end
 
   defp change(_entry, nil, _type, _fields, _path, id, _env, residue),
@@ -168,6 +176,7 @@ defmodule BubbleEx.Workflows.Lowering do
   end
 
   defp change_op(%{"type" => "Empty"}), do: :set
+  defp change_op(%{"%x" => "Empty"}), do: :set
   defp change_op(nil), do: :set
   defp change_op(name) when is_binary(name), do: Map.get(@change_ops, name)
   defp change_op(_), do: nil

@@ -38,6 +38,21 @@ defmodule BubbleEx.Frontend.LayoutDefaultsTest do
     assert Css.page(hd(model.pages)) =~ "border: 1px solid #202020;"
   end
 
+  test "a dormant side border preserves its source color for focus restoration" do
+    assert {:ok, model} =
+             Frontend.normalize(
+               payload("column", "Input", %{
+                 "four_border_style" => true,
+                 "border_style_bottom" => "none",
+                 "border_color_bottom" => "rgba(214, 214, 214, 1)"
+               })
+             )
+
+    css = Css.page(hd(model.pages))
+    assert css =~ "border-bottom: none;"
+    assert css =~ "border-bottom-color: rgba(214, 214, 214, 1);"
+  end
+
   test "an opaque plugin keeps compact dimensions when no sizing overrides exist" do
     assert {:ok, model} =
              Frontend.normalize(payload("row", "123456x123456-ABC", %{"%w" => 20, "%h" => 20}))

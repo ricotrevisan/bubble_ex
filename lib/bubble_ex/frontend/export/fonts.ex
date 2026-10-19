@@ -439,7 +439,13 @@ defmodule BubbleEx.Frontend.Export.Fonts do
   defp map_style_values(_), do: []
 
   defp family_value({:family, family}) when is_binary(family) do
-    family = family |> String.trim() |> String.trim("\"") |> String.trim("'")
+    family =
+      family
+      |> String.split(":::", parts: 2)
+      |> hd()
+      |> String.trim()
+      |> String.trim("\"")
+      |> String.trim("'")
 
     if valid_family?(family) and not String.contains?(family, [",", "var("]) do
       [family]

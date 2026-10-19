@@ -17,8 +17,9 @@ defmodule BubbleEx.Frontend.IconExportTest do
 
     assert {:ok, model} = Frontend.normalize(payload)
     css = BubbleEx.Frontend.Export.Css.page(hd(model.pages))
-    assert css =~ "display: none;"
-    refute css =~ "display: inline-flex;"
+    assert css =~ "visibility: hidden;"
+    assert css =~ "display: inline-flex;"
+    refute css =~ "display: none;"
   end
 
   @tag :tmp_dir
@@ -260,6 +261,84 @@ defmodule BubbleEx.Frontend.IconExportTest do
 
     css = File.read!(Path.join(tmp, "styles/shared.css"))
     assert css =~ "font-size: 14px;"
+  end
+
+  test "actual legacy footer links retain their authored Font Awesome source" do
+    fixture =
+      Path.expand("../../support/fixtures/frontend/legacy_footer_links.json", __DIR__)
+      |> File.read!()
+      |> Jason.decode!()
+
+    assert {:ok, model} = Frontend.normalize(fixture)
+    nodes = hd(model.pages).children
+    assert length(nodes) == 5
+
+    for node <- nodes do
+      source = fixture["pages"]["index"]["elements"][node.map_key]
+      "fa " <> fragment = source["properties"]["icon"]
+      assert node.kind == :link
+      assert node.variant == :icon
+      refute node.placeholder?
+      assert node.attributes["asset_src"] == "/static/icon_libraries/fontawesome-4.7.0.svg"
+      assert node.attributes["asset_fragment"] == fragment
+      assert node.attributes["aria-label"] == source["name"]
+      assert node.content["destination"].resolved == source["properties"]["url"]["entries"]["0"]
+    end
+  end
+
+  test "legacy icons do not replace authored text or dynamic labels" do
+    for text <- [
+          "Facebook",
+          %{"type" => "TextExpression", "entries" => %{"0" => "Facebook"}},
+          %{"type" => "CurrentUser"}
+        ] do
+      app = link_payload(%{"text" => text, "icon" => "fa fa-facebook", "linktype" => "url"})
+      assert {:ok, model} = Frontend.normalize(app)
+      assert hd(hd(model.pages).children).variant == :text
+    end
+
+    app = link_payload(%{"text" => "Facebook", "icon" => "fa fa-facebook", "show_icon" => true})
+    assert {:ok, model} = Frontend.normalize(app)
+    assert hd(hd(model.pages).children).variant == :label_icon
+  end
+
+  test "empty labels and legacy explicit icon variants select icon-only links" do
+    for properties <- [
+          %{"icon" => "fa fa-facebook"},
+          %{"icon" => "fa fa-facebook", "text" => " "},
+          %{
+            "icon" => "fa fa-facebook",
+            "text" => %{"type" => "TextExpression", "entries" => %{}},
+            "show_icon" => true
+          },
+          %{"icon" => "fa fa-facebook", "linktype" => "icon"},
+          %{"icon" => "fa fa-facebook", "link_type" => "icon_only"}
+        ] do
+      assert {:ok, model} = Frontend.normalize(link_payload(properties))
+      assert hd(hd(model.pages).children).variant == :icon
+    end
+  end
+
+  test "missing and unsupported requested icons remain explicit placeholders" do
+    for properties <- [
+          %{"linktype" => "icon"},
+          %{"show_icon" => true},
+          %{"icon" => "unknown facebook"},
+          %{"icon" => "fa fa-../facebook"}
+        ] do
+      assert {:ok, model} = Frontend.normalize(link_payload(properties))
+      node = hd(hd(model.pages).children)
+      assert node.placeholder?
+      assert node.variant == :unsupported_link_variant
+    end
+  end
+
+  defp link_payload(properties) do
+    put_in(payload("unused"), ["pages", "index", "elements", "button"], %{
+      "id" => "button",
+      "type" => "Link",
+      "properties" => properties
+    })
   end
 
   defp payload(icon) do

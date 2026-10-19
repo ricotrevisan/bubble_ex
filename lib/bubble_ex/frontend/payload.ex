@@ -110,7 +110,10 @@ defmodule BubbleEx.Frontend.Payload do
     "boxshadow_spread" => ["%bsp"],
     "boxshadow_style" => ["%bs"],
     "boxshadow_vertical" => ["%bv"],
+    "changes" => ["%cs"],
     "choices" => ["%ch"],
+    "columns" => ["%c5"],
+    "condition" => ["%c"],
     "content" => ["%c1", "%3"],
     "content_format" => ["%cf"],
     "contents" => ["%ct"],
@@ -121,7 +124,9 @@ defmodule BubbleEx.Frontend.Payload do
     "font_color" => ["%fc"],
     "font_size" => ["%fs"],
     "floating_reference" => ["%3f"],
+    "group_type" => ["%gt"],
     "icon" => ["%9i"],
+    "initial_values" => ["%i2"],
     "icon_color" => ["%ic"],
     "is_visible" => ["%iv"],
     "internal_page" => ["%pa"],
@@ -132,10 +137,39 @@ defmodule BubbleEx.Frontend.Payload do
     "mandatory" => ["%1m"],
     "placeholder" => ["%ps"],
     "run_mode" => ["%2f", "2f"],
+    "sort_field" => ["%sf"],
     "style" => ["%s"],
     "text" => ["%3"],
-    "text_align" => ["%fa"]
+    "text_align" => ["%fa"],
+    "thing_type" => ["%tt"],
+    "type_to_find" => ["%t5"]
   }
+
+  # Ambiguous aliases (for example %3 is both content and text) must stay
+  # intact so the consumer can interpret them for the element's kind.
+  @compact_properties @property_aliases
+                      |> Enum.flat_map(fn {readable, aliases} ->
+                        Enum.map(aliases, &{&1, readable})
+                      end)
+                      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+                      |> Enum.flat_map(fn
+                        {compact, [readable]} -> [{compact, readable}]
+                        _ -> []
+                      end)
+                      |> Map.new()
+
+  @doc "Expands unambiguous property aliases; readable keys take precedence."
+  @spec expand_properties(map()) :: map()
+  def expand_properties(props) when is_map(props) do
+    Enum.reduce(@compact_properties, props, fn {compact, readable}, acc ->
+      case Map.fetch(acc, compact) do
+        {:ok, value} -> acc |> Map.delete(compact) |> Map.put_new(readable, value)
+        :error -> acc
+      end
+    end)
+  end
+
+  def expand_properties(other), do: other
 
   @spec prop(map(), String.t()) :: term()
   def prop(node, key) when is_map(node) and is_binary(key) do

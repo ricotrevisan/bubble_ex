@@ -620,7 +620,8 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     template = files["lib/shop_web/live/index_live.html.heex"]
 
     for id <- ~w(bOut bWf) do
-      assert tag(template, id) =~ ~r/class="[^"]*\bhidden\b/
+      # Not collapsing when hidden, it keeps its space: `invisible`.
+      assert tag(template, id) =~ ~r/class="[^"]*\binvisible\b/
       refute String.replace(tag(template, id), ~r/class="[^"]*"/, "") =~ "hidden"
     end
 

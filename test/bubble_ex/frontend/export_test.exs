@@ -66,7 +66,7 @@ defmodule BubbleEx.Frontend.ExportTest do
 
       assert {:ok, _} = Frontend.export_payload(payload, tmp, @scan ++ [force: true])
       css = File.read!(Path.join(tmp, "styles/pages/index.css"))
-      assert length(Regex.scan(~r/flex-basis: 0;/, css)) == 2
+      assert length(Regex.scan(~r/flex-basis: 320px;/, css)) == 2
       assert length(Regex.scan(~r/flex-grow: 1;/, css)) == 2
       refute css =~ "width: 280px"
     end

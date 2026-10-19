@@ -179,7 +179,7 @@ defmodule BubbleEx.Expression.Sites do
     id = text(Source.value(raw, ~w(id %id))) || to_string(List.last(path))
     type = Source.value(raw, ~w(type %x))
     trigger = if type == "DatabaseTriggerEvent", do: text(props["data_trigger_type"])
-    element = text(props["element_id"])
+    element = text(Source.value(props, ~w(element_id %ei)))
     host = if element && Tree.node(env.tree, element), do: element, else: host
 
     env = %{env | host: host, trigger_type: trigger, subject: %{workflow: id}}

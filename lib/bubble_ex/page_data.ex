@@ -149,11 +149,15 @@ defmodule BubbleEx.PageData do
     ctx = %{model: model, env: env}
 
     sources =
-      [{"pages", :page}, {"element_definitions", :reusable}]
-      |> Enum.flat_map(fn {section, kind} ->
-        for {key, raw} <- Json.entries(Map.get(app, section)),
+      [{"pages", "%p3", :page}, {"element_definitions", "%ed", :reusable}]
+      |> Enum.flat_map(fn {section, served, kind} ->
+        # A served payload spells the sections compactly; pointers keep the
+        # spelling the payload actually uses.
+        actual = if Map.has_key?(app, section), do: section, else: served
+
+        for {key, raw} <- Json.entries(Map.get(app, actual)),
             is_map(raw),
-            source <- surface(raw, [section, key], kind, key, ctx),
+            source <- surface(raw, [actual, key], kind, key, ctx),
             do: source
       end)
       |> Enum.sort_by(&{&1.surface, &1.element})

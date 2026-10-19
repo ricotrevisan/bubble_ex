@@ -153,10 +153,14 @@ defmodule BubbleEx.Expression.Parser do
 
     case Keys.value(raw, :properties) do
       ref when is_map(ref) or is_nil(ref) ->
-        ref = ref || %{}
+        {ref, ref_keys} =
+          Keys.readable_members(ref || %{}, %{"%ei" => "element_id", "%ai" => "action_id"})
+
         btype = if is_binary(ref["btype_id"]), do: ref["btype_id"]
         node = %Scope{kind: kind, source_type: type, ref: ref, type: btype}
-        {%{node | meta: %{keys: used, extra: extra}}, extra_diags(extra, path)}
+
+        {%{node | meta: %{keys: used, extra: extra, ref_keys: ref_keys}},
+         extra_diags(extra, path)}
 
       _ ->
         shape(raw, path, "#{type} properties must be an object")

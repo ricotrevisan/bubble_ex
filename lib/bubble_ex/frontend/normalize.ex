@@ -633,7 +633,7 @@ defmodule BubbleEx.Frontend.Normalize do
           name: Payload.name(raw) || map_key,
           map_key: map_key,
           source: source_ref(raw, path, map_key),
-          layout: layout_from(raw),
+          layout: placeholder_layout(type, raw),
           box: placeholder_box(raw),
           style: style_from(raw),
           content: slots,
@@ -661,6 +661,15 @@ defmodule BubbleEx.Frontend.Normalize do
     do: BubbleEx.Frontend.StaticRepeating.layout(layout_from(raw), raw)
 
   defp element_layout(raw, _kind), do: layout_from(raw)
+
+  # A dynamic Repeating Group placeholder normalizes its per-cell minima and
+  # columns like the static list, so its cell template hangs off the same
+  # normalized layout keys. Other placeholders carry only the container layout
+  # their runtime template children share.
+  defp placeholder_layout("RepeatingGroup", raw),
+    do: element_layout(raw, :repeating_group)
+
+  defp placeholder_layout(_type, raw), do: layout_from(raw)
 
   defp placeholder_source(_raw, _reason), do: %{}
 
@@ -1100,11 +1109,11 @@ defmodule BubbleEx.Frontend.Normalize do
     sprite? = supported_sprite_icon?(Payload.prop(raw, "icon")) and static_element?(raw)
 
     cond do
-      sprite? and Payload.prop(raw, "show_icon") == true ->
-        {:native, :link, :label_icon}
-
       sprite? and icon_only_link?(raw) ->
         {:native, :link, :icon}
+
+      sprite? and Payload.prop(raw, "show_icon") == true ->
+        {:native, :link, :label_icon}
 
       Payload.prop(raw, "show_icon") == true or icon_only_link?(raw) ->
         {:placeholder, :unsupported_link_variant}
@@ -1261,7 +1270,20 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   defp icon_only_link?(raw) do
-    Payload.prop(raw, "link_type") in ["icon", "icon_only"]
+    link_type = Payload.prop(raw, "link_type") || Payload.prop(raw, "linktype")
+    icon = Payload.prop(raw, "icon")
+    text = Payload.prop(raw, "text") || Payload.prop(raw, "label")
+
+    link_type in ["icon", "icon_only"] or
+      (is_binary(icon) and String.trim(icon) != "" and empty_link_text?(text, raw))
+  end
+
+  defp empty_link_text?(text, raw) do
+    case literal_or_binding(text, "link", "text", raw) do
+      :empty -> true
+      {:resolved, value} when is_binary(value) -> String.trim(value) == ""
+      _ -> false
+    end
   end
 
   @element_kinds %{
@@ -1305,7 +1327,9 @@ defmodule BubbleEx.Frontend.Normalize do
       align: align_from(raw, mode),
       fill_width?: fill_axis?(raw, :width),
       fit_width?: fit_width?(raw),
-      fill_height?: fill_axis?(raw, :height) || legacy_fixed_fill_height?(raw, mode)
+      fill_height?: fill_axis?(raw, :height) || legacy_fixed_fill_height?(raw, mode),
+      # Keep fit separate from fixed: both have fill_height? false.
+      fit_height?: Payload.prop(raw, "fit_height") == true
     }
 
     Map.reject(base, fn {_k, v} -> is_nil(v) end)
@@ -1630,7 +1654,11 @@ defmodule BubbleEx.Frontend.Normalize do
   defp spacing_part(value), do: to_string(value)
 
   defp box_flags(raw) do
-    %{collapsed?: collapsed?(raw), hidden?: hidden?(raw)}
+    %{
+      collapsed?: collapsed?(raw),
+      hidden?: hidden?(raw),
+      collapse_when_hidden?: Payload.prop(raw, "collapse_when_hidden") == true
+    }
   end
 
   defp responsive_from(raw) do
@@ -1717,7 +1745,10 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp fixed_aliased_dimension(_raw, _key), do: nil
 
-  defp collapsed?(raw), do: Payload.prop(raw, "collapsed") == true
+  defp collapsed?(raw),
+    do:
+      Payload.prop(raw, "collapsed") == true or
+        (hidden?(raw) and Payload.prop(raw, "collapse_when_hidden") == true)
 
   defp hidden?(raw) do
     Payload.prop(raw, "hidden") == true or Payload.prop(raw, "is_visible") == false
@@ -1836,8 +1867,18 @@ defmodule BubbleEx.Frontend.Normalize do
       %{}
     else
       Enum.reduce(~w(top right bottom left), %{}, fn side, borders ->
-        put_paint(borders, "border-#{side}", canonical_side_border(raw, side))
+        borders
+        |> put_paint("border-#{side}", canonical_side_border(raw, side))
+        |> dormant_border_color(raw, side)
       end)
+    end
+  end
+
+  defp dormant_border_color(borders, raw, side) do
+    if Payload.prop(raw, "border_style_#{side}") == "none" do
+      put_paint(borders, "border-#{side}-color", Payload.prop(raw, "border_color_#{side}"))
+    else
+      borders
     end
   end
 
@@ -2348,10 +2389,39 @@ defmodule BubbleEx.Frontend.Normalize do
     {Map.merge(src_slots, alt_slots), Map.merge(src_bindings, alt_bindings)}
   end
 
+  # One condition entry, readable-keyed whatever dialect arrived: a served
+  # payload spells `%x`/`%c`/`%p`, an export spells `type`/`condition`/
+  # `properties`. Values stay verbatim; property diffs keep readable keys.
+  defp state_entry(state) when is_map(state) do
+    state =
+      Enum.reduce([{"%x", "type"}, {"%c", "condition"}, {"%p", "properties"}], state, fn
+        {compact, readable}, acc ->
+          case Map.fetch(acc, compact) do
+            {:ok, value} -> acc |> Map.delete(compact) |> Map.put_new(readable, value)
+            :error -> acc
+          end
+      end)
+
+    case Map.fetch(state, "properties") do
+      {:ok, diff} when is_map(diff) ->
+        Map.put(state, "properties", Payload.expand_properties(diff))
+
+      _ ->
+        state
+    end
+  end
+
+  defp state_entry(state), do: state
+
   # Editor JSON's `states`, else the compact form's `%s` (the ones a
   # breakpoint rule lowers leave it in apply_breakpoints/4, WTF-477).
   defp condition_slot(raw, exporter_id) do
     states = raw["states"] || raw["%st"] || Payload.prop(raw, "states") || raw["%s"]
+
+    states =
+      if is_map(states) and map_size(states) > 0,
+        do: Map.new(states, fn {k, state} -> {k, state_entry(state)} end),
+        else: states
 
     if is_map(states) and map_size(states) > 0 do
       binding = %{
