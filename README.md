@@ -100,6 +100,28 @@ complete Bubble runtime or backend support. Reports retain private source values
 App-tree exports also include the inventory and a root workflow report.
 See [the input/output contract and verification](docs/workflows.md).
 
+## Local app definitions
+
+Import a local `.bubble`/JSON file or a Buildprint v5 stored snapshot without
+making requests or compiling frontend/workflows:
+
+```elixir
+{:ok, definition} = BubbleEx.AppDefinition.load("app.bubble")
+# Or a workspace root / its .buildprint directory (optional exqlite required):
+{:ok, definition} = BubbleEx.AppDefinition.load("workspace", max_index_bytes: 512 * 1024 * 1024)
+
+app = definition.app       # raw app, marked with editor geometry
+model = definition.model   # BubbleEx.Model, built once
+{definition.source, definition.diagnostics}
+```
+
+Workspace source metadata retains versions, counts and snapshot verification;
+file metadata is empty. No local paths are included. Buildprint imports read
+SQLite, **not unapplied `.ts` edits**, and V5 redactions are not a lossless
+credential backup. A `.bubble` raw map may contain secrets: import does not
+secret-scan it. This is definition import, not execution parity or record
+migration; legacy split directories are unsupported.
+
 ## Data model
 
 Build the typed, stack-neutral model of an app's data from a decoded `.bubble`

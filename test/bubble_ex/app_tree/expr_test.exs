@@ -63,6 +63,36 @@ defmodule BubbleEx.AppTree.ExprTest do
                {:ok, "Current Page Width less than breakpoint built-in-mobile-landing"}
     end
 
+    # Replay 2026-10-19: a breakpoint used as text is its width.
+    test "renders a breakpoint as its width when the app's widths are known" do
+      cond_expr = %{
+        "type" => "PageData",
+        "properties" => %{"name" => "Current Page Width"},
+        "next" => %{
+          "type" => "Message",
+          "name" => "less_than",
+          "args" => %{
+            "type" => "Breakpoint",
+            "properties" => %{"breakpoint_id" => "built-in-tablet"}
+          }
+        }
+      }
+
+      assert Expr.render_condition(cond_expr, %{"built-in-tablet" => 992}) ==
+               {:ok, "Current Page Width less than 992"}
+
+      assert Expr.render_condition(cond_expr, %{"built-in-tablet" => 992.0}) ==
+               {:ok, "Current Page Width less than 992"}
+
+      text = %{
+        "type" => "TextExpression",
+        "entries" => %{"0" => "Tablet: ", "1" => cond_expr["next"]["args"]}
+      }
+
+      assert Expr.render_text(text, %{"built-in-tablet" => 992}) == {:ok, "Tablet: 992"}
+      assert Expr.render_text(text) == {:partial, "Tablet: [⟨expr⟩]"}
+    end
+
     test "renders an operator without operand" do
       cond_expr = %{
         "type" => "PageData",

@@ -222,6 +222,10 @@ _Avoid_: App tree, page HTML file
 A dimension-preserving stand-in for an unsupported, plugin, or out-of-slice node, accompanied by an export finding and binding.
 _Avoid_: Unsupported error, skipped node
 
+**Cell template**:
+A dynamic Repeating Group's single per-item template, projected as a group node so each rendered cell lowers with the group's per-cell layout instead of the group's outer extent.
+_Avoid_: Static cell, expanded items
+
 **Frozen case**:
 A parity-tested page whose committed Bubble references are the only thing we call visually correct. Case-correct means that case passed the fidelity gates; an app export is never “correct.”
 _Avoid_: Screenshot test, visual regression suite, golden file

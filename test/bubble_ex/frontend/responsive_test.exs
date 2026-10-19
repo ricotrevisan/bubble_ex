@@ -20,6 +20,25 @@ defmodule BubbleEx.Frontend.ResponsiveTest do
     assert length(Responsive.breakpoint_states(chained, breakpoints)) == 1
   end
 
+  # A hostile or partial export: settings that are not objects have no
+  # breakpoints, never a crash (AppTree's outline reads them).
+  test "breakpoints of settings that are not objects are none" do
+    for settings <- [
+          "x",
+          [],
+          nil,
+          %{"client_safe" => "x"},
+          %{"client_safe" => [1]},
+          %{"client_safe" => %{"responsive_breakpoints" => "x"}},
+          %{"client_safe" => %{"responsive_breakpoints" => [%{"size" => 1}]}}
+        ] do
+      assert Responsive.breakpoints(%{"settings" => settings}) == %{}, inspect(settings)
+      assert Responsive.widths(%{"settings" => settings}) == %{}, inspect(settings)
+    end
+
+    assert Responsive.breakpoints("not an app") == %{}
+  end
+
   test "widths keeps each breakpoint's numeric size, 0 included, and drops any other" do
     breakpoints = %{
       "tablet" => %{"builtin" => true, "size" => 992},

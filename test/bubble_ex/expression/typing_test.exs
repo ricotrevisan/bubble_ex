@@ -289,4 +289,53 @@ defmodule BubbleEx.Expression.TypingTest do
     assert Enum.map(Tree.ancestors(tree, "bT3"), & &1.id) == ["bR1", "bP1"]
     assert Ast.node?(parse!(cu(), env()))
   end
+
+  test "choice controls' values are their dynamic type, else text" do
+    element = fn type, props -> %{"id" => type, "type" => type, "properties" => props} end
+
+    app = %{
+      "pages" => %{
+        "p" => %{
+          "id" => "bP9",
+          "type" => "Page",
+          "elements" => %{
+            "a" => element.("RadioButtons", %{"dynamic_type" => "custom.product"}),
+            "b" => element.("RadioButtons", %{"choices" => "Monthly\nQuarterly"}),
+            "c" => element.("Dropdown", %{"dynamic_type" => "custom.task"})
+          }
+        }
+      }
+    }
+
+    tree = Tree.build(app)
+    assert %Tree.Node{value: "custom.product"} = Tree.node(tree, "RadioButtons")
+    assert %Tree.Node{value: "custom.task"} = Tree.node(tree, "Dropdown")
+
+    static =
+      Tree.build(put_in(app, ["pages", "p", "elements"], %{"b" => element.("RadioButtons", %{})}))
+
+    assert %Tree.Node{value: "text"} = Tree.node(static, "RadioButtons")
+  end
+
+  test "inputs' values follow their content format" do
+    input = fn id, format ->
+      %{"id" => id, "type" => "Input", "properties" => %{"content_format" => format}}
+    end
+
+    formats = %{
+      "bPhone" => {"us_phone", "text"},
+      "bRef" => {"numerical_ref", "text"},
+      "bEuro" => {"date_2", "date"},
+      "bInt" => {"int_number", "number"}
+    }
+
+    elements = Map.new(formats, fn {id, {format, _}} -> {id, input.(id, format)} end)
+
+    tree =
+      Tree.build(%{
+        "pages" => %{"p" => %{"id" => "bP9", "type" => "Page", "elements" => elements}}
+      })
+
+    for {id, {_, type}} <- formats, do: assert(%Tree.Node{value: ^type} = Tree.node(tree, id))
+  end
 end

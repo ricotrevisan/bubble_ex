@@ -99,6 +99,7 @@ defmodule BubbleEx.AppTree do
   defp render_views(app, manifest) do
     element_names = Names.element_names(app)
     files_by_parent = workflow_files_by_parent(manifest)
+    breakpoints = BubbleEx.Frontend.Responsive.widths(app)
 
     {container_views, coverage} =
       manifest["ids"]
@@ -110,7 +111,11 @@ defmodule BubbleEx.AppTree do
         title = info["name"] || key
 
         {outline, outline_cov} =
-          Render.Outline.render(container, %{title: title, raw: Path.basename(info["path"])})
+          Render.Outline.render(container, %{
+            title: title,
+            raw: Path.basename(info["path"]),
+            breakpoints: breakpoints
+          })
 
         ctx = %{
           title: title,

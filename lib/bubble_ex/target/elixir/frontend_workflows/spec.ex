@@ -180,7 +180,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   `url/1`; a thing read from the URL is not kept by the page, only its
   data sources and workflows read it), `{:page_width, %{}}` (`Current
   page width`, the viewport's width the runtime keeps, WTF-520: the same
-  in every surface and cell) or nil when the page does not keep it.
+  in every surface and cell), `{:now, %{}}` (`Current date/time`, read
+  when the page renders: Bubble computes it once per evaluation and never
+  again on its own, replayed 2026-10-19), `{:page_name, %{}}` (`Current
+  page name` read in a reusable element: the host page's Bubble name, which
+  the page passes down; on a page itself Bubble's editor refuses it, so it
+  is nil there) or nil when the page does not keep it.
 
   A reusable instance's property read where the instance is (`Card A's
   Title` on the page) is also its reusable element's default when the
@@ -191,6 +196,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
 
   def read(%__MODULE__{}, _surface, {:page_data, %{"name" => "Current Page Width"}}, _cell),
     do: {:page_width, %{}}
+
+  def read(%__MODULE__{}, _surface, {:page_data, %{"name" => "Current Date/Time"}}, _cell),
+    do: {:now, %{}}
+
+  def read(%__MODULE__{} = spec, surface, {:page_data, %{"name" => "Current Page Name"}}, _cell) do
+    case spec.surfaces[surface] do
+      %{kind: :reusable} -> {:page_name, %{}}
+      _ -> nil
+    end
+  end
 
   def read(%__MODULE__{}, _surface, {:url_parameter, ref}, _cell) do
     case url(ref) do

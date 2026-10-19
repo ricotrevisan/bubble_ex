@@ -204,8 +204,16 @@ defmodule BubbleEx.Target.Phoenix.UrlTest do
     assert hook =~ ~s|window.addEventListener("resize", resized)|
 
     # The first width comes with the connect params, read at every connect.
+    # Bubble's page width excludes a vertical scrollbar (replay 2026-10-19):
+    # `document.documentElement.clientWidth`, never `window.innerWidth`.
+    width = "Math.round(document.documentElement.clientWidth)"
+
     assert files["assets/js/app.js"] =~
-             "params: () => ({_csrf_token: csrfToken, bubble_page_width: Math.round(window.innerWidth)})"
+             "params: () => ({_csrf_token: csrfToken, bubble_page_width: #{width}})"
+
+    assert hook =~ "const width = #{width}"
+    refute files["assets/js/app.js"] =~ "innerWidth"
+    refute hook =~ "innerWidth"
 
     runtime = files["lib/shop_web/bubble_workflows.ex"]
 

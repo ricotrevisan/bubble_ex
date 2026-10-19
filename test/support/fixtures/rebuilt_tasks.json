@@ -1,0 +1,276 @@
+{
+ "_id": "mixxy",
+ "app_version": "test",
+ "pages": {
+  "bTIrb": {
+   "properties": {
+    "height": 767,
+    "width": 1080,
+    "fixed_width": false,
+    "min_width_px": 0,
+    "default_width": 1080,
+    "min_height_px": 767,
+    "new_responsive": true,
+    "element_version": 5,
+    "container_layout": "column",
+    "responsive_version": 1
+   },
+   "type": "Page",
+   "id": "bTIra",
+   "elements": {
+    "bTIrh": {
+     "properties": {
+      "height": 200,
+      "left": 0,
+      "top": 0,
+      "zindex": 2,
+      "floating_reference": "top",
+      "custom_id": "bTIrc",
+      "fit_width": true,
+      "max_width": 100,
+      "min_width": "0px",
+      "fixed_width": false,
+      "single_width": true,
+      "min_width_css": "200px",
+      "single_height": true,
+      "min_height_css": "200px",
+      "container_layout": "fixed",
+      "floating_reference_horizontal": "none",
+      "floating_reference_horizontal_resp": "left"
+     },
+     "type": "CustomElement",
+     "id": "bTIrg",
+     "default_name": "Rubble header A"
+    },
+    "bTIrj": {
+     "properties": {
+      "height": 48,
+      "left": 0,
+      "top": 210,
+      "width": 250,
+      "zindex": 3,
+      "placeholder": "New task title",
+      "fit_width": false,
+      "fixed_width": false,
+      "single_width": false,
+      "min_width_css": "0px",
+      "single_height": true,
+      "min_height_css": "48px",
+      "collapse_when_hidden": true
+     },
+     "type": "Input",
+     "id": "bTIri",
+     "default_name": "Input A",
+     "style": "Input_staandard_input_"
+    },
+    "bTIrl": {
+     "properties": {
+      "text": "Add",
+      "height": 44,
+      "left": 0,
+      "top": 270,
+      "width": 150,
+      "zindex": 4,
+      "icon": "material outlined star_border",
+      "fit_width": false,
+      "fixed_width": false,
+      "single_width": false,
+      "min_width_css": "0px",
+      "single_height": true,
+      "min_height_css": "44px",
+      "collapse_when_hidden": true
+     },
+     "type": "Button",
+     "id": "bTIrk",
+     "default_name": "Button A",
+     "style": "Button_standard_button_"
+    },
+    "bTIrn": {
+     "properties": {
+      "height": 350,
+      "left": 0,
+      "top": 330,
+      "width": 280,
+      "zindex": 5,
+      "data_source": {
+       "properties": {
+        "descending": true,
+        "sort_field": "Created Date",
+        "type_to_find": "custom.task"
+       },
+       "type": "Search"
+      },
+      "group_type": "custom.task",
+      "fit_width": false,
+      "fixed_rows": false,
+      "fixed_width": false,
+      "single_width": false,
+      "fixed_columns": true,
+      "min_width_css": "0px",
+      "single_height": true,
+      "min_height_css": "350px",
+      "container_layout": "row",
+      "cell_min_height_css": "87.5px",
+      "collapse_when_hidden": true
+     },
+     "type": "RepeatingGroup",
+     "id": "bTIrm",
+     "default_name": "RepeatingGroup A",
+     "elements": {
+      "bTIrp": {
+       "properties": {
+        "text": {
+         "entries": {
+          "0": {
+           "next": {
+            "type": "Message",
+            "name": "title_text"
+           },
+           "type": "ElementParent"
+          }
+         },
+         "type": "TextExpression"
+        },
+        "height": 36,
+        "left": 0,
+        "top": 0,
+        "width": 100,
+        "zindex": 2,
+        "fit_width": false,
+        "fit_height": true,
+        "fixed_width": false,
+        "single_width": false,
+        "min_width_css": "0px",
+        "single_height": false,
+        "min_height_css": "36px",
+        "collapse_when_hidden": true
+       },
+       "states": {
+        "0": {
+         "condition": {
+          "next": {
+           "next": {
+            "type": "Message",
+            "name": "is_true"
+           },
+           "type": "Message",
+           "name": "done_boolean"
+          },
+          "type": "ElementParent"
+         },
+         "properties": {
+          "background_style": "bgcolor",
+          "bgcolor": "#ffe0e0"
+         },
+         "type": "State"
+        }
+       },
+       "type": "Text",
+       "id": "bTIro",
+       "default_name": "Text A",
+       "style": "Text_body_"
+      },
+      "bTIrr": {
+       "properties": {
+        "text": "Done",
+        "height": 44,
+        "left": 0,
+        "top": 0,
+        "width": 150,
+        "zindex": 3,
+        "icon": "material outlined star_border",
+        "fit_width": false,
+        "single_width": true,
+        "max_width_css": "150px",
+        "min_width_css": "150px",
+        "single_height": true,
+        "min_height_css": "44px",
+        "collapse_when_hidden": true
+       },
+       "type": "Button",
+       "id": "bTIrq",
+       "default_name": "Button B",
+       "style": "Button_standard_button_"
+      }
+     }
+    }
+   },
+   "name": "rubble_fixture",
+   "workflows": {
+    "bTIrt": {
+     "properties": {
+      "element_id": "bTIrk"
+     },
+     "type": "ButtonClicked",
+     "id": "bTIrs",
+     "actions": {
+      "0": {
+       "properties": {
+        "initial_values": {
+         "0": {
+          "key": "title_text",
+          "value": {
+           "next": {
+            "type": "Message",
+            "name": "get_data"
+           },
+           "properties": {
+            "element_id": "bTIri"
+           },
+           "type": "GetElement"
+          }
+         },
+         "1": {
+          "key": "done_boolean",
+          "value": false
+         }
+        },
+        "thing_type": "custom.task"
+       },
+       "type": "NewThing",
+       "id": "bTIru"
+      },
+      "1": {
+       "type": "ResetInputs",
+       "id": "bTIrv"
+      }
+     }
+    },
+    "bTIrx": {
+     "properties": {
+      "element_id": "bTIrq"
+     },
+     "type": "ButtonClicked",
+     "id": "bTIrw",
+     "actions": {
+      "0": {
+       "properties": {
+        "changes": {
+         "0": {
+          "key": "done_boolean",
+          "value": {
+           "next": {
+            "next": {
+             "type": "Message",
+             "name": "is_false"
+            },
+            "type": "Message",
+            "name": "done_boolean"
+           },
+           "type": "ElementParent"
+          }
+         }
+        },
+        "to_change": {
+         "type": "ElementParent"
+        }
+       },
+       "type": "ChangeThing",
+       "id": "bTIry"
+      }
+     }
+    }
+   }
+  }
+ }
+}

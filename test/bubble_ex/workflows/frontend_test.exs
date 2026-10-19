@@ -57,6 +57,46 @@ defmodule BubbleEx.Workflows.FrontendTest do
     assert [%{id: "rWord", name: "Result"}] = evt.returns
   end
 
+  test "captured entrance animations retain their final visibility and motion" do
+    source =
+      edit(app(), "wLoad", fn workflow ->
+        Map.put(workflow, "actions", %{
+          "0" => %{
+            "id" => "anim",
+            "type" => "AnimateElement",
+            "properties" => %{
+              "element_id" => "bFocus",
+              "animation" => "transition.slideUpIn",
+              "duration" => 900
+            }
+          }
+        })
+      end)
+
+    [step] = source |> lower() |> workflow("wLoad") |> Map.fetch!(:steps)
+    assert step.op == :animate
+
+    assert step.args == %{
+             element: "bFocus",
+             animation: "transition.slideUpIn",
+             duration: 900,
+             visibility: :show
+           }
+
+    assert step.residue == []
+
+    unknown =
+      edit(
+        source,
+        "wLoad",
+        &put_in(&1, ["actions", "0", "properties", "animation"], "unknown.motion")
+      )
+
+    [step] = unknown |> lower() |> workflow("wLoad") |> Map.fetch!(:steps)
+    assert step.args.visibility == nil
+    assert Enum.any?(step.residue, &(&1.reason == :unsupported_option))
+  end
+
   test "steps lower to the shared vocabulary", %{lowered: lowered} do
     [set, show] = workflow(lowered, "wState").steps
     assert %{index: 1, op: :set_state, type: "SetCustomState", residue: []} = set
@@ -281,6 +321,15 @@ defmodule BubbleEx.Workflows.FrontendTest do
            )
   end
 
+  test "an action's editor display name has no semantics" do
+    lowered =
+      app()
+      |> edit("wState", &put_in(&1, ["actions", "0", "properties", "name"], "Remember choice"))
+      |> lower()
+
+    assert lowered |> workflow("wState") |> Workflow.residue() == []
+  end
+
   test "unresolved references, unknown options and plugin events are residue" do
     lowered =
       app()
@@ -304,6 +353,15 @@ defmodule BubbleEx.Workflows.FrontendTest do
     assert {:unsupported_option, %{options: ["run_when"]}} in reasons.("wCond")
     # An element of another surface.
     assert {:unresolved_reference, %{reference: "element"}} in reasons.("wClose")
+  end
+
+  test "an event's editor display name has no semantics" do
+    lowered =
+      app()
+      |> edit("wState", &put_in(&1, ["properties", "name"], "Select a fiberhood"))
+      |> lower()
+
+    assert lowered |> workflow("wState") |> Workflow.residue() == []
   end
 
   test "a condition-true workflow without \"run this\" runs once (unverified default)" do
@@ -515,6 +573,38 @@ defmodule BubbleEx.Workflows.FrontendTest do
       assert %Workflow{residue: [%{reason: :uncompiled_expression}]} =
                broken |> lower() |> workflow("wLockA")
     end
+  end
+
+  # Replay 2026-10-19: a repeating group's "is loading" flashes yes for a
+  # few milliseconds after each response, so a workflow's trigger may fire
+  # on it: there it is residue, never the constant no a page shows.
+  test "a condition-true workflow on a repeating group's is loading is residue" do
+    rg = %{
+      "id" => "bLoadRG",
+      "type" => "RepeatingGroup",
+      "properties" => %{"group_type" => "text", "rows" => 1, "columns" => 1}
+    }
+
+    loading = %{
+      "type" => "GetElement",
+      "properties" => %{"element_id" => "bLoadRG"},
+      "next" => %{
+        "type" => "Message",
+        "name" => "get_loading_status",
+        "next" => %{"type" => "Message", "name" => "is_true"}
+      }
+    }
+
+    lowered =
+      app()
+      |> put_in(["pages", "home", "elements", "bLoadRG"], rg)
+      |> edit("wCond", &put_in(&1, ["properties", "condition"], loading))
+      |> lower()
+
+    assert %Workflow{
+             kind: :condition_true,
+             condition: %{ir: nil, constructs: ["expr_uncompiled:loading_status"]}
+           } = workflow(lowered, "wCond")
   end
 
   defp walk(%BubbleEx.Expression.IR{args: args} = ir), do: [ir | Enum.flat_map(args, &walk/1)]

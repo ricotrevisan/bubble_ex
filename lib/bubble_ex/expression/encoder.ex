@@ -82,6 +82,8 @@ defmodule BubbleEx.Expression.Encoder do
   def encode(%Empty{meta: m}), do: object(m, type: "Empty")
 
   def encode(%Scope{source_type: type, ref: ref, meta: m}) do
+    ref = member_keys(ref, m[:ref_keys])
+
     props =
       if ref == %{} and not Map.has_key?(keys(m), :properties), do: [], else: [properties: ref]
 
@@ -125,6 +127,7 @@ defmodule BubbleEx.Expression.Encoder do
   def encode(%Search{data_type: data_type, constraints: cs, options: options, meta: m}) do
     props =
       options
+      |> member_keys(m[:option_keys])
       |> put(m[:prop_keys], :type_to_find, data_type, not is_nil(data_type))
       |> put(
         m[:prop_keys],
@@ -250,6 +253,10 @@ defmodule BubbleEx.Expression.Encoder do
     Enum.reduce(fields, m[:extra] || %{}, fn {logical, v}, acc ->
       Map.put(acc, Keys.key(used, logical), v)
     end)
+  end
+
+  defp member_keys(members, spellings) do
+    Map.new(members, fn {key, value} -> {Map.get(spellings || %{}, key, key), value} end)
   end
 
   defp keys(m), do: m[:keys] || %{}

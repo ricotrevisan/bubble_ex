@@ -429,6 +429,14 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
     {:ok, view, _html} = live(conn, "/?keep=1")
     click(view, "bBtnUrl")
     assert_patch(view, "/?keep=1&tab=two")
+
+    # To the URL the page is on, whatever the parameters' order: nothing,
+    # as in Bubble (replay 2026-10-19: no search, no reload, no history
+    # entry).
+    {:ok, view, _html} = live(conn, "/?tab=two&keep=1")
+    click(view, "bBtnUrl")
+    refute_patched(view)
+    assert Process.alive?(view.pid)
   end
 
   test "go to a page that is gone refuses the workflow, never goes elsewhere (WTF-429)", %{

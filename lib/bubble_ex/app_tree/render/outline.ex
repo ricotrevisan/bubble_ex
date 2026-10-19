@@ -7,11 +7,17 @@ defmodule BubbleEx.AppTree.Render.Outline do
 
   alias BubbleEx.AppTree.{Coverage, Expr, Names}
 
-  @spec render(map(), %{title: String.t(), raw: String.t()}) :: {iodata(), Coverage.t()}
-  def render(container, %{title: title, raw: raw}) do
+  @spec render(map(), %{
+          required(:title) => String.t(),
+          required(:raw) => String.t(),
+          optional(:breakpoints) => %{String.t() => number()}
+        }) :: {iodata(), Coverage.t()}
+  def render(container, %{title: title, raw: raw} = info) do
+    # A breakpoint reads as its width (`BubbleEx.AppTree.Expr`).
+    raw = %{file: raw, breakpoints: Map.get(info, :breakpoints, %{})}
     {lines, coverage} = walk_children(container["elements"], 0, raw, Coverage.zero())
 
-    header = "# Outline: #{title}\n\n_Generated from #{raw} — do not edit._\n"
+    header = "# Outline: #{title}\n\n_Generated from #{raw.file} — do not edit._\n"
     body = if lines == [], do: "", else: "\n" <> Enum.join(lines, "\n") <> "\n"
     {[header, body], coverage}
   end
@@ -50,7 +56,7 @@ defmodule BubbleEx.AppTree.Render.Outline do
   defp text_part(nil, _raw, coverage), do: {"", coverage}
 
   defp text_part(text, raw, coverage) do
-    case Expr.render_text(text) do
+    case Expr.render_text(text, raw.breakpoints) do
       {:ok, s} ->
         {~s( => "#{s}"), Coverage.bump(coverage, :expressions, true)}
 
@@ -58,7 +64,8 @@ defmodule BubbleEx.AppTree.Render.Outline do
         {~s( => "#{s}"), Coverage.bump(coverage, :expressions, false)}
 
       :fallback ->
-        {" => ⟨unrendered expression — see #{raw}⟩", Coverage.bump(coverage, :expressions, false)}
+        {" => ⟨unrendered expression — see #{raw.file}⟩",
+         Coverage.bump(coverage, :expressions, false)}
     end
   end
 
@@ -72,13 +79,13 @@ defmodule BubbleEx.AppTree.Render.Outline do
       changed =
         state["properties"] |> Kernel.||(%{}) |> Map.keys() |> Enum.sort() |> Enum.join(", ")
 
-      case Expr.render_condition(state["condition"]) do
+      case Expr.render_condition(state["condition"], raw.breakpoints) do
         {:ok, cond_text} ->
           {lines ++ ["#{indent}  - when #{cond_text}: #{changed}"],
            Coverage.bump(cov, :expressions, true)}
 
         :fallback ->
-          {lines ++ ["#{indent}  - conditional state (see #{raw})"],
+          {lines ++ ["#{indent}  - conditional state (see #{raw.file})"],
            Coverage.bump(cov, :expressions, false)}
       end
     end)

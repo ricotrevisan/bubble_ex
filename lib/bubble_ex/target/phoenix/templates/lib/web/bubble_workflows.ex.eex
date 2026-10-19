@@ -1672,10 +1672,35 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   defp navigate_now(socket, to) do
     case to do
-      {:patch, to, replace?} -> push_patch(socket, to: to, replace: replace?)
-      {:navigate, to, replace?} -> push_navigate(socket, to: to, replace: replace?)
-      {:redirect, to} -> redirect(socket, to: to)
-      {:external, url} -> redirect(socket, external: url)
+      # A "Go to page" to the URL the page is on does nothing in Bubble: no
+      # search, no reload, no history entry (replay 2026-10-19).
+      {:patch, to, replace?} ->
+        if same_url?(socket, to),
+          do: socket,
+          else: push_patch(socket, to: to, replace: replace?)
+
+      {:navigate, to, replace?} ->
+        push_navigate(socket, to: to, replace: replace?)
+
+      {:redirect, to} ->
+        redirect(socket, to: to)
+
+      {:external, url} ->
+        redirect(socket, external: url)
+    end
+  end
+
+  # Whether `to` (a path and query) is the URL the page is on: the same
+  # path and the same parameters, as the page reads them.
+  defp same_url?(socket, to) do
+    %URI{path: path, query: query} = URI.parse(to)
+
+    case socket.assigns do
+      %{bubble_path: current, bubble_url: url} when is_binary(current) ->
+        (path || "/") == current and Bubble.url_query(query) == url
+
+      _ ->
+        false
     end
   end
 

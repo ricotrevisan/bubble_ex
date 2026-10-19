@@ -795,8 +795,11 @@ panel below a width when a URL flag is set" (`Current page width > 767
 and the URL's flag`) was never set, and every conditional of the
 reusable element reading it kept its visibility on page load.
 
-It is now kept by the page, in CSS pixels (`window.innerWidth`, the
-width the breakpoints' media rules read):
+It is now kept by the page, in CSS pixels, as Bubble reads it (replayed
+2026-10-19): jQuery's `$(window).width()`, which is
+`document.documentElement.clientWidth`, the viewport's width without a
+vertical scrollbar (the breakpoints' media rules read the width with it,
+see *Unverified Bubble behavior* below):
 
 * **at connect**: the LiveSocket's params carry it (`bubble_page_width`
   in the scaffolded `assets/js/app.js`, read again at every connect), and
@@ -843,11 +846,56 @@ A width compared to a named breakpoint (`Current page width < Tablet`,
 width in pixels, from the app's breakpoint settings
 (`settings.client_safe.responsive_breakpoints`: built-in and custom
 breakpoints alike, each with its `size`, the width the breakpoints'
-media rules read too). The width is fixed when the app is compiled
+media rules read too). The comparison is Bubble's (replayed 2026-10-19,
+Tablet 992): at exactly 992 pixels `< Tablet` is no and `<= Tablet` yes,
+at 991 both are yes; the breakpoint rules' media queries say the same
+(`width < 992px`, `width <= 992px`). A breakpoint shown as text is its
+width (`992`). The width is fixed when the app is compiled
 (`Expression.Tree.breakpoints`, typed as a number). A breakpoint the
 settings do not define, or define without a size, does not compile
 (`expr_untyped_scope`, `reason: :breakpoint_not_in_settings`): Bubble's
 default widths are not assumed.
+
+## The current date/time, the page's name and "is loading" (replay 2026-10-19)
+
+Answered by the replay of 2026-10-19 on a synthetic page and reusable
+element (observed in Bubble, then implemented):
+
+* **`Current date/time`** is never evaluated again on its own: no timer,
+  not even on a resize (a condition on its seconds never flipped over a
+  minute). It is never empty. That Bubble computes it once per
+  evaluation is inferred from its code (the value is set once per
+  evaluation context), not measured. A visibility (or "isn't
+  clickable") conditional or a shown value reading it compiles
+  (`DateTime.utc_now()` in the template), with no timer: it is read on
+  the first render, and again only when another value in the same
+  expression changes. `is empty` is no. A workflow reads the time it
+  started, as before.
+* **`Current page name`** is offered only inside a reusable element; on a
+  page the editor refuses it. In a reusable element it is the host page's
+  Bubble name (the editor's), whatever else the path holds
+  (`/<page>/abc` keeps it), and a "Go to page" to the same page does not
+  change it. It is fixed per page: the page passes its name down to the
+  reusable elements it renders (`bubble_page_name`, which each passes to
+  those it renders), so a reusable element on several pages reads each
+  host's. Not replayed: a reusable element on the index page (here the
+  index page's Bubble name, `index`, like any other page's). On a page
+  it is not kept: a conditional reading it is marked
+  (`it reads Current page name on a page: Bubble offers it only inside a
+  reusable element`), and so is a value. Workflows reading it are still
+  `:unavailable_input`.
+* **A repeating group's `is loading`** is effectively no in Bubble: it
+  stays no while a search waits for its response (the old rows still
+  shown during a search again), and is yes only for a few milliseconds
+  as rows render after a response (on the first load also just after the
+  search is sent, then the group is blank until the data arrives). It
+  compiles to a constant no in what a page shows (visibility and "isn't
+  clickable" conditionals, shown values): a condition reading it there
+  is no longer residue. Bubble's own value is unreliable and only
+  flickers, so nothing shown should depend on it. A workflow's trigger
+  or condition reading it ("Do when … is loading") stays residue
+  (`expr_uncompiled`, construct `:loading_status`): Bubble's yes flash
+  after each response may fire it, and a constant no never would.
 
 ## The static render: data not loaded yet (WTF-563)
 
@@ -1241,9 +1289,19 @@ of the URL (its query, its path and segments, the page's thing) or the
 user, as read with privacy enforced, changed, or the data is stale
 (WTF-562; without privacy the session's user is never read again): a
 patch to the URL the page is already on, as a page-load workflow may
-make, reads nothing. That Bubble does not run a page's searches again on
-a "Go to page" to the current page with the same parameters is an
-assumption, to confirm by replay. Every read also takes the change notifications already
+make, reads nothing. Confirmed by the replay of 2026-10-19: in Bubble a
+"Go to page" to the current page with the same parameters runs no
+search, reloads nothing and adds no history entry (and the generated
+"Go to page" then does not patch at all, `docs/frontend-workflows.md`);
+one that changes only the URL (a parameter, the path after the page's
+name) updates the address bar and reads the URL's parameters again,
+without a reload, as a patch does here. "The URL the page is on"
+compares the path and the parameters as the page reads them
+(`Bubble.url_query/1`), not the URL's text: a parameter's order, an
+empty parameter and an absent one, a key repeated and its values joined
+with commas count as the same. Where Bubble's URLs differ only so, it
+pushes a history entry and changes the address bar, and here nothing
+happens; what the page reads is the same either way. Every read also takes the change notifications already
 delivered to the page (each is sent after its write committed, so the
 read sees it): a workflow's own write and its notification cost one read,
 not two; a write in owned code that goes through Ash counts too.
@@ -2098,10 +2156,17 @@ redirects (no synthetic redirecting call).
   replayed: visibility conditions, a backend workflow's `Only when` (a
   backend step runs on an empty X for `X is no`), URL and input
   parameters, and `x is not no` (here it needs a stored yes).
-* **`Current page width` and the scrollbar** (WTF-520, above): the page
-  reports `window.innerWidth`, which includes a vertical scrollbar.
-  Whether Bubble's value includes it (and so where a threshold falls on
-  a page that scrolls) is not replayed.
+* **`Current page width` and the scrollbar** (WTF-520, above): answered
+  by the replay of 2026-10-19. Bubble's value is jQuery's
+  `$(window).width()`, `document.documentElement.clientWidth`, read again
+  on a window resize: without a classic vertical scrollbar. The page now
+  reports the same. The replay's browser had overlay scrollbars, so the
+  difference itself was read from Bubble's code, not measured. Still
+  open: the breakpoints' media rules read the viewport's width with the
+  scrollbar, so on a page with a classic scrollbar a breakpoint rule and a
+  conditional reading the width can disagree within the scrollbar's
+  width of the threshold; whether Bubble's own breakpoints apply at the
+  width with or without it is not replayed.
 * **An empty text is empty** (WTF-514, above): that Bubble compares
   `""` as equal to an empty value in `is` / `is not` is inferred from
   its data model (it stores no empty texts), not replayed. A condition

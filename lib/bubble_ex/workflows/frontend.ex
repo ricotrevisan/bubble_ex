@@ -45,6 +45,7 @@ defmodule BubbleEx.Workflows.Frontend do
   | Bubble action | `Step.op` | `Step.args` |
   |---------------|-----------|-------------|
   | Show / Hide / Toggle an element | `:show` / `:hide` / `:toggle` | `element` |
+  | Animate an element | `:animate` | `element`, `animation`, `duration`, `visibility` (known entrance final state) |
   | Set focus to an element, Scroll to an element | `:focus`, `:scroll_to` | `element` |
   | Reset relevant inputs (`ResetInputs`) | `:reset_inputs` | `within` (the triggering element's container, nil for the surface) |
   | Reset a group / popup (`ResetGroup`) | `:reset_group` | `element` |
@@ -135,13 +136,14 @@ defmodule BubbleEx.Workflows.Frontend do
 
   @element_events [:click, :input_change, :popup_opened, :popup_closed]
 
-  # Event members with a lowering, or without semantics (captions, colors,
-  # folders, debugger breakpoints).
-  @event_members ~w(element_id element_id_friendly condition wf_folder event_color breakpoint
+  # Event members with a lowering, or without semantics (captions, the
+  # editor's display name, colors, folders, debugger breakpoints).
+  @event_members ~w(element_id element_id_friendly name condition wf_folder event_color breakpoint
                     workflow_disabled run_when event_name parameters return_types interval)
 
   @ops %{
     "ShowElement" => :show,
+    "AnimateElement" => :animate,
     "HideElement" => :hide,
     "ToggleElement" => :toggle,
     "SetFocusToElement" => :focus,
@@ -169,6 +171,7 @@ defmodule BubbleEx.Workflows.Frontend do
   # (a debugger breakpoint, the editor's display name) are ignored.
   @members %{
     show: ~w(element_id),
+    animate: ~w(element_id animation duration),
     hide: ~w(element_id),
     toggle: ~w(element_id),
     focus: ~w(element_id),
@@ -194,7 +197,7 @@ defmodule BubbleEx.Workflows.Frontend do
     pause: ~w(length hide_status_bar)
   }
 
-  @ignored_members ~w(condition breakpoint element_id_friendly)
+  @ignored_members ~w(condition breakpoint element_id_friendly name)
 
   @doc """
   Lowers the page and reusable-element workflows of decoded app JSON.
@@ -358,7 +361,7 @@ defmodule BubbleEx.Workflows.Frontend do
     surface = symbol.parent
     host = bubble(surface)
     env = Sites.workflow_env(raw, path, host, env)
-    props = map(Source.value(raw, ~w(properties %p)))
+    props = Source.member_props(map(Source.value(raw, ~w(properties %p))))
     event_type = Source.value(raw, ~w(type %x))
     kind = Map.get(@kinds, event_type, :unsupported)
     id = symbol.id
@@ -583,7 +586,7 @@ defmodule BubbleEx.Workflows.Frontend do
   defp step(action, path, n, env, ctx) when is_map(action) do
     env = Sites.action_env(action, env)
     type = Source.value(action, ~w(type %x))
-    props = map(Source.value(action, ~w(properties %p)))
+    props = Source.member_props(map(Source.value(action, ~w(properties %p))))
     bubble_id = text(Source.value(action, ~w(id %id))) || "#{ctx.workflow}/#{List.last(path)}"
     id = Symbol.id(:action, bubble_id)
     op = if is_binary(type), do: Map.get(@ops, type) || Lowering.data_op(type)
@@ -662,6 +665,30 @@ defmodule BubbleEx.Workflows.Frontend do
        when op in [:show, :hide, :toggle, :focus, :scroll_to, :reset_group] do
     element = text(props["element_id"])
     {%{element: element}, element_ref(id, element, ctx)}
+  end
+
+  defp lower(:animate, props, _path, id, _env, ctx) do
+    element = text(props["element_id"])
+    animation = text(props["animation"])
+
+    visibility =
+      case animation do
+        "transition.slideUpIn" -> :show
+        "transition.slideUpBigIn" -> :show
+        _ -> nil
+      end
+
+    residue = element_ref(id, element, ctx)
+
+    residue =
+      if visibility, do: residue, else: residue ++ Lowering.option_residue(id, ["animation"])
+
+    {%{
+       element: element,
+       animation: animation,
+       duration: props["duration"],
+       visibility: visibility
+     }, residue}
   end
 
   defp lower(:reset_inputs, _props, _path, _id, _env, ctx), do: {%{within: ctx.within}, []}

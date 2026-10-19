@@ -22,7 +22,8 @@ defmodule BubbleEx.Frontend do
     Fetch,
     InitialState,
     Normalize,
-    Normalized
+    Normalized,
+    StaticRepeating
   }
 
   @type normalize_option :: {atom(), term()}
@@ -60,6 +61,22 @@ defmodule BubbleEx.Frontend do
       {result, normalize_stop(result)}
     end)
   end
+
+  @doc """
+  A dynamic Repeating Group's single cell template as a synthetic group node.
+
+  The placeholder keeps the group's content as a runtime template; a consumer
+  that renders the rows lowers this node (`BubbleEx.Frontend.Export.Css.lower/2`)
+  to style each rendered cell: the cell wrapper from the group's per-cell
+  container layout with the authored cell minimum height on its box, and the
+  template children in the cell's parent mode. The group's outer fill flags,
+  cell grid minima and `columns` stay on the group.
+
+  Returns `{:ok, cell}` for a dynamic Repeating Group placeholder with a
+  template, `:unsupported` otherwise (static lists expand their own cells).
+  """
+  @spec cell_template(Normalized.Node.t()) :: {:ok, Normalized.Node.t()} | :unsupported
+  def cell_template(node), do: StaticRepeating.template_cell(node)
 
   @doc """
   Reads a `.bubble` export (Bubble's editor JSON) from `path`: the decoded

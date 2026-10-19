@@ -15,6 +15,8 @@ defmodule BubbleEx.Expression.Keys do
     entries: ["entries", "%e"],
     constraints: ["constraints", "%co"],
     type_to_find: ["type_to_find", "%t5"],
+    sort_field: ["sort_field", "%sf"],
+    descending: ["descending", "%d2"],
     key: ["key", "%k"],
     constraint_type: ["constraint_type", "%c2"],
     value: ["value", "%v"]
@@ -37,12 +39,27 @@ defmodule BubbleEx.Expression.Keys do
           | :entries
           | :constraints
           | :type_to_find
+          | :sort_field
+          | :descending
           | :key
           | :constraint_type
           | :value
 
   @spec spellings(logical()) :: [String.t()]
   def spellings(logical), do: Map.fetch!(@aliases, logical)
+
+  @doc "Normalizes known member keys, recording spellings for lossless re-emission."
+  @spec readable_members(map(), map()) :: {map(), map()}
+  def readable_members(map, aliases) do
+    Enum.reduce(aliases, {map, %{}}, fn {compact, readable}, {members, spellings} ->
+      if Map.has_key?(members, compact) and not Map.has_key?(members, readable) do
+        {value, members} = Map.pop(members, compact)
+        {Map.put(members, readable, value), Map.put(spellings, readable, compact)}
+      else
+        {members, spellings}
+      end
+    end)
+  end
 
   @doc "Returns `{actual_key, value}` for the first spelling present, or nil."
   @spec get(map(), logical()) :: {String.t(), term()} | nil

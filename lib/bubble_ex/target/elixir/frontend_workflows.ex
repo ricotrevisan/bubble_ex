@@ -29,8 +29,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   | Bubble | kept as |
   |--------|---------|
   | Current user | the LiveView's `current_user` |
-  | Current date/time | the time the workflow started |
-  | Current page width | the browser's viewport width in CSS pixels, as the page's hook reports it once connected (and again when it changes); empty before that |
+  | Current date/time | the time the workflow started (Bubble computes it once per evaluation and never again on its own, replay 2026-10-19) |
+  | Current page width | the browser's viewport width in CSS pixels without a vertical scrollbar (`document.documentElement.clientWidth`, as Bubble, replay 2026-10-19), as the page's hook reports it once connected (and again when it changes); empty before that |
   | a custom event's parameter | its argument |
   | Result of step N | the step's result |
   | an element's custom state | the page's state map, per reusable-element instance |
@@ -1386,6 +1386,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     end
   end
 
+  defp args(:animate, _args, id, _ctx),
+    do:
+      {%{},
+       [Residue.entry(id, :unsupported_action, %{type: "AnimateElement", target: "phoenix"})]}
+
   defp args(:reset_inputs, %{within: nil}, _id, _ctx), do: {%{within: nil}, []}
 
   defp args(:reset_inputs, %{within: within}, id, ctx) do
@@ -1670,13 +1675,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     match?([%Step{op: :display_data, args: %{element: ^popup}, condition: nil} | _], rest)
   end
 
+  # Steps this target does not run: an action that does not lower, or an
+  # animation (lowered, but residue here: `args(:animate, ...)`).
+  @unlowered_ops [nil, :animate]
+
   # An action this target does not lower naming the popup (or an element
   # in it): it may open the popup, or change it, at any time.
   defp unknown_step?(w, popup, ctx),
     do:
       Enum.any?(
         w.steps,
-        &(&1.op == nil and is_binary(&1.element) and within?(&1.element, popup, ctx))
+        &(&1.op in @unlowered_ops and is_binary(&1.element) and within?(&1.element, popup, ctx))
       )
 
   # Whether anything outside `popup` names the popup or an element inside
@@ -2072,7 +2081,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     unknown =
       for w <- workflows,
           not w.disabled?,
-          %Step{op: nil, element: element} <- w.steps,
+          %Step{op: op, element: element} <- w.steps,
+          op in @unlowered_ops,
           is_binary(element),
           into: MapSet.new(),
           do: element

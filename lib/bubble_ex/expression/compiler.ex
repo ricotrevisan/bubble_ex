@@ -338,6 +338,28 @@ defmodule BubbleEx.Expression.Compiler do
 
   defp lower(%Property{subject: %Scope{} = scope, name: name, type: type} = n, base, ctx) do
     case Typing.context(scope, ctx.env) do
+      # A repeating group's "is loading" (replayed 2026-10-19): in Bubble
+      # it stays no while a search waits, the old rows shown, and is yes
+      # only for a few milliseconds after each response. What a page shows
+      # is a constant no (`loading_status: :constant`); elsewhere (a
+      # workflow's trigger or condition may fire on the flash) it is not
+      # compiled.
+      {:element, %{type: "RepeatingGroup"}} when name == "get_loading_status" ->
+        path = base ++ [link(n)]
+
+        if ctx.env.loading_status == :constant,
+          do: {IR.node(:literal, [false], "boolean"), path, []},
+          else:
+            {:error, path,
+             [
+               uncompiled(
+                 path,
+                 "a repeating group's is loading (yes only for a few milliseconds after " <>
+                   "each response in Bubble) read by a workflow",
+                 :loading_status
+               )
+             ]}
+
       {:element, %{id: id}} ->
         input = IR.node(:input, [:element_state, %{"element" => id, "state" => name}], type)
         {input, base ++ [link(n)], []}

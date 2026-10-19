@@ -724,8 +724,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # change, and keep the display they have when shown (WTF-477).
   defp shown(%Node{} = root), do: shown(root, MapSet.new())
 
-  # An element a breakpoint shows keeps its `hidden` class: the media
-  # rule's display must win over it, which the attribute's rule would not.
+  # An element a breakpoint shows keeps its `hidden` class (`invisible`
+  # when it does not collapse): the media rule's display and visibility
+  # must win over it, which the attribute's rule would not.
   defp shown(%Node{} = node, hidden) do
     {node, hidden} =
       if is_map(node.box) and node.box[:hidden?] == true and not breakpoint_display?(node),
@@ -2376,7 +2377,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
           %{bindings: vars} ->
             Enum.any?(
               vars,
-              &(data_input?(&1.input) or url_input?(&1.input) or width_input?(&1.input))
+              &(data_input?(&1.input) or url_input?(&1.input) or width_input?(&1.input) or
+                  page_name_input?(&1.input))
             )
 
           _ ->
@@ -2417,6 +2419,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # reads it from the `bubble_page_width` its caller passes down.
   defp width_input?({:page_data, %{"name" => "Current Page Width"}}), do: true
   defp width_input?(_), do: false
+
+  # `Current page name` (replay 2026-10-19): a reusable element reads the
+  # host page's from the `bubble_page_name` its caller passes down.
+  defp page_name_input?({:page_data, %{"name" => "Current Page Name"}}), do: true
+  defp page_name_input?(_), do: false
 
   # The elements whose own data source reads an API Connector call
   # (WTF-533): marked, with the developer markers on, when it fails.
@@ -2635,7 +2642,31 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
+  # Bubble offers `Current page name` only inside a reusable element (the
+  # host page's name, replay 2026-10-19); its editor refuses it on a page.
+  @page_name_on_page "it reads Current page name on a page: Bubble offers it only " <>
+                       "inside a reusable element"
+
   defp read_slot(node, name, compiled, ctx, acc, binding) do
+    case compiled do
+      %{bindings: vars} when ctx.surface == :page ->
+        if Enum.any?(vars, &page_name_input?(&1.input)),
+          do: page_name_slot(node, name, binding, acc),
+          else: kept_slot(node, name, compiled, ctx, acc, binding)
+
+      compiled ->
+        kept_slot(node, name, compiled, ctx, acc, binding)
+    end
+  end
+
+  # `Current page name` on a page itself: Bubble's editor refuses it, so
+  # the value is left out (a marker), never read as empty.
+  defp page_name_slot(node, name, binding, acc) do
+    acc = mark(acc, node, "#{name}: #{@page_name_on_page}")
+    residue_slot(node, name, binding, :page_name, acc)
+  end
+
+  defp kept_slot(node, name, compiled, ctx, acc, binding) do
     case compiled do
       %{bindings: vars} when not is_nil(ctx.flows) ->
         vars
@@ -2716,6 +2747,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp residue_why(:not_file), do: "not one image or file value"
   defp residue_why(:unlowered), do: "dynamic value not lowered"
+  defp residue_why(:page_name), do: "Current page name is offered only inside a reusable element"
 
   # A value binding the page never renders through slot/4 (WTF-520): an
   # image's source that is not one image or file value (only those go
@@ -3128,6 +3160,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     cond do
       plugin_state?(var, ctx) ->
         "it reads the state of a plugin element, which is not migrated: #{what}"
+
+      page_name_input?(input) and ctx.surface == :page ->
+        @page_name_on_page
 
       data_input?(input) ->
         "it reads page data that is not loaded: #{what}"
@@ -4075,10 +4110,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         {"bubble_url", {:expr, "@bubble_url"}},
         {"bubble_segments", {:expr, "@bubble_segments"}},
         {"bubble_page_width", {:expr, "@bubble_page_width"}},
-        {"bubble_open", {:expr, "@bubble_open"}}
+        {"bubble_open", {:expr, "@bubble_open"}},
+        {"bubble_page_name", page_name_attr(ctx)}
       ],
       else: []
   end
+
+  # The host page's Bubble name (`Current page name` in a reusable
+  # element, replay 2026-10-19): fixed per page, passed down by each
+  # reusable element to the ones it renders.
+  defp page_name_attr(%{surface: :page, entry: %{node: %Node{name: name}}}) when is_binary(name),
+    do: {:expr, literal(name)}
+
+  defp page_name_attr(%{surface: :page}), do: {:expr, "nil"}
+  defp page_name_attr(_ctx), do: {:expr, "@bubble_page_name"}
 
   # A compiled binding's argument: a custom state or an input value the
   # page keeps, else the assign (or attribute) of its variable.
@@ -4126,14 +4171,21 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       {kind, _} = read when kind in [:url, :url_value] ->
         url_source(read)
 
-      # The viewport's width the runtime keeps (WTF-520).
-      {:page_width, _} ->
-        "@bubble_page_width"
+      {kind, _} when kind in [:page_width, :now, :page_name] ->
+        page_value_source(kind)
 
       _ ->
         "@" <> var
     end
   end
+
+  # The viewport's width the runtime keeps (WTF-520); the current date and
+  # time, read when the page renders: Bubble computes it once per
+  # evaluation, with no timer (replay 2026-10-19); the host page's Bubble
+  # name, passed down to a reusable element (replay 2026-10-19).
+  defp page_value_source(:page_width), do: "@bubble_page_width"
+  defp page_value_source(:now), do: "DateTime.utc_now()"
+  defp page_value_source(:page_name), do: "@bubble_page_name"
 
   # A cell's thing, index or group's value, read where the cell renders;
   # in a nested repeating group's cell (WTF-520), also the outer cell's.
@@ -5100,7 +5152,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
             {"bubble_url", "%{}"},
             {"bubble_segments", "[]"},
             {"bubble_page_width", "nil"},
-            {"bubble_open", "%{}"}
+            {"bubble_open", "%{}"},
+            {"bubble_page_name", "nil"}
           ],
           else: []
       )

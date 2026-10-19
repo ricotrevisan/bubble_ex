@@ -120,7 +120,12 @@ defmodule BubbleEx.Expression.Tree do
     "email" => "text",
     "password" => "text",
     "url" => "text",
-    "text" => "text"
+    "text" => "text",
+    # Bubble's docs: US phone and Text (numbers only) return text, Euro
+    # date a date.
+    "us_phone" => "text",
+    "numerical_ref" => "text",
+    "date_2" => "date"
   }
 
   @doc "Builds the tree from decoded app JSON. Never fails: unusable nodes are skipped."
@@ -186,7 +191,7 @@ defmodule BubbleEx.Expression.Tree do
     content =
       if kind == :page,
         do: text(props["page_item_type"]),
-        else: text(props["group_type"])
+        else: text(props["group_type"] || props["%gt"])
 
     node = %Node{
       id: id,
@@ -222,7 +227,7 @@ defmodule BubbleEx.Expression.Tree do
       id: id,
       kind: :element,
       type: type,
-      content: text(props["group_type"]),
+      content: text(props["group_type"] || props["%gt"]),
       value: value_type(type, props),
       parent: parent,
       owner: owner,
@@ -313,7 +318,7 @@ defmodule BubbleEx.Expression.Tree do
   @spec page_size(map()) :: pos_integer() | nil
   def page_size(props) when is_map(props) do
     rows = positive(props["rows"] || props["%rs"])
-    columns = positive(props["columns"] || props["%cs"]) || 1
+    columns = positive(props["columns"] || props["%c5"]) || 1
 
     if rows && props["show_all_items"] != true, do: rows * columns
   end
@@ -325,7 +330,11 @@ defmodule BubbleEx.Expression.Tree do
   defp value_type(type, props) when type in ~w(Input MultiLineInput),
     do: Map.get(@input_formats, props["content_format"] || "text")
 
-  defp value_type("Dropdown", props), do: text(props["dynamic_type"]) || "text"
+  # A choice control's value is its dynamic type (a thing, option set or
+  # primitive), else text for static choices.
+  defp value_type(type, props) when type in ~w(Dropdown RadioButtons),
+    do: text(props["dynamic_type"]) || "text"
+
   defp value_type("Checkbox", _props), do: "boolean"
   defp value_type(_type, _props), do: nil
 

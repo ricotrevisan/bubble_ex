@@ -82,6 +82,27 @@ defmodule BubbleEx.Workflows.Source do
     end
   end
 
+  # Workflow property members only: expressions and change values keep their
+  # original spelling and are parsed by the expression reader.
+  @member_compact %{
+    "%ei" => "element_id",
+    "%tt" => "thing_type",
+    "%tc" => "to_change",
+    "%i2" => "initial_values",
+    "%cs" => "changes",
+    "%ds" => "data_source"
+  }
+
+  @spec member_props(map()) :: map()
+  def member_props(map) do
+    Enum.reduce(@member_compact, map, fn {compact, readable}, props ->
+      case Map.fetch(props, compact) do
+        {:ok, value} -> props |> Map.delete(compact) |> Map.put_new(readable, value)
+        :error -> props
+      end
+    end)
+  end
+
   @spec entries(term()) :: [{String.t() | non_neg_integer(), term()}]
   def entries(value) when is_map(value) do
     value |> Enum.reject(&metadata_entry?/1) |> Enum.sort_by(&elem(&1, 0))

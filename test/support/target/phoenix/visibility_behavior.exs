@@ -377,4 +377,50 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     change(view, "x")
     assert hidden?(view, "bOpen")
   end
+
+  defp text(view, id, scope),
+    do: view |> element(~s([data-bubble-scope="#{scope}"] [data-bubble-id="#{id}"])) |> render()
+
+  # Replay 2026-10-19: in a reusable element, Current page name is the host
+  # page's Bubble name, whatever the path holds after it.
+  test "a reusable element reads its host page's name", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/cells")
+    refute hidden?(view, "bHostIs", "bHostC")
+    refute hidden?(view, "bHostInIs", "bHostC-bHostInI")
+    assert text(view, "bHostName", "bHostC") =~ "Page: cells"
+
+    {:ok, view, _html} = live(conn, "/")
+    assert hidden?(view, "bHostIs", "bHostI")
+    assert hidden?(view, "bHostInIs", "bHostI-bHostInI")
+    assert text(view, "bHostName", "bHostI") =~ "Page: index"
+
+    # The static render has it too: it is fixed per page.
+    static = conn |> get("/cells") |> html_response(200)
+    assert static =~ "Page: cells"
+
+    # On a page itself Bubble refuses it: marked, as on page load.
+    assert hidden?(view, "bPageName")
+    refute view |> element(~s([data-bubble-id="bPageNameText"])) |> render() =~ "index"
+  end
+
+  # Replay 2026-10-19: computed when evaluated, never empty, no timer.
+  test "Current date/time is never empty", %{conn: conn} do
+    {:ok, view, html} = live(conn, "/")
+    refute hidden?(view, "bNow")
+    assert hidden?(view, "bNowEmpty")
+    refute html =~ "setInterval"
+  end
+
+  # Replay 2026-10-19: a repeating group's "is loading" is no.
+  test "a repeating group's is loading is no", %{conn: conn} do
+    data_access_on()
+    {:ok, view, _html} = live(conn, "/")
+    refute hidden?(view, "bLoaded")
+    assert hidden?(view, "bLoading")
+  end
+
+  test "a breakpoint shown as text is its width", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/cells")
+    assert view |> element(~s([data-bubble-id="bBpText"])) |> render() =~ "Tablet: 992"
+  end
 end

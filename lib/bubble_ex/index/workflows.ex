@@ -50,7 +50,7 @@ defmodule BubbleEx.Index.Workflows do
   defp workflow(entry, ctx) do
     segments = segments(entry.path)
     event = entry.event
-    props = map_or_empty(event.properties)
+    props = Source.member_props(map_or_empty(event.properties))
     wf_bubble_id = present(event.id) || to_string(entry.key)
     id = Symbol.id(:workflow, wf_bubble_id)
     backend? = match?(["api" | _], segments)
@@ -109,7 +109,7 @@ defmodule BubbleEx.Index.Workflows do
   end
 
   defp action(action, index, workflow_id, wf_bubble_id, ctx) do
-    props = map_or_empty(action.properties)
+    props = Source.member_props(map_or_empty(action.properties))
     type = action.type
     bubble_id = present(action.id) || "#{wf_bubble_id}/#{action.source_key}"
     id = Symbol.id(:action, bubble_id)
@@ -306,7 +306,11 @@ defmodule BubbleEx.Index.Workflows do
   # …), the type is still certain if exactly one data type that is not
   # deleted has every changed field (deleted fields excluded).
   defp infer_type(:update, props, live_fields) do
-    keys = for {_, %{"key" => key}} <- ordered(props["changes"]), is_binary(key), do: key
+    keys =
+      for {_, entry} <- ordered(props["changes"]),
+          key = Source.value(entry, ~w(key %k)),
+          is_binary(key),
+          do: key
 
     candidates =
       for {type, fields} <- live_fields,
@@ -366,8 +370,8 @@ defmodule BubbleEx.Index.Workflows do
     entries
     |> ordered()
     |> Enum.flat_map(fn {ekey, entry} ->
-      case entry do
-        %{"key" => field} when is_binary(field) ->
+      case Source.value(entry, ~w(key %k)) do
+        field when is_binary(field) ->
           [
             %Reference{
               from: id,
