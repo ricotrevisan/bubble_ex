@@ -45,7 +45,7 @@ defmodule BubbleEx.Workflows.Frontend do
   | Bubble action | `Step.op` | `Step.args` |
   |---------------|-----------|-------------|
   | Show / Hide / Toggle an element | `:show` / `:hide` / `:toggle` | `element` |
-  | Animate an element | `:animate` | `element`, `animation`, `duration`, `visibility` (known entrance final state) |
+  | Animate an element | `:animate` | `element`, `animation`, `duration`, `visibility` (`:show` for a known entrance), `motion` (`from`, `to`, `duration` in ms, `easing`; nil when unknown) |
   | Set focus to an element, Scroll to an element | `:focus`, `:scroll_to` | `element` |
   | Reset relevant inputs (`ResetInputs`) | `:reset_inputs` | `within` (the triggering element's container, nil for the surface) |
   | Reset a group / popup (`ResetGroup`) | `:reset_group` | `element` |
@@ -670,28 +670,49 @@ defmodule BubbleEx.Workflows.Frontend do
     {%{element: element}, element_ref(id, element, ctx)}
   end
 
+  # Bubble's animations are Velocity.js UI-pack effects (velocity-animate
+  # 1.5.2, `velocity.ui.js`). The entrances ("In") show the element; each
+  # tweens `from` to `to` (opacity, translate in px) with easing "ease"
+  # over the action's duration, else the effect's default (ms).
+  @entrances %{
+    "transition.fadeIn" => {500, %{opacity: 0}},
+    "transition.slideUpIn" => {900, %{opacity: 0, translate_y: 20}},
+    "transition.slideDownIn" => {900, %{opacity: 0, translate_y: -20}},
+    "transition.slideLeftIn" => {1000, %{opacity: 0, translate_x: -20}},
+    "transition.slideRightIn" => {1000, %{opacity: 0, translate_x: 20}},
+    "transition.slideUpBigIn" => {850, %{opacity: 0, translate_y: 75}},
+    "transition.slideDownBigIn" => {850, %{opacity: 0, translate_y: -75}},
+    "transition.slideLeftBigIn" => {800, %{opacity: 0, translate_x: -75}},
+    "transition.slideRightBigIn" => {800, %{opacity: 0, translate_x: 75}}
+  }
+
   defp lower(:animate, props, _path, id, _env, ctx) do
     element = text(props["element_id"])
     animation = text(props["animation"])
-
-    visibility =
-      case animation do
-        "transition.slideUpIn" -> :show
-        "transition.slideUpBigIn" -> :show
-        _ -> nil
-      end
-
     residue = element_ref(id, element, ctx)
 
-    residue =
-      if visibility, do: residue, else: residue ++ Lowering.option_residue(id, ["animation"])
+    case Map.fetch(@entrances, animation) do
+      {:ok, {default, from}} ->
+        duration = if is_number(props["duration"]), do: props["duration"], else: default
+        to = Map.new(from, fn {key, _} -> {key, if(key == :opacity, do: 1, else: 0)} end)
 
-    {%{
-       element: element,
-       animation: animation,
-       duration: props["duration"],
-       visibility: visibility
-     }, residue}
+        {%{
+           element: element,
+           animation: animation,
+           duration: props["duration"],
+           visibility: :show,
+           motion: %{from: from, to: to, duration: duration, easing: "ease"}
+         }, residue}
+
+      :error ->
+        {%{
+           element: element,
+           animation: animation,
+           duration: props["duration"],
+           visibility: nil,
+           motion: nil
+         }, residue ++ Lowering.option_residue(id, ["animation"])}
+    end
   end
 
   defp lower(:reset_inputs, _props, _path, _id, _env, ctx), do: {%{within: ctx.within}, []}

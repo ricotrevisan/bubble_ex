@@ -80,7 +80,13 @@ defmodule BubbleEx.Workflows.FrontendTest do
              element: "bFocus",
              animation: "transition.slideUpIn",
              duration: 900,
-             visibility: :show
+             visibility: :show,
+             motion: %{
+               from: %{opacity: 0, translate_y: 20},
+               to: %{opacity: 1, translate_y: 0},
+               duration: 900,
+               easing: "ease"
+             }
            }
 
     assert step.residue == []
@@ -93,8 +99,28 @@ defmodule BubbleEx.Workflows.FrontendTest do
       )
 
     [step] = unknown |> lower() |> workflow("wLoad") |> Map.fetch!(:steps)
-    assert step.args.visibility == nil
+    assert step.args.visibility == nil and step.args.motion == nil
     assert Enum.any?(step.residue, &(&1.reason == :unsupported_option))
+  end
+
+  test "an entrance without a duration takes Velocity's default" do
+    source =
+      edit(app(), "wLoad", fn workflow ->
+        Map.put(workflow, "actions", %{
+          "0" => %{
+            "id" => "anim",
+            "type" => "AnimateElement",
+            "properties" => %{
+              "element_id" => "bFocus",
+              "animation" => "transition.slideLeftBigIn"
+            }
+          }
+        })
+      end)
+
+    [step] = source |> lower() |> workflow("wLoad") |> Map.fetch!(:steps)
+    assert %{visibility: :show, motion: %{duration: 800, from: %{translate_x: -75}}} = step.args
+    assert step.residue == []
   end
 
   test "steps lower to the shared vocabulary", %{lowered: lowered} do
