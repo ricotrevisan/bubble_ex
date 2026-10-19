@@ -5,6 +5,11 @@ defmodule BubbleEx.Frontend.Export.BbcodeTest do
 
   alias BubbleEx.Frontend.Export.Bbcode
 
+  test "line breaks next to a list are block boundaries, not lines (bpwipyqn)" do
+    assert Bbcode.to_html("[b]A[/b]\n[ul]\n[li]x[/li]\n[li]y[/li]\n[/ul]\nB\nC") ==
+             "<strong>A</strong>\n<ul>\n<li>x</li>\n<li>y</li>\n</ul>\nB<br>C"
+  end
+
   test "centered heading line boundaries match captured Bubble block markup" do
     source = "[center][b][size=4]Privacy Policy\n[/size][/b][/center]\n\nBody\n\nNext"
 

@@ -264,6 +264,19 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
     end
   end
 
+  # A line break next to a list is a block boundary, not a line: the one
+  # before a list opens, the one after it closes, and those between its
+  # items stay whitespace (frozen case bpwipyqn).
+  defp emit([{:text, text}, {:tag, list, _, _} = node | rest]) when list in ~w(ul ol) do
+    case String.split_at(text, -1) do
+      {before, "\n"} -> emit_node({:text, before}) <> "\n" <> emit([node | rest])
+      _ -> emit_node({:text, text}) <> emit([node | rest])
+    end
+  end
+
+  defp emit([{:tag, list, _, _} = node, {:text, "\n" <> text} | rest]) when list in ~w(ul ol),
+    do: emit_node(node) <> "\n" <> emit([{:text, text} | rest])
+
   defp emit([node | rest]), do: emit_node(node) <> emit(rest)
 
   defp terminal_block_line(nodes) do
@@ -286,7 +299,15 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
     end
   end
 
+  defp list_items(children) do
+    Enum.map(children, fn
+      {:text, text} = node -> if String.trim(text) == "", do: {:whitespace, text}, else: node
+      node -> node
+    end)
+  end
+
   defp emit_node(:block_line), do: "<div></div>\n"
+  defp emit_node({:whitespace, text}), do: text
   defp emit_node({:value, value}), do: escape(value)
   defp emit_node({:text, text}), do: text |> escape() |> line_breaks()
 
@@ -294,8 +315,8 @@ defmodule BubbleEx.Frontend.Export.Bbcode do
   defp emit_node({:tag, "i", _attr, children}), do: wrap("em", children)
   defp emit_node({:tag, "u", _attr, children}), do: wrap("u", children)
   defp emit_node({:tag, "s", _attr, children}), do: wrap("s", children)
-  defp emit_node({:tag, "ul", _attr, children}), do: wrap("ul", children)
-  defp emit_node({:tag, "ol", _attr, children}), do: wrap("ol", children)
+  defp emit_node({:tag, "ul", _attr, children}), do: wrap("ul", list_items(children))
+  defp emit_node({:tag, "ol", _attr, children}), do: wrap("ol", list_items(children))
   defp emit_node({:tag, "li", _attr, children}), do: wrap("li", children)
 
   defp emit_node({:tag, "center", _attr, children}),

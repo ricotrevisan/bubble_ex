@@ -881,7 +881,10 @@ defmodule BubbleEx.Frontend.Export.Css do
         do: Map.drop(box, [:width, "width"]),
         else: box
 
-    fit_height? = layout_value(node.layout || %{}, :fit_height?) == true
+    # A fit-height multiline input keeps its authored height on load
+    # (frozen case bpuzekut); only content-sized elements drop it.
+    fit_height? =
+      layout_value(node.layout || %{}, :fit_height?) == true and node.kind != :multiline_input
 
     box =
       if fit_height? or layout_value(node.layout || %{}, :fill_height?),
