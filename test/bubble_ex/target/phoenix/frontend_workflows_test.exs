@@ -380,7 +380,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflowsTest do
     refute form =~ "bubble[on]"
 
     runtime = files["lib/shop_web/bubble_workflows.ex"]
-    assert runtime =~ ~s|def handle_event(socket, page, "bubble:commit", %{} = params) do|
+    assert runtime =~ ~s|defp event_now(socket, page, "bubble:commit", %{} = params) do|
   end
 
   test "BBCode around dynamic text renders its own tags, values escaped (WTF-450)", %{

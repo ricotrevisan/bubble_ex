@@ -193,53 +193,64 @@ defmodule <%= @module %>.ApiClients.Data do
   end
 
   @doc """
-  Asks for `function(params)` of `module` (the call `key`): the caller
-  gets `{:bubble, :api_data, key, result}` when it ends. When the same
+  Asks for `function(params)` of `module` (the call `key`): `pid` (the
+  caller, or the page a first load's task reads for, WTF-559) gets
+  `{:bubble, :api_data, key, result}` when it ends. When the same
   call is in flight (any page), the caller waits for it (`:waiting`);
   otherwise a task makes it (`:started`), when fewer than
   `:max_in_flight` calls of `module` are in flight (else `:busy`).
   `cache?` says whether its response may be cached.
   """
-  def call({module, function, params} = key, cache?) do
-    :ets.insert(@waiters, {key, self()})
+  def call({module, function, params} = key, cache?, pid \\ self()) do
+    :ets.insert(@waiters, {key, pid})
 
     if :ets.insert_new(@calls, {key, nil}) do
-      start(key, module, function, params, cache?)
+      start(key, module, function, params, cache?, pid)
     else
       # The call it waits for may have just ended: then it calls itself.
       if :ets.member(@calls, key) do
         :waiting
       else
-        :ets.delete_object(@waiters, {key, self()})
-        call(key, cache?)
+        :ets.delete_object(@waiters, {key, pid})
+        call(key, cache?, pid)
       end
     end
   rescue
     ArgumentError -> :busy
   end
 
-  defp start({module, _, _} = key, module, function, params, cache?) do
+  @doc """
+  The calls `pid` waits for (`call/3`): those a page's first load's task
+  asked for on its behalf included (WTF-559).
+  """
+  def waiting_for(pid) do
+    :ets.select(@waiters, [{{:"$1", pid}, [], [:"$1"]}]) |> Enum.uniq()
+  rescue
+    ArgumentError -> []
+  end
+
+  defp start({module, _, _} = key, module, function, params, cache?, pid) do
     if acquire(module) do
       opts = call_opts()
 
       case Task.Supervisor.start_child(@tasks, fn -> finish(key, cache?, attempt(module, function, params, opts)) end) do
-        {:ok, pid} ->
-          __MODULE__.Monitor.watch(pid, module, key)
+        {:ok, task} ->
+          __MODULE__.Monitor.watch(task, module, key)
           :started
 
         _ ->
           release(module)
-          abandon(key)
+          abandon(key, pid)
       end
     else
-      abandon(key)
+      abandon(key, pid)
     end
   end
 
   # It could not start: the pages that came to wait for it try again
   # (`:busy`).
-  defp abandon(key) do
-    :ets.delete_object(@waiters, {key, self()})
+  defp abandon(key, pid) do
+    :ets.delete_object(@waiters, {key, pid})
     notify(key, :busy)
     :busy
   end

@@ -885,6 +885,15 @@ defmodule <%= @web %>.Bubble do
           this.handleEvent("bubble:exec", ({ ops }) => (ops || []).forEach((op) => this.exec(op)))
           // A refused click or input change (WTF-453): a short notice, as text.
           this.handleEvent("bubble:notice", ({ text }) => this.notice(text))
+          // An overlay asked for before the page's data (WTF-559): the page
+          // replied `queued`, and tells when it rendered (or refused) it.
+          this.overlayWaits = new Map()
+          this.handleEvent("bubble:overlay-ready", (reply) => {
+            const key = `${reply.scope}|${reply.element}`
+            const resolve = this.overlayWaits.get(key)
+            this.overlayWaits.delete(key)
+            if (resolve) resolve(reply)
+          })
           // The viewport's width, Bubble's "Current page width" (WTF-520),
           // on a page that reads it only: the connect params carry the
           // first one (app.js); reported once mounted (a project whose
@@ -978,7 +987,12 @@ defmodule <%= @web %>.Bubble do
           const payload = { scope: this.scopeOf(el), element, open }
           if (inputs && inputs.length) payload.inputs = inputs
           try {
-            return Promise.resolve(this.pushEvent("bubble:overlay", payload))
+            return Promise.resolve(this.pushEvent("bubble:overlay", payload)).then((reply) => {
+              if (!reply || !reply.queued) return reply
+              // It waits for the page's data: resolved when its turn came.
+              const key = `${payload.scope}|${element}`
+              return new Promise((resolve) => this.overlayWaits.set(key, resolve))
+            })
           } catch (e) {
             return Promise.reject(e)
           }

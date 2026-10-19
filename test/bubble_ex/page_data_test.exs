@@ -522,7 +522,7 @@ defmodule BubbleEx.PageDataTest do
       assert hook =~
                ~s|this.pushEvent("bubble:popup", skipped ? { scope, element, event, skipped } : { scope, element, event })|
 
-      assert runtime =~ ~r/def handle_event\(\s*socket,\s*page,\s*"bubble:popup"/
+      assert runtime =~ ~r/defp event_now\(\s*socket,\s*page,\s*"bubble:popup"/
       assert runtime =~ "expect_popups(socket, popups, budget, kept)"
       # What the opener shows after opening a popup survives its reset
       # in the popup's "is opened" run (replay 2026-10-14).
@@ -533,6 +533,7 @@ defmodule BubbleEx.PageDataTest do
          %{files: files} do
       template = files["lib/shop_web/live/task_live.html.heex"] |> String.replace(~r/\s+/, " ")
       runtime = files["lib/shop_web/bubble_workflows.ex"]
+      loader = files["lib/shop_web/bubble_data.ex"]
 
       # Not visible on page load: hidden until the data loads.
       assert template =~
@@ -548,9 +549,10 @@ defmodule BubbleEx.PageDataTest do
       assert initial =~
                ~s|hidden={ if(@bubble_data_pending, do: true, else: !visible_binitempty(Bubble.input(@bubble_inputs, @bubble_data, "", "bInitQuery")) ) }|
 
-      # Pending only in the static render, and only with data access on.
-      assert runtime =~
-               "assign(:bubble_data_pending, BubbleData.data_access?() and not connected?(socket))"
+      # Pending until the first connected load has read it (the static
+      # render, then the first load's task, WTF-559), only with data access on.
+      assert runtime =~ "assign(:bubble_data_pending, BubbleData.data_access?())"
+      assert loader =~ "assign(:bubble_data_pending, false)"
 
       # A reusable element gets it from its caller.
       card = files["lib/shop_web/components/reusables/task_card.ex"]
