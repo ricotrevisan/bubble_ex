@@ -154,6 +154,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
           params: %{},
           set: %{},
           defaults: MapSet.new(),
+          loaded_defaults: MapSet.new(),
+          unloaded_values: %{},
           valued: MapSet.new()
         },
         displayed,
@@ -183,8 +185,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # instance's, those of instances rendered per cell included, WTF-494,
   # and its default) loads; `set`, `{instance, param} => %{surface, key}`
   # for the values instances outside a cell set that load; `defaults`, the
-  # keys of the properties with a default; `valued`, every `{instance,
-  # param}` an instance sets (loaded or not, in a cell or not).
+  # keys of the properties with a default; `loaded_defaults`, those whose
+  # default loads (an instance setting none reads it from outside whatever
+  # the other instances set, WTF-505 follow-up); `unloaded_values`, the
+  # key => the instances whose value of it does not load (every value an
+  # instance sets, as `valued`: one in a cell it is not rendered per cell
+  # for too); `valued`, every
+  # `{instance, param}` an instance sets (loaded or not, in a cell or not).
   defp params(sources, loads?) do
     # The lists that load: an instance in the cell of another is never
     # rendered.
@@ -214,6 +221,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
           into: MapSet.new(),
           do: Spec.param_key(s.holder, s.param)
         ),
+      loaded_defaults:
+        for(
+          %{kind: :param, element: e, holder: e} = s <- sources,
+          loads?.(s),
+          into: MapSet.new(),
+          do: Spec.param_key(s.holder, s.param)
+        ),
+      unloaded_values:
+        sources
+        |> Enum.filter(&(&1.kind == :param and &1.element != &1.holder and not loads?.(&1)))
+        |> Enum.group_by(&Spec.param_key(&1.holder, &1.param), & &1.element)
+        |> Map.new(fn {key, ids} -> {key, ids |> Enum.uniq() |> Enum.sort()} end),
       valued:
         for(
           %{kind: :param} = s <- sources,
@@ -2251,10 +2270,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       |> Enum.filter(&counted_param?(&1, wired))
       |> Enum.group_by(&Spec.param_key(&1.holder, &1.param), &id/1)
 
+    # Each property's default, by key.
+    defaults =
+      for {{e, k} = id, %{kind: :param, element: e, holder: e}} <- by_element,
+          into: %{},
+          do: {k, id}
+
     next =
       for b <- bound,
           MapSet.member?(wired, id(b)),
-          Enum.all?(b.reads, &read_wired?(&1, b, {by_element, params}, wired)),
+          Enum.all?(b.reads, &read_wired?(&1, b, {by_element, params, defaults}, wired)),
           into: MapSet.new(),
           do: id(b)
 
@@ -2267,25 +2292,28 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp id(%{element: e}), do: e
 
   # This Reusable's property: every value of it (WTF-493).
-  defp read_wired?({:data, %{path: [], element: "param_" <> _ = p}}, _b, {_, params}, wired),
+  defp read_wired?({:data, %{path: [], element: "param_" <> _ = p}}, _b, {_, params, _}, wired),
     do: params |> Map.get(p, []) |> Enum.all?(&MapSet.member?(wired, &1))
 
   # An instance's property, read where the instance is: the value it sets,
-  # else its default (WTF-520), when every value of the property loads.
+  # else its default (WTF-520) when the default loads, whatever the other
+  # instances' values of the property (Bubble reads this instance's own).
   defp read_wired?(
          {:data, %{path: [i], element: "param_" <> _ = p}},
          _b,
-         {by_element, params},
+         {by_element, _params, defaults},
          wired
        ) do
-    if Map.has_key?(by_element, {i, p}),
-      do: MapSet.member?(wired, {i, p}),
-      else: every_value?(params, p, wired)
+    cond do
+      Map.has_key?(by_element, {i, p}) -> MapSet.member?(wired, {i, p})
+      id = defaults[p] -> MapSet.member?(wired, id)
+      true -> false
+    end
   end
 
   # A read of the surface's own reusable-element thing is the instance's
   # (whatever it holds, possibly nothing).
-  defp read_wired?({:data, %{path: [], element: e}}, %{surface: e}, {by_element, _}, wired),
+  defp read_wired?({:data, %{path: [], element: e}}, %{surface: e}, {by_element, _, _}, wired),
     do: not Map.has_key?(by_element, e) or MapSet.member?(wired, e)
 
   defp read_wired?({:data, %{path: [instance]}}, _b, _maps, wired),
@@ -2303,15 +2331,6 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
               :outer_cell_data
             ],
        do: MapSet.member?(wired, e)
-
-  # A property read from outside an instance that sets none: its default
-  # is one of its values, and every value loads.
-  defp every_value?(params, p, wired) do
-    case Map.get(params, p, []) do
-      [] -> false
-      ids -> Enum.all?(ids, &MapSet.member?(wired, &1))
-    end
-  end
 
   # The order a surface reads its sources in: after those they read. The
   # ones reading each other in a cycle are residue.

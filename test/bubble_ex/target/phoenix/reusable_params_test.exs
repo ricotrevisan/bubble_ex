@@ -120,7 +120,8 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
       # No default, no source.
       refute param(pd, "bCard", "param_pTitle")
 
-      assert %{"by_kind" => %{"param" => %{"total" => 33, "native" => 33}}} =
+      # bCardB's Mood does not compile (Mood's default loads).
+      assert %{"by_kind" => %{"param" => %{"total" => 35, "native" => 34}}} =
                PageData.coverage(pd)
     end
 
@@ -418,6 +419,206 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
                  "element_state:param_pExtra); hidden (privacy: enforced, a conditional may hide it)"
     end
 
+    test "passes on through a group whose data source is one" do
+      # bBTask's data source is bCardB's Task (not set, no default), and
+      # bBTask2's is bBTask's thing; bBTasks lists bCardB's Tasks (not set,
+      # no default either). What reads their thing has nothing to read.
+      # bATask's is bCardA's Task, a value that does not compile: not
+      # loaded, as before.
+      group = fn id, order, source ->
+        %{
+          "id" => id,
+          "type" => "Group",
+          "properties" => %{
+            "group_type" => "custom.task",
+            "height" => 40,
+            "width" => 300,
+            "order" => order,
+            "data_source" => source
+          }
+        }
+      end
+
+      prop = fn element, param ->
+        %{
+          "type" => "GetElement",
+          "properties" => %{"element_id" => element},
+          "next" => %{"type" => "Message", "name" => param}
+        }
+      end
+
+      empty_thing = fn id, order, group ->
+        %{
+          "id" => id,
+          "type" => "Text",
+          "properties" => %{
+            "height" => 40,
+            "width" => 300,
+            "order" => order,
+            "text" => %{"type" => "TextExpression", "entries" => %{"0" => id}}
+          },
+          "states" => %{
+            "0" => %{
+              "type" => "State",
+              "condition" => %{
+                "type" => "GetElement",
+                "properties" => %{"element_id" => group},
+                "next" => %{
+                  "type" => "Message",
+                  "name" => "get_group_data",
+                  "next" => %{"type" => "Message", "name" => "is_empty"}
+                }
+              },
+              "properties" => %{"is_visible" => false}
+            }
+          }
+        }
+      end
+
+      cell = %{
+        "id" => "bBTasksT",
+        "type" => "Text",
+        "properties" => %{
+          "height" => 40,
+          "width" => 300,
+          "order" => 1,
+          "text" => %{"type" => "TextExpression", "entries" => %{"0" => "a task"}}
+        },
+        "states" => %{
+          "0" => %{
+            "type" => "State",
+            "condition" => %{
+              "type" => "CurrentDataItem",
+              "next" => %{"type" => "Message", "name" => "is_empty"}
+            },
+            "properties" => %{"is_visible" => false}
+          }
+        }
+      }
+
+      list = %{
+        "id" => "bBTasks",
+        "type" => "RepeatingGroup",
+        "properties" => %{
+          "group_type" => "custom.task",
+          "columns" => 1,
+          "rows" => 3,
+          "height" => 200,
+          "width" => 300,
+          "order" => 24,
+          "data_source" => prop.("bCardB", "param_pTasks")
+        },
+        "elements" => %{"bBTasksT" => cell}
+      }
+
+      get_data = %{
+        "type" => "GetElement",
+        "properties" => %{"element_id" => "bBTask"},
+        "next" => %{"type" => "Message", "name" => "get_group_data"}
+      }
+
+      app =
+        app()
+        |> put_in_app(~w(pages task elements bCardA properties param_pTask), %{
+          "type" => "NoSuchExpression"
+        })
+        |> put_in_app(
+          ~w(pages task elements bBTask),
+          group.("bBTask", 20, prop.("bCardB", "param_pTask"))
+        )
+        |> put_in_app(~w(pages task elements bBTask2), group.("bBTask2", 21, get_data))
+        |> put_in_app(
+          ~w(pages task elements bATask),
+          group.("bATask", 22, prop.("bCardA", "param_pTask"))
+        )
+        |> put_in_app(~w(pages task elements bBTaskT), empty_thing.("bBTaskT", 23, "bBTask"))
+        |> put_in_app(~w(pages task elements bBTask2T), empty_thing.("bBTask2T", 25, "bBTask2"))
+        |> put_in_app(~w(pages task elements bATaskT), empty_thing.("bATaskT", 26, "bATask"))
+        |> put_in_app(~w(pages task elements bBTasks), list)
+
+      %{spec: spec, files: files} = build(app)
+      page = files["lib/shop_web/live/task_live.html.heex"]
+
+      for group <- ~w(bBTask bBTask2) do
+        assert Spec.unset_property(
+                 spec,
+                 "bTaskPage",
+                 {:element_state, %{"element" => group, "state" => "get_group_data"}}
+               ) == :unset
+      end
+
+      assert Spec.unset_property(spec, "bTaskPage", {:cell_thing, %{"element" => "bBTasks"}}) ==
+               :unset
+
+      assert Spec.unset_property(
+               spec,
+               "bTaskPage",
+               {:element_state, %{"element" => "bATask", "state" => "get_group_data"}}
+             ) == nil
+
+      for id <- ~w(bBTaskT bBTask2T) do
+        assert page =~
+                 "TODO(bubble:#{id}) visibility: 1 conditional not lowered (it reads a " <>
+                   "reusable element's property that is not set and has no default: " <>
+                   "element_state:get_group_data); shown as on page load"
+      end
+
+      assert page =~
+               "TODO(bubble:bBTasksT) visibility: 1 conditional not lowered (it reads a " <>
+                 "reusable element's property that is not set and has no default: " <>
+                 "cell_thing); shown as on page load"
+
+      assert page =~
+               "TODO(bubble:bATaskT) visibility: 1 conditional not lowered (it reads page " <>
+                 "data that is not loaded: element_state:get_group_data)"
+
+      # Card's bGroup reads This Card's Task, which bCardA sets (and does
+      # not load) and bCardB does not: one source for every instance, not
+      # loaded, not one with no value.
+      assert Spec.unset_property(
+               spec,
+               "bCard",
+               {:element_state, %{"element" => "bGroup", "state" => "get_group_data"}}
+             ) == nil
+
+      # With privacy: :enforced, shown on page load and hidden by its
+      # condition: hidden.
+      %{files: enforced} = build(app, :enforced)
+
+      assert enforced["lib/shop_web/live/task_live.html.heex"] =~
+               "TODO(bubble:bBTaskT) visibility: 1 conditional not lowered (it reads a " <>
+                 "reusable element's property that is not set and has no default: " <>
+                 "element_state:get_group_data); hidden (privacy: enforced, a conditional may hide it)"
+    end
+
+    test "a group failing for another reason too is not one with no value" do
+      # bG and bH are groups whose data source is bI's Prop (not set, no
+      # default). bH's binding also left it residue for another reason
+      # (a repeating group's cell): it is not read as having no value.
+      input = {:element_state, %{"element" => "bI", "state" => "param_pP"}}
+      ir = IR.node(:input, Tuple.to_list(input))
+
+      source = fn element ->
+        %{kind: :group, element: element, surface: "bPg", residue: [], value: %{ir: ir}}
+      end
+
+      bound = fn element, reason ->
+        %{element: element, kind: :group, residue: [%{reason: reason}]}
+      end
+
+      spec = %Spec{
+        surfaces: %{
+          "bPg" => %{
+            data: [bound.("bG", :unavailable_input), bound.("bH", :page_data_in_cell)]
+          }
+        },
+        elements: %{"bI" => %{surface: "bPg", instance_of: "bR"}}
+      }
+
+      spec = Spec.with_unset_sources(spec, %{sources: [source.("bG"), source.("bH")]})
+      assert spec.data_index.unset_sources == MapSet.new(["bG"])
+    end
+
     test "the report counts the conditionals reading one", %{spec: spec} do
       app = app()
       {:ok, model} = Model.build(app)
@@ -617,6 +818,150 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
                Enum.find(Spec.data(spec, "bBoardPage"), &(&1.element == "bBoardList"))
     end
 
+    test "an instance's own default is read whatever another instance's value" do
+      # bP4, another Picker, sets a Term that does not compile: This
+      # Picker's Term does not load. bPick sets none, and its default loads:
+      # Bubble reads bPick's own.
+      app =
+        put_in_app(app(), ~w(pages board elements bP4), %{
+          "id" => "bP4",
+          "type" => "CustomElement",
+          "properties" => %{
+            "custom_id" => "bPickerDef",
+            "order" => 7,
+            "height" => 80,
+            "width" => 300,
+            "param_pTerm" => %{"type" => "NoSuchExpression"}
+          }
+        })
+
+      %{spec: spec, files: files} = build(app)
+
+      assert spec.data_index.params["param_pTerm/bPickerDef"] == false
+
+      assert Spec.read(
+               spec,
+               "bPickerDef",
+               {:element_state, %{"element" => "bPickerDef", "state" => "param_pTerm"}}
+             ) == nil
+
+      # The page's text and list read bPick's default.
+      assert Spec.read(
+               spec,
+               "bBoardPage",
+               {:element_state, %{"element" => "bPick", "state" => "param_pTerm"}}
+             ) == {:data, %{path: ["bPick"], element: "param_pTerm/bPickerDef"}}
+
+      assert %{
+               residue: [],
+               reads: [{:data, %{path: ["bPick"], element: "param_pTerm/bPickerDef"}}]
+             } = Enum.find(Spec.data(spec, "bBoardPage"), &(&1.element == "bBoardList"))
+
+      board = files["lib/shop_web/live/board_live.html.heex"]
+      refute board =~ "TODO(bubble:bBoardTerm)"
+      refute board =~ "TODO(bubble:bBoardList) its data source is not loaded"
+
+      # bCardB's Note does not compile; bCardA sets none and reads its
+      # default: the condition reading it from the page is decided, and so
+      # is bNoteShown's in Card (`This Card's Note`), for the instances
+      # that set none. bCardB keeps the fallback, and so does bCardC (in
+      # bList's cell, rendered once for every cell: its "C note" is not
+      # read). bBNoteShown reads bCardB's own Note from the page: not
+      # loaded, never its default.
+      app =
+        app()
+        |> put_in_app(~w(pages task elements bCardB properties param_pNote), %{
+          "type" => "NoSuchExpression"
+        })
+        |> put_in_app(~w(pages task elements bList elements bCardC properties param_pNote), %{
+          "type" => "TextExpression",
+          "entries" => %{"0" => "C note"}
+        })
+        |> put_in_app(~w(pages task elements bBNoteShown), %{
+          "id" => "bBNoteShown",
+          "type" => "Text",
+          "properties" => %{
+            "height" => 40,
+            "width" => 300,
+            "order" => 31,
+            "is_visible" => false,
+            "text" => %{"type" => "TextExpression", "entries" => %{"0" => "B has a note"}}
+          },
+          "states" => %{
+            "0" => %{
+              "type" => "State",
+              "condition" => %{
+                "type" => "GetElement",
+                "properties" => %{"element_id" => "bCardB"},
+                "next" => %{
+                  "type" => "Message",
+                  "name" => "param_pNote",
+                  "next" => %{"type" => "Message", "name" => "is_not_empty"}
+                }
+              },
+              "properties" => %{"is_visible" => true}
+            }
+          }
+        })
+        |> put_in_app(~w(element_definitions card elements bNoteShown), %{
+          "id" => "bNoteShown",
+          "type" => "Text",
+          "properties" => %{
+            "height" => 40,
+            "width" => 300,
+            "order" => 30,
+            "is_visible" => false,
+            "text" => %{"type" => "TextExpression", "entries" => %{"0" => "Has a note"}}
+          },
+          "states" => %{
+            "0" => %{
+              "type" => "State",
+              "condition" => %{
+                "type" => "GetElement",
+                "properties" => %{"element_id" => "bCard"},
+                "next" => %{
+                  "type" => "Message",
+                  "name" => "param_pNote",
+                  "next" => %{"type" => "Message", "name" => "is_not_empty"}
+                }
+              },
+              "properties" => %{"is_visible" => true}
+            }
+          }
+        })
+
+      %{spec: spec, files: files} = build(app)
+      page = files["lib/shop_web/live/task_live.html.heex"]
+      assert page =~ "visible_boutsideshown("
+      refute page =~ "TODO(bubble:bOutsideShown)"
+
+      note = {:element_state, %{"element" => "bCard", "state" => "param_pNote"}}
+      assert Spec.read(spec, "bCard", note) == nil
+      assert Spec.own_default(spec, "bCard", note) == "param_pNote/bCard"
+      # Not where every value loads.
+      assert Spec.own_default(build(app()).spec, "bCard", note) == nil
+
+      assert page =~
+               "TODO(bubble:bBNoteShown) visibility: 1 conditional not lowered (it reads page " <>
+                 "data that is not loaded: element_state:param_pNote)"
+
+      refute page =~ "visible_bbnoteshown("
+
+      # Every instance whose value does not load keeps the fallback, the
+      # one in a cell included.
+      assert Spec.unloaded_values(spec, "param_pNote/bCard") == ["bCardB", "bCardC"]
+
+      template = files["lib/shop_web/components/reusables/card.html.heex"]
+
+      assert template =~
+               "TODO(bubble:bNoteShown) visibility: 1 conditional not lowered for the " <>
+                 "instances whose value of param_pNote/bCard does not load (bCardB, bCardC); " <>
+                 "shown as on page load there"
+
+      assert template =~
+               ~r/if\(!Bubble\.instance_in\?\(@scope, \["bCardB", "bCardC"\]\),\s+do: !visible_bnoteshown\(Bubble\.data\(@bubble_data, @scope, "param_pNote\/bCard"\)\),\s+else: true/
+    end
+
     test "a cycle through an instance's boundary is not loaded" do
       # bPick's Seed reads bEcho's Tag, which reads bPick's Term, whose
       # default reads the Seed.
@@ -795,7 +1140,7 @@ defmodule BubbleEx.Target.Phoenix.ReusableParamsTest do
     end
 
     test "the data coverage counts the properties", %{spec: spec} do
-      assert %{"by_kind" => %{"param" => %{"total" => 33, "wired" => 31}}} =
+      assert %{"by_kind" => %{"param" => %{"total" => 35, "wired" => 32}}} =
                FrontendWorkflows.data_coverage(spec)
     end
   end

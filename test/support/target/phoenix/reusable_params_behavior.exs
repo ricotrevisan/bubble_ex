@@ -159,6 +159,15 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
     assert hidden?(view, "bCardA", "bExtraShown")
     assert hidden?(view, "bCardB", "bExtraShown")
 
+    # Mood: bCardB's value does not compile, bCardA sets none and its
+    # default ("calm") loads. Decided on bCardA's own default: it has a
+    # mood. bCardB keeps the page load (hidden), never decided as if its
+    # Mood were empty.
+    refute hidden?(view, "bCardA", "bMoodShown")
+    assert hidden?(view, "bCardA", "bMoodEmpty")
+    assert hidden?(view, "bCardB", "bMoodShown")
+    assert hidden?(view, "bCardB", "bMoodEmpty")
+
     # From the page, bCardB's Task (not set, no default): hidden on page
     # load stays hidden, never shown as if empty; shown on page load
     # stays shown, or hidden with privacy: :enforced.

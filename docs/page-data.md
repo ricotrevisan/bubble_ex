@@ -472,10 +472,14 @@ property too (`<instance>'s <property>`): the value the instance sets,
 or, when it sets none, its default (with no default, see below), which the
 page computed in the instance's scope under the same key. The page's
 texts and visibility conditions read it when they render, after the
-page's data loaded, and only when every value of the property loads
-(below) and the instance is outside a repeating group's cell. The page's
-own data sources and workflows read it too, the default included
-(WTF-520, *Across instance boundaries* below).
+page's data loaded, when the instance is outside a repeating group's
+cell, and only when every value of the property loads (below), except
+for a default: an instance that sets none reads its own default when the
+default loads, whatever the other instances' values of the property
+(Bubble uses the instance's own value or default, regardless of the
+other instances). The page's own data sources and workflows read it
+too, the default included (WTF-520, *Across instance boundaries*
+below).
 
 A property with no value (no default, and the instance sets none) reads
 as empty in texts, but a visibility condition reading it is not decided
@@ -492,7 +496,16 @@ from where it is says so instead of "reads page data that is not
 loaded". The same holds for an instance the page does not read from
 outside (one in a repeating group's cell, or one not rendered, WTF-522):
 a condition reading its property with no value gets this marker and
-fallback too, so with privacy: :enforced it may now be hidden. When only
+fallback too, so with privacy: :enforced it may now be hidden. A group
+or repeating group whose data source is such a property (or a field of
+one, or another such group's thing) has nothing to read either: a
+condition reading its thing (`<group>'s thing`, `Parent group's thing`,
+a repeating group's `Current cell's thing`) gets this marker and
+fallback too, not "reads page data that is not loaded"; a group whose
+source does not load for another reason too keeps that marker, and so
+does a group reading a property some instances set and others do not
+(no value only in some of them, `{:some, key}`): its source is one for
+every instance. When only
 some instances set it, the
 helper decides for those, and an instance with no value keeps the
 fallback: `Bubble.set?/3` checks that the instance's scope has a value
@@ -574,7 +587,21 @@ One that does not (it does not compile, or reads data the page does not
 load) leaves the reads residue (`:unavailable_input`,
 `element_state:param`) for every instance, never an empty value for some;
 the instance is marked `TODO(bubble:<id>) its property param_<id> is not
-passed (<reasons>)`.
+passed (<reasons>)`. One exception: when the property's default loads,
+an instance that sets none reads its own default whatever the others set
+(Bubble uses the instance's own value or default, regardless of the
+other instances). The reusable element is compiled once, so this is
+decided per instance where a visibility condition reads it: the
+condition is decided for the instances that set none, and those whose
+value does not load keep the fallback. A value that does not load still
+has its entry in `__bubble__(:data)` (`fun: nil`), which writes nil under
+the instance's key, and the loader (`read_source/7`) computes a default
+only where no key is present: such an instance holds nil, never the
+default. The page tells it apart by its scope, `Bubble.instance_in?/2`
+over the instances whose value does not load (every value an instance
+sets, one in a cell it is not rendered per cell for included). Texts,
+data sources and workflows inside the reusable element still read the
+property only when every value loads.
 
 An instance in a repeating group's cell sets its properties per cell
 (below).
@@ -617,10 +644,12 @@ each other, across instance boundaries:
   cells' together (WTF-494).
 
 Only an instance rendered once (not in a repeating group's cell nor
-another runtime template) is read from outside, when every value of
-the property loads, as `This Reusable's <property>` is. A value the
-instance sets that does not load is not replaced by the default: what
-reads it is not loaded. A property with no default that the instance
+another runtime template) is read from outside. A value it sets is read
+when every value of the property loads, as `This Reusable's <property>`
+is; where it sets none, its default is read when the default loads,
+whatever the other instances' values (Bubble reads this instance's own
+default regardless of the others). A value the instance sets that does
+not load is not replaced by the default: what reads it is not loaded. A property with no default that the instance
 does not set is not read from outside by data sources and workflows
 (`element_state:param`), as before.
 
