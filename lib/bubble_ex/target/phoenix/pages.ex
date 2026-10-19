@@ -57,7 +57,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       every render, and that result as `data-bubble-visible`: a workflow
       step's show or hide holds until a render changes it, then the
       conditionals decide again (WTF-509, Bubble replay 2026-10-07; see
-      `<Web>.Bubble`). With workflows, the helpers read
+      `<Web>.Bubble`). A group whose conditionals compiled and that
+      nothing in the browser shows, nor reads inside, renders its
+      contents only while they show it (WTF-559,
+      `Overlays.hidden_contents/4`): `<Bubble.contents :if={...}>`, with
+      the expression of its `hidden`. With workflows, the helpers read
       the current user from `@bubble_viewer`, which the runtime reads
       afresh with field policies, never the session's user, and a URL
       parameter or the URL's path from `@bubble_url` and
@@ -203,7 +207,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> Map.put(:display_not_run, display_not_run(flows))
       |> Map.put(:api_readers, api_readers(flows))
 
-    base = Map.put(base, :lazy, lazy_overlays(names, base))
+    base =
+      base
+      |> Map.put(:lazy, lazy_overlays(names, base))
+      |> Map.put(:hidden_contents, hidden_contents(names, base))
 
     pages = Enum.map(names.pages, &page(&1, base))
     reusables = Enum.map(names.reusables, &reusable(&1, base))
@@ -600,7 +607,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         lowered: lowered,
         stack: MapSet.new(),
         hidden: hidden,
-        lazy_overlays: Map.get(base.lazy, entry.id, MapSet.new())
+        lazy_overlays: Map.get(base.lazy, entry.id, MapSet.new()),
+        shown_contents: Map.get(base.hidden_contents, entry.id, MapSet.new())
       })
       |> Map.merge(surface_flows(base, entry.id))
 
@@ -647,7 +655,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         lowered: lowered,
         stack: MapSet.new([definition.map_key]),
         hidden: hidden,
-        lazy_overlays: Map.get(base.lazy, entry.id, MapSet.new())
+        lazy_overlays: Map.get(base.lazy, entry.id, MapSet.new()),
+        shown_contents: Map.get(base.hidden_contents, entry.id, MapSet.new())
       })
       |> Map.merge(surface_flows(base, entry.id))
 
@@ -772,6 +781,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         "visibility_conditions_unset_property" => 0,
         "visibility_conditions_plugin_state" => 0,
         "visibility_conditions_pending_data" => 0,
+        "visibility_contents_skipped" => 0,
         "conditions_other_properties" => 0
       }
     }
@@ -896,11 +906,18 @@ defmodule BubbleEx.Target.Phoenix.Pages do
               :reusable_definition,
               :repeating_group
             ] do
-    if lazy?(node, ctx, acc) do
-      lazy_overlay(node, ctx, acc)
-    else
-      {inner, acc} = children(node, ctx, acc)
-      element("div", node, [], inner, ctx, acc)
+    cond do
+      lazy?(node, ctx, acc) ->
+        lazy_overlay(node, ctx, acc)
+
+      hidden_contents?(node, ctx, acc) ->
+        ids = acc.ids
+        {inner, acc} = children(node, ctx, acc)
+        element("div", node, [], inner, ctx, acc, hidden_contents: ids)
+
+      true ->
+        {inner, acc} = children(node, ctx, acc)
+        element("div", node, [], inner, ctx, acc)
     end
   end
 
@@ -1650,6 +1667,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     {params, slots} = parameter_attrs(node, definition, ctx)
     {visibility, acc} = visibility_attrs(node, ctx, acc)
+    {_visible, visibility} = take_visible(visibility)
 
     {own, acc} =
       node.attributes
@@ -1739,7 +1757,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   # `surface`: the reusable element whose tree it is; the contents of its
-  # overlays rendered only while open are not rendered (WTF-559).
+  # overlays rendered only while open are not rendered (WTF-559), nor
+  # those of its elements rendered only while visible (whose conditionals
+  # compiled: `compiled_visibility?/2`, so the others are expected whole).
   defp static_ids(%Node{kind: :placeholder, runtime: %{"type" => "Table"}} = n, ctx, stack, s),
     do:
       [bid(n) | Enum.map(Table.structure(n), &bid/1)] ++
@@ -1773,9 +1793,12 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   defp static_ids(%Node{} = node, ctx, stack, surface) do
-    if MapSet.member?(Map.get(ctx.lazy, surface_id(surface), MapSet.new()), bid(node)),
-      do: [bid(node)],
-      else: [bid(node) | Enum.flat_map(node.children, &static_ids(&1, ctx, stack, surface))]
+    id = surface_id(surface)
+
+    if MapSet.member?(Map.get(ctx.lazy, id, MapSet.new()), bid(node)) or
+         MapSet.member?(Map.get(ctx.hidden_contents, id, MapSet.new()), bid(node)),
+       do: [bid(node)],
+       else: [bid(node) | Enum.flat_map(node.children, &static_ids(&1, ctx, stack, surface))]
   end
 
   # Later declarations win; a later shorthand also drops earlier longhands.
@@ -2030,7 +2053,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # --- elements -------------------------------------------------------------------
 
   defp element(tag, node, attrs, inner, ctx, acc, opts \\ []) do
-    {open, acc} = open_tag(tag, node, attrs, ctx, acc, opts)
+    {open, acc, visible} = open_tag(tag, node, attrs, ctx, acc, opts)
+    {inner, acc} = shown_contents(node, inner, visible, acc, opts)
     {close_tag, acc} = close(tag, node, ctx, acc)
 
     markup =
@@ -2052,7 +2076,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # follow it (mark_after/3): a HEEx comment starting a line eats that
   # line's indentation, which would change production's HTML.
   defp void(tag, node, attrs, ctx, acc) do
-    {open, acc} = open_tag(tag, node, attrs, ctx, acc, [])
+    {open, acc, _visible} = open_tag(tag, node, attrs, ctx, acc, [])
     {[marker_html(acc, node, :markers), open, marker_html(acc, node, :markers_after)], acc}
   end
 
@@ -2089,6 +2113,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       |> put_authored_id(node, ctx, acc)
 
     rest = rest ++ api_error_attrs(node, ctx, acc)
+    {visible, rest} = take_visible(rest)
     {notes, rest} = Enum.split_with(rest, &match?({:dev_note, _}, &1))
     {binding_notes, acc} = take_binding_notes(acc, node)
     notes = Enum.map(notes, &elem(&1, 1)) ++ data_notes(node, ctx) ++ binding_notes
@@ -2110,10 +2135,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
             do: all,
             else: [{"id", overlay_dom_id(node, ctx)} | all]
 
-        {["<.focus_wrap", component_attrs_html(all), ">"], acc}
+        {["<.focus_wrap", component_attrs_html(all), ">"], acc, visible}
 
       _ ->
-        {["<", tag, attrs_html(all), ">"], acc}
+        {["<", tag, attrs_html(all), ">"], acc, visible}
     end
   end
 
@@ -2257,6 +2282,53 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       bid: &bid/1,
       scoped: base.scoped,
       surface_id: &surface_id/1
+    )
+  end
+
+  # An element whose contents the page renders only while its visibility
+  # conditionals show it (WTF-559, `Overlays.hidden_contents/4`): one that
+  # nothing in the browser shows, nor needs what is inside. Here, only when
+  # its conditionals compiled to a visibility the server renders
+  # (`data-bubble-visible`): the same expression decides its `hidden`
+  # attribute and whether its contents are rendered. Its own element and
+  # markers always are.
+  defp hidden_contents?(node, ctx, acc),
+    do:
+      not acc.template and
+        MapSet.member?(Map.get(ctx, :shown_contents, MapSet.new()), bid(node))
+
+  # `ids`: the expected Bubble IDs before its contents, which are not
+  # rendered while it is hidden.
+  defp shown_contents(node, inner, visible, acc, opts) do
+    case Keyword.fetch(opts, :hidden_contents) do
+      {:ok, ids} when is_binary(visible) -> wrap_contents(node, inner, visible, ids, acc)
+      _ -> {inner, acc}
+    end
+  end
+
+  defp wrap_contents(node, inner, visible, ids, acc) do
+    if blank?(inner) do
+      {inner, acc}
+    else
+      ids = if acc.lazy, do: ids, else: [bid(node) | ids]
+
+      {["<Bubble.contents :if={", visible, "}>\n", indent(inner, 1), "</Bubble.contents>"],
+       count(%{acc | ids: ids}, "visibility_contents_skipped", 1)}
+    end
+  end
+
+  # The elements of every page and reusable element whose contents may be
+  # rendered only while visible (`Overlays.hidden_contents/4`).
+  defp hidden_contents(names, base) do
+    surfaces =
+      Enum.map(names.pages ++ names.reusables, &{&1.id, &1.node, &1.node.map_key})
+
+    Overlays.hidden_contents(base.flows, surfaces, base.frontend.reusables,
+      bid: &bid/1,
+      surface_id: &surface_id/1,
+      reads: if(base.flows, do: Overlays.element_reads(base.frontend), else: %{}),
+      payload: base.frontend.source && base.frontend.source.payload,
+      compiled: fn id, node -> compiled_visibility?(node, Map.put(base, :entry, %{id: id})) end
     )
   end
 
@@ -2931,6 +3003,25 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp loaded_checks(_compiled), do: []
 
+  # Whether visibility_attrs/3 renders an element's `hidden` from its
+  # conditionals (`data-bubble-visible`), on the surface's tree before
+  # shown/1 (`ctx.entry.id` its surface): the decisions of
+  # visibility_attrs/3 and conditional_visibility/6, without their marks.
+  # `Overlays.hidden_contents/4` leaves the contents out of those only.
+  defp compiled_visibility?(%Node{} = node, ctx) do
+    with %{kind: :condition, payload: payload, id: id} <- node.bindings["condition"],
+         [_ | _] <- Conditions.visibility(payload),
+         false <- match?(%{"boundary" => "overlay"}, node.runtime),
+         false <- is_map(node.box) and node.box[:hidden?] == true and breakpoint_display?(node),
+         %{bindings: vars} = compiled <- ctx.expressions[id],
+         false <- match?(%{visibility: %{constant?: true}}, compiled),
+         nil <- Enum.find(vars, &(not kept_input?(&1, ctx) and not settled_input?(&1, ctx))) do
+      match?({_unset = [], _some}, unset_reads(vars, ctx))
+    else
+      _ -> false
+    end
+  end
+
   # The `hidden` attribute of an element: from its compiled visibility
   # conditionals, else as on page load. An overlay's is overlay_attrs/1's.
   defp visibility_attrs(%Node{} = node, ctx, acc) do
@@ -3163,8 +3254,18 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp visibility_attrs(hidden, visible) do
     [
       {"hidden", {:raw, hidden}},
-      {"data-bubble-visible", {:raw, "{to_string(" <> visible <> ")}"}}
+      {"data-bubble-visible", {:raw, "{to_string(" <> visible <> ")}"}},
+      {:visible, visible}
     ]
+  end
+
+  # The condition-derived visibility's expression among an element's
+  # attributes (visibility_attrs/2), or nil, and the attributes without it.
+  defp take_visible(attrs) do
+    case List.keytake(attrs, :visible, 0) do
+      {{:visible, visible}, rest} -> {visible, rest}
+      nil -> {nil, attrs}
+    end
   end
 
   # The properties a condition reads with no value (`{unset, some}`): those

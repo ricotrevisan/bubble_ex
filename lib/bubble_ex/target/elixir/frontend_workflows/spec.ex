@@ -38,8 +38,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   its own residue subjects and the blocked (or unknown) workflows it calls
   or schedules directly (custom events and backend workflows): a workflow
   with any fails before its first step. `data?` is transitive: it or a
-  custom event it calls reads or writes stored data. A step: `%{index, bubble_id, symbol, type, op, condition,
-  args, residue}`.
+  custom event it calls reads or writes stored data. A step: `%{index, bubble_id, symbol, type, op, element,
+  condition, args, residue}` (`element`: the element the action names,
+  whatever its `op`, a step with residue or no lowering included,
+  `BubbleEx.Workflows.Frontend.Step`).
 
   A compiled value is `%{source, bindings}`, each binding `%{var, bind,
   loads}` with `bind` one of `:actor`, `:now`, `:page_width`, `{:param, id}`, `{:step,

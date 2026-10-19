@@ -109,6 +109,107 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
            """
   end
 
+  test "a group hidden by its conditions renders its contents only while they show it (WTF-559)",
+       %{files: files, project: project, opts: opts} do
+    template = files["lib/shop_web/live/index_live.html.heex"]
+
+    # Nothing in the browser shows bIn or bOut, and nothing reads what is
+    # inside: their own element always, their contents with the same
+    # expression as `hidden`.
+    for {id, child, helper} <- [{"bIn", "bInT", "visible_bin"}, {"bOut", "bOutT", "visible_bout"}] do
+      [group] =
+        Regex.run(~r/<div[^>]*data-bubble-id="#{id}".*?<\/Bubble.contents>\s*<\/div>/s, template)
+
+      assert squash(group) =~
+               squash(
+                 ~s|<Bubble.contents :if={#{helper}(@bubble_viewer)}><p data-bubble-id="#{child}"|
+               )
+    end
+
+    # A text with conditionals has no contents to leave out.
+    refute tag(template, "bFlagged") =~ "Bubble.contents"
+
+    # The traceability test expects their contents only where they render.
+    surfaces = files["test/shop_web/bubble_surfaces_test.exs"]
+    refute surfaces =~ ~s("bInT")
+    assert surfaces =~ ~s("bIn")
+
+    {:ok, report} = Phoenix.frontend_report(project, opts)
+    assert %{"visibility_contents_skipped" => 2} = report
+  end
+
+  test "only a group whose conditions compiled leaves its contents out; the surface test expects the others' (WTF-559)" do
+    group = fn id, condition ->
+      %{
+        "id" => id,
+        "type" => "Group",
+        "properties" => %{"height" => 40, "is_visible" => false, "order" => 4, "width" => 300},
+        "states" => %{
+          "0" => %{
+            "type" => "State",
+            "condition" => condition,
+            "properties" => %{"is_visible" => true}
+          }
+        },
+        "elements" => %{
+          (id <> "T") => %{
+            "id" => id <> "T",
+            "type" => "Text",
+            "properties" => %{
+              "height" => 40,
+              "order" => 1,
+              "width" => 300,
+              "text" => %{"entries" => %{"0" => "Inside"}, "type" => "TextExpression"}
+            }
+          }
+        }
+      }
+    end
+
+    logged_in = %{
+      "type" => "CurrentUser",
+      "next" => %{"type" => "Message", "name" => "logged_in"}
+    }
+
+    # A state no page keeps: the conditional is marked, the group rendered whole.
+    hovered = %{
+      "type" => "GetElement",
+      "properties" => %{"element_id" => "bSetFlag"},
+      "next" => %{"type" => "Message", "name" => "is_hovered"}
+    }
+
+    files =
+      app()
+      |> put_in(
+        ["element_definitions", "card", "elements", "bCardIn"],
+        group.("bCardIn", logged_in)
+      )
+      |> put_in(
+        ["element_definitions", "card", "elements", "bCardBad"],
+        group.("bCardBad", hovered)
+      )
+      |> build()
+      |> Map.fetch!(:files)
+
+    card = files["lib/shop_web/components/reusables/card.html.heex"]
+    [inner] = Regex.run(~r/data-bubble-id="bCardIn".*?<\/div>\s*<\/div>/s, card)
+    assert inner =~ "<Bubble.contents :if={visible_bcardin(@bubble_viewer)}>"
+    [bad] = Regex.run(~r/data-bubble-id="bCardBad".*?<\/div>/s, card)
+    refute bad =~ "Bubble.contents"
+
+    # The index page renders the card (bMember): its test expects what
+    # the card renders whole, never what renders only while shown.
+    [index] =
+      Regex.run(
+        ~r/@tag bubble: "page:bVis".*?\n  end\n/s,
+        files["test/shop_web/bubble_surfaces_test.exs"]
+      )
+
+    assert index =~ ~s("bCardBadT")
+    assert index =~ ~s("bCardIn")
+    refute index =~ ~s("bCardInT")
+  end
+
   test "a condition reads a custom state through the page's state map", %{files: files} do
     template = files["lib/shop_web/live/index_live.html.heex"]
 
