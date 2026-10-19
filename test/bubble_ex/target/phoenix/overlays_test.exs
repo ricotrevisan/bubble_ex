@@ -140,7 +140,7 @@ defmodule BubbleEx.Target.Phoenix.OverlaysTest do
 
     # Server-side steps naming what is inside keep it: the page renders
     # what they set.
-    for op <- [:display_data, :display_list, :set_state] do
+    for op <- [:display_data, :display_list, :set_state, :call_reusable, :navigate] do
       flows = put_in(plain.surfaces["p"], surface(:page, [step(op, "t")]))
       assert hidden_contents(flows, [page], [])["p"] == MapSet.new(["g"]), inspect(op)
     end
@@ -337,5 +337,91 @@ defmodule BubbleEx.Target.Phoenix.OverlaysTest do
              "y" => MapSet.new([{"b", nil}]),
              "z" => MapSet.new([{:workflow, nil}])
            }
+  end
+
+  test "a Group Focus placed next to an element inside keeps it" do
+    focus =
+      node("gf", :group_focus, [node("ft", :text)],
+        runtime: %{
+          "boundary" => "overlay",
+          "overlay" => "group_focus",
+          "initial" => "hidden",
+          "placement" => %{"placement" => "element", "reference" => %{"bubble_id" => "anchor"}}
+        }
+      )
+
+    page = fn anchor ->
+      node("p", :page, [conditional("g", [node(anchor, :text), node("other", :text)]), focus])
+    end
+
+    frontend = fn page ->
+      %BubbleEx.Frontend.Normalized{
+        source: %BubbleEx.Frontend.Normalized.Source{payload: nil},
+        pages: [page],
+        reusables: []
+      }
+    end
+
+    flows = %Spec{surfaces: %{"p" => surface(:page)}}
+
+    for {anchor, expected} <- [{"anchor", MapSet.new()}, {"elsewhere", MapSet.new(["g"])}] do
+      reads = Overlays.element_reads(frontend.(page.(anchor)))
+      assert hidden_contents(flows, [page.(anchor)], [], reads: reads)["p"] == expected
+    end
+
+    assert Overlays.element_reads(frontend.(page.("anchor")))["anchor"] ==
+             MapSet.new([{:workflow, nil}])
+  end
+
+  test "element_reads/1: a mobile view's expressions read too" do
+    get = %{
+      "type" => "GetElement",
+      "properties" => %{"element_id" => "x"},
+      "next" => %{"type" => "Message", "name" => "is_visible"}
+    }
+
+    app = %{
+      "mobile_views" => %{
+        "m" => %{
+          "id" => "m",
+          "elements" => %{"a" => %{"id" => "a", "properties" => %{"v" => get}}},
+          "workflows" => %{"w" => %{"actions" => %{"0" => %{"properties" => get}}}}
+        }
+      }
+    }
+
+    frontend = %BubbleEx.Frontend.Normalized{
+      source: %BubbleEx.Frontend.Normalized.Source{payload: app},
+      pages: [],
+      reusables: []
+    }
+
+    assert Overlays.element_reads(frontend) == %{
+             "x" => MapSet.new([{"a", "is_visible"}, {:workflow, "is_visible"}])
+           }
+  end
+
+  test "only the elements whose conditionals compiled are candidates" do
+    page =
+      node("p", :page, [
+        conditional("g", [node("t", :text)]),
+        conditional("h", [node("u", :text)])
+      ])
+
+    flows = %Spec{surfaces: %{"p" => surface(:page)}}
+    compiled = fn "p", %Node{map_key: key} -> key == "g" end
+
+    assert hidden_contents(flows, [page], [], compiled: compiled)["p"] == MapSet.new(["g"])
+
+    surfaces = [{"p", page, "p"}]
+
+    reasons =
+      Overlays.hidden_contents_reasons(flows, surfaces, [],
+        bid: & &1.map_key,
+        surface_id: & &1.map_key,
+        compiled: compiled
+      )
+
+    assert Map.keys(reasons) == [{"p", "g"}]
   end
 end

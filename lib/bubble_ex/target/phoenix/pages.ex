@@ -1758,8 +1758,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # `surface`: the reusable element whose tree it is; the contents of its
   # overlays rendered only while open are not rendered (WTF-559), nor
-  # those of its elements rendered only while visible (those that may be:
-  # whether their conditionals compiled is known only once it renders).
+  # those of its elements rendered only while visible (whose conditionals
+  # compiled: `compiled_visibility?/2`, so the others are expected whole).
   defp static_ids(%Node{kind: :placeholder, runtime: %{"type" => "Table"}} = n, ctx, stack, s),
     do:
       [bid(n) | Enum.map(Table.structure(n), &bid/1)] ++
@@ -2327,7 +2327,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       bid: &bid/1,
       surface_id: &surface_id/1,
       reads: if(base.flows, do: Overlays.element_reads(base.frontend), else: %{}),
-      payload: base.frontend.source && base.frontend.source.payload
+      payload: base.frontend.source && base.frontend.source.payload,
+      compiled: fn id, node -> compiled_visibility?(node, Map.put(base, :entry, %{id: id})) end
     )
   end
 
@@ -3001,6 +3002,25 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   defp loaded_checks(_compiled), do: []
+
+  # Whether visibility_attrs/3 renders an element's `hidden` from its
+  # conditionals (`data-bubble-visible`), on the surface's tree before
+  # shown/1 (`ctx.entry.id` its surface): the decisions of
+  # visibility_attrs/3 and conditional_visibility/6, without their marks.
+  # `Overlays.hidden_contents/4` leaves the contents out of those only.
+  defp compiled_visibility?(%Node{} = node, ctx) do
+    with %{kind: :condition, payload: payload, id: id} <- node.bindings["condition"],
+         [_ | _] <- Conditions.visibility(payload),
+         false <- match?(%{"boundary" => "overlay"}, node.runtime),
+         false <- is_map(node.box) and node.box[:hidden?] == true and breakpoint_display?(node),
+         %{bindings: vars} = compiled <- ctx.expressions[id],
+         false <- match?(%{visibility: %{constant?: true}}, compiled),
+         nil <- Enum.find(vars, &(not kept_input?(&1, ctx) and not settled_input?(&1, ctx))) do
+      match?({_unset = [], _some}, unset_reads(vars, ctx))
+    else
+      _ -> false
+    end
+  end
 
   # The `hidden` attribute of an element: from its compiled visibility
   # conditionals, else as on page load. An overlay's is overlay_attrs/1's.

@@ -230,9 +230,12 @@ All notable changes to this project are documented here.
   matter: they change the ancestor's own `hidden`. Before the socket
   connects, a conditional that reads page data keeps its fallback, so the
   static render has only the contents it shows. The report counts them
-  (`visibility_contents_skipped`), the surface test expects their
-  contents only where they render, and Spec steps keep the element their
-  action names (`element`). See `docs/frontend-workflows.md`, "Elements
+  (`visibility_contents_skipped`). The surface test no longer expects
+  the contents of those groups on page load; it still expects the
+  contents of a group whose conditionals did not compile (rendered whole,
+  as before), on its own surface and through a reusable element's
+  instances. Spec steps keep the element their action names
+  (`element`). See `docs/frontend-workflows.md`, "Elements
   hidden by their conditions".
   On the private fixture app's `/meeting/<id>` (dev, privacy enforced,
   the same server and data, interleaved visits, medians of 15 before and

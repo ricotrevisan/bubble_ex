@@ -42,10 +42,11 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
   while its compiled visibility conditionals show it (WTF-559, option c),
   as `<Bubble.contents :if={...}>` around them, with the same expression
   as its `hidden` attribute. A render that shows it brings them. Its own
-  element is always rendered. Whether its conditionals compiled is decided
-  where the page renders it (`BubbleEx.Target.Phoenix.Pages`); this
-  module proves that nothing in the browser can show it, or needs what is
-  inside it:
+  element is always rendered. Only an element whose conditionals compiled
+  to a visibility the server renders is a candidate: the page says which
+  (`compiled`, `BubbleEx.Target.Phoenix.Pages`, the same decisions as its
+  `hidden` attribute). This module proves that nothing in the browser can
+  show it, or needs what is inside it:
 
     * it has visibility conditionals, is not an overlay and is not inside
       a runtime container (a repeating group's cell template)
@@ -146,8 +147,10 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
   visibility conditionals show them, by surface Bubble ID: a `MapSet` of
   their Bubble IDs (see the module doc). Options as `lazy/4`'s (no
   `scoped`), plus `reads`: the Bubble IDs of the elements something reads
-  (`element_reads/1`), and `payload`: the app's (the plugin states it
-  declares). Without workflows (`flows` nil) there are none.
+  (`element_reads/1`), `payload`: the app's (the plugin states it
+  declares), and `compiled`: whether an element's visibility conditionals
+  compiled to a visibility the server renders, `(surface id, node ->
+  boolean)` (every one, by default). Without workflows (`flows` nil) there are none.
   """
   @spec hidden_contents(
           Spec.t() | nil,
@@ -183,7 +186,7 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
     env = Map.merge(env, named(flows))
 
     for {id, root, _map_key} <- surfaces,
-        node <- conditional(root),
+        node <- conditional(root, &env.compiled.(id, &1)),
         into: %{} do
       local = local(id, env)
       self = env.bid.(node)
@@ -355,6 +358,7 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
       surface_id: surface_id,
       controls: controls,
       reads: Keyword.get(opts, :reads, %{}),
+      compiled: Keyword.get(opts, :compiled, fn _surface, _node -> true end),
       tracked: tracked(flows),
       inside: MapSet.new(),
       touched: MapSet.new(),
@@ -398,17 +402,19 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
   end
 
   # The elements with visibility conditionals that could leave their
-  # contents out: never below a runtime container, never an overlay.
-  defp conditional(%Node{runtime: %{"boundary" => "container"}}), do: []
+  # contents out: never below a runtime container, never an overlay, and
+  # only those whose conditionals compiled to a visibility the server
+  # renders (`compiled`): the others are rendered whole.
+  defp conditional(%Node{runtime: %{"boundary" => "container"}}, _compiled), do: []
 
-  defp conditional(%Node{} = node) do
+  defp conditional(%Node{} = node, compiled) do
     own =
       if node.kind in @containers and node.children != [] and not overlay?(node) and
-           visibility?(node),
+           visibility?(node) and compiled.(node),
          do: [node],
          else: []
 
-    own ++ Enum.flat_map(node.children, &conditional/1)
+    own ++ Enum.flat_map(node.children, &conditional(&1, compiled))
   end
 
   defp overlay?(%Node{runtime: %{"boundary" => "overlay"}}), do: true

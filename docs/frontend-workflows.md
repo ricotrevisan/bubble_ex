@@ -695,8 +695,12 @@ overlays (above), made stricter:
 
 The others render as before: hidden, with their contents. The report
 counts the ones that render their contents only while shown
-(`visibility_contents_skipped`), and the surface test expects their
-contents only where they render.
+(`visibility_contents_skipped`). The surface test does not expect their
+contents on page load; it expects those of every group rendered whole
+(its conditionals did not compile, or something keeps it), a reusable
+element's through its instances too. Only a group whose conditionals
+compiled to a visibility the server renders is a candidate (the page's
+`compiled_visibility?/2`, the decisions of its `hidden` attribute).
 
 ### Step results (WTF-520)
 
