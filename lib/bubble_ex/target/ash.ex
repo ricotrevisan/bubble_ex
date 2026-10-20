@@ -566,6 +566,10 @@ defmodule BubbleEx.Target.Ash do
       so there is nothing to bypass)
     * `:index` is required when `decisions` hold a drop (WTF-422): each
       drop is checked against it
+    * with `:index`, a deleted field something still reads (a search's
+      constraint or sort, a displayed value) is kept as a private attribute
+      (`:ash_deleted_kept`): Bubble's runtime keeps and reads its stored
+      values (WTF-566)
     * `:decisions_sha256` - `BubbleEx.Decision.decisions_sha256/1` of the
       decision records `decisions` were resolved from, recorded as
       `project.decisions_sha256`. Required when `decisions` is not empty
@@ -683,7 +687,8 @@ defmodule BubbleEx.Target.Ash do
       externals: Map.new(model.external_types, &{&1.id, &1}),
       names: names,
       text_ref: plan.text_ref,
-      drops: plan.drops
+      drops: plan.drops,
+      read_deleted: read_deleted(model, index)
     }
 
     ctx = assign_modules(ctx, types, sets)
@@ -818,6 +823,19 @@ defmodule BubbleEx.Target.Ash do
         diag -> {keep, [diag | diags]}
       end
     end)
+  end
+
+  # Deleted fields of live types with readers in the index, keyed
+  # `{type, field}`, valued by their reader count (no index: none).
+  defp read_deleted(_model, nil), do: %{}
+
+  defp read_deleted(model, index) do
+    for %{deleted: false} = type <- model.data_types,
+        %Field{deleted: true, raw: nil} = field <- type.fields,
+        readers = BubbleEx.Index.readers(index, "field:#{type.id}/#{field.id}"),
+        readers != [],
+        into: %{},
+        do: {{type.id, field.id}, length(readers)}
   end
 
   defp omission(%{raw: raw} = item, subject, details) when not is_nil(raw) do
@@ -1219,6 +1237,33 @@ defmodule BubbleEx.Target.Ash do
     }
 
     {[{:attribute, attribute}], {diags, used, entry}}
+  end
+
+  # A deleted field something still reads (a search's constraint or sort,
+  # a displayed value; `index:` given): Bubble's runtime keeps its stored
+  # values and reads them (observed 2026-10-20, WTF-566). It is kept, not
+  # public, so no action accepts it.
+  defp field_item(%Field{deleted: true, raw: nil} = field, type, ctx, acc)
+       when is_map_key(ctx.read_deleted, {type.id, field.id}) do
+    {items, {diags, used, entry}} = field_item(%{field | deleted: false}, type, ctx, acc)
+
+    diag =
+      Diagnostic.new(
+        :ash_deleted_kept,
+        field.path,
+        "deleted field #{inspect(field.id)} is still read; kept as a private attribute",
+        target: :ash,
+        subject: %{type: type.id, field: field.id},
+        details: %{readers: Map.fetch!(ctx.read_deleted, {type.id, field.id})}
+      )
+
+    items =
+      Enum.map(items, fn
+        {kind, %{public?: _} = item} -> {kind, %{item | public?: false}}
+        other -> other
+      end)
+
+    {items, {[diag | diags], used, entry}}
   end
 
   defp field_item(%Field{} = field, type, _ctx, {diags, used, entry})
