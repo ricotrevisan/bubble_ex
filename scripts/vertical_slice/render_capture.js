@@ -28,7 +28,7 @@
   const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let t = tw.nextNode(); t; t = tw.nextNode()) {
     const s = t.nodeValue.replace(/\s+/g, " ").trim(); if (!s) continue;
-    const pe = t.parentElement; if (!pe || ["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"].includes(pe.tagName)) continue;
+    const pe = t.parentElement; if (!pe || ["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "TEXTAREA"].includes(pe.tagName)) continue;
     let p = pe; while (p && !set.has(p)) p = p.parentElement;
     if (p && shown(pe)) own.get(p).push(s);
   }

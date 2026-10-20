@@ -331,7 +331,7 @@ defmodule BubbleEx.Frontend.RenderDiffTest do
       <p data-bubble-id="bC" title={Bubble.dev_marker("Say \\"hi\\" \\x7B")}></p>
       """
 
-      assert {"bB", ""} in RenderDiff.notes_in(source)
+      refute Enum.any?(RenderDiff.notes_in(source), &(elem(&1, 0) == "bB"))
       assert {"bC", ~s(Say "hi" {)} in RenderDiff.notes_in(source)
       refute Enum.any?(RenderDiff.notes_in(source), fn {_, n} -> n =~ "secret" end)
     end

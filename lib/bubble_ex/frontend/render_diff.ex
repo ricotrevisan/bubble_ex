@@ -360,8 +360,8 @@ defmodule BubbleEx.Frontend.RenderDiff do
   defp box_off(base, be, oe, b, o, tolerance) do
     with {bp, [bx, by, bw, bh]} <- relative_box(be, b),
          {op, [ox, oy, ow, oh]} <- relative_box(oe, o) do
-      # Offsets compare only from the same parent element.
-      moved = if bp == op, do: [abs(bx - ox), abs(by - oy)], else: []
+      # Offsets compare only from the same (known) parent element.
+      moved = if bp == op and bp != nil, do: [abs(bx - ox), abs(by - oy)], else: []
       off = Enum.max(moved ++ [abs(bw - ow), abs(bh - oh)])
       area = abs(bw * bh - ow * oh)
 
@@ -607,7 +607,7 @@ defmodule BubbleEx.Frontend.RenderDiff do
             ),
           do: {id, unescape(note)}
 
-    todos ++ markers
+    Enum.reject(todos ++ markers, &(elem(&1, 1) == ""))
   end
 
   defp unescape(literal) do
@@ -661,8 +661,8 @@ defmodule BubbleEx.Frontend.RenderDiff do
       Enum.map_join(d.reasons, "", &"\n    #{&1}")
   end
 
-  defp norm(nil), do: ""
-  defp norm(text), do: text |> to_string() |> String.replace(~r/\s+/u, " ") |> String.trim()
+  defp norm(text) when is_binary(text), do: text |> String.replace(~r/\s+/u, " ") |> String.trim()
+  defp norm(_), do: ""
 
   defp truncate(nil, _), do: nil
 
