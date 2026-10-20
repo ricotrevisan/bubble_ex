@@ -808,9 +808,15 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
           "vars" =>
             el(
               "vars",
-              "Group",
+              "RepeatingGroup",
               1,
-              Map.merge(fixed, %{"container_layout" => "column", "width" => 280, "height" => 350})
+              Map.merge(fixed, %{
+                "container_layout" => "column",
+                "width" => 280,
+                "height" => 350,
+                "cell_min_height_css" => "0px",
+                "cell_min_width_css" => "1px"
+              })
             )
         }
       )
@@ -906,6 +912,58 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
     assert "w-[72px]" in classes(layout, "plug")
     assert "h-[54px]" in classes(layout, "plug")
     assert "h-[54px]" in classes(layout, "shape")
+  end
+
+  test "a breakpoint that sets the min size still sets a fixed axis without one" do
+    # A compact breakpoint state, as `Frontend.Responsive` reads it.
+    narrow = %{
+      "%c" => %{
+        "%x" => "PageData",
+        "%p" => %{"%nm" => "Current Page Width"},
+        "%n" => %{"%x" => "Message", "%nm" => "less_than", "%a" => 1200}
+      },
+      "%p" => %{"min_width_css" => "258px"}
+    }
+
+    group =
+      el("g", "Group", 1, %{
+        "container_layout" => "column",
+        "single_width" => true,
+        "single_height" => true,
+        "width" => 250,
+        "height" => 200
+      })
+      |> Map.put("%s", %{"0" => narrow})
+
+    %{classes: classes, rules: rules} = layout(editor_app(column_page(%{"g" => group})))["g"]
+
+    assert "w-[0px]" in classes
+    assert inspect(rules) =~ "width: 258px"
+  end
+
+  test "uncalibrated fixed axes without a min size keep their canvas size" do
+    fixed = %{"single_width" => true, "single_height" => true, "width" => 320, "height" => 240}
+
+    image =
+      el(
+        "img",
+        "Image",
+        1,
+        Map.merge(fixed, %{
+          "use_aspect_ratio" => true,
+          "aspect_ratio_width" => 4,
+          "aspect_ratio_height" => 3
+        })
+      )
+
+    page = column_page(%{"img" => image, "pu" => el("pu", "Popup", 2, fixed)})
+    layout = layout(editor_app(page))
+
+    assert Enum.any?(classes(layout, "img"), &(&1 =~ "320px"))
+
+    {:ok, %{pages: [normalized]}} = Frontend.normalize(editor_app(page))
+    popup = Enum.find(normalized.children, &(&1.source.bubble_id == "pu"))
+    assert %{width: 320, height: 240} = popup.box
   end
 
   defp only_box(app, id) do

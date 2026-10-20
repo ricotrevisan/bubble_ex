@@ -32,7 +32,8 @@ defmodule BubbleEx.Frontend.EditorGeometry do
       element's height follows the same rules as a runtime payload's:
         - `single_height` set: fixed, at its min height (Bubble's default
           `0px` when it has none: the canvas height is not read, WTF-583;
-          the same for `single_width`);
+          the same for `single_width`; Popups, Group Focuses and elements
+          keeping an aspect ratio, not calibrated, keep `%h`);
         - `fit_height` set, or no height flag at all: sized to its
           content, from its own min height if it has one (the canvas height
           is not a min height);
@@ -184,7 +185,7 @@ defmodule BubbleEx.Frontend.EditorGeometry do
     if Payload.plugin_type?(type) do
       update_props(raw, &compact(&1, ["left", "top"]))
     else
-      raw = update_props(raw, &(&1 |> compact() |> put_width_flags() |> put_fixed_minimums()))
+      raw = update_props(raw, &(&1 |> compact() |> put_width_flags() |> put_fixed_minimums(type)))
       flow_height(raw, type, Payload.properties(raw), styles)
     end
   end
@@ -304,13 +305,22 @@ defmodule BubbleEx.Frontend.EditorGeometry do
   # with a fixed axis and no min size at 0 on that axis, none larger
   # (variable holders: Floating Groups, Repeating Groups and reusables that
   # only hold values), and every fixed axis with a min size at that min.
-  defp put_fixed_minimums(props) do
-    Enum.reduce(~w(width height), props, fn axis, acc ->
-      if acc["single_#{axis}"] == true and is_nil(acc["min_#{axis}_css"]) and
-           is_nil(acc["min_#{axis}_px"]),
-         do: Map.put(acc, "min_#{axis}_css", "0px"),
-         else: acc
-    end)
+  # Not calibrated, so left at their canvas size: Popups and Group Focuses
+  # (every one the capture held had a min width) and elements that keep an
+  # aspect ratio, whose other axis follows the fixed one.
+  defp put_fixed_minimums(props, type) when type in ["Popup", "GroupFocus"], do: props
+
+  defp put_fixed_minimums(props, _type) do
+    if aspect_ratio?(props) do
+      props
+    else
+      Enum.reduce(~w(width height), props, fn axis, acc ->
+        if acc["single_#{axis}"] == true and is_nil(acc["min_#{axis}_css"]) and
+             is_nil(acc["min_#{axis}_px"]),
+           do: Map.put(acc, "min_#{axis}_css", "0px"),
+           else: acc
+      end)
+    end
   end
 
   # An image that keeps its aspect ratio takes its height from its width,

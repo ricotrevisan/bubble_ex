@@ -522,8 +522,10 @@ All notable changes to this project are documented here.
   Repeating Group, a reusable used as a data holder) were empty
   80,000 px² boxes over the page, taking pointer space; they now take no
   space. A private app's capture measured every such shown element at 0 on
-  that axis. Plugins, children of Fixed containers and a Shape without a
-  height flag keep their canvas size; a runtime payload is read as before.
+  that axis. Plugins, children of Fixed containers, a Shape without a
+  height flag and, not yet calibrated, Popups, Group Focuses and elements
+  keeping an aspect ratio keep their canvas size; a runtime payload is
+  read as before.
 - **Elements hidden on page load that collapse when hidden show again.**
   Since #255 (a68a734) such an element also had a static `hidden` class
   (`display: none`) besides its `hidden` attribute. Its conditionals and
