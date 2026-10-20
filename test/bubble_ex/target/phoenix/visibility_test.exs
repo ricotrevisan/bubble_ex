@@ -1024,7 +1024,16 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
       assert files["lib/shop_web/live/task_live.html.heex"] |> text_element("bProjectText") =~
                ~s|>{if(@bubble_data_pending, do: "No project", else: text_bprojecttext(|
 
-      assert files["lib/shop_web/live/task_live.ex"] =~ "defp text_bprojecttext("
+      # Like the element's dynamic text, it reads a relationship that was
+      # not loaded as empty: never Bubble.loaded!/2, which would crash the page.
+      [helper] =
+        Regex.run(
+          ~r/  defp text_bprojecttext\(.*?\n  end\n/s,
+          files["lib/shop_web/live/task_live.ex"]
+        )
+
+      refute helper =~ "loaded!"
+      assert helper =~ "project"
     end
 
     test "with BBCode only the static path renders, keeps it, marked", %{files: files} do

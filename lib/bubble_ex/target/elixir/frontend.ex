@@ -370,7 +370,9 @@ defmodule BubbleEx.Target.Elixir.Frontend do
         file?: false,
         raw?: true,
         text: text,
-        property: %{name: "text", states: length(states), constant?: false}
+        # Not `property`: like the element's dynamic text, a value never
+        # refuses a relationship that was not loaded (it reads as empty).
+        states: length(states)
       }
     else
       _ -> nil
