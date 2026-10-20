@@ -964,20 +964,22 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
 
       refute greet =~ "not lowered"
 
-      assert live =~ """
+      # With several states each condition is read first (no clause
+      # narrows what a later one reads, WTF-555), tried last first.
+      [greet_helper] = Regex.run(~r/  defp text_bgreet\(.*?\n  end\n/s, live)
+
+      assert squash(greet_helper) =~
+               squash("""
                defp text_bgreet(current_user, element_state_bvis_custom_flag) do
+                 bubble_state_1 = not is_nil(current_user) == true
+                 bubble_state_2 = element_state_bvis_custom_flag == true == true
+
                  cond do
-                   element_state_bvis_custom_flag == true == true ->
-                     "Flagged"
+                   bubble_state_2 -> "Flagged"
+               """)
 
-                   not is_nil(current_user) == true ->
-                     "Hello " <> Shop.Bubble.Runtime.display(get_in(current_user, [Access.key(:email)]))
-
-                   true ->
-                     "Signed out"
-                 end
-               end
-             """
+      assert greet_helper =~ ~r/bubble_state_1 ->\s+"Hello " <> Shop.Bubble.Runtime.display\(/
+      assert greet_helper =~ ~r/true ->\s+"Signed out"\s+end/
 
       # A button's label, on a custom state.
       assert text_element(template, "bFlagLabel") =~

@@ -140,13 +140,30 @@ defmodule BubbleEx.Frontend.Conditions do
   def text_source(%{base: base, branches: branches, guards: guards}, value) do
     base = value.(base)
 
+    # With several states each condition is read first, as a yes/no of
+    # its own (`bubble_state_<n>`): tried as clauses, a condition failing
+    # would narrow what the later ones read, and Elixir's type checker
+    # warns about one it then proves always true or false (`x == true`,
+    # then `x != true`).
+    {reads, tests} =
+      case branches do
+        [_] = [branch] ->
+          {"", [{branch.condition, branch}]}
+
+        _ ->
+          numbered = Enum.with_index(branches, 1)
+
+          {Enum.map_join(numbered, "", fn {b, n} -> "bubble_state_#{n} = #{b.condition}\n" end),
+           Enum.map(numbered, fn {b, n} -> {"bubble_state_#{n}", b} end)}
+      end
+
     clauses =
       Enum.map_join(guards, "", &"is_nil(#{&1}) -> #{base}\n") <>
-        (branches
+        (tests
          |> Enum.reverse()
-         |> Enum.map_join("", &"#{&1.condition} -> #{value.(&1)}\n"))
+         |> Enum.map_join("", fn {test, branch} -> "#{test} -> #{value.(branch)}\n" end))
 
-    "cond do\n#{clauses}true -> #{base}\nend"
+    "#{reads}cond do\n#{clauses}true -> #{base}\nend"
     |> Code.format_string!()
     |> IO.iodata_to_binary()
   end
