@@ -383,7 +383,7 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     assert %Ash.NotLoaded{} = task.project
 
     assert_raise ArgumentError,
-                 ~r/project is read by a visibility condition but not loaded/,
+                 ~r/project is read by a condition but not loaded/,
                  fn ->
                    PhxCheckWeb.Bubble.loaded!(task, [["project"]])
                  end
@@ -469,5 +469,70 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
   test "a breakpoint shown as text is its width", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/cells")
     assert view |> element(~s([data-bubble-id="bBpText"])) |> render() =~ "Tablet: 992"
+  end
+
+  # WTF-582: conditionals that set a Text's content or a button's label.
+  defp shown_text(view, id, scope \\ nil) do
+    selector =
+      case scope do
+        nil -> ~s([data-bubble-id="#{id}"])
+        {:cell, thing} -> ~s(#bubble-cell--bTasks-t-#{thing} [data-bubble-id="#{id}"])
+      end
+
+    view |> element(selector) |> render() |> String.replace(~r/<[^>]*>/, "") |> String.trim()
+  end
+
+  test "a conditional text follows the user and a custom state, the last true winning",
+       %{conn: conn, user: user} do
+    {:ok, view, _html} = live(conn, "/")
+    assert shown_text(view, "bGreet") == "Signed out"
+    assert shown_text(view, "bFlagLabel") == "Flag off"
+    assert view |> element(~s([data-bubble-id="bBold"] strong)) |> render() =~ "Out"
+
+    data_access_on()
+    {:ok, view, _html} = live(sign_in(conn, user), "/")
+    assert shown_text(view, "bGreet") == "Hello one@example.com"
+    assert view |> element(~s([data-bubble-id="bBold"] strong)) |> render() =~ "one@example.com"
+
+    click(view, "bSetFlag")
+    assert shown_text(view, "bGreet") == "Flagged"
+    assert shown_text(view, "bFlagLabel") == "Flag on"
+
+    click(view, "bUnflag")
+    assert shown_text(view, "bGreet") == "Hello one@example.com"
+    assert shown_text(view, "bFlagLabel") == "Flag off"
+  end
+
+  test "a conditional text reads the current user afresh, as the privacy rules let it",
+       %{conn: conn, user: user} do
+    {:ok, view, _html} = live(sign_in(conn, user), "/")
+    # A field the user may not view reads as empty, as in Bubble.
+    assert shown_text(view, "bRoleText") == if(enforced?(), do: "Member", else: "Admin")
+
+    Ash.Seed.update!(user, %{role: "guest"})
+    click(view, "bUnflag")
+    assert shown_text(view, "bRoleText") == "Member"
+  end
+
+  test "a conditional text in a cell reads its thing; one not lowered keeps its content",
+       %{conn: conn} do
+    data_access_on()
+    {:ok, view, _html} = live(conn, "/")
+    assert shown_text(view, "bCellLabel", {:cell, @t1}) == "Task Alpha"
+    assert shown_text(view, "bCellLabel", {:cell, @t2}) == "Task Bravo"
+    assert shown_text(view, "bTextBad") == "Kept"
+    assert shown_text(view, "bHoverText") == "Still"
+  end
+
+  test "a conditional text reading the page's data keeps its content until the data loads",
+       %{conn: conn} do
+    data_access_on()
+    dead = conn |> get("/task/#{@t1}") |> html_response(200)
+    assert dead =~ ~r/data-bubble-id="bProjectText"[^>]*>No project</
+
+    {:ok, view, _html} = live(conn, "/task/#{@t1}")
+    assert shown_text(view, "bProjectText") == "Project: Apollo"
+    {:ok, view, _html} = live(conn, "/task/#{@t2}")
+    assert shown_text(view, "bProjectText") == "No project"
   end
 end

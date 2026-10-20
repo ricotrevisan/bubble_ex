@@ -34,8 +34,17 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   element's visibility on page load: the last state whose condition is
   true decides; an empty condition is false. `visibility` is
   `%{states, initial, constant?}` (`constant?`: every state sets the
-  visibility on page load, so the result never changes). Anything else conditionals set (colors, text…) is
-  not compiled here.
+  visibility on page load, so the result never changes). A button's
+  "isn't clickable" compiles alike (`Conditions.disabled_id/1`), and a
+  Text's content or a button's label whose states set its text (WTF-582,
+  `Conditions.text_id/1`): one `cond` whose clauses are the states'
+  conditions, tested last first, and the texts they set, compiled like the
+  element's dynamic text, else the content on page load (a literal or the
+  element's own binding); `text` keeps the parts
+  (`Conditions.text_source/2`), so a target can print the values again
+  (as BBCode nodes). It compiles only when every condition and every text
+  does. Anything else conditionals set (colors, icons…) is not compiled
+  here.
 
   A condition, like a shown value, may read a URL parameter as its type
   (text, a number, a yes/no, a date) and the URL's path (its segments,
@@ -135,7 +144,15 @@ defmodule BubbleEx.Target.Elixir.Frontend do
           into: %{},
           do: {Conditions.disabled_id(id), result}
 
-    {:ok, Map.merge(compiled, disabled)}
+    texts =
+      for %Node{kind: kind} = node <- nodes,
+          kind in [:text, :button],
+          %{kind: :condition, id: id, payload: payload} <- [node.bindings["condition"]],
+          result = compile_text(payload, node, env, project, opts),
+          into: %{},
+          do: {Conditions.text_id(id), result}
+
+    {:ok, compiled |> Map.merge(disabled) |> Map.merge(texts)}
   end
 
   def compile(_app, _model, _project, _frontend, _opts),
@@ -176,14 +193,28 @@ defmodule BubbleEx.Target.Elixir.Frontend do
               property: property
             })
 
-    visibility ++ buttons
+    texts =
+      for %Node{kind: :text} = node <- nodes,
+          %{kind: :condition, id: id, payload: payload} <- [node.bindings["condition"]],
+          %{bubble_id: bubble_id} when is_binary(bubble_id) <- [node.source],
+          states = length(Conditions.property(payload, "text")),
+          states > 0,
+          not Map.has_key?(compiled, Conditions.text_id(id)),
+          do:
+            Residue.entry("element:" <> bubble_id, :element_condition, %{
+              states: states,
+              property: "text"
+            })
+
+    visibility ++ buttons ++ texts
   end
 
   # The button properties the page leaves at their page-load value although
-  # a conditional sets them (WTF-520): "isn't clickable" when it does not
-  # compile (the button is then disabled, fail closed), its icon, its text
-  # and its kind (label, icon) always. `{property, states}`.
-  @unlowered_button_properties ~w(icon text button_type)
+  # a conditional sets them (WTF-520): "isn't clickable" and its text
+  # (WTF-582) when they do not compile (the button is then disabled, fail
+  # closed; its text is the one on page load), its icon and its kind
+  # (label, icon) always. `{property, states}`.
+  @unlowered_button_properties ~w(icon button_type)
 
   @doc false
   @spec button_unlowered(term(), String.t(), map()) :: [{String.t(), pos_integer()}]
@@ -195,7 +226,15 @@ defmodule BubbleEx.Target.Elixir.Frontend do
         do: [{"button_disabled", disabled}],
         else: []
 
+    texts = length(Conditions.property(payload, "text"))
+
+    texts =
+      if texts > 0 and not Map.has_key?(compiled, Conditions.text_id(condition_id)),
+        do: [{"text", texts}],
+        else: []
+
     disabled ++
+      texts ++
       for key <- @unlowered_button_properties,
           n = length(Conditions.property(payload, key)),
           n > 0,
@@ -296,6 +335,116 @@ defmodule BubbleEx.Target.Elixir.Frontend do
       _ -> nil
     end
   end
+
+  # A Text's content or a button's label whose conditionals set its text
+  # (WTF-582), folded like visibility from its content on page load: the
+  # last state whose condition is yes sets it. Every condition and every
+  # state's text must compile, as the content itself when dynamic.
+  defp compile_text(payload, %Node{source: source} = node, env, project, opts) do
+    env = %{env | host: source && source.bubble_id}
+
+    with [_ | _] = states <- Conditions.property(payload, "text"),
+         {:ok, base} <- text_value(base_text(node), node, env, project, opts),
+         {:ok, branches} <- text_branches(states, node, env, project, opts),
+         results = [base | Enum.flat_map(branches, fn {c, v} -> [c, v] end)],
+         {:ok, bindings} <- merge_bindings(Enum.map(results, &{nil, nil, &1})),
+         true <- Enum.all?(bindings, &page_input?(&1.input)) do
+      runtime = Keyword.get(opts, :runtime, "Bubble.Runtime")
+
+      text = %{
+        base: text_part(base, runtime),
+        branches:
+          Enum.map(branches, fn {condition, value} ->
+            Map.put(text_part(value, runtime), :condition, truth(condition.source))
+          end),
+        guards: width_vars(bindings)
+      }
+
+      %{
+        source: Conditions.text_source(text, & &1.shown),
+        bindings: bindings,
+        runtime: results |> Enum.flat_map(& &1.runtime) |> Enum.uniq() |> Enum.sort(),
+        loads: merge_loads(results),
+        type: "text",
+        approximated: Enum.flat_map(results, &Map.get(&1, :approximated, [])) |> Enum.uniq(),
+        file?: false,
+        raw?: true,
+        text: text,
+        # Not `property`: like the element's dynamic text, a value never
+        # refuses a relationship that was not loaded (it reads as empty).
+        states: length(states)
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  # A text's value as compiled and as shown text (the runtime's
+  # `display/1`, as the page shows a value, unless it already is text: a
+  # literal, a concatenation or a `display/1` or `text/1` call).
+  defp text_part(%{source: source} = result, runtime) do
+    shown =
+      case Code.string_to_quoted(source) do
+        {:ok, literal} when is_binary(literal) -> source
+        {:ok, {:<>, _, _}} -> source
+        {:ok, {{:., _, [_module, fun]}, _, [_]}} when fun in [:text, :display] -> source
+        _ -> "#{runtime}.display(#{source})"
+      end
+
+    %{source: source, shown: shown, literal?: Map.get(result, :literal?, false)}
+  end
+
+  defp width_vars(bindings) do
+    for %{var: var, input: {:page_data, %{"name" => "Current Page Width"}}} <- bindings,
+        do: var
+  end
+
+  # A Text's content, a button's label: `{:literal, text}` or a binding's
+  # payload.
+  defp base_text(%Node{kind: kind, content: content, bindings: bindings}) do
+    slot = if kind == :text, do: "text", else: "label"
+
+    case {content && content[slot], bindings[slot]} do
+      {_, %{kind: :value, payload: payload}} -> payload
+      {%{resolved: value}, _} -> {:literal, value}
+      _ -> {:literal, ""}
+    end
+  end
+
+  defp text_branches(states, node, env, project, opts) do
+    Enum.reduce_while(states, {:ok, []}, fn {condition, value}, {:ok, acc} ->
+      with {:ok, condition} <- compile_condition(condition, env, project, opts),
+           {:ok, value} <- text_value(value, node, env, project, opts) do
+        {:cont, {:ok, acc ++ [{condition, value}]}}
+      else
+        _ -> {:halt, :error}
+      end
+    end)
+  end
+
+  # A text a state sets, or the content on page load: a literal, or an
+  # expression compiled as the element's dynamic text.
+  defp text_value({:literal, value}, _node, _env, _project, _opts)
+       when is_binary(value) or is_number(value),
+       do: {:ok, literal_text(to_string(value))}
+
+  defp text_value(value, _node, _env, _project, _opts) when value in [nil, ""],
+    do: {:ok, literal_text("")}
+
+  defp text_value(value, node, env, project, opts) when is_binary(value) or is_number(value),
+    do: text_value({:literal, value}, node, env, project, opts)
+
+  defp text_value(value, %Node{} = node, env, project, opts) when is_map(value) do
+    case compile_binding(value, node, env, project, opts) do
+      %{source: _} = result -> {:ok, Map.put_new(result, :loads, %{})}
+      nil -> :error
+    end
+  end
+
+  defp text_value(_value, _node, _env, _project, _opts), do: :error
+
+  defp literal_text(text),
+    do: %{source: inspect(text), bindings: [], runtime: [], loads: %{}, literal?: true}
 
   # The states in Bubble's order as one `cond`: the last true one decides,
   # else the value on page load.

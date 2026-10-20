@@ -497,10 +497,16 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     residue = Frontend.residue(frontend, expressions)
 
     # bBpMissing's breakpoint is not in the app's settings (see the
-    # breakpoint test).
+    # breakpoint test); bTextBad's conditional text does not compile
+    # (WTF-582).
     assert residue == [
              %{subject: "element:bBpMissing", reason: :element_condition, detail: %{states: 1}},
-             %{subject: "element:bBad", reason: :element_condition, detail: %{states: 1}}
+             %{subject: "element:bBad", reason: :element_condition, detail: %{states: 1}},
+             %{
+               subject: "element:bTextBad",
+               reason: :element_condition,
+               detail: %{states: 1, property: "text"}
+             }
            ]
 
     {:ok, plan} = Plan.build(model, index, frontend, [], residue: residue)
@@ -782,10 +788,14 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     # bNowEmpty) conditionals are marked too (bKeep's only repeats its
     # visibility on page load: compiled, whatever it reads; bLoaded's and
     # bLoading's read a repeating group's "is loading", a constant). The
-    # panel's two "isn't clickable" states are other properties.
+    # panel's two "isn't clickable" states are other properties. Of the
+    # conditional texts (WTF-582), only those reading the current user
+    # compile (bRoleText's, bBold's).
     assert %{
              "visibility_conditions_compiled" => 12,
              "visibility_conditions_marked" => 25,
+             "text_conditions_compiled" => 2,
+             "text_conditions_marked" => 8,
              "conditions_other_properties" => 4
            } = report
   end
@@ -935,5 +945,140 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
   test "repeating group cells are keyed by their item", %{files: files} do
     assert files["lib/shop_web/live/index_live.html.heex"] =~
              ~s|id={Bubble.cell_id("", "bTasks", cell_btasks, cell_btasks_i)}|
+  end
+
+  # WTF-582: conditionals that set a Text's content or a button's label.
+  describe "conditional text" do
+    defp text_element(template, id),
+      do: hd(Regex.run(~r/<[a-z]+\s[^>]*data-bubble-id="#{id}".*?<\/[a-z]+>/s, template))
+
+    test "is a helper folding the states from the content on page load, the last true winning",
+         %{files: files} do
+      template = files["lib/shop_web/live/index_live.html.heex"]
+      live = files["lib/shop_web/live/index_live.ex"]
+
+      greet = text_element(template, "bGreet")
+
+      assert greet =~
+               ~s|>{text_bgreet(@bubble_viewer, Bubble.state(@bubble_states, "", "bVis", "custom.flag_"))}</p>|
+
+      refute greet =~ "not lowered"
+
+      # With several states each condition is read first (no clause
+      # narrows what a later one reads, WTF-555), tried last first.
+      [greet_helper] = Regex.run(~r/  defp text_bgreet\(.*?\n  end\n/s, live)
+
+      assert squash(greet_helper) =~
+               squash("""
+               defp text_bgreet(current_user, element_state_bvis_custom_flag) do
+                 bubble_state_1 = not is_nil(current_user) == true
+                 bubble_state_2 = element_state_bvis_custom_flag == true == true
+
+                 cond do
+                   bubble_state_2 -> "Flagged"
+               """)
+
+      assert greet_helper =~ ~r/bubble_state_1 ->\s+"Hello " <> Shop.Bubble.Runtime.display\(/
+      assert greet_helper =~ ~r/true ->\s+"Signed out"\s+end/
+
+      # A button's label, on a custom state.
+      assert text_element(template, "bFlagLabel") =~
+               ~s|>{label_bflaglabel(Bubble.state(@bubble_states, "", "bVis", "custom.flag_"))}</button>|
+
+      assert live =~ ~s|element_state_bvis_custom_flag == true == true -> "Flag on"|
+
+      # In a cell, on the cell's thing.
+      assert text_element(template, "bCellLabel") =~ ">{text_bcelllabel(cell_btasks)}</p>"
+      assert live =~ ~s|defp text_bcelllabel(cell_thing_btasks) do|
+    end
+
+    test "reads the current user as visibility conditionals do", %{files: files} do
+      assert files["lib/shop_web/live/index_live.html.heex"]
+             |> text_element("bRoleText") =~ ">{text_broletext(@bubble_viewer)}</p>"
+
+      assert files["lib/shop_web/live/index_live.ex"] =~ "defp text_broletext(current_user) do"
+    end
+
+    test "with BBCode in its literal text, every value is Bubble.bbcode/1's nodes", %{
+      files: files
+    } do
+      assert files["lib/shop_web/live/index_live.html.heex"] |> text_element("bBold") =~
+               "><Bubble.bbcode nodes={text_bbold(@bubble_viewer)} /></p>"
+
+      assert files["lib/shop_web/live/index_live.ex"] =~ """
+               defp text_bbold(current_user) do
+                 cond do
+                   not is_nil(current_user) == true ->
+                     [{:b, [Shop.Bubble.Runtime.display(get_in(current_user, [Access.key(:email)]))]}]
+
+                   true ->
+                     [{:b, ["Out"]}]
+                 end
+               end
+             """
+    end
+
+    test "reading the page's data keeps the content on page load until it loads", %{
+      files: files
+    } do
+      assert files["lib/shop_web/live/task_live.html.heex"] |> text_element("bProjectText") =~
+               ~s|>{if(@bubble_data_pending, do: "No project", else: text_bprojecttext(|
+
+      # Like the element's dynamic text, it reads a relationship that was
+      # not loaded as empty: never Bubble.loaded!/2, which would crash the page.
+      [helper] =
+        Regex.run(
+          ~r/  defp text_bprojecttext\(.*?\n  end\n/s,
+          files["lib/shop_web/live/task_live.ex"]
+        )
+
+      refute helper =~ "loaded!"
+      assert helper =~ "project"
+    end
+
+    test "with BBCode only the static path renders, keeps it, marked", %{files: files} do
+      link = files["lib/shop_web/live/index_live.html.heex"] |> text_element("bLinkText")
+
+      assert link =~
+               "TODO(bubble:bLinkText) text: 1 conditional not lowered (its text has BBCode " <>
+                 "other than bold, italic, underline or strikethrough); shown as on page load"
+
+      assert link =~ ~s|<a href="https://example.com"|
+    end
+
+    test "that the page cannot decide keeps the content on page load, marked", %{files: files} do
+      template = files["lib/shop_web/live/index_live.html.heex"]
+
+      bad = text_element(template, "bTextBad")
+
+      assert bad =~
+               "TODO(bubble:bTextBad) text: 1 conditional not lowered (it does not compile); " <>
+                 "shown as on page load --%>Kept</p>"
+
+      assert bad =~ ~s|title={Bubble.dev_marker("Conditional text not lowered")}|
+
+      assert text_element(template, "bHoverText") =~
+               "TODO(bubble:bHoverText) text: 1 conditional not lowered (it reads a value the " <>
+                 "page does not keep: element_state:is_hovered); shown as on page load --%>Still</p>"
+
+      refute files["lib/shop_web/live/index_live.ex"] =~ "defp text_btextbad"
+    end
+
+    test "is counted, and what is left is plan residue", %{
+      project: project,
+      opts: opts,
+      frontend: frontend,
+      expressions: expressions
+    } do
+      {:ok, report} = Phoenix.frontend_report(project, opts)
+      assert %{"text_conditions_compiled" => 7, "text_conditions_marked" => 3} = report
+
+      texts =
+        for %{reason: :element_condition, detail: %{property: "text"}} = r <-
+              Frontend.residue(frontend, expressions),
+            do: r.subject
+
+      assert texts == ["element:bTextBad"]
+    end
   end
 end

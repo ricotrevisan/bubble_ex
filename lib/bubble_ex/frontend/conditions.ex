@@ -11,8 +11,9 @@ defmodule BubbleEx.Frontend.Conditions do
   is the states' keys: numeric keys by value, then any other key (Bubble
   also writes random five-letter keys) in text order.
 
-  Visibility (`is_visible`) is the one property targets lower so far
-  (`visibility/1`); `other_properties/1` counts the states that set
+  Targets lower visibility (`is_visible`, `visibility/1`), a button's
+  "isn't clickable" (`disabled_states/2`) and a Text's or button's text
+  (`property/2`, WTF-582); `other_properties/2` counts the states that set
   anything else, so the gap stays visible.
   """
 
@@ -119,11 +120,63 @@ defmodule BubbleEx.Frontend.Conditions do
   @spec disabled_id(String.t()) :: String.t()
   def disabled_id(condition_id), do: condition_id <> " :: disabled"
 
-  @doc "How many states set a property other than visibility."
-  @spec other_properties(term()) :: non_neg_integer()
-  def other_properties(payload) do
+  @doc """
+  The key a target keeps an element's compiled conditional text under
+  (`BubbleEx.Target.Elixir.Frontend.compile/5`'s result: a Text's content,
+  a button's label), from its `:condition` binding's ID (WTF-582).
+  """
+  @spec text_id(String.t()) :: String.t()
+  def text_id(condition_id), do: condition_id <> " :: text"
+
+  @doc """
+  The `cond` of a compiled conditional text (`:text` of
+  `BubbleEx.Target.Elixir.Frontend.compile/5`'s result, WTF-582): its
+  `branches` (each a state's `condition` source, a yes/no clause, and its
+  value) tested last first, else the content on page load (`base`), as
+  while a variable in `guards` (the page's width) is nil. `value` prints
+  a value (`%{source, shown}`: as compiled, and as shown text).
+  """
+  @spec text_source(map(), (map() -> String.t())) :: String.t()
+  def text_source(%{base: base, branches: branches, guards: guards}, value) do
+    base = value.(base)
+
+    # With several states each condition is read first, as a yes/no of
+    # its own (`bubble_state_<n>`): tried as clauses, a condition failing
+    # would narrow what the later ones read, and Elixir's type checker
+    # warns about one it then proves always true or false (`x == true`,
+    # then `x != true`).
+    {reads, tests} =
+      case branches do
+        [_] = [branch] ->
+          {"", [{branch.condition, branch}]}
+
+        _ ->
+          numbered = Enum.with_index(branches, 1)
+
+          {Enum.map_join(numbered, "", fn {b, n} -> "bubble_state_#{n} = #{b.condition}\n" end),
+           Enum.map(numbered, fn {b, n} -> {"bubble_state_#{n}", b} end)}
+      end
+
+    clauses =
+      Enum.map_join(guards, "", &"is_nil(#{&1}) -> #{base}\n") <>
+        (tests
+         |> Enum.reverse()
+         |> Enum.map_join("", fn {test, branch} -> "#{test} -> #{value.(branch)}\n" end))
+
+    "#{reads}cond do\n#{clauses}true -> #{base}\nend"
+    |> Code.format_string!()
+    |> IO.iodata_to_binary()
+  end
+
+  @doc """
+  How many states set a property other than visibility, nor any of
+  `lowered` (the properties a target lowers for this element, e.g. a
+  Text's `"text"`, WTF-582).
+  """
+  @spec other_properties(term(), [String.t()]) :: non_neg_integer()
+  def other_properties(payload, lowered \\ []) do
     Enum.count(states(payload), fn %{properties: props} ->
-      props |> Map.drop(["is_visible", "%iv"]) |> map_size() > 0
+      props |> Map.drop(["is_visible", "%iv" | lowered]) |> map_size() > 0
     end)
   end
 
