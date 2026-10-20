@@ -241,11 +241,16 @@ defmodule BubbleEx.Target.Ash.Project do
   defp json(%DateTime{} = datetime), do: DateTime.to_iso8601(datetime)
 
   # Only enforced projects restrict the fields some users may not view in
-  # searches (WTF-457): the key is left out when there are none.
+  # searches (WTF-457), and only a deleted field still read is a private
+  # field (WTF-566): each key is left out when there are none, so a
+  # Project without them maps as before.
   # (defined later in this file: matched by its struct name)
-  defp json(%{__struct__: BubbleEx.Target.Ash.ResourcePrivacy, view_search_fields: v} = privacy)
-       when map_size(v) == 0,
-       do: privacy |> Map.from_struct() |> Map.delete(:view_search_fields) |> json()
+  defp json(%{__struct__: BubbleEx.Target.Ash.ResourcePrivacy} = privacy) do
+    privacy
+    |> Map.from_struct()
+    |> Map.reject(fn {k, v} -> k in [:view_search_fields, :private_fields] and v == %{} end)
+    |> json()
+  end
 
   defp json(%_{} = struct), do: struct |> Map.from_struct() |> json()
   defp json(map) when is_map(map), do: Map.new(map, fn {k, v} -> {key(k), json(v)} end)
@@ -751,6 +756,14 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
     * `relationship_checks` - `%{relationship name => checks}`: who may
       view the list a derived `has_many` replaces (a relationship has no
       field policy; its `gate` follows these checks)
+    * `private_fields` - `%{name => checks}`: who the rules let view each
+      private attribute (a deleted field something still reads, kept with
+      `index:`, WTF-566). Ash field policies name only public fields, so
+      none names one: reads hide it from everyone but a field policy
+      bypass (`private_fields :hide`, or `:include` with a bypass). With
+      `privacy: :enforced` a search naming one is restricted by these
+      checks (`view_search_fields`), as for a field policy's fields
+      (WTF-585). Empty, it is left out of `Project.to_map/1`
     * `search_fields` - `%{name => [checks]}`: the fields (attributes,
       derived fields, relationships and their private twins) some users
       may not search by (Bubble's non-filterable fields), and what reads
@@ -779,6 +792,7 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
     file_fields: [],
     data_api: %{exposed: nil, create: [], modify: [], delete: []},
     relationship_checks: %{},
+    private_fields: %{},
     search_fields: %{},
     view_search_fields: %{}
   ]
@@ -793,6 +807,7 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
           file_fields: [String.t()],
           data_api: map(),
           relationship_checks: %{String.t() => [BubbleEx.Target.Ash.PolicyCheck.t()]},
+          private_fields: %{String.t() => [BubbleEx.Target.Ash.PolicyCheck.t()]},
           search_fields: %{String.t() => [[BubbleEx.Target.Ash.PolicyCheck.t()]]},
           view_search_fields: %{String.t() => [[BubbleEx.Target.Ash.PolicyCheck.t()]]}
         }

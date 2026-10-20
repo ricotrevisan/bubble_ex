@@ -1,0 +1,111 @@
+{
+  "_comment": "Invented app for deleted fields still read (WTF-566, WTF-585). Meeting's Old score (a number) and Channel IDs (a list of texts) are deleted in Bubble, but the index page searches meetings by Old score (a constraint and the sort): rendered with an index, they are kept as private attributes. Privacy rules: a meeting's creator views everything, everyone else its Title only. scripts/phoenix_compile_check.sh renders it with privacy: :enforced, where no field policy may name a private attribute.",
+  "_id": "synthetic-deleted-kept",
+  "pages": {
+    "index": {
+      "elements": {
+        "rgMeetings": {
+          "id": "bRgMeetings",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "greater than",
+                    "key": "old_score_number",
+                    "value": 11
+                  }
+                },
+                "sort_field": "old_score_number",
+                "type_to_find": "custom.meeting"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.meeting"
+          },
+          "type": "RepeatingGroup"
+        }
+      },
+      "id": "bIndex",
+      "type": "Page"
+    }
+  },
+  "user_types": {
+    "meeting": {
+      "display": "Meeting",
+      "fields": {
+        "channel_ids_list_text": {
+          "deleted": true,
+          "display": "Channel IDs",
+          "value": "list.text"
+        },
+        "old_score_number": {
+          "deleted": true,
+          "display": "Old score",
+          "value": "number"
+        },
+        "title_text": {
+          "display": "Title",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": {
+              "0": "title_text"
+            }
+          }
+        },
+        "mine_": {
+          "condition": {
+            "next": {
+              "name": "Created By",
+              "next": {
+                "args": {
+                  "type": "CurrentUser"
+                },
+                "name": "equals",
+                "type": "Message"
+              },
+              "type": "Message"
+            },
+            "type": "InjectedValue"
+          },
+          "display": "Mine",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": true
+          }
+        }
+      }
+    },
+    "user": {
+      "display": "User",
+      "fields": {
+        "name_text": {
+          "display": "Name",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": true,
+            "view_attachments": false
+          }
+        }
+      }
+    }
+  }
+}

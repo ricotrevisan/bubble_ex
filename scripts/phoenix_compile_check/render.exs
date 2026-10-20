@@ -110,12 +110,25 @@ workflows = fn app, model, project, always, clients ->
   end
 end
 
-# {project, render options} of an app JSON.
-app_fixture = fn app ->
+# {project, render options} of an app JSON; `map_opts` go to
+# BubbleEx.Target.Ash.map/3 (`index: true`: the app's index, as the
+# vertical slice's pipeline gives it).
+app_fixture = fn app, map_opts ->
   {:ok, model} = BubbleEx.Model.build(app)
   # The privacy matrix of an enforced render reads it (below).
   Process.put(:phoenix_check_model, model)
-  {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: privacy.())
+
+  map_opts =
+    case Keyword.pop(map_opts, :index) do
+      {true, rest} ->
+        {:ok, index} = BubbleEx.Index.build(app, model: model)
+        [index: index] ++ rest
+
+      {_, rest} ->
+        rest
+    end
+
+  {:ok, project} = BubbleEx.Target.Ash.map(model, [], [privacy: privacy.()] ++ map_opts)
   # The API client Spec of its API Connector calls (WTF-374).
   {:ok, clients} = BubbleEx.Target.ApiClients.map(model)
 
@@ -142,7 +155,10 @@ fixtures =
         do: prefix <> (path |> Path.dirname() |> Path.dirname() |> Path.basename()),
         else: prefix <> Path.basename(path, ".json")
 
-    fixture = fn -> path |> File.read!() |> Jason.decode!() |> app_fixture.() end
+    # Deleted fields still read (WTF-566) are kept only with an index: the
+    # fixture of them renders with one (WTF-585).
+    map_opts = if name == "phoenix_deleted_kept", do: [index: true], else: []
+    fixture = fn -> path |> File.read!() |> Jason.decode!() |> app_fixture.(map_opts) end
 
     # A fixture's downloaded static assets (WTF-447), when it has a
     # committed store next to it (<fixture>.store/, never fetched here).
@@ -174,14 +190,14 @@ fixtures =
       |> File.read!()
       |> Jason.decode!()
       |> BubbleEx.Test.HostileIds.rename(~w(bpgwgmpz bpmvuzce bpcjyrzt bpcjyrzr))
-      |> app_fixture.()
+      |> app_fixture.([])
     end,
     "hostile_overlays" => fn ->
       "test/support/fidelity/cases/bptvorpv/source/payload.json"
       |> File.read!()
       |> Jason.decode!()
       |> BubbleEx.Test.HostileIds.rename(~w(bptvorpv bptvorpw bptvorqc))
-      |> app_fixture.()
+      |> app_fixture.([])
     end,
     # The frontend workflows fixture (WTF-372) with every page, element,
     # workflow, action, parameter and return ID hostile: the workflow
@@ -194,7 +210,7 @@ fixtures =
 
       app
       |> BubbleEx.Test.HostileIds.rename(BubbleEx.Test.HostileIds.ids(app))
-      |> app_fixture.()
+      |> app_fixture.([])
     end,
     # The page data fixture (WTF-420) with every ID hostile: its routes,
     # data functions, filters, template keys and tests must quote them.
@@ -206,7 +222,7 @@ fixtures =
 
       app
       |> BubbleEx.Test.HostileIds.rename(BubbleEx.Test.HostileIds.ids(app))
-      |> app_fixture.()
+      |> app_fixture.([])
     end,
     # The reusable element properties fixture (WTF-493) with every ID
     # hostile, the properties' too: data keys, markers and reads must
@@ -225,7 +241,7 @@ fixtures =
       app
       |> BubbleEx.Test.HostileIds.rename(BubbleEx.Test.HostileIds.ids(app) -- params)
       |> BubbleEx.Test.HostileIds.rename_params(params)
-      |> app_fixture.()
+      |> app_fixture.([])
     end,
     # Owner drops (WTF-422) over the cut-1 export: a dropped type, fields
     # and a backend workflow its caller can no longer run (residue).
@@ -297,7 +313,7 @@ fixtures =
 
       path ->
         %{
-          "private_app" => fn -> path |> BubbleEx.Test.SplitExport.load() |> app_fixture.() end,
+          "private_app" => fn -> path |> BubbleEx.Test.SplitExport.load() |> app_fixture.([]) end,
           # every cut-2 and cut-3 finding accepted (WTF-406)
           "private_cut3" => fn ->
             app = BubbleEx.Test.SplitExport.load(path)
