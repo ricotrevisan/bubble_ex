@@ -3051,6 +3051,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         {call, acc} =
           add_helper(node, name, %{compiled | source: source}, bbcode != nil, ctx, acc)
 
+        # With BBCode nodes the helper decides on the static render's empty
+        # data too (a known gap: the content on page load is not nodes).
         if bbcode == nil and reads_page_data?(compiled.bindings, ctx),
           do: pending_text(node, name, call, ctx, acc),
           else: {{if(bbcode, do: :bbcode, else: :expr), call}, acc}
@@ -3073,15 +3075,17 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # render has none yet, so until it loads the element shows its content
   # on page load (slot/4), never a state's text decided on empty data.
   defp pending_text(node, name, call, ctx, acc) do
-    {base, acc} = slot(node, name, ctx, acc)
+    case slot(node, name, ctx, acc) do
+      {{:expr, base}, acc} ->
+        {{:expr, "if(@bubble_data_pending, do: #{base}, else: #{call})"}, acc}
 
-    base =
-      case base do
-        {:expr, expr} -> expr
-        {:static, text} -> literal(text)
-      end
+      {{:static, text}, acc} ->
+        {{:expr, "if(@bubble_data_pending, do: #{literal(text)}, else: #{call})"}, acc}
 
-    {{:expr, "if(@bubble_data_pending, do: #{base}, else: #{call})"}, acc}
+      # (Not reached: overrides and BBCode never take this path.)
+      {_other, _acc} ->
+        {{:expr, call}, acc}
+    end
   end
 
   # Why the page cannot decide an element's conditional text, or nil.
@@ -3110,12 +3114,17 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp static_bbcode?(source) do
     with {:ok, ast} <- Code.string_to_quoted(source),
          parts = Enum.map(concat_parts(ast), &bbcode_part_of/1),
-         true <- Enum.any?(parts, &(is_binary(&1) and Bbcode.present?(&1))) do
-      match?(:none, Bbcode.split(parts)) or match?({_, [_ | _]}, Bbcode.split(parts))
+         true <- Enum.any?(parts, &(is_binary(&1) and static_tag?(&1))) do
+      sup = Enum.any?(parts, &(is_binary(&1) and &1 =~ ~r/\[\/?sup\b/i))
+      sup or match?(:none, Bbcode.split(parts)) or match?({_, [_ | _]}, Bbcode.split(parts))
     else
       _ -> false
     end
   end
+
+  # `[sup]` too: the static path renders it, Bbcode.split/1 neither does
+  # nor reports it.
+  defp static_tag?(text), do: Bbcode.present?(text) or text =~ ~r/\[\/?sup\b/i
 
   defp bbcode_part_of(part) when is_binary(part), do: part
   defp bbcode_part_of(part), do: {:value, part}
