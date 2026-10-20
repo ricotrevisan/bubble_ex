@@ -411,6 +411,23 @@ defmodule BubbleEx.Target.AshTest do
       assert p.enums == []
     end
 
+    test "a deleted field something still reads is kept, private (WTF-566)" do
+      # The fixture's page searches and sorts on the deleted old_total_number.
+      app = fixture("missing_and_deleted")
+
+      {:ok, model} = Model.build(app)
+      {:ok, index} = BubbleEx.Index.build(app, model: model)
+
+      # Without an index, omitted as before.
+      assert field(project!(app), "invoice", "old_total_number") == nil
+
+      p = project!(app, index: index)
+      assert %{type: :float, public?: false} = field(p, "invoice", "old_total_number")
+      assert codes(p, %{type: "invoice", field: "old_total_number"}) == [:ash_deleted_kept]
+      # Unread deleted fields stay omitted.
+      assert codes(p, %{type: "invoice", field: "old_ref_custom_ghost"}) == [:ash_deleted_omitted]
+    end
+
     test "API types: known shapes are typed structs, unknown ones and cycle edges JSON" do
       p = project!(fixture("external_types"))
       modules = Enum.map(p.types ++ p.typed_structs, & &1.module)

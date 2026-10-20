@@ -217,6 +217,8 @@ defmodule BubbleEx.Diagnostic.Codes do
     # external_type_cycle_edge codes above, with target :ash.
     {:ash_deleted_omitted, :info, :degraded, :target,
      "a deleted data type, field, option set, option value or option-set attribute; omitted from the Ash project"},
+    {:ash_deleted_kept, :warning, :degraded, :target,
+     "a deleted field something still reads (`index:` given): Bubble's runtime keeps and reads its stored values, so it is kept as a private attribute (WTF-566)"},
     {:ash_dropped_omitted, :info, :degraded, :target,
      "a data type, field or option set an owner's drop decision removes (WTF-422); omitted from the Ash project, with every relationship to it"},
     {:ash_drop_dangling_reference, :error, :unresolved, :target,

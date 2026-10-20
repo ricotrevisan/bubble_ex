@@ -14,6 +14,35 @@
       }
     }
   },
+  "pages": {
+    "p": {
+      "elements": {
+        "rg": {
+          "id": "bRG",
+          "properties": {
+            "data_source": {
+              "properties": {
+                "constraints": {
+                  "0": {
+                    "constraint_type": "greater than",
+                    "key": "old_total_number",
+                    "value": 11
+                  }
+                },
+                "sort_field": "old_total_number",
+                "type_to_find": "custom.invoice"
+              },
+              "type": "Search"
+            },
+            "group_type": "custom.invoice"
+          },
+          "type": "RepeatingGroup"
+        }
+      },
+      "id": "bP",
+      "type": "Page"
+    }
+  },
   "user_types": {
     "archive": {
       "deleted": true,
