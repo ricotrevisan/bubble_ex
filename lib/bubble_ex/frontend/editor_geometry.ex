@@ -30,7 +30,9 @@ defmodule BubbleEx.Frontend.EditorGeometry do
     * **Height** (WTF-468). The height flags are left as written, as
       Bubble's runtime payload serves them (it leaves them out too), so an
       element's height follows the same rules as a runtime payload's:
-        - `single_height` set: fixed, at its min height (else `%h`);
+        - `single_height` set: fixed, at its min height (Bubble's default
+          `0px` when it has none: the canvas height is not read, WTF-583;
+          the same for `single_width`);
         - `fit_height` set, or no height flag at all: sized to its
           content, from its own min height if it has one (the canvas height
           is not a min height);
@@ -182,7 +184,7 @@ defmodule BubbleEx.Frontend.EditorGeometry do
     if Payload.plugin_type?(type) do
       update_props(raw, &compact(&1, ["left", "top"]))
     else
-      raw = update_props(raw, &(&1 |> compact() |> put_width_flags()))
+      raw = update_props(raw, &(&1 |> compact() |> put_width_flags() |> put_fixed_minimums()))
       flow_height(raw, type, Payload.properties(raw), styles)
     end
   end
@@ -292,6 +294,23 @@ defmodule BubbleEx.Frontend.EditorGeometry do
 
   defp put_width_flags(props) do
     props |> Map.put_new("fit_width", false) |> Map.put_new("single_width", false)
+  end
+
+  # A fixed axis without a min size of its own is fixed at Bubble's default
+  # min size, 0px, not at its canvas size (WTF-583): the editor keeps the
+  # canvas `width`/`height` the element was dropped with (a Floating Group's
+  # 320x250, a Repeating Group's 280x350), which Bubble's responsive engine
+  # never reads. The 2026-10-20 mm-137 capture measured every shown element
+  # with a fixed axis and no min size at 0 on that axis, none larger
+  # (variable holders: Floating Groups, Repeating Groups and reusables that
+  # only hold values), and every fixed axis with a min size at that min.
+  defp put_fixed_minimums(props) do
+    Enum.reduce(~w(width height), props, fn axis, acc ->
+      if acc["single_#{axis}"] == true and is_nil(acc["min_#{axis}_css"]) and
+           is_nil(acc["min_#{axis}_px"]),
+         do: Map.put(acc, "min_#{axis}_css", "0px"),
+         else: acc
+    end)
   end
 
   # An image that keeps its aspect ratio takes its height from its width,

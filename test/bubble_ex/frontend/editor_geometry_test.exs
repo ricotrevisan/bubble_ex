@@ -779,6 +779,140 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
     refute Map.has_key?(editor.box, :width)
   end
 
+  # WTF-583: a fixed axis without a min size is fixed at Bubble's default
+  # min size, 0px. The editor keeps the canvas size the element was dropped
+  # with (a Floating Group's 320x250, a Repeating Group's 280x350), which
+  # Bubble's responsive engine never reads: the 2026-10-20 mm-137 capture
+  # measured every such shown element at 0 on that axis. Variable holders
+  # (a Floating Group, its Repeating Group, a reusable that only holds
+  # values) then take no space, as in Bubble.
+  test "a fixed axis without a min size is 0px, not its canvas size" do
+    fixed = %{"single_width" => true, "single_height" => true}
+
+    holder =
+      el(
+        "fg",
+        "FloatingGroup",
+        1,
+        Map.merge(fixed, %{
+          "container_layout" => "column",
+          "floating_reference" => "bottom",
+          "float_zindex" => "back",
+          "left" => 0,
+          "top" => 0,
+          "width" => 320,
+          "height" => 250,
+          "zindex" => 40
+        }),
+        %{
+          "vars" =>
+            el(
+              "vars",
+              "Group",
+              1,
+              Map.merge(fixed, %{"container_layout" => "column", "width" => 280, "height" => 350})
+            )
+        }
+      )
+
+    recall =
+      el(
+        "recall",
+        "CustomElement",
+        2,
+        Map.merge(fixed, %{"custom_id" => "rd", "width" => 200, "height" => 200})
+      )
+
+    sized =
+      el(
+        "sized",
+        "Group",
+        3,
+        Map.merge(fixed, %{
+          "container_layout" => "column",
+          "width" => 280,
+          "height" => 280,
+          "min_width_css" => "20px",
+          "min_height_px" => 24
+        })
+      )
+
+    page = column_page(%{"fg" => holder, "recall" => recall, "sized" => sized})
+
+    app =
+      editor_app(page)
+      |> Map.put("element_definitions", %{
+        "rd" =>
+          el("rd", "CustomDefinition", 0, %{
+            "element_type" => "Group",
+            "container_layout" => "column",
+            "width" => 200,
+            "height" => 200
+          })
+      })
+
+    layout = layout(app)
+
+    for id <- ~w(fg vars) do
+      assert "w-[0px]" in classes(layout, id), id
+      assert "h-[0px]" in classes(layout, id), id
+
+      refute Enum.any?(classes(layout, id), &(&1 in ~w(w-[320px] h-[250px] w-[280px] h-[350px]))),
+             id
+    end
+
+    assert %{width: "0px", height: "0px"} = only_box(app, "recall")
+
+    # A min size of its own is the fixed size.
+    assert "w-[20px]" in classes(layout, "sized")
+    assert "h-[24px]" in classes(layout, "sized")
+
+    # A runtime payload (unmarked) is read as before.
+    assert %{width: 320, height: 250} = only_box(app(page), "fg")
+  end
+
+  test "a fixed axis keeps its canvas size where Bubble reads it" do
+    fixed = %{"single_width" => true, "single_height" => true, "width" => 72, "height" => 54}
+
+    # Children of a Fixed container are placed at their canvas box.
+    canvas =
+      el(
+        "canvas",
+        "Group",
+        1,
+        %{"container_layout" => "fixed", "width" => 400, "height" => 200},
+        %{
+          "dot" => el("dot", "Shape", 1, Map.merge(fixed, %{"left" => 12, "top" => 12}))
+        }
+      )
+
+    # Plugins are dimension-preserving placeholders.
+    plugin = el("plug", "1484327506287x734106595981426700-AAC", 2, fixed)
+
+    # A Shape without a height flag is fixed at its canvas height.
+    shape =
+      el("shape", "Shape", 3, %{
+        "width" => 72,
+        "height" => 54,
+        "single_width" => true,
+        "min_width_css" => "72px"
+      })
+
+    layout =
+      layout(editor_app(column_page(%{"canvas" => canvas, "plug" => plugin, "shape" => shape})))
+
+    assert "w-[72px]" in classes(layout, "dot")
+    assert "h-[54px]" in classes(layout, "dot")
+    assert "w-[72px]" in classes(layout, "plug")
+    assert "h-[54px]" in classes(layout, "plug")
+    assert "h-[54px]" in classes(layout, "shape")
+  end
+
+  defp only_box(app, id) do
+    {:ok, %{pages: [page]}} = Frontend.normalize(app)
+    Enum.find(page.children, &(&1.source.bubble_id == id)).box
+  end
+
   test "children of legacy containers keep their canvas box" do
     page = %{
       "id" => "pglegacy",
