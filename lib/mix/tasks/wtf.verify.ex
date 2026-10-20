@@ -20,7 +20,11 @@ defmodule Mix.Tasks.Wtf.Verify do
   function `.wtf/workflows.json` binds it to, never a hand-written
   `# bubble:workflow` comment), a `scaffold:<purpose>` the generator wrote
   there (`.wtf/bypasses.json`), or `decision:<key>` (not verifiable here:
-  there is no decision store or trusted owners list, WTF-411).
+  there is no decision store or trusted owners list, WTF-411), and that
+  no element whose `hidden` attribute its conditionals or workflow steps
+  change also has a static `hidden` or `invisible` class, which would keep
+  it hidden (`hidden_overridable`,
+  `BubbleEx.Target.Phoenix.Structural.HiddenClasses`).
   The checks that need the Bubble model (symbol and policy coverage,
   determinism) run at generation; the summary lists what did not run
   here and why.

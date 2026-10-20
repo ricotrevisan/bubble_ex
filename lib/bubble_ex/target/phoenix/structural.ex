@@ -35,6 +35,7 @@ defmodule BubbleEx.Target.Phoenix.Structural do
   | `generated_unchanged` | the manifest matches the rendered files | the manifest matches the files on disk |
   | `deterministic` | a second rendering (`rerender`) is byte-identical | no: needs the generator |
   | `compiles`, `lint` | no | `Target.Phoenix.Checks` (a fresh project is lint-clean, WTF-416) |
+  | `hidden_overridable` | no | no element whose `hidden` attribute its conditionals or steps change also has a static `hidden` or `invisible` class (`Structural.HiddenClasses`) |
   | `migrations_in_sync` | no | `mix ash.codegen --check` |
   | `boundary`, `secrets_absent` | not bound yet | not bound yet |
   | `traceability.source`, `traceability.rendered` | per task: `mix wtf.task` (`Target.Phoenix.Checks`) | the same |
@@ -49,7 +50,7 @@ defmodule BubbleEx.Target.Phoenix.Structural do
   alias BubbleEx.Target.Ash.Project
   alias BubbleEx.Target.Ash.Workflows.Spec, as: WorkflowSpec
   alias BubbleEx.Target.Phoenix.{Checks, Manifest}
-  alias BubbleEx.Target.Phoenix.Structural.{Bypasses, Coverage}
+  alias BubbleEx.Target.Phoenix.Structural.{Bypasses, Coverage, HiddenClasses}
   alias BubbleEx.Verify.Result
 
   @statement "Structural verification (L0) only, not behavioural. It shows that every " <>
@@ -201,8 +202,8 @@ defmodule BubbleEx.Target.Phoenix.Structural do
   @doc """
   Runs the checks of the owner's repository at `root` (what
   `mix wtf.verify structural` runs): `generated_unchanged`, `compiles`,
-  `lint`, `migrations_in_sync` and the owned-code `bypass_inventory`.
-  Options: `:app` and `:now` (required), `:actor` (default
+  `lint`, `migrations_in_sync`, the owned-code `bypass_inventory` and
+  `hidden_overridable`. Options: `:app` and `:now` (required), `:actor` (default
   `"mix wtf.verify"`), `:cmd` (`(args, env) -> {output, status}` running
   `mix` in `root`), `:git_sha`, `:resolved` (a
   `BubbleEx.Decision.Resolved` of the app's decisions) and `:owners` (the
@@ -253,7 +254,8 @@ defmodule BubbleEx.Target.Phoenix.Structural do
         checks_result("compiles", :compiles, "compile_error", ctx),
         lint_result(ctx),
         migrations_result(ctx, stale_snapshots),
-        bypass
+        bypass,
+        hidden_result(root)
       ]
 
       decisions =
@@ -921,6 +923,16 @@ defmodule BubbleEx.Target.Phoenix.Structural do
       tasks: ["generate:schema"],
       diff: diff,
       output: if(status == 0, do: nil, else: output)
+    }
+  end
+
+  # An element hidden on page load stays showable (the a361e4e regression).
+  defp hidden_result(root) do
+    %{
+      id: "structural.hidden_overridable",
+      check: "hidden_overridable",
+      tasks: ["generate:surfaces"],
+      diff: root |> HiddenClasses.read() |> HiddenClasses.diff()
     }
   end
 

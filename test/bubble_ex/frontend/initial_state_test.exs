@@ -3,6 +3,7 @@ defmodule BubbleEx.Frontend.InitialStateTest do
 
   alias BubbleEx.Frontend
   alias BubbleEx.Frontend.{Auth, Fetch, InitialState}
+  alias BubbleEx.Frontend.Export.Css
   alias BubbleEx.FrontendFixtures
 
   @tag :tmp_dir
@@ -28,6 +29,28 @@ defmodule BubbleEx.Frontend.InitialStateTest do
              Frontend.export_fetched(payload, Path.join(tmp, "session"), opts, context)
 
     assert hd(hd(exported.model.pages).children).box[:hidden?]
+  end
+
+  # The a361e4e regression: a collapsed flag derived from "hidden and
+  # collapses when hidden" outlived the hidden flag, so a logged-out state
+  # that shows the button left it `display: none`.
+  test "a collapsing element the logged-out state shows is not collapsed" do
+    assert {:ok, model} = Frontend.normalize(payload())
+    url = "https://example.bubbleapps.io/"
+    {:ok, _, anonymous} = Auth.prepare(url, [])
+    {:ok, _, session} = Auth.prepare(url, session_cookie: "bubble-session=example")
+
+    display = fn auth ->
+      projected = InitialState.project(model, %Fetch.Context{page_url: url, auth: auth})
+      [_page, button] = projected.pages |> hd() |> Css.lower()
+      Map.new(button.declarations)
+    end
+
+    shown = display.(anonymous)
+    refute shown["display"] == "none"
+    refute shown["visibility"] == "hidden"
+
+    assert display.(session)["display"] == "none"
   end
 
   test "payload-only normalization retains authored initial visibility" do

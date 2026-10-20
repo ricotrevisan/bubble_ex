@@ -1748,10 +1748,13 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp fixed_aliased_dimension(_raw, _key), do: nil
 
-  defp collapsed?(raw),
-    do:
-      Payload.prop(raw, "collapsed") == true or
-        (hidden?(raw) and Payload.prop(raw, "collapse_when_hidden") == true)
+  # Only the source's own `collapsed` flag. Hidden on page load with
+  # "collapse when hidden" is `hidden?` plus `collapse_when_hidden?`, read
+  # together where the box is styled (`Css.put_collapse/2`): a flag
+  # derived here would outlive `hidden?` when a target or the initial
+  # state shows the element, and keep it collapsed (a static `hidden`
+  # class nothing removes).
+  defp collapsed?(raw), do: Payload.prop(raw, "collapsed") == true
 
   defp hidden?(raw) do
     Payload.prop(raw, "hidden") == true or Payload.prop(raw, "is_visible") == false

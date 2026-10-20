@@ -492,6 +492,26 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **Elements hidden on page load that collapse when hidden show again.**
+  Since #255 (a68a734) such an element also had a static `hidden` class
+  (`display: none`) besides its `hidden` attribute. Its conditionals and
+  workflow steps only change the attribute, so it never showed: in a
+  private app's slice, 1,228 elements, and 14 of 29 scanned pages lost
+  most of their text. The collapse is now read
+  where the box is styled, from "hidden on page load" and "collapse when
+  hidden" together, so a target, the initial state or a breakpoint that
+  shows an element no longer leaves it collapsed. The page-load state is
+  only the attribute again. #255's other rules are unchanged: an element
+  a breakpoint shows keeps its `hidden` or `invisible` class (the media
+  rule overrides it), and Rubble's CSS keeps `visibility: hidden` for a
+  hidden element that does not collapse. A new structural check,
+  `hidden_overridable` (`mix wtf.verify structural`, so the vertical
+  slice), fails when an element whose `hidden` attribute its
+  conditionals or steps change also has a static `hidden` or `invisible`
+  class. It looks for the attribute (or `data-bubble-visible`) outside
+  quoted values and `{...}` expressions, so an element a breakpoint
+  shows, which has the class and no attribute, is not reported.
+
 - **A group whose data source is a property with no value passes the
   WTF-505 marker on** (WTF-505 follow-up). A group or repeating group
   whose data source is a reusable element's property that is not set and

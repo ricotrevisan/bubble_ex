@@ -1347,7 +1347,8 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
                "structural.compiles" => :pass,
                "structural.lint" => :pass,
                "structural.migrations_in_sync" => :pass,
-               "structural.bypass_inventory" => :pass
+               "structural.bypass_inventory" => :pass,
+               "structural.hidden_overridable" => :pass
              }
 
       for r <- report.results do
@@ -1410,6 +1411,39 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
                 "authorize_false: more scaffold:confirm_email sites in copied_scaffold/1 than the generator wrote"},
                {"lib/acme/owned.ex:10", "repo_call"}
              ]
+    end
+
+    # The a361e4e regression: a static `hidden` class on an element whose
+    # `hidden` attribute its conditionals or steps change.
+    test "hidden_overridable fails on a static hidden class an element's visibility cannot remove",
+         %{root: root} do
+      path = "lib/acme_web/live/stuck_live.html.heex"
+      File.mkdir_p!(Path.join(root, Path.dirname(path)))
+
+      File.write!(Path.join(root, path), """
+      <div data-bubble-id="bStep" class="relative hidden z-[4]" hidden>Shown by a step</div>
+      <div
+        data-bubble-id="bCond"
+        class="invisible w-[300px]"
+        phx-click={JS.dispatch("bubble:show") |> JS.push("x")}
+        data-bubble-visible={to_string(visible_bcond(@bubble_viewer))}
+        hidden={!visible_bcond(@bubble_viewer)}
+      >
+        Shown by its conditional
+      </div>
+      <div data-bubble-id="bAttr" class="relative z-[4]" hidden>Only the attribute</div>
+      <div data-bubble-id="bBreakpoint" class="hidden md:flex">A breakpoint shows it</div>
+      <div data-bubble-id="bBreakpoint2" class="relative hidden md:flex">A breakpoint shows it</div>
+      <div data-bubble-id="bTitle" class="relative hidden" title="hidden" phx-click={JS.toggle(to: "[hidden]")}>x</div>
+      <div data-bubble-id="bOther" class="group-hidden grid" hidden={!visible_x(@a)}>x</div>
+      """)
+
+      {:ok, report} = project(root)
+
+      assert status(report, "structural.hidden_overridable") == :fail
+
+      assert Enum.map(diff(report, "structural.hidden_overridable"), &{&1.path, &1.element}) ==
+               [{path, "bStep"}, {path, "bCond"}]
     end
 
     # WTF-424 §4: only a trusted owner's privacy exception, in its scope.

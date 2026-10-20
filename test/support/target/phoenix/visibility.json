@@ -1541,6 +1541,85 @@
             }
           },
           "type": "Text"
+        },
+        "bCollOut": {
+          "elements": {
+            "bCollOutT": {
+              "id": "bCollOutT",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Collapsed sign in"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bCollOut",
+          "properties": {
+            "collapse_when_hidden": true,
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 37,
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "not_logged_in",
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Group"
+        },
+        "bCollWf": {
+          "id": "bCollWf",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 38,
+            "text": {
+              "entries": {
+                "0": "Collapsed, shown by a step"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false,
+            "collapse_when_hidden": true
+          },
+          "type": "Text"
+        },
+        "bShowColl": {
+          "id": "bShowColl",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 39,
+            "text": {
+              "entries": {
+                "0": "Show collapsed"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
         }
       },
       "id": "bVis",
@@ -1672,6 +1751,22 @@
           "id": "wUnflag",
           "properties": {
             "element_id": "bUnflag"
+          },
+          "type": "ButtonClicked"
+        },
+        "wShowColl": {
+          "actions": {
+            "0": {
+              "id": "aShowColl1",
+              "properties": {
+                "element_id": "bCollWf"
+              },
+              "type": "ShowElement"
+            }
+          },
+          "id": "wShowColl",
+          "properties": {
+            "element_id": "bShowColl"
           },
           "type": "ButtonClicked"
         }
