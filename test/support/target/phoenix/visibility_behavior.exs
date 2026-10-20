@@ -472,7 +472,7 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
   end
 
   # WTF-582: conditionals that set a Text's content or a button's label.
-  defp text(view, id, scope \\ nil) do
+  defp shown_text(view, id, scope \\ nil) do
     selector =
       case scope do
         nil -> ~s([data-bubble-id="#{id}"])
@@ -485,43 +485,43 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
   test "a conditional text follows the user and a custom state, the last true winning",
        %{conn: conn, user: user} do
     {:ok, view, _html} = live(conn, "/")
-    assert text(view, "bGreet") == "Signed out"
-    assert text(view, "bFlagLabel") == "Flag off"
+    assert shown_text(view, "bGreet") == "Signed out"
+    assert shown_text(view, "bFlagLabel") == "Flag off"
     assert view |> element(~s([data-bubble-id="bBold"] strong)) |> render() =~ "Out"
 
     data_access_on()
     {:ok, view, _html} = live(sign_in(conn, user), "/")
-    assert text(view, "bGreet") == "Hello one@example.com"
+    assert shown_text(view, "bGreet") == "Hello one@example.com"
     assert view |> element(~s([data-bubble-id="bBold"] strong)) |> render() =~ "one@example.com"
 
     click(view, "bSetFlag")
-    assert text(view, "bGreet") == "Flagged"
-    assert text(view, "bFlagLabel") == "Flag on"
+    assert shown_text(view, "bGreet") == "Flagged"
+    assert shown_text(view, "bFlagLabel") == "Flag on"
 
     click(view, "bUnflag")
-    assert text(view, "bGreet") == "Hello one@example.com"
-    assert text(view, "bFlagLabel") == "Flag off"
+    assert shown_text(view, "bGreet") == "Hello one@example.com"
+    assert shown_text(view, "bFlagLabel") == "Flag off"
   end
 
   test "a conditional text reads the current user afresh, as the privacy rules let it",
        %{conn: conn, user: user} do
     {:ok, view, _html} = live(sign_in(conn, user), "/")
     # A field the user may not view reads as empty, as in Bubble.
-    assert text(view, "bRoleText") == if(enforced?(), do: "Member", else: "Admin")
+    assert shown_text(view, "bRoleText") == if(enforced?(), do: "Member", else: "Admin")
 
     Ash.Seed.update!(user, %{role: "guest"})
     click(view, "bUnflag")
-    assert text(view, "bRoleText") == "Member"
+    assert shown_text(view, "bRoleText") == "Member"
   end
 
   test "a conditional text in a cell reads its thing; one not lowered keeps its content",
        %{conn: conn} do
     data_access_on()
     {:ok, view, _html} = live(conn, "/")
-    assert text(view, "bCellLabel", {:cell, @t1}) == "Task Alpha"
-    assert text(view, "bCellLabel", {:cell, @t2}) == "Task Bravo"
-    assert text(view, "bTextBad") == "Kept"
-    assert text(view, "bHoverText") == "Still"
+    assert shown_text(view, "bCellLabel", {:cell, @t1}) == "Task Alpha"
+    assert shown_text(view, "bCellLabel", {:cell, @t2}) == "Task Bravo"
+    assert shown_text(view, "bTextBad") == "Kept"
+    assert shown_text(view, "bHoverText") == "Still"
   end
 
   test "a conditional text reading the page's data keeps its content until the data loads",
@@ -531,8 +531,8 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     assert dead =~ ~r/data-bubble-id="bProjectText"[^>]*>No project</
 
     {:ok, view, _html} = live(conn, "/task/#{@t1}")
-    assert text(view, "bProjectText") == "Project: Apollo"
+    assert shown_text(view, "bProjectText") == "Project: Apollo"
     {:ok, view, _html} = live(conn, "/task/#{@t2}")
-    assert text(view, "bProjectText") == "No project"
+    assert shown_text(view, "bProjectText") == "No project"
   end
 end
