@@ -428,6 +428,49 @@ defmodule BubbleEx.Target.AshTest do
       assert codes(p, %{type: "invoice", field: "old_ref_custom_ghost"}) == [:ash_deleted_omitted]
     end
 
+    test "a kept deleted field is in no field policy, its search restricted (WTF-585)" do
+      # Ash names only public fields in field policies; the creator views
+      # Meeting's deleted, still searched Old score, everyone else not.
+      app = load("test/support/target/phoenix/deleted_kept.json")
+      {:ok, model} = Model.build(app)
+      {:ok, index} = BubbleEx.Index.build(app, model: model)
+
+      for privacy <- [:unverified, :enforced] do
+        p = project!(app, index: index, privacy: privacy)
+        meeting = Enum.find(p.resources, &(&1.source.type == "meeting"))
+
+        assert %{name: name, public?: false} = field(p, "meeting", "old_score_number")
+        assert field(p, "meeting", "channel_ids_list_text") == nil
+        refute name in Enum.flat_map(meeting.field_policies, & &1.fields)
+        assert "title" in Enum.flat_map(meeting.field_policies, & &1.fields)
+
+        assert [%{kind: :authorize_if, test: {:calculation, _}}] =
+                 meeting.privacy.private_fields[name]
+
+        assert Project.to_map(p)["resources"]
+               |> Enum.any?(&(&1["privacy"]["private_fields"] != nil))
+
+        {:ok, source} = Source.render(p, namespace: "Check")
+        assert source =~ "field_policy [:title"
+        refute source =~ ~r/field_policy \[[^\]]*:#{name}\b/
+
+        # A kept deleted reference is gated by its ID's rule checks, like
+        # a public one, not closed to everyone.
+        assert %{public?: false, gate: {:visible_if, [_]}} =
+                 Enum.find(meeting.relationships, &(&1.name == "host"))
+
+        if privacy == :enforced,
+          do: assert(Map.has_key?(meeting.privacy.view_search_fields, name)),
+          else: assert(meeting.privacy.view_search_fields == %{})
+      end
+
+      # Without kept fields, the key is left out of the map.
+      refute project!(app)
+             |> Project.to_map()
+             |> Map.fetch!("resources")
+             |> Enum.any?(&Map.has_key?(&1["privacy"] || %{}, "private_fields"))
+    end
+
     test "keep_deleted_fields keeps every deleted field of a live type, read or not" do
       app = fixture("missing_and_deleted")
       p = project!(app, keep_deleted_fields: true)

@@ -118,9 +118,16 @@ defmodule BubbleEx.Target.Ash.Policies do
   # evaluates such a constraint against the stored value for every user
   # who may search by the field: stricter than Bubble by the owner's
   # decision (`BubbleEx.Verify.Difference`, `hidden_field_constraint_matches`).
-  defp view_search(%Resource{privacy: %ResourcePrivacy{} = p, field_policies: [_ | _]} = r) do
+  # A private field (a deleted field still read, WTF-566) has no field
+  # policy but is restricted by the checks its rules give it, as if it had.
+  defp view_search(%Resource{privacy: %ResourcePrivacy{} = p} = r)
+       when r.field_policies != [] or map_size(p.private_fields) > 0 do
+    policies =
+      for(%FieldPolicy{checks: checks, fields: names} <- r.field_policies, do: {names, checks}) ++
+        for {name, checks} <- p.private_fields, do: {[name], checks}
+
     fields =
-      for %FieldPolicy{checks: checks, fields: names} <- r.field_policies,
+      for {names, checks} <- policies,
           not visible_to_all?(checks),
           name <- names,
           into: %{},
@@ -161,11 +168,8 @@ defmodule BubbleEx.Target.Ash.Policies do
 
   # A gated relationship follows its ID attribute's checks (a belongs_to)
   # or those of the list it replaces; with neither, nobody may follow it.
-  defp view_checks(%Relationship{kind: :belongs_to} = rel, resource) do
-    Enum.find_value(resource.field_policies, [], fn fp ->
-      if rel.source_attribute in fp.fields, do: fp.checks
-    end)
-  end
+  defp view_checks(%Relationship{kind: :belongs_to} = rel, resource),
+    do: Map.get(Resource.field_checks(resource), rel.source_attribute, [])
 
   defp view_checks(rel, resource), do: Map.get(resource.privacy.relationship_checks, rel.name, [])
 
@@ -274,11 +278,10 @@ defmodule BubbleEx.Target.Ash.Policies do
     for resource <- resources,
         hidden =
           for(
-            fp <- resource.field_policies,
-            fp.checks != [
+            {f, checks} <- field_checks_in_order(resource),
+            checks != [
               %PolicyCheck{kind: :authorize_if, test: :always, source: %{default: true}}
             ],
-            f <- fp.fields,
             do: f
           ),
         hidden != [] do
@@ -378,7 +381,7 @@ defmodule BubbleEx.Target.Ash.Policies do
   end
 
   defp gate_resource(%Resource{} = resource, entry, twins, needed) do
-    checks = for fp <- resource.field_policies, f <- fp.fields, into: %{}, do: {f, fp.checks}
+    checks = Resource.field_checks(resource)
 
     used =
       MapSet.new(
@@ -829,17 +832,36 @@ defmodule BubbleEx.Target.Ash.Policies do
     attributes ++ derived ++ aggregates ++ has_many
   end
 
-  # Field policies for the fields, and the checks of the derived has_many
-  # relationships (`privacy.relationship_checks`).
-  defp split_checks(field_checks) do
-    {rels, fields} = Enum.split_with(field_checks, &match?({%Relationship{}, _}, &1))
+  # Each field's checks, the field policies' in order, then the private
+  # fields' by name.
+  defp field_checks_in_order(resource) do
+    private = if resource.privacy, do: resource.privacy.private_fields, else: %{}
 
-    {field_policies(Enum.map(fields, fn {f, checks} -> {f.name, checks} end)),
-     Map.new(rels, fn {r, checks} -> {r.name, checks} end)}
+    for(fp <- resource.field_policies, f <- fp.fields, do: {f, fp.checks}) ++
+      Enum.sort(private)
   end
 
-  # What auto-binding may write: stored attributes only.
-  defp stored_fields(fields), do: Enum.filter(fields, &match?({_, %Attribute{}}, &1))
+  # Field policies for the public fields, the checks of the derived
+  # has_many relationships (`privacy.relationship_checks`) and those of the
+  # private fields (`privacy.private_fields`). A private attribute (a
+  # deleted field something still reads, kept by `Target.Ash.map/3` with
+  # `index:`, WTF-566) is in no field policy (WTF-585): under the
+  # resource's `private_fields :hide` Ash accepts only public fields there
+  # and hides the others; under `:include` (with a bypass) the bypass's
+  # `:*` alone covers them, so it is forbidden to everyone else.
+  defp split_checks(field_checks) do
+    {rels, fields} = Enum.split_with(field_checks, &match?({%Relationship{}, _}, &1))
+    {public, private} = Enum.split_with(fields, fn {f, _} -> f.public? end)
+
+    {field_policies(Enum.map(public, fn {f, checks} -> {f.name, checks} end)),
+     Map.new(rels, fn {r, checks} -> {r.name, checks} end),
+     Map.new(private, fn {f, checks} -> {f.name, checks} end)}
+  end
+
+  # What auto-binding may write: stored public attributes only (a private
+  # one is kept so it can be read, never written, WTF-566).
+  defp stored_fields(fields),
+    do: Enum.filter(fields, &match?({_, %Attribute{public?: true}}, &1))
 
   defp file_fields(type, fields) do
     files =
@@ -859,7 +881,7 @@ defmodule BubbleEx.Target.Ash.Policies do
 
     checks = [%PolicyCheck{kind: kind, test: :always, source: check_source}]
 
-    {field_policies, relationship_checks} =
+    {field_policies, relationship_checks, private_fields} =
       split_checks(Enum.map(fields, fn {_id, a} -> {a, checks} end))
 
     privacy = %ResourcePrivacy{
@@ -867,7 +889,8 @@ defmodule BubbleEx.Target.Ash.Policies do
       attachments: checks,
       file_fields: file_fields(type, fields),
       data_api: %{exposed: type.exposed_api, create: [], modify: [], delete: []},
-      relationship_checks: relationship_checks
+      relationship_checks: relationship_checks,
+      private_fields: private_fields
     }
 
     resource = %{
@@ -936,7 +959,7 @@ defmodule BubbleEx.Target.Ash.Policies do
         {{a, checks}, ctx}
       end)
 
-    {field_policies, relationship_checks} = split_checks(field_checks)
+    {field_policies, relationship_checks, private_fields} = split_checks(field_checks)
     {search_fields, ctx} = search_fields(ctx, fields, resource)
 
     {auto_bind, ctx} = auto_binding(ctx, stored_fields(fields))
@@ -974,6 +997,7 @@ defmodule BubbleEx.Target.Ash.Policies do
       file_fields: file_fields(type, fields),
       data_api: Map.new(api) |> Map.put(:exposed, type.exposed_api),
       relationship_checks: relationship_checks,
+      private_fields: private_fields,
       search_fields: search_fields
     }
 

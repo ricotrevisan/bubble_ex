@@ -69,7 +69,10 @@
 #     their secrets only from the configuration (WTF-533,
 #     test/support/target/phoenix/api_calls_behavior.exs)
 #   * the same checks with privacy: :enforced (WTF-423) on the fixtures
-#     with privacy rules, pages and workflows (a second scratch project,
+#     with privacy rules, pages and workflows (among them
+#     phoenix_deleted_kept, rendered with the app's index: deleted fields a
+#     search still reads kept as private attributes, which no field policy
+#     may name, WTF-585; a second scratch project,
 #     <scratch>_enforced), plus the generated privacy-matrix tests against
 #     the app (scored by scripts/ash_compile_check/matrix_results.exs; the
 #     private app too when BUBBLE_EX_PRIVATE_EXPORT is set) and
@@ -381,7 +384,7 @@ done
 # policies too; and test/support/target/phoenix/enforced_behavior.exs,
 # which must pass here and fail without policies (above).
 enforced_scratch="${scratch}_enforced"
-enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows phoenix_index_thing phoenix_visibility phoenix_reusable_params phoenix_list_ops phoenix_shapes phoenix_page_load phoenix_tables phoenix_url phoenix_cell_searches phoenix_nested_lists phoenix_cell_clicks phoenix_buttons phoenix_dev_markers phoenix_api_calls workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
+enforced_fixtures="${PHOENIX_COMPILE_CHECK_ENFORCED_FIXTURES:-target_policies target_policy_defaults privacy_rules expr_app phoenix_enforced phoenix_page_data phoenix_frontend_workflows phoenix_index_thing phoenix_visibility phoenix_reusable_params phoenix_list_ops phoenix_shapes phoenix_page_load phoenix_tables phoenix_url phoenix_cell_searches phoenix_nested_lists phoenix_cell_clicks phoenix_buttons phoenix_dev_markers phoenix_api_calls phoenix_deleted_kept workflows_backend decided_cut3${BUBBLE_EX_PRIVATE_EXPORT:+ private_app}}"
 mkdir -p "$enforced_scratch"
 first=1
 
