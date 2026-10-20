@@ -21,7 +21,9 @@ All notable changes to this project are documented here.
   text expression and other conditionals) and ours (dev marker, notes from
   the generated code), and is grouped as known (`export_drift` against
   `--generated-from`, owner-listed `--known`, marked by bubble_ex) or
-  unexplained. Nothing calls Bubble; captures and reports stay private.
+  unexplained. Nothing calls Bubble; captures and reports stay private
+  (the capture keeps no input values or query strings, the report file is
+  0600, `--no-text` keeps texts out of the printed summary).
 
 - **The replay of 2026-10-19 applied: the current date/time, the page's
   name, page width and breakpoints, "is loading", same-URL "Go to

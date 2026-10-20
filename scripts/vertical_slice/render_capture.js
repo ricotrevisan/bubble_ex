@@ -1,6 +1,8 @@
 // Element capture for `mix bubble.render_diff` (BubbleEx.Frontend.RenderDiff): evaluate this
 // expression in a page (Bubble or the generated app) after its data settles; it returns the
 // capture as a JSON string. Same shape on both sides; see the moduledoc for the fields.
+// It keeps each element's own visible text (app data: store captures privately), but no
+// input values, no query strings and not the page URL's query.
 (() => {
   // Element capture, same shape for a Bubble page and a bubble_ex page.
   // Bubble: node.bubble_data.bubble_instance.element.id() is the export element ID.
@@ -30,7 +32,8 @@
     let p = pe; while (p && !set.has(p)) p = p.parentElement;
     if (p && shown(pe)) own.get(p).push(s);
   }
-  for (const img of document.querySelectorAll("img")) { let p = img; while (p && !set.has(p)) p = p.parentElement; if (p) ownImgs.get(p).push(img.currentSrc || img.src); }
+  const bare = (u) => { try { const x = new URL(u, location.href); return x.origin + x.pathname; } catch (_) { return null; } };
+  for (const img of document.querySelectorAll("img")) { let p = img; while (p && !set.has(p)) p = p.parentElement; if (p) ownImgs.get(p).push(bare(img.currentSrc || img.src)); }
   const idx = new Map(nodes.map((n, i) => [n, i]));
   const sx = scrollX, sy = scrollY;
   const out = nodes.map((n, i) => {
@@ -41,11 +44,10 @@
     const rec = {
       i, id: idOf(n), type: typeOf(n), tag: n.tagName.toLowerCase(), parent: o ? idx.get(o) : null,
       visible: shown(n), box: [Math.round(r.left + sx), Math.round(r.top + sy), Math.round(r.width), Math.round(r.height)],
-      text: own.get(n).join(" ").slice(0, 400), imgs: ownImgs.get(n).slice(0, 3).map(s => s.slice(0, 300)), bg: bg ? bg.slice(0, 300) : null,
+      text: own.get(n).join(" ").slice(0, 400), imgs: ownImgs.get(n).filter(Boolean).slice(0, 3).map(s => s.slice(0, 300)), bg: bg ? (bare(bg) || "").slice(0, 300) : null,
     };
-    if (n.tagName === "INPUT" || n.tagName === "TEXTAREA") { rec.placeholder = n.placeholder || null; rec.value = (n.value || "").slice(0, 200); }
-    const inp = n.querySelector && !["INPUT", "TEXTAREA"].includes(n.tagName) ? n.querySelector(":scope > input, :scope > textarea") : null;
-    if (inp) { rec.placeholder = inp.placeholder || null; rec.value = (inp.value || "").slice(0, 200); }
+    const inp = ["INPUT", "TEXTAREA"].includes(n.tagName) ? n : n.querySelector(":scope > input:not([type=hidden]):not([type=password]), :scope > textarea");
+    if (inp) rec.placeholder = inp.placeholder || null;
     if (bubble) { try { const bi = n.bubble_data.bubble_instance; rec.bubble_visible = !!bi._is_visible; } catch (_) {} }
     else {
       const m = {};
@@ -56,8 +58,8 @@
     return rec;
   });
   return JSON.stringify({
-    source: bubble ? "bubble" : "bubble_ex", url: location.href, path: location.pathname, width: innerWidth, height: innerHeight,
+    source: bubble ? "bubble" : "bubble_ex", path: location.pathname, width: innerWidth, height: innerHeight,
     scroll: [document.documentElement.scrollWidth, document.documentElement.scrollHeight], captured_at: new Date().toISOString(),
-    text: document.body.innerText, elements: out,
+    elements: out,
   });
 })()

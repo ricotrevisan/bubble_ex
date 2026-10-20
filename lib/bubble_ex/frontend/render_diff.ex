@@ -208,17 +208,13 @@ defmodule BubbleEx.Frontend.RenderDiff do
 
     flagged = Map.new(raw, &{{&1.id, &1.kind}, &1})
 
-    {roots, nested} =
-      Enum.split_with(raw, fn d ->
-        d.kind not in @fold_kinds or folded_into(d, flagged, b, o) == nil
-      end)
+    root = Map.new(raw, &{{&1.id, &1.kind}, fold_root(&1.id, &1.kind, flagged, b, o)})
+    {roots, nested} = Enum.split_with(raw, &(root[{&1.id, &1.kind}] == &1.id))
 
     roots =
       Enum.reduce(nested, Map.new(roots, &{{&1.id, &1.kind}, &1}), fn d, acc ->
-        key = {folded_into(d, flagged, b, o), d.kind}
-
-        Map.update!(acc, key, fn root ->
-          %{root | nested: root.nested + 1, chars: root.chars + d.chars}
+        Map.update(acc, {root[{d.id, d.kind}], d.kind}, d, fn r ->
+          %{r | nested: r.nested + 1, chars: r.chars + d.chars}
         end)
       end)
       |> Map.values()
@@ -233,9 +229,9 @@ defmodule BubbleEx.Frontend.RenderDiff do
       ours_path: ours["path"],
       ours_width: ours["width"],
       matched: %{
-        bubble_elements: length(bubble["elements"] || []),
+        bubble_elements: b.count,
         bubble_with_id: b.with_id,
-        ours_elements: length(ours["elements"] || []),
+        ours_elements: o.count,
         ours_with_id: o.with_id,
         ids_both: b.by_id |> Map.keys() |> Enum.count(&Map.has_key?(o.by_id, &1)),
         ids_only_bubble: b.by_id |> Map.keys() |> Enum.count(&(not Map.has_key?(o.by_id, &1))),
@@ -257,7 +253,10 @@ defmodule BubbleEx.Frontend.RenderDiff do
   # element when the export has it.
   defp normalize_ids(capture, index) do
     elements =
-      Enum.map(capture["elements"] || [], fn e ->
+      capture["elements"]
+      |> List.wrap()
+      |> Enum.filter(&is_map/1)
+      |> Enum.map(fn e ->
         with id when is_binary(id) <- e["id"],
              false <- Map.has_key?(index, id),
              [prefix | _] <- String.split(id, "_", parts: 2),
@@ -283,6 +282,7 @@ defmodule BubbleEx.Frontend.RenderDiff do
       |> Enum.group_by(& &1["id"])
 
     %{
+      count: length(elements),
       by_index: by_index,
       by_id: by_id,
       with_id: Enum.count(elements, &is_binary(&1["id"])),
@@ -325,41 +325,52 @@ defmodule BubbleEx.Frontend.RenderDiff do
   end
 
   defp both_visible(base, bv, ov, b, o, tolerance) do
-    bt = texts(bv)
-    ot = texts(ov)
+    # Bubble's generated children (variants) show with their element but
+    # are not instances of it: counts and texts compare the elements only.
+    {own, variants} = Enum.split_with(bv, &is_nil(&1["variant"]))
+    bv = if own == [], do: variants, else: own
 
-    count =
-      if length(bv) != length(ov),
-        do: [
+    contents =
+      if own != [] or variants == [], do: contents_differ(base, bv, ov), else: []
+
+    contents ++ box_off(base, hd(bv), hd(ov), b, o, tolerance)
+  end
+
+  # A count difference, else a text one (a count difference changes the
+  # texts too). Texts compare as sorted lists: a reordering is no difference.
+  defp contents_differ(base, bv, ov) do
+    cond do
+      length(bv) != length(ov) ->
+        [
           Map.merge(base, %{
             kind: :count_differs,
             chars: abs(chars(bv) - chars(ov)),
             area: abs(area(bv) - area(ov))
           })
-        ],
+        ]
+
+      Enum.sort(texts(bv)) != Enum.sort(texts(ov)) ->
+        [Map.merge(base, %{kind: :text_differs, chars: max(chars(bv), chars(ov)), area: 0})]
+
+      true ->
+        []
+    end
+  end
+
+  defp box_off(base, be, oe, b, o, tolerance) do
+    with {bp, [bx, by, bw, bh]} <- relative_box(be, b),
+         {op, [ox, oy, ow, oh]} <- relative_box(oe, o) do
+      # Offsets compare only from the same parent element.
+      moved = if bp == op, do: [abs(bx - ox), abs(by - oy)], else: []
+      off = Enum.max(moved ++ [abs(bw - ow), abs(bh - oh)])
+      area = abs(bw * bh - ow * oh)
+
+      if off > tolerance,
+        do: [Map.merge(base, %{kind: :box_off, chars: 0, area: area, off: off})],
         else: []
-
-    text =
-      if bt != ot,
-        do: [Map.merge(base, %{kind: :text_differs, chars: max(chars(bv), chars(ov)), area: 0})],
-        else: []
-
-    box =
-      case {relative_box(hd(bv), b), relative_box(hd(ov), o)} do
-        {[bx, by, bw, bh], [ox, oy, ow, oh]} ->
-          off = Enum.max([abs(bx - ox), abs(by - oy), abs(bw - ow), abs(bh - oh)])
-
-          if off > tolerance,
-            do: [
-              Map.merge(base, %{kind: :box_off, chars: 0, area: abs(bw * bh - ow * oh), off: off})
-            ],
-            else: []
-
-        _ ->
-          []
-      end
-
-    count ++ text ++ box
+    else
+      _ -> []
+    end
   end
 
   defp side(instances, visible) do
@@ -382,44 +393,54 @@ defmodule BubbleEx.Frontend.RenderDiff do
     instances
     |> Enum.map(fn e ->
       case e["box"] do
-        [_, _, w, h] when is_number(w) and is_number(h) -> w * h
+        [_, _, w, h] when is_number(w) and is_number(h) -> abs(w * h)
         _ -> 0
       end
     end)
     |> Enum.sum()
   end
 
-  defp relative_box(%{"box" => [x, y, w, h]} = element, side) do
-    case side.by_index[element["parent"]] do
-      %{"box" => [px, py, _, _]} -> [x - px, y - py, w, h]
-      _ -> [x, y, w, h]
+  defp relative_box(%{"box" => [x, y, w, h] = box} = element, side) do
+    if Enum.all?(box, &is_number/1) do
+      case side.by_index[element["parent"]] do
+        %{"box" => [px, py, _, _]} = p when is_number(px) and is_number(py) ->
+          {p["id"], [x - px, y - py, w, h]}
+
+        _ ->
+          {nil, [x, y, w, h]}
+      end
     end
   end
 
   defp relative_box(_element, _side), do: nil
 
-  # The nearest ancestor (on the side that shows the element) flagged with
-  # the same kind.
-  defp folded_into(d, flagged, b, o) do
-    side = if d.kind == :only_bubble, do: b, else: o
-    instance = side.by_id |> Map.get(d.id, []) |> Enum.find(& &1["visible"])
-    target = instance && ancestor_flagged(instance["parent"], d.kind, flagged, side)
-    if target == d.id, do: nil, else: target
+  # The ID a difference folds into: the outermost ancestor (on the side
+  # that shows it) flagged with the same kind, followed until it stops
+  # (an ancestor may itself fold elsewhere through another instance).
+  defp fold_root(id, kind, flagged, b, o) when kind in @fold_kinds,
+    do: fold_root(id, kind, flagged, b, o, MapSet.new())
+
+  defp fold_root(id, _kind, _flagged, _b, _o), do: id
+
+  defp fold_root(id, kind, flagged, b, o, seen) do
+    side = if kind == :only_bubble, do: b, else: o
+    instance = side.by_id |> Map.get(id, []) |> Enum.find(& &1["visible"])
+    target = instance && outermost_flagged(instance["parent"], kind, flagged, side, MapSet.new())
+
+    if target in [nil, id] or MapSet.member?(seen, target),
+      do: id,
+      else: fold_root(target, kind, flagged, b, o, MapSet.put(seen, id))
   end
 
-  defp ancestor_flagged(nil, _kind, _flagged, _side), do: nil
+  defp outermost_flagged(index, kind, flagged, side, visited) do
+    parent = side.by_index[index]
 
-  defp ancestor_flagged(index, kind, flagged, side) do
-    case side.by_index[index] do
-      nil ->
-        nil
-
-      parent ->
-        id = parent["id"]
-
-        if is_binary(id) and Map.has_key?(flagged, {id, kind}),
-          do: ancestor_flagged(parent["parent"], kind, flagged, side) || id,
-          else: ancestor_flagged(parent["parent"], kind, flagged, side)
+    if index == nil or parent == nil or MapSet.member?(visited, index) do
+      nil
+    else
+      above = outermost_flagged(parent["parent"], kind, flagged, side, MapSet.put(visited, index))
+      id = parent["id"]
+      above || if(is_binary(id) and Map.has_key?(flagged, {id, kind}), do: id)
     end
   end
 
@@ -431,17 +452,18 @@ defmodule BubbleEx.Frontend.RenderDiff do
     chain =
       if d.kind in [:only_bubble, :only_ours, :count_differs], do: ancestors(d.id, b, o), else: []
 
-    ours = ours_reasons(d.id, chain, o, Keyword.get(opts, :notes, %{}))
-    category = category(d.id, Keyword.get(opts, :generated_from), known, ours)
+    {own, inherited} = ours_reasons(d.id, chain, o, Keyword.get(opts, :notes, %{}))
+    category = category(d.id, index, Keyword.get(opts, :generated_from), known, own)
 
     reasons =
       [
         if(info == nil, do: "not in the export"),
-        if(category == :export_drift, do: "not in the export the app was generated from"),
+        if(category == :export_drift, do: drift_reason(info)),
         if(category == :known, do: "owner: #{known[d.id]}"),
         export_reasons(info, d.kind),
         visibility_reason(d),
-        ours
+        own,
+        inherited
       ]
       |> List.flatten()
       |> Enum.reject(&is_nil/1)
@@ -451,27 +473,51 @@ defmodule BubbleEx.Frontend.RenderDiff do
     |> Map.put(:element, info && Map.take(info, [:type, :name, :owner]))
   end
 
-  defp category(id, generated, known, ours) do
+  defp category(id, index, generated, known, own) do
     cond do
-      is_map(generated) and not Map.has_key?(generated, id) -> :export_drift
-      Map.has_key?(known, id) -> :known
-      ours != [] -> :marked
-      true -> :unexplained
+      is_map(generated) and Map.has_key?(generated, id) != Map.has_key?(index, id) ->
+        :export_drift
+
+      Map.has_key?(known, id) ->
+        :known
+
+      own != [] ->
+        :marked
+
+      true ->
+        :unexplained
     end
   end
 
-  # Ours: the element's (or nearest ancestor's) dev marker, and the
-  # generated code's notes for the nearest element that has some.
+  defp drift_reason(nil), do: "only in the export the app was generated from"
+  defp drift_reason(_info), do: "not in the export the app was generated from"
+
+  # Ours: `{own, inherited}` reasons. Own: the element's dev marker and the
+  # generated code's notes for it, or a not-migrated placeholder above it
+  # (they make the difference known). Inherited: the nearest marked
+  # ancestor's marker and notes, shown but not explaining it.
   defp ours_reasons(id, chain, o, notes) do
-    marker = marker_reason(id, chain, o)
+    own_marker = o.by_id |> Map.get(id, []) |> Enum.find_value(&marker_note(&1["marker"]))
+    own_notes = Enum.map(Map.get(notes, id, []), &"ours (#{id}): #{&1}")
+    placeholder = Enum.find_value(chain, &placeholder_above(&1, o))
+    own = Enum.reject([own_marker && "ours: #{own_marker}", placeholder], &is_nil/1) ++ own_notes
+    {own, Enum.find_value(chain, [], &ancestor_marker(&1, o, notes))}
+  end
 
-    note =
-      case Enum.find_value([id | chain], &(notes[&1] && {&1, notes[&1]})) do
-        {nid, list} -> Enum.map(list, &"ours (#{nid}): #{&1}")
-        nil -> []
-      end
+  defp placeholder_above(aid, o) do
+    o.by_id |> Map.get(aid, []) |> Enum.find_value(&placeholder_note(&1["marker"], aid))
+  end
 
-    if(marker, do: [marker], else: []) ++ note
+  defp placeholder_note(%{"placeholder" => p}, aid) when is_binary(p),
+    do: "ours (inside #{aid}): placeholder (#{p})"
+
+  defp placeholder_note(_marker, _aid), do: nil
+
+  defp ancestor_marker(aid, o, notes) do
+    marker = o.by_id |> Map.get(aid, []) |> Enum.find_value(&marker_note(&1["marker"]))
+    list = Enum.map(Map.get(notes, aid, []), &"ours (ancestor #{aid}): #{&1}")
+    list = if marker, do: ["ours (ancestor #{aid}): #{marker}" | list], else: list
+    if list == [], do: nil, else: list
   end
 
   defp export_reasons(nil, _kind), do: []
@@ -503,18 +549,8 @@ defmodule BubbleEx.Frontend.RenderDiff do
 
   defp visibility_reason(_), do: []
 
-  # The element's own marker in ours, else its nearest marked ancestor's.
-  defp marker_reason(id, chain, o) do
-    Enum.find_value([id | chain], fn aid ->
-      text = o.by_id |> Map.get(aid, []) |> Enum.find_value(&marker_note(&1["marker"]))
-      text && "#{marker_prefix(aid, id)}: #{text}"
-    end)
-  end
-
-  defp marker_prefix(id, id), do: "ours"
-  defp marker_prefix(aid, _id), do: "ours (ancestor #{aid})"
-
   defp marker_note(%{"title" => t}) when is_binary(t) and t != "", do: t
+  defp marker_note(%{"dev-note" => _}), do: "dev note (capture with the markers on for its text)"
   defp marker_note(%{"placeholder" => p}) when is_binary(p), do: "placeholder (#{p})"
   defp marker_note(_), do: nil
 
@@ -522,7 +558,7 @@ defmodule BubbleEx.Frontend.RenderDiff do
   defp ancestors(id, b, o) do
     from = fn side ->
       case Map.get(side.by_id, id) do
-        [first | _] -> up(first["parent"], side, [])
+        [first | _] -> up(first["parent"], side, [], MapSet.new())
         _ -> []
       end
     end
@@ -530,13 +566,16 @@ defmodule BubbleEx.Frontend.RenderDiff do
     (from.(b) ++ from.(o)) |> Enum.uniq()
   end
 
-  defp up(nil, _side, acc), do: Enum.reverse(acc)
+  defp up(index, side, acc, visited) do
+    case not MapSet.member?(visited, index) and side.by_index[index] do
+      %{"id" => id, "parent" => p} when is_binary(id) ->
+        up(p, side, [id | acc], MapSet.put(visited, index))
 
-  defp up(index, side, acc) do
-    case side.by_index[index] do
-      nil -> Enum.reverse(acc)
-      %{"id" => id, "parent" => p} when is_binary(id) -> up(p, side, [id | acc])
-      %{"parent" => p} -> up(p, side, acc)
+      %{"parent" => p} ->
+        up(p, side, acc, MapSet.put(visited, index))
+
+      _ ->
+        Enum.reverse(acc)
     end
   end
 
@@ -557,7 +596,7 @@ defmodule BubbleEx.Frontend.RenderDiff do
   def notes_in(source) do
     todos =
       for [_, id, note] <-
-            Regex.scan(~r/TODO\(bubble:([A-Za-z0-9]+)\)\s*([^\n]*?)\s*(?:--%>|$)/m, source),
+            Regex.scan(~r/TODO\(bubble:([A-Za-z0-9]+)\)[ \t]*([^\n]*?)[ \t]*(?:--%>|$)/m, source),
           do: {id, String.trim(note)}
 
     markers =
@@ -566,14 +605,25 @@ defmodule BubbleEx.Frontend.RenderDiff do
               ~r/data-bubble-id="([A-Za-z0-9]+)"[^>]*?Bubble\.dev_marker\(\s*"((?:[^"\\]|\\.)*)"/s,
               source
             ),
-          do: {id, note}
+          do: {id, unescape(note)}
 
     todos ++ markers
   end
 
-  @doc "A plain-text summary of a `diff/4` report, the top `n` of each group."
-  @spec summary(map(), pos_integer()) :: String.t()
-  def summary(report, n \\ 20) do
+  defp unescape(literal) do
+    case Code.string_to_quoted(~s(") <> literal <> ~s(")) do
+      {:ok, text} when is_binary(text) -> text
+      _ -> literal
+    end
+  end
+
+  @doc """
+  A plain-text summary of a `diff/4` report, the top `n` of each group.
+  With `text: false` it leaves the pages' texts out (they are app data).
+  """
+  @spec summary(map(), pos_integer(), keyword()) :: String.t()
+  def summary(report, n \\ 20, opts \\ []) do
+    text? = Keyword.get(opts, :text, true)
     m = report.matched
 
     header = [
@@ -585,7 +635,7 @@ defmodule BubbleEx.Frontend.RenderDiff do
     ]
 
     group = fn title, list ->
-      ["", "#{title} (#{length(list)})" | list |> Enum.take(n) |> Enum.map(&line/1)]
+      ["", "#{title} (#{length(list)})" | list |> Enum.take(n) |> Enum.map(&line(&1, text?))]
     end
 
     (header ++
@@ -594,12 +644,13 @@ defmodule BubbleEx.Frontend.RenderDiff do
     |> Enum.join("\n")
   end
 
-  defp line(d) do
+  defp line(d, text?) do
     el = d.element || %{}
     shown = if d.kind == :only_ours, do: d.ours, else: d.bubble
 
     texts =
-      case d.kind do
+      case text? && d.kind do
+        false -> ""
         :text_differs -> " bubble=#{inspect(d.bubble.text)} ours=#{inspect(d.ours.text)}"
         _ -> if shown.text != "", do: " text=#{inspect(truncate(shown.text, 80))}", else: ""
       end

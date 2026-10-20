@@ -61,7 +61,7 @@ defmodule BubbleEx.Frontend.RenderDiffTest do
     }
   end
 
-  defp el(i, id, opts) do
+  defp el(i, id, opts \\ []) do
     %{
       "i" => i,
       "id" => id,
@@ -206,6 +206,100 @@ defmodule BubbleEx.Frontend.RenderDiffTest do
       assert %{id: "bCell", kind: :only_bubble} = hd(report.unexplained)
     end
 
+    test "an element under two parents folds into one root without crashing", %{index: index} do
+      # bCardText sits once inside the hidden bGroup and once under the page.
+      bubble =
+        capture("bubble", [
+          el(0, "bPage"),
+          el(1, "bGroup", parent: 0),
+          el(2, "bCardText", parent: 1, text: "A"),
+          el(3, "bTitle", parent: 0),
+          el(4, "bCardText", parent: 3, text: "B"),
+          el(5, "bInner", parent: 4, text: "C")
+        ])
+
+      ours = capture("bubble_ex", [el(0, "bPage"), el(3, "bTitle", parent: 0)])
+      report = RenderDiff.diff(bubble, ours, index)
+      ids = Enum.map(report.unexplained, &{&1.id, &1.kind})
+      assert {"bGroup", :only_bubble} in ids
+      assert length(ids) == length(Enum.uniq(ids))
+    end
+
+    test "a parent cycle does not hang", %{index: index} do
+      bubble =
+        capture("bubble", [el(0, "bGroup", parent: 1), el(1, "bInner", parent: 0, text: "x")])
+
+      task = Task.async(fn -> RenderDiff.diff(bubble, capture("bubble_ex", []), index) end)
+      assert %{unexplained: [_ | _]} = Task.await(task, 2000)
+    end
+
+    test "malformed entries and boxes are skipped", %{index: index} do
+      bubble = %{"elements" => [nil, 3, el(0, "bTitle", box: [nil, 0, 1, 1], text: "t")]}
+      ours = %{"elements" => [el(0, "bTitle", box: [0, 0, 1, 1], text: "t")]}
+      assert %{matched: %{bubble_elements: 1}} = RenderDiff.diff(bubble, ours, index)
+    end
+
+    test "an ancestor's note is a reason, not an explanation", %{index: index} do
+      report =
+        RenderDiff.diff(bubble(), ours(), index,
+          notes: %{"bPage" => ["text: dynamic value not compiled"]}
+        )
+
+      extra = find(report, "bExtra", :only_ours)
+      assert extra.category == :unexplained
+      assert "ours (ancestor bPage): text: dynamic value not compiled" in extra.reasons
+    end
+
+    test "an element only in the export the app was generated from is drift", %{index: index} do
+      generated = Map.put(index, "bGone", %{type: "Text", name: "Gone", owner: "page:demo"})
+      ours = capture("bubble_ex", [el(0, "bGone", text: "old")])
+      report = RenderDiff.diff(capture("bubble", []), ours, index, generated_from: generated)
+
+      assert %{category: :export_drift, reasons: ["not in the export" | rest]} =
+               find(report, "bGone", :only_ours)
+
+      assert "only in the export the app was generated from" in rest
+    end
+
+    test "variants are not counted as instances, and a count difference is not also a text one",
+         %{index: index} do
+      bubble =
+        capture("bubble", [
+          el(0, "bCell", text: "Row 1"),
+          el(1, "bCell_group_item_a_0", text: "a"),
+          el(2, "bTitle", text: "x"),
+          el(3, "bTitle", text: "y")
+        ])
+
+      ours = capture("bubble_ex", [el(0, "bCell", text: "Row 1"), el(1, "bTitle", text: "x")])
+      report = RenderDiff.diff(bubble, ours, index)
+      refute find(report, "bCell", :count_differs)
+      refute find(report, "bCell", :text_differs)
+      assert find(report, "bTitle", :count_differs)
+      refute find(report, "bTitle", :text_differs)
+    end
+
+    test "box offsets compare only from the same parent", %{index: index} do
+      bubble =
+        capture("bubble", [
+          el(0, "bPage", box: [0, 0, 10, 10]),
+          el(1, "bBox", parent: 0, box: [500, 500, 10, 10])
+        ])
+
+      ours =
+        capture("bubble_ex", [
+          el(0, "bGroup", box: [0, 0, 10, 10]),
+          el(1, "bBox", parent: 0, box: [0, 0, 10, 10])
+        ])
+
+      refute find(RenderDiff.diff(bubble, ours, index), "bBox", :box_off)
+    end
+
+    test "the summary can leave texts out", %{report: report} do
+      refute RenderDiff.summary(report, 5, text: false) =~ "text="
+      assert RenderDiff.summary(report, 5) =~ "text="
+    end
+
     test "the summary lists both groups", %{report: report} do
       text = RenderDiff.summary(report, 5)
       assert text =~ "Unexplained (candidate bugs)"
@@ -229,6 +323,18 @@ defmodule BubbleEx.Frontend.RenderDiffTest do
                {"bA", "text: dynamic value not compiled"}
              ]
     end
+
+    test "a TODO at the end of a line does not take the next line; marker literals are unescaped" do
+      source = """
+      x = 1 # TODO(bubble:bB)
+      secret = conn.assigns.token
+      <p data-bubble-id="bC" title={Bubble.dev_marker("Say \\"hi\\" \\x7B")}></p>
+      """
+
+      assert {"bB", ""} in RenderDiff.notes_in(source)
+      assert {"bC", ~s(Say "hi" {)} in RenderDiff.notes_in(source)
+      refute Enum.any?(RenderDiff.notes_in(source), fn {_, n} -> n =~ "secret" end)
+    end
   end
 
   describe "mix bubble.render_diff" do
@@ -246,9 +352,32 @@ defmodule BubbleEx.Frontend.RenderDiffTest do
         Mix.Tasks.Bubble.RenderDiff.run([b, o, "--export", export, "--out", out])
       end)
 
+      assert File.stat!(out).mode |> Bitwise.band(0o777) == 0o600
       report = out |> File.read!() |> Jason.decode!()
       assert report["counts"]["only_bubble"] >= 2
       assert Enum.any?(report["unexplained"], &(&1["id"] == "bGroup"))
+    end
+
+    @tag :tmp_dir
+    test "refuses a malformed --known and bad options", %{tmp_dir: dir} do
+      export = Path.join(dir, "app.bubble")
+      File.write!(export, Jason.encode!(app()))
+      b = Path.join(dir, "b.json")
+      File.write!(b, Jason.encode!(bubble()))
+      known = Path.join(dir, "known.json")
+      File.write!(known, Jason.encode!(%{"bGroup" => 1}))
+
+      assert_raise Mix.Error, ~r/--known/, fn ->
+        Mix.Tasks.Bubble.RenderDiff.run([b, b, "--export", export, "--known", known])
+      end
+
+      assert_raise Mix.Error, ~r/invalid options/, fn ->
+        Mix.Tasks.Bubble.RenderDiff.run([b, b, "--export", export, "--bogus"])
+      end
+
+      assert_raise Mix.Error, ~r/--top/, fn ->
+        Mix.Tasks.Bubble.RenderDiff.run([b, b, "--export", export, "--top", "0"])
+      end
     end
   end
 end
