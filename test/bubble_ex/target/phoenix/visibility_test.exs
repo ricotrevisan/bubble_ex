@@ -116,7 +116,11 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     # Nothing in the browser shows bIn or bOut, and nothing reads what is
     # inside: their own element always, their contents with the same
     # expression as `hidden`.
-    for {id, child, helper} <- [{"bIn", "bInT", "visible_bin"}, {"bOut", "bOutT", "visible_bout"}] do
+    for {id, child, helper} <- [
+          {"bIn", "bInT", "visible_bin"},
+          {"bOut", "bOutT", "visible_bout"},
+          {"bCollOut", "bCollOutT", "visible_bcollout"}
+        ] do
       [group] =
         Regex.run(~r/<div[^>]*data-bubble-id="#{id}".*?<\/Bubble.contents>\s*<\/div>/s, template)
 
@@ -135,7 +139,7 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     assert surfaces =~ ~s("bIn")
 
     {:ok, report} = Phoenix.frontend_report(project, opts)
-    assert %{"visibility_contents_skipped" => 2} = report
+    assert %{"visibility_contents_skipped" => 3} = report
   end
 
   test "only a group whose conditions compiled leaves its contents out; the surface test expects the others' (WTF-559)" do
@@ -335,6 +339,116 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     assert helpers =~ ~s|attributeFilter: ["data-bubble-visible"]|
     assert helpers =~ "this.conditionsChanged(this.conditions.takeRecords())"
   end
+
+  # The a361e4e regression: an element hidden on page load that collapses
+  # when hidden had a static `hidden` class besides the attribute, so
+  # neither its conditionals nor a step could show it.
+  test "hidden on page load and collapsing when hidden: only the attribute, never a class", %{
+    files: files
+  } do
+    template = files["lib/shop_web/live/index_live.html.heex"]
+
+    # Server-evaluated: the conditional's helper sets the attribute.
+    assert tag(template, "bCollOut") =~ "hidden={!visible_bcollout(@bubble_viewer)}"
+    # A workflow step removes the attribute.
+    assert tag(template, "bCollWf") =~ ~r/\shidden[\s>]/
+
+    for id <- ~w(bCollOut bCollWf) do
+      refute tag(template, id) =~ ~r/class="[^"]*\b(hidden|invisible)\b/
+    end
+
+    assert files["assets/css/bubble.css"] =~ "[data-bubble-id][hidden] { display: none; }"
+  end
+
+  # The same two elements in the pinned browser, through the generated hook
+  # (test/support/fidelity/collapse-show.mjs): their condition's render or
+  # a Show step makes them visible.
+  @tag :fidelity
+  @tag :tmp_dir
+  test "hidden on page load and collapsing when hidden: shown once a condition or a step shows it",
+       %{files: files, tmp_dir: tmp} do
+    template = files["lib/shop_web/live/index_live.html.heex"]
+
+    [rule] =
+      Regex.run(
+        ~r/\[data-bubble-id\]\[hidden\] \{ display: none; \}/,
+        files["assets/css/bubble.css"]
+      )
+
+    [_, script] =
+      String.split(files["lib/shop_web/components/bubble.ex"], ~s(name=".BubbleRuntime">))
+
+    [hook | _] = String.split(script, "</script>")
+
+    elements =
+      Enum.map_join(
+        [{"bCollOut", "Collapsed sign in"}, {"bCollWf", "Collapsed, shown by a step"}],
+        "\n",
+        fn {id, text} ->
+          open = template |> tag(id) |> static_html()
+          [_, name] = Regex.run(~r/\A<([a-z]+)/, open)
+          "#{open}#{text}</#{name}>"
+        end
+      )
+
+    # Tailwind's display and visibility utilities, in their layer.
+    page = """
+    <!doctype html><html><head><style>
+    @layer utilities {
+      .hidden { display: none; } .invisible { visibility: hidden; } .block { display: block; }
+      .flex { display: flex; } .grid { display: grid; } .inline-flex { display: inline-flex; }
+    }
+    #{rule}
+    </style></head><body>
+    #{elements}
+    <div id="bubble-runtime" hidden></div>
+    </body></html>
+    """
+
+    File.write!(Path.join(tmp, "hook.js"), hook)
+    File.write!(Path.join(tmp, "page.html"), page)
+
+    {output, status} =
+      System.cmd(
+        "node",
+        [
+          "test/support/fidelity/collapse-show.mjs",
+          Path.join(tmp, "hook.js"),
+          Path.join(tmp, "page.html")
+        ],
+        stderr_to_stdout: true
+      )
+
+    assert status == 0, output
+    assert output =~ "PASS collapse-when-hidden shows"
+  end
+
+  # An opening tag as the browser gets it while hidden: `hidden={...}` is
+  # the attribute, other `{...}` attributes are left out.
+  defp static_html(tag), do: static_html(tag, "")
+
+  defp static_html("", acc), do: acc
+
+  defp static_html(<<" ", rest::binary>> = tag, acc) do
+    case Regex.run(~r/\A\s+([a-zA-Z_:.\-]+)=\{/, tag) do
+      [match, name] ->
+        after_expression =
+          skip_braces(binary_part(tag, byte_size(match), byte_size(tag) - byte_size(match)), 1)
+
+        static_html(after_expression, if(name == "hidden", do: acc <> " hidden", else: acc))
+
+      nil ->
+        static_html(rest, acc <> " ")
+    end
+  end
+
+  defp static_html(<<char::utf8, rest::binary>>, acc),
+    do: static_html(rest, acc <> <<char::utf8>>)
+
+  defp skip_braces(rest, 0), do: rest
+  defp skip_braces(<<"{", rest::binary>>, depth), do: skip_braces(rest, depth + 1)
+  defp skip_braces(<<"}", rest::binary>>, depth), do: skip_braces(rest, depth - 1)
+  defp skip_braces(<<_::utf8, rest::binary>>, depth), do: skip_braces(rest, depth)
 
   test "a step holds until the condition-derived visibility changes (replay 2026-10-07)", %{
     files: files
@@ -670,7 +784,7 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     # bLoading's read a repeating group's "is loading", a constant). The
     # panel's two "isn't clickable" states are other properties.
     assert %{
-             "visibility_conditions_compiled" => 11,
+             "visibility_conditions_compiled" => 12,
              "visibility_conditions_marked" => 25,
              "conditions_other_properties" => 4
            } = report

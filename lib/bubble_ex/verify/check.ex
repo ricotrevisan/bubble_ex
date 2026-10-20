@@ -8,7 +8,7 @@ defmodule BubbleEx.Verify.Check do
 
   | class | checks | accepted differences |
   |-------|--------|----------------------|
-  | `structural` (L0) | `generated_unchanged`, `deterministic`, `compiles`, `lint`, `boundary`, `migrations_in_sync`, `symbol_coverage`, `policy_coverage`, `bypass_inventory`, `secrets_absent` | none: fix it, or change the generator or a decision |
+  | `structural` (L0) | `generated_unchanged`, `deterministic`, `compiles`, `lint`, `boundary`, `migrations_in_sync`, `symbol_coverage`, `policy_coverage`, `bypass_inventory`, `hidden_overridable`, `secrets_absent` | none: fix it, or change the generator or a decision |
   | `traceability` (L1) | `traceability.source`, `traceability.rendered` | a finding decision (`decided_difference`) only |
   | `attested` (L1) | `acceptance` | finding decision; parity exception; waiver by an agent or reviewer with a reason |
   | `privacy` (L2, L4) | `privacy_read`, `privacy_spot_check` | the owner's finding decision or parity exception only, **never a waiver or quarantine**; where the target policy is stricter than Bubble by design (`BubbleEx.Verify.Difference`), the result is `intended_difference`, checked against the difference record, not accepted |
@@ -36,6 +36,7 @@ defmodule BubbleEx.Verify.Check do
     "symbol_coverage" => {:l0, :structural},
     "policy_coverage" => {:l0, :structural},
     "bypass_inventory" => {:l0, :structural},
+    "hidden_overridable" => {:l0, :structural},
     "secrets_absent" => {:l0, :structural},
     "traceability.source" => {:l1, :traceability},
     "traceability.rendered" => {:l1, :traceability},

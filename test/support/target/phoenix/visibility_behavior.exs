@@ -274,6 +274,31 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     assert hidden?(view, "bFlagged")
   end
 
+  # Whether the element has a `hidden` or `invisible` class, which neither
+  # its conditionals nor a step remove (the a361e4e regression).
+  defp stuck?(view, id) do
+    html = view |> element(~s([data-bubble-id="#{id}"])) |> render()
+    [open] = Regex.run(~r/\A<[^>]*>/s, html)
+    open =~ ~r/\sclass="[^"]*\b(hidden|invisible)\b/
+  end
+
+  test "hidden on page load and collapsing when hidden: shown by its conditional or a step",
+       %{conn: conn, user: user} do
+    {:ok, view, _html} = live(conn, "/")
+    refute hidden?(view, "bCollOut")
+    refute stuck?(view, "bCollOut")
+    assert has_element?(view, ~s([data-bubble-id="bCollOutT"]))
+
+    {:ok, view, _html} = live(sign_in(conn, user), "/")
+    assert hidden?(view, "bCollOut")
+
+    # Shown by a step: the hook removes the attribute, and nothing else
+    # keeps it hidden.
+    assert hidden?(view, "bCollWf")
+    refute stuck?(view, "bCollWf")
+    assert view |> element(~s([data-bubble-id="bShowColl"])) |> render() =~ "bubble:show"
+  end
+
   test "an element hidden on page load with no conditional is shown by a step", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/")
     assert hidden?(view, "bWf")

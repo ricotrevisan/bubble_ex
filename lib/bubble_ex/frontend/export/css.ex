@@ -1616,15 +1616,28 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> Enum.map_join("", fn {k, v} -> "    #{k}: #{v};\n" end)
   end
 
+  # Hidden as on page load: collapsed (`display: none`) when the source
+  # says so or when it collapses when hidden, else `visibility: hidden`,
+  # keeping its space. Both follow `hidden?`, so a box without it (shown
+  # by a target, the initial state or a breakpoint) is never collapsed.
   defp put_collapse(css, %Node{box: box}) when is_map(box) do
+    hidden? = box_flag?(box, :hidden?)
+
     cond do
-      box[:collapsed?] || box["collapsed?"] -> Map.put(css, "display", "none")
-      box[:hidden?] || box["hidden?"] -> Map.put(css, "visibility", "hidden")
-      true -> css
+      box_flag?(box, :collapsed?) or (hidden? and box_flag?(box, :collapse_when_hidden?)) ->
+        Map.put(css, "display", "none")
+
+      hidden? ->
+        Map.put(css, "visibility", "hidden")
+
+      true ->
+        css
     end
   end
 
   defp put_collapse(css, _), do: css
+
+  defp box_flag?(box, key), do: (box[key] || box[Atom.to_string(key)]) == true
 
   defp declarations_from_paint(map) when is_map(map) do
     map
