@@ -454,6 +454,11 @@ defmodule BubbleEx.Target.AshTest do
         assert source =~ "field_policy [:title"
         refute source =~ ~r/field_policy \[[^\]]*:#{name}\b/
 
+        # A kept deleted reference is gated by its ID's rule checks, like
+        # a public one, not closed to everyone.
+        assert %{public?: false, gate: {:visible_if, [_]}} =
+                 Enum.find(meeting.relationships, &(&1.name == "host"))
+
         if privacy == :enforced,
           do: assert(Map.has_key?(meeting.privacy.view_search_fields, name)),
           else: assert(meeting.privacy.view_search_fields == %{})

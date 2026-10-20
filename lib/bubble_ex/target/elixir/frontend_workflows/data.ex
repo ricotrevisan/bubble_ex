@@ -1971,11 +1971,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
     end
   end
 
+  # A private field (a deleted field still read, WTF-566) has no field
+  # policy: its checks are in `privacy.private_fields` (WTF-585).
   defp visible_to_all?(resource, attribute) do
-    Enum.all?(resource.field_policies, fn fp ->
-      attribute not in fp.fields or
-        Enum.any?(fp.checks, &match?(%{kind: :authorize_if, test: :always}, &1))
-    end)
+    case BubbleEx.Target.Ash.Resource.field_checks(resource) do
+      %{^attribute => checks} ->
+        Enum.any?(checks, &match?(%{kind: :authorize_if, test: :always}, &1))
+
+      _ ->
+        true
+    end
   end
 
   defp expr_refs({:ref, rels, attribute}) when is_binary(attribute), do: [{rels, attribute}]

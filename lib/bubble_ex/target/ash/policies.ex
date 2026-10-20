@@ -168,11 +168,8 @@ defmodule BubbleEx.Target.Ash.Policies do
 
   # A gated relationship follows its ID attribute's checks (a belongs_to)
   # or those of the list it replaces; with neither, nobody may follow it.
-  defp view_checks(%Relationship{kind: :belongs_to} = rel, resource) do
-    Enum.find_value(resource.field_policies, [], fn fp ->
-      if rel.source_attribute in fp.fields, do: fp.checks
-    end)
-  end
+  defp view_checks(%Relationship{kind: :belongs_to} = rel, resource),
+    do: Map.get(Resource.field_checks(resource), rel.source_attribute, [])
 
   defp view_checks(rel, resource), do: Map.get(resource.privacy.relationship_checks, rel.name, [])
 
@@ -281,11 +278,10 @@ defmodule BubbleEx.Target.Ash.Policies do
     for resource <- resources,
         hidden =
           for(
-            fp <- resource.field_policies,
-            fp.checks != [
+            {f, checks} <- field_checks_in_order(resource),
+            checks != [
               %PolicyCheck{kind: :authorize_if, test: :always, source: %{default: true}}
             ],
-            f <- fp.fields,
             do: f
           ),
         hidden != [] do
@@ -385,7 +381,7 @@ defmodule BubbleEx.Target.Ash.Policies do
   end
 
   defp gate_resource(%Resource{} = resource, entry, twins, needed) do
-    checks = for fp <- resource.field_policies, f <- fp.fields, into: %{}, do: {f, fp.checks}
+    checks = Resource.field_checks(resource)
 
     used =
       MapSet.new(
@@ -836,13 +832,23 @@ defmodule BubbleEx.Target.Ash.Policies do
     attributes ++ derived ++ aggregates ++ has_many
   end
 
+  # Each field's checks, the field policies' in order, then the private
+  # fields' by name.
+  defp field_checks_in_order(resource) do
+    private = if resource.privacy, do: resource.privacy.private_fields, else: %{}
+
+    for(fp <- resource.field_policies, f <- fp.fields, do: {f, fp.checks}) ++
+      Enum.sort(private)
+  end
+
   # Field policies for the public fields, the checks of the derived
   # has_many relationships (`privacy.relationship_checks`) and those of the
   # private fields (`privacy.private_fields`). A private attribute (a
   # deleted field something still reads, kept by `Target.Ash.map/3` with
-  # `index:`, WTF-566) is in no field policy: Ash accepts only public
-  # fields there, and the resource's `private_fields :hide` (`:include`
-  # with a bypass) already hides it from everyone but a bypass (WTF-585).
+  # `index:`, WTF-566) is in no field policy (WTF-585): under the
+  # resource's `private_fields :hide` Ash accepts only public fields there
+  # and hides the others; under `:include` (with a bypass) the bypass's
+  # `:*` alone covers them, so it is forbidden to everyone else.
   defp split_checks(field_checks) do
     {rels, fields} = Enum.split_with(field_checks, &match?({%Relationship{}, _}, &1))
     {public, private} = Enum.split_with(fields, fn {f, _} -> f.public? end)

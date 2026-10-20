@@ -486,6 +486,20 @@ defmodule BubbleEx.Target.Ash.Resource do
           privacy: ResourcePrivacy.t() | nil,
           join: map() | nil
         }
+
+  @doc """
+  Who may view each field the privacy rules cover, `%{name => checks}`:
+  the fields of its field policies and its private fields
+  (`ResourcePrivacy.private_fields`, which no field policy names,
+  WTF-585). A field in neither is not listed.
+  """
+  @spec field_checks(t()) :: %{String.t() => [BubbleEx.Target.Ash.PolicyCheck.t()]}
+  def field_checks(%__MODULE__{} = resource) do
+    private = if resource.privacy, do: resource.privacy.private_fields, else: %{}
+
+    for(fp <- resource.field_policies, f <- fp.fields, into: %{}, do: {f, fp.checks})
+    |> Map.merge(private)
+  end
 end
 
 defmodule BubbleEx.Target.Ash.Action do
@@ -758,9 +772,10 @@ defmodule BubbleEx.Target.Ash.ResourcePrivacy do
       field policy; its `gate` follows these checks)
     * `private_fields` - `%{name => checks}`: who the rules let view each
       private attribute (a deleted field something still reads, kept with
-      `index:`, WTF-566). Ash field policies name only public fields, so
-      none names one: reads hide it from everyone but a field policy
-      bypass (`private_fields :hide`, or `:include` with a bypass). With
+      `index:`, WTF-566). No field policy names one (under the resources'
+      `private_fields :hide` Ash accepts only public fields there; under
+      `:include`, with a bypass, the bypass alone covers them), so reads
+      hide it from everyone but a bypass. With
       `privacy: :enforced` a search naming one is restricted by these
       checks (`view_search_fields`), as for a field policy's fields
       (WTF-585). Empty, it is left out of `Project.to_map/1`
