@@ -68,6 +68,13 @@ The codebase follows a modular architecture with clear separation of concerns:
   `BubbleEx.AppTree`. Frozen-case fidelity is `BubbleEx.Frontend.Fidelity` /
   `mix bubble.fidelity` (Playwright 1.55, Chromium 140); default `mix test`
   excludes `:fidelity`.
+  Bubble-vs-ours render comparison is `BubbleEx.Frontend.RenderDiff` /
+  `mix bubble.render_diff`: two captures of one page at one width
+  (`scripts/vertical_slice/render_capture.js`, joined on the export element
+  ID: Bubble's runtime `element.id()`, ours `data-bubble-id`), each
+  difference (only Bubble, only ours, count, text, box) explained from the
+  export and our markers/notes, grouped known (drift, owner-listed, marked)
+  vs unexplained. Captures and reports hold app data: keep them private.
 - **BubbleEx.Secrets** - Pluggable secret-scanning behaviour; `Secrets.Trufflehog` is the default adapter. It asks providers whether found keys work and drops the ones they rejected unless given `verify: false` (also through `BubbleEx.scan_payload_for_secrets/2`, `start_scan_for_secrets/2`, `Server.start_scan/2`): `--no-verification`, every finding marked `"Verification" => "skipped"` so its `"Verified" => false` is never read as invalid (WTF-485). Both modes pass `--results=verified,unknown,unverified` and the custom detectors in `priv/trufflehog/custom_detectors.yaml` (`--config`), whose findings get a bubble_ex provider name and id (`Trufflehog.custom_detectors/0`) and are always `"skipped"` (WTF-538)
 
 ### Key Dependencies

@@ -6,6 +6,25 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **`mix bubble.render_diff`: compare a page as Bubble rendered it with
+  the generated app's.** `scripts/vertical_slice/render_capture.js` captures
+  a page's elements (export element ID, type, box, visible, own text,
+  images; ours also its dev markers) in the same shape on both sides: in
+  Bubble it reads each element's ID from the runtime
+  (`node.bubble_data.bubble_instance.element.id()`, every element matched),
+  in the generated app `data-bubble-id`. `BubbleEx.Frontend.RenderDiff`
+  joins two captures and reports, per element, what Bubble shows and ours
+  doesn't (and the reverse), repeat counts, text and boxes that differ. A
+  hidden group folds its subtree into one difference; differences are
+  ranked by the visible text they account for. Each carries the export's
+  reasons (default visibility, the conditions that change it, data source,
+  text expression and other conditionals) and ours (dev marker, notes from
+  the generated code), and is grouped as known (`export_drift` against
+  `--generated-from`, owner-listed `--known`, marked by bubble_ex) or
+  unexplained. Nothing calls Bubble; captures and reports stay private
+  (the capture keeps no input values or query strings, the report file is
+  0600, `--no-text` keeps texts out of the printed summary).
+
 - **The replay of 2026-10-19 applied: the current date/time, the page's
   name, page width and breakpoints, "is loading", same-URL "Go to
   page".** Each was observed in Bubble on a synthetic page, then
