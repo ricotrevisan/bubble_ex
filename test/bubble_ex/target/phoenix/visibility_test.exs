@@ -795,7 +795,7 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
              "visibility_conditions_compiled" => 12,
              "visibility_conditions_marked" => 25,
              "text_conditions_compiled" => 2,
-             "text_conditions_marked" => 6,
+             "text_conditions_marked" => 8,
              "conditions_other_properties" => 4
            } = report
   end
@@ -1016,6 +1016,25 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
              """
     end
 
+    test "reading the page's data keeps the content on page load until it loads", %{
+      files: files
+    } do
+      assert files["lib/shop_web/live/task_live.html.heex"] |> text_element("bProjectText") =~
+               ~s|>{if(@bubble_data_pending, do: "No project", else: text_bprojecttext(|
+
+      assert files["lib/shop_web/live/task_live.ex"] =~ "defp text_bprojecttext("
+    end
+
+    test "with BBCode only the static path renders, keeps it, marked", %{files: files} do
+      link = files["lib/shop_web/live/index_live.html.heex"] |> text_element("bLinkText")
+
+      assert link =~
+               "TODO(bubble:bLinkText) text: 1 conditional not lowered (its text has BBCode " <>
+                 "other than bold, italic, underline or strikethrough); shown as on page load"
+
+      assert link =~ ~s|<a href="https://example.com"|
+    end
+
     test "that the page cannot decide keeps the content on page load, marked", %{files: files} do
       template = files["lib/shop_web/live/index_live.html.heex"]
 
@@ -1041,7 +1060,7 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
       expressions: expressions
     } do
       {:ok, report} = Phoenix.frontend_report(project, opts)
-      assert %{"text_conditions_compiled" => 6, "text_conditions_marked" => 2} = report
+      assert %{"text_conditions_compiled" => 7, "text_conditions_marked" => 3} = report
 
       texts =
         for %{reason: :element_condition, detail: %{property: "text"}} = r <-

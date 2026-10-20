@@ -632,7 +632,7 @@ defmodule <%= @web %>.Bubble do
 
   @doc """
   `value` once every relationship path in `paths` (names) is loaded
-  through it. A visibility conditional never decides on a relationship
+  through it. A conditional (visibility, text, "isn't clickable") never decides on a relationship
   that was not loaded: it would read as empty, silently (WTF-477). Raises
   `ArgumentError` instead: the page did not load what its conditions read.
   """
@@ -645,7 +645,7 @@ defmodule <%= @web %>.Bubble do
     do:
       raise(
         ArgumentError,
-        "bubble: #{Enum.join(path, ".")} is read by a visibility condition but not loaded"
+        "bubble: #{Enum.join(path, ".")} is read by a condition but not loaded"
       )
 
   defp loaded_path!(_value, [], _path), do: :ok

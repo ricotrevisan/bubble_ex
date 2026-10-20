@@ -383,7 +383,7 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     assert %Ash.NotLoaded{} = task.project
 
     assert_raise ArgumentError,
-                 ~r/project is read by a visibility condition but not loaded/,
+                 ~r/project is read by a condition but not loaded/,
                  fn ->
                    PhxCheckWeb.Bubble.loaded!(task, [["project"]])
                  end
@@ -522,5 +522,17 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     assert text(view, "bCellLabel", {:cell, @t2}) == "Task Bravo"
     assert text(view, "bTextBad") == "Kept"
     assert text(view, "bHoverText") == "Still"
+  end
+
+  test "a conditional text reading the page's data keeps its content until the data loads",
+       %{conn: conn} do
+    data_access_on()
+    dead = conn |> get("/task/#{@t1}") |> html_response(200)
+    assert dead =~ ~r/data-bubble-id="bProjectText"[^>]*>No project</
+
+    {:ok, view, _html} = live(conn, "/task/#{@t1}")
+    assert text(view, "bProjectText") == "Project: Apollo"
+    {:ok, view, _html} = live(conn, "/task/#{@t2}")
+    assert text(view, "bProjectText") == "No project"
   end
 end

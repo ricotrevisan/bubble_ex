@@ -3051,7 +3051,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         {call, acc} =
           add_helper(node, name, %{compiled | source: source}, bbcode != nil, ctx, acc)
 
-        {{if(bbcode, do: :bbcode, else: :expr), call}, acc}
+        if bbcode == nil and reads_page_data?(compiled.bindings, ctx),
+          do: pending_text(node, name, call, ctx, acc),
+          else: {{if(bbcode, do: :bbcode, else: :expr), call}, acc}
 
       why ->
         {slot, acc} = slot(node, name, ctx, acc)
@@ -3067,12 +3069,56 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
+  # A conditional text reading the page's data (WTF-563): the static
+  # render has none yet, so until it loads the element shows its content
+  # on page load (slot/4), never a state's text decided on empty data.
+  defp pending_text(node, name, call, ctx, acc) do
+    {base, acc} = slot(node, name, ctx, acc)
+
+    base =
+      case base do
+        {:expr, expr} -> expr
+        {:static, text} -> literal(text)
+      end
+
+    {{:expr, "if(@bubble_data_pending, do: #{base}, else: #{call})"}, acc}
+  end
+
   # Why the page cannot decide an element's conditional text, or nil.
   defp text_unlowered(node, name, compiled, ctx) do
-    if override(node, name, ctx),
-      do: "the instance passes its content",
-      else: text_inputs_unlowered(compiled, ctx)
+    cond do
+      override(node, name, ctx) ->
+        "the instance passes its content"
+
+      unlowered_bbcode?(node, compiled) ->
+        "its text has BBCode other than bold, italic, underline or strikethrough"
+
+      true ->
+        text_inputs_unlowered(compiled, ctx)
+    end
   end
+
+  # A Text's literal text with BBCode that only the static path renders
+  # (text_html/1: links, colors, sizes, lists, centering...): with dynamic
+  # values Bubble.bbcode/1 renders bold, italic, underline and
+  # strikethrough only, so its content keeps the static path.
+  defp unlowered_bbcode?(%Node{kind: :text}, %{text: text}),
+    do: Enum.any?([text.base | text.branches], &static_bbcode?(&1.source))
+
+  defp unlowered_bbcode?(_node, _compiled), do: false
+
+  defp static_bbcode?(source) do
+    with {:ok, ast} <- Code.string_to_quoted(source),
+         parts = Enum.map(concat_parts(ast), &bbcode_part_of/1),
+         true <- Enum.any?(parts, &(is_binary(&1) and Bbcode.present?(&1))) do
+      match?(:none, Bbcode.split(parts)) or match?({_, [_ | _]}, Bbcode.split(parts))
+    else
+      _ -> false
+    end
+  end
+
+  defp bbcode_part_of(part) when is_binary(part), do: part
+  defp bbcode_part_of(part), do: {:value, part}
 
   defp text_inputs_unlowered(nil, _ctx), do: "it does not compile"
 
@@ -3084,11 +3130,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       ctx.surface == :page and Enum.any?(vars, &page_name_input?(&1.input)) ->
         @page_name_on_page
 
-      var = Enum.find(vars, &(not kept_input?(&1, ctx) or unloaded_data?(&1, ctx))) ->
-        unkept(var, ctx)
-
       unset_reads(vars, ctx) != {[], []} or own_defaults(vars, ctx) != [] ->
         "it reads a reusable element's property with no value"
+
+      var = Enum.find(vars, &(not kept_input?(&1, ctx) or unloaded_data?(&1, ctx))) ->
+        unkept(var, ctx)
 
       true ->
         nil
