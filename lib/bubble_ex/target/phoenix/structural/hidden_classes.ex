@@ -8,7 +8,9 @@ defmodule BubbleEx.Target.Phoenix.Structural.HiddenClasses do
   a361e4e, a private app's slice had 1,228 of them: 14 of 29 pages lost
   their content).
 
-  An element a breakpoint shows keeps its class without the attribute (the
+  The attribute is read from the tag with its quoted values and `{...}`
+  expressions blanked, so a `hidden` class is never taken for it. An
+  element a breakpoint shows keeps its class without the attribute (the
   media rule overrides it), so it is not reported.
   """
 
@@ -52,12 +54,39 @@ defmodule BubbleEx.Target.Phoenix.Structural.HiddenClasses do
     with [_, id] <- Regex.run(~r/\sdata-bubble-id="([^"]*)"/, tag),
          [_, class] <- Regex.run(~r/\sclass="([^"]*)"/, tag),
          true <- Enum.any?(String.split(class), &(&1 in ["hidden", "invisible"])),
-         true <- tag =~ ~r/\shidden(?=[\s>=\/])/ or tag =~ ~r/\sdata-bubble-visible=/ do
+         names = attribute_names(tag),
+         true <- names =~ ~r/\shidden(?=[\s>=\/])/ or names =~ ~r/\sdata-bubble-visible=/ do
       id
     else
       _ -> nil
     end
   end
+
+  # The tag with every quoted value and `{...}` expression blanked, so a
+  # `hidden` class or a value naming `hidden` is not read as the attribute.
+  defp attribute_names(tag) do
+    tag
+    |> blank_expressions("", 0)
+    |> String.replace(~r/="[^"]*"/, ~s(=""))
+  end
+
+  defp blank_expressions("", acc, _depth), do: acc
+
+  defp blank_expressions(<<"{", rest::binary>>, acc, 0),
+    do: blank_expressions(rest, acc <> "{", 1)
+
+  defp blank_expressions(<<"{", rest::binary>>, acc, d), do: blank_expressions(rest, acc, d + 1)
+
+  defp blank_expressions(<<"}", rest::binary>>, acc, 1),
+    do: blank_expressions(rest, acc <> "}", 0)
+
+  defp blank_expressions(<<"}", rest::binary>>, acc, d) when d > 1,
+    do: blank_expressions(rest, acc, d - 1)
+
+  defp blank_expressions(<<c::utf8, rest::binary>>, acc, 0),
+    do: blank_expressions(rest, acc <> <<c::utf8>>, 0)
+
+  defp blank_expressions(<<_::utf8, rest::binary>>, acc, d), do: blank_expressions(rest, acc, d)
 
   # Every opening tag with a `data-bubble-id`, read past HEEx `{...}`
   # attributes and quoted values (they may hold `>`).

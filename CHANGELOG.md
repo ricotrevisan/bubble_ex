@@ -508,7 +508,9 @@ All notable changes to this project are documented here.
   `hidden_overridable` (`mix wtf.verify structural`, so the vertical
   slice), fails when an element whose `hidden` attribute its
   conditionals or steps change also has a static `hidden` or `invisible`
-  class.
+  class. It looks for the attribute (or `data-bubble-visible`) outside
+  quoted values and `{...}` expressions, so an element a breakpoint
+  shows, which has the class and no attribute, is not reported.
 
 - **A group whose data source is a property with no value passes the
   WTF-505 marker on** (WTF-505 follow-up). A group or repeating group

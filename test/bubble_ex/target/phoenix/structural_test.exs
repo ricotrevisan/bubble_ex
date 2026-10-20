@@ -1433,6 +1433,8 @@ defmodule BubbleEx.Target.Phoenix.StructuralTest do
       </div>
       <div data-bubble-id="bAttr" class="relative z-[4]" hidden>Only the attribute</div>
       <div data-bubble-id="bBreakpoint" class="hidden md:flex">A breakpoint shows it</div>
+      <div data-bubble-id="bBreakpoint2" class="relative hidden md:flex">A breakpoint shows it</div>
+      <div data-bubble-id="bTitle" class="relative hidden" title="hidden" phx-click={JS.toggle(to: "[hidden]")}>x</div>
       <div data-bubble-id="bOther" class="group-hidden grid" hidden={!visible_x(@a)}>x</div>
       """)
 
