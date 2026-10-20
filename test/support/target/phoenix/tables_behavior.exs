@@ -15,7 +15,8 @@ defmodule PhxCheckWeb.TablesBehaviorTest do
   # load. With enforced policies a secret task is in no row.
   use PhxCheckWeb.ConnCase, async: false
 
-  import Phoenix.LiveViewTest
+  # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
+  use PhxCheckWeb.BubbleBehavior
 
   @t1 "1700000000000x200000000000000001"
   @t2 "1700000000000x200000000000000002"

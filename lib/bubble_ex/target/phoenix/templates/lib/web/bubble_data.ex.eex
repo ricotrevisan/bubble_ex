@@ -102,6 +102,25 @@ defmodule <%= @web %>.BubbleData do
   no field but the primary key: <%= if @enforced? do %>the policies (and the
   search fields check) apply as to any other search<% else %>nothing to guard<% end %>.
 
+  ## The first load (WTF-559)
+
+  A connected page's first load runs in a task (`load_async/3`), so the
+  join replies with the page as its static render shows it
+  (`@bubble_data_pending`: what reads the data keeps its fallback) and
+  the data follows in a render of its own. The task reads only a copy of
+  the page's assigns, as the page's actor<%= if @enforced? do %> (the one read for this page load)<% end %>, through
+  the same reads and policies; its result is kept only while the page
+  still has that actor. A patch before it ends waits for it, in order. A
+  crash is logged and the page reads in its own process instead; past
+  `:data_timeout` (`config :<%= @app %>, <%= @web %>.BubbleWorkflows`,
+  default 15_000 ms) the page logs a warning and keeps waiting. A
+  reconnect reads in place. Every later read (a patch, a change
+  notification, an input, the width, stale data before a workflow) is in
+  the page's process, as before: they read only what changed and must be
+  current before the workflow that follows them runs. `async_data: false`
+  reads the first load in the page's process too.<%= if @api_data? do %> The data calls a
+  first load asks for answer the page, not the task.<% end %>
+
   ## Reactivity
 
   When loaded (and connected), the page subscribes to one topic per data
@@ -224,6 +243,8 @@ defmodule <%= @web %>.BubbleData do
   require Ash.Query
   require Logger
 
+  require Phoenix.LiveView
+
   import Phoenix.Component, only: [assign: 3]
   import Phoenix.LiveView, only: [connected?: 1]
 
@@ -240,7 +261,8 @@ defmodule <%= @web %>.BubbleData do
   @api_marks {__MODULE__, :api_marks}
   @api_state {__MODULE__, :api_state}
   @api_skipped {__MODULE__, :api_skipped}
-  @api_kept {__MODULE__, :api_kept}<% end %>
+  @api_kept {__MODULE__, :api_kept}
+  @owner {__MODULE__, :owner}<% end %>
 
   @doc "Whether pages may read stored data (the workflows' opt-in)."
   def data_access?,
@@ -311,47 +333,21 @@ defmodule <%= @web %>.BubbleData do
   @doc """
   Loads the page's data into `@bubble_data` (nothing with data access
   off) and, once connected, subscribes to the changes of what it read.
-  The data is then current (`@bubble_data_stale` false). <%= if @enforced? do %>The current
+  The data is then current (`@bubble_data_stale` false) and no longer
+  pending (`@bubble_data_pending` false). <%= if @enforced? do %>The current
   user is read afresh first, unless `actor_fresh?: true` says the caller
   has just done it (`BubbleWorkflows.refresh_actor/1`).<% else %>`opts` is
   for the enforced variant (`actor_fresh?:`), ignored here.<% end %>
   """
   def load(socket, page, opts \\ []) do
-    socket =
-      socket
-      |> assign(:bubble_data_stale, false)
-      |> assign(:bubble_data_inputs, MapSet.new())<%= if @enforced? do %>
-
-    socket =
-      if data_access?() and not Keyword.get(opts, :actor_fresh?, false),
-        do: BubbleWorkflows.refresh_actor(socket),
-        else: socket<% else %>
-
-    _ = opts<% end %>
+    socket = before_read(socket, opts)
 
     if data_access?() and connected?(socket) do
       # Notifications already delivered were sent after their writes
       # committed: this read covers them.
       _ = take_changes(Map.get(socket.assigns, :bubble_topics, MapSet.new()), false)
 
-      {data, by_source, cells} =
-        read_pass(fn ->
-          {data, by_source} =
-            load_surfaces(socket, BubbleWorkflows.surfaces(page), {%{}, %{}}, nil)
-
-          # The reusable instances in cells (WTF-494): one scope per cell read.
-          load_cells(socket, page, {data, by_source})<%= if @api_data? do %>
-          |> with_api_marks(socket.assigns[:bubble_data])<% end %>
-        end)
-
-      socket
-      |> assign(:bubble_data, data)
-      |> BubbleWorkflows.put_cells(cells)
-      |> BubbleWorkflows.put_page_cells(page)
-      |> assign(:bubble_data_actor, data_actor(socket))
-      |> assign(:bubble_data_url, url_key(socket))
-      |> assign(:bubble_source_topics, by_source)
-      |> subscribe(all_topics(by_source))
+      put_read(socket, page, read(socket, page))
     else
       if not data_access?() and connected?(socket) and
            not Map.get(socket.assigns, :bubble_data_warned, false) and sources?(page) do
@@ -370,6 +366,49 @@ defmodule <%= @web %>.BubbleData do
     end
   end
 
+  # What every read starts with: the data is current, no input waits to be
+  # read again<%= if @enforced? do %>, and the actor is read afresh (unless the caller just did)<% end %>.
+  defp before_read(socket, opts) do
+    socket =
+      socket
+      |> assign(:bubble_data_stale, false)
+      |> assign(:bubble_data_inputs, MapSet.new())<%= if @enforced? do %>
+
+    if data_access?() and not Keyword.get(opts, :actor_fresh?, false),
+      do: BubbleWorkflows.refresh_actor(socket),
+      else: socket<% else %>
+
+    _ = opts
+    socket<% end %>
+  end
+
+  # One read of every source of the page (`read_pass/1`): the data, the
+  # topics by source and the cells. It reads only the socket's assigns, so
+  # it runs in the page's process or in its first load's task alike.
+  defp read(socket, page) do
+    read_pass(fn ->
+      {data, by_source} = load_surfaces(socket, BubbleWorkflows.surfaces(page), {%{}, %{}}, nil)
+
+      # The reusable instances in cells (WTF-494): one scope per cell read.
+      load_cells(socket, page, {data, by_source})<%= if @api_data? do %>
+      |> with_api_marks(socket.assigns[:bubble_data])<% end %>
+    end)
+  end
+
+  # What a read gives the page, in the page's process: its data, cells and
+  # subscriptions.
+  defp put_read(socket, page, {data, by_source, cells}) do
+    socket
+    |> assign(:bubble_data, data)
+    |> assign(:bubble_data_pending, false)
+    |> BubbleWorkflows.put_cells(cells)
+    |> BubbleWorkflows.put_page_cells(page)
+    |> assign(:bubble_data_actor, data_actor(socket))
+    |> assign(:bubble_data_url, url_key(socket))
+    |> assign(:bubble_source_topics, by_source)
+    |> subscribe(all_topics(by_source))
+  end
+
   @doc """
   The page's data for a `handle_params` (WTF-562): read again only when
   what it reads of the URL (the query, the path and its segments, the
@@ -382,14 +421,164 @@ defmodule <%= @web %>.BubbleData do
   changes only the URL updates the address bar and reads the URL's
   parameters again, without a reload: here only what reads the changed
   URL is read again. Data already stale (`reload/3`) is read again all the
-  same. The first `handle_params` after a mount always reads.
+  same. The first `handle_params` after a mount always reads: once
+  connected, in a task (`load_async/3`, WTF-559).
   """
   def load_url(socket, page, opts \\ []) do
-    if data_access?() and connected?(socket) and
-         Map.get(socket.assigns, :bubble_data_url) == url_key(socket) and
-         data_actor(socket) == Map.get(socket.assigns, :bubble_data_actor),
-       do: reload(socket, page, opts),
-       else: load(socket, page, opts)
+    cond do
+      async_first?(socket, page) ->
+        load_async(socket, page, opts)
+
+      data_access?() and connected?(socket) and
+        Map.get(socket.assigns, :bubble_data_url) == url_key(socket) and
+          data_actor(socket) == Map.get(socket.assigns, :bubble_data_actor) ->
+        reload(socket, page, opts)
+
+      true ->
+        load(socket, page, opts)
+    end
+  end
+
+  # --- the first connected load, in a task (WTF-559) --------------------------------
+
+  # Whether this load is a connected page's first one, read in a task: the
+  # data is still pending (nothing read since the mount), the page can take
+  # the task's result (`BubbleWorkflows.mount/2` attached its hook) and it
+  # has sources to read. `config :<%= @app %>, <%= @web %>.BubbleWorkflows,
+  # async_data: false` reads it in `handle_params` instead, as before.
+  defp async_first?(socket, page) do
+    a = socket.assigns
+
+    data_access?() and connected?(socket) and Map.get(a, :bubble_data_pending, false) and
+      Map.get(a, :bubble_data_async, false) and async_data?() and sources?(page)
+  end
+
+  defp async_data?,
+    do: Keyword.get(Application.get_env(:<%= @app %>, BubbleWorkflows, []), :async_data, true) != false
+
+  @doc """
+  How long a first load's task may run (`:data_timeout`, milliseconds,
+  default 15_000) before the page logs a warning. The page keeps waiting
+  for it: only a crash makes it read in its own process.
+  """
+  def data_timeout do
+    case Keyword.get(Application.get_env(:<%= @app %>, BubbleWorkflows, []), :data_timeout, 15_000) do
+      ms when is_integer(ms) and ms > 0 -> ms
+      _ -> 15_000
+    end
+  end
+
+  @doc """
+  Starts a connected page's first load in a task (`start_async/3`,
+  WTF-559): the join replies with the page as its static render shows it
+  (`@bubble_data_pending`: what reads the page's data keeps its fallback),
+  and the data is shown when the task ends (`loaded/3`). Until then the
+  page is loading (`loading?/1`): `BubbleWorkflows` queues what comes
+  (events, messages, patches) and runs it, in order, once the data is in.
+
+  The task reads with what the page holds now, its actor<%= if @enforced? do %> (read afresh
+  first, unless `actor_fresh?: true`)<% end %> included, and reads only its own
+  copy of the page's assigns. Past `data_timeout/0` the page logs a
+  warning and keeps waiting.
+  """
+  def load_async(socket, page, opts \\ []) do
+    socket = before_read(socket, opts)
+    _ = take_changes(Map.get(socket.assigns, :bubble_topics, MapSet.new()), false)
+
+    ref = make_ref()
+    timer = Process.send_after(self(), {:bubble, :data_timeout, ref}, data_timeout())
+    assigns = Map.delete(socket.assigns, :__changed__)
+    transport = socket.transport_pid
+    owner = self()
+    metadata = Logger.metadata()
+    capped = Process.get(:bubble_cells_capped)<%= if @api_data? do %>
+    api = api_state()<% end %>
+
+    socket
+    |> assign(:bubble_data_loading, {ref, timer})
+    |> Phoenix.LiveView.start_async(:bubble_data, fn ->
+      Logger.metadata(metadata)
+      # What the page logs once (the cells' caps) stays logged once.
+      if capped, do: Process.put(:bubble_cells_capped, capped)<%= if @api_data? do %>
+      # The page's data calls answer the page, not this task.
+      Process.put(@owner, owner)
+      put_api_state(api)<% else %>
+      _ = owner<% end %>
+      copy = %Phoenix.LiveView.Socket{assigns: Map.put(assigns, :__changed__, %{}), transport_pid: transport}
+      read = read(copy, page)
+
+      %{
+        read: read,
+        actor: data_actor(copy),
+        capped: Process.get(:bubble_cells_capped)<%= if @api_data? do %>,
+        api: api_state()<% end %>
+      }
+    end)
+  end
+
+  @doc "Whether the page's first load is running (`load_async/3`)."
+  def loading?(socket), do: Map.get(socket.assigns, :bubble_data_loading) != nil
+
+  @doc """
+  The first load's task ended (`{:ok, result}`) or crashed (`{:exit,
+  reason}`). Its result is the page's data, read as the actor the page
+  still has; read as another (never expected: the actor changes only in
+  an event or a patch, and both wait), it is dropped and the page reads
+  again in its own process. A crash is logged and the page reads its data
+  in its own process, as before WTF-559: never shown or run on as if it
+  were empty, never left pending. A result the page no longer waits for
+  is ignored.
+  """
+  def loaded(socket, page, result) do
+    case {Map.get(socket.assigns, :bubble_data_loading), result} do
+      {nil, _} ->
+        socket
+
+      {{_ref, timer}, {:ok, %{read: read, actor: actor} = done}} ->
+        Process.cancel_timer(timer)
+        socket = assign(socket, :bubble_data_loading, nil)
+
+        if done.capped, do: Process.put(:bubble_cells_capped, true)<%= if @api_data? do %>
+
+        # The calls the task asked for are the page's own (in flight,
+        # waiting), whichever data the page keeps.
+        put_api_state(done.api)<% end %>
+
+        if actor == data_actor(socket),
+          do: put_read(socket, page, read),
+          else: load(socket, page, actor_fresh?: true)
+
+      {{_ref, timer}, {:exit, reason}} ->
+        Process.cancel_timer(timer)
+
+        Logger.error(
+          "bubble page data: the first load failed (#{inspect(reason, limit: 5)}); " <>
+            "reading it again in the page"
+        )<%= if @api_data? do %>
+
+        adopt_calls()<% end %>
+        socket |> assign(:bubble_data_loading, nil) |> load(page)
+    end
+  end
+
+  @doc """
+  The first load is still running at `data_timeout/0` (`{:bubble,
+  :data_timeout, ref}`): logged once; the page keeps waiting for it. A
+  timer of a load that ended is ignored.
+  """
+  def timed_out(socket, ref) do
+    case Map.get(socket.assigns, :bubble_data_loading) do
+      {^ref, _timer} ->
+        Logger.warning(
+          "bubble page data: the first load is still running after #{data_timeout()} ms; " <>
+            "the page keeps waiting for it"
+        )
+
+        socket
+
+      _ ->
+        socket
+    end
   end
 
   # What the page's data reads of the URL. Never nil: a page that has not
@@ -1547,7 +1736,7 @@ defmodule <%= @web %>.BubbleData do
   end
 
   defp api_call(state, key, cache?, spend) do
-    case <%= @module %>.ApiClients.Data.call(key, cache?) do
+    case <%= @module %>.ApiClients.Data.call(key, cache?, owner()) do
       started when started in [:started, :waiting] ->
         state = if started == :started, do: spend.(state), else: state
 
@@ -1590,7 +1779,7 @@ defmodule <%= @web %>.BubbleData do
   defp retry_later(%{retry?: true} = state, _ms), do: state
 
   defp retry_later(state, ms) do
-    Process.send_after(self(), {:bubble, :api_retry}, max(ms, 1))
+    Process.send_after(owner(), {:bubble, :api_retry}, max(ms, 1))
     %{state | retry?: true}
   end
 
@@ -1608,6 +1797,24 @@ defmodule <%= @web %>.BubbleData do
   end
 
   defp put_api_state(state), do: Process.put(@api_state, state)
+
+  # The page the data calls answer: the page's process, also while its
+  # first load reads in a task (`load_async/3`).
+  defp owner, do: Process.get(@owner) || self()
+
+  # A first load's task crashed (`loaded/3`): the calls it asked for
+  # answer the page all the same, so the page takes them as in flight
+  # (never asking for them again, never ignoring their answer).
+  defp adopt_calls do
+    state = api_state()
+    mine = <%= @module %>.ApiClients.Data.waiting_for(self())
+
+    put_api_state(%{
+      state
+      | in_flight: Enum.into(mine, state.in_flight),
+        waiting: Enum.reduce(mine, state.waiting, &MapSet.delete(&2, &1))
+    })
+  end
 
   @doc """
   A data call the page asked for ended (`{:bubble, :api_data, key,

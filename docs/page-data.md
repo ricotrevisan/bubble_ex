@@ -942,16 +942,18 @@ element (observed in Bubble, then implemented):
 
 Bubble's page has its data at first paint; a LiveView page first renders
 statically (the HTTP response, before the socket connects) and loads its
-data only once connected (`BubbleData.load/3`). With data access on, the
-static render's data is pending (`@bubble_data_pending`, set by
-`BubbleWorkflows.mount/2`; passed down to reusable elements as
-`bubble_data_pending`). A visibility conditional reading the page's data
+data only once connected (`BubbleData.load/3`), in a task since WTF-559
+(below). With data access on, the data is pending until that first
+connected load has read it (`@bubble_data_pending`, set by
+`BubbleWorkflows.mount/2` and cleared by every connected read; passed
+down to reusable elements as `bubble_data_pending`): the static render,
+and the connected page until its first load's data is in. A visibility conditional reading the page's data
 (a page's, group's or instance's thing, a list, a reusable element's
 property, an input whose initial content is page data and that the user
 has not changed) does not decide there as if the data were empty: the element
 keeps the fallback of a property with no value, its visibility on page
 load, or with `privacy: :enforced` hidden when a conditional may hide it.
-The first connected render decides on the loaded data, as before. So a
+The first render with the loaded data decides on it, as before. So a
 group not visible on page load and shown when the page's thing lacks
 something (an "access required" notice shown when the user is not among
 its participants) no longer shows while the socket connects, and
@@ -962,6 +964,101 @@ inputs or the URL decide in the static render as before; the width keeps its
 own rule (above). With data access off nothing is pending: the data
 never loads, and the conditionals decide on it empty, as before. Counted
 in the frontend report's `visibility_conditions_pending_data`.
+
+## The first connected load, in a task (WTF-559)
+
+A connected page's first load reads its data in a task
+(`BubbleData.load_async/3`, LiveView's `start_async/3` under the key
+`:bubble_data`; a hook `BubbleWorkflows.mount/2` attaches takes the
+result, so the page modules need no `handle_async/3`). Only on the
+LiveView's first mount (`_mounts` 0): a reconnect reads in
+`handle_params`, as before, so a page that reconnects keeps what it
+shows until the join's reply instead of going back to the pending
+render. The join replies
+at once with the page as its static render shows it (the rule above,
+with the connected viewport's width), and the data follows in a render
+of its own. On the private fixture app's `/meeting/<id>` the join no
+longer waits for the 1.6 s of Ash reads (see the CHANGELOG for the
+numbers).
+
+* **Page-load and condition-true workflows run on the data.** The
+  page-loaded event (`{:bubble, :page_loaded}`, sent from the mount)
+  waits for the first load, then runs as before: the page-load
+  workflows on the data the load read, then the conditions settle
+  ("Do when condition is true", a condition true as the page loads
+  fires), in Bubble's order. No condition is checked before the data is
+  in.
+* **What comes before the data waits for it.** While the first load runs
+  (`BubbleData.loading?/1`), and until what waited has all run, a click,
+  an input's change or commit, a Popup's report (`bubble:popup`), a
+  patch (`handle_params`: the URL the page reads changes when its turn
+  comes) and every `:bubble` message (the page-loaded event, a "do
+  every" tick, a scheduled custom event, a paused workflow, a debounced
+  input read, a change notification, a data call's end) are queued
+  (`@bubble_queued`) and handled one at a time in the order they came
+  once the data is in. Nothing runs on data not read yet as if it were
+  empty.
+  * When one leaves the page (a redirect, a "Go to page" to another
+    page, log out), the rest is dropped and logged: a page-load workflow
+    that sends the user away ("not an admin: go home") is never followed
+    by a click that waited. When one patches the page, the rest runs
+    after that patch's `handle_params`.
+  * Typing (an input's value sent while typing, which runs no workflow)
+    replaces the typing of the same input just before it, and only that:
+    with anything after it, the earlier value is kept, since what came
+    between saw it.
+  * At most 100 browser events wait. Past that a click or a Popup's
+    report is dropped, logged, with the refusal notice. An input's change
+    or commit still waits (the page keeps the value the browser shows),
+    replacing the same kind of event of that input just before it, up to
+    200 browser events; past that any is dropped with the notice. An
+    event of an input the page does not track never waits (it would be
+    ignored). Messages always wait (a data call's end must reach the
+    page); a "do every" tick already waiting is not kept twice.
+  * An overlay's contents (`bubble:overlay`) are rendered at once, unless
+    its scope is one the data makes (a reusable instance in a repeating
+    group's cell): that request waits too. The page replies `queued:
+    true`, and when its turn comes pushes `bubble:overlay-ready` (with
+    the reply, after the render with its contents); the hook opens it
+    then. The viewport's width is taken at once: what it makes read
+    again is a queued message.
+* **Later loads are read in the page's process, as before.** Only the
+  first connected load is a task. A patch, a change notification, an
+  input or the width reading again, and stale data read before a
+  workflow, stay synchronous: they read only what changed, and a
+  workflow needs its data current before it runs, so making them
+  asynchronous would mean queuing every event behind every read. A
+  patch before the first load ended waits for it, in order (above).
+* **Errors and timeouts fail closed.** A task that crashes is logged and
+  the page reads its data in its own process instead, then handles what
+  waited. A task still running at `:data_timeout` (`config :<app>,
+  <Web>.BubbleWorkflows, data_timeout: 15_000`, milliseconds) is logged
+  as a warning and still waited for: reading again would double the
+  reads of a page that is only slow. The page never shows or runs on
+  empty data in place of data it could not read. A source that fails
+  inside the load reads as empty and is logged, as before.
+* **The same actor and policies.** The task reads only a copy of the
+  page's assigns: the actor the page read for this page load (with
+  privacy enforced, at the mount, WTF-501; a patch reads it again), the
+  URL, the inputs and states. It makes the same Ash reads with the same policies.
+  Its result is kept only when the page still has that actor; otherwise
+  the page reads again in its own process. A LiveView serves one
+  session, and a sign-in or sign-out is a new page, so nothing crosses
+  users.
+* **Data calls (WTF-533) compose.** The API calls the first load asks for
+  answer the page, not the task (`ApiClients.Data.call/3`'s `pid`), and
+  the task hands the page its call state (in flight, waiting, its
+  budget) with the data, so none is asked for twice. When the task
+  crashes, the page takes the calls it asked for as its own in flight
+  (`ApiClients.Data.waiting_for/1`). A call that ends before the data is
+  in is a queued message, never dropped, handled after the page took
+  that state, so it reads again what reads it, as for any later load.
+* **Turning it off.** `config :<app>, <Web>.BubbleWorkflows, async_data:
+  false` reads the first load in `handle_params`, as before.
+* **Tests.** `Phoenix.LiveViewTest.live/2` returns the join's render: with
+  data access on it shows the page as pending. Call `render_async(view)`
+  before asserting on the data or sending an event (the behavior tests
+  wrap `live/2` so).
 
 ## Reusable instances in repeating group cells (WTF-494)
 
@@ -1324,7 +1421,7 @@ flag. An event that changes none of these reads nothing: a click whose
 workflows neither write nor change a state or input, a "do every" tick, a
 scheduled custom event (a self-scheduling one no longer reads per round).
 A page-load workflow runs on the data `handle_params` loaded (one read on
-a connected mount). A later `handle_params` (a patch: "Go to page" to the
+a connected mount, in a task, WTF-559: the page-loaded event waits for it). A later `handle_params` (a patch: "Go to page" to the
 current page, a URL parameter) reads again only when what the data reads
 of the URL (its query, its path and segments, the page's thing) or the
 user, as read with privacy enforced, changed, or the data is stale

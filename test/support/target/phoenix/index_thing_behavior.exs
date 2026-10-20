@@ -7,7 +7,8 @@ defmodule PhxCheckWeb.IndexThingBehaviorTest do
   # to test/index_thing_behavior_test.exs, with a database).
   use PhxCheckWeb.ConnCase, async: false
 
-  import Phoenix.LiveViewTest
+  # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
+  use PhxCheckWeb.BubbleBehavior
 
   @t1 "1700000000000x300000000000000001"
 

@@ -20,7 +20,8 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
   # its instance's property).
   use PhxCheckWeb.ConnCase, async: false
 
-  import Phoenix.LiveViewTest
+  # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
+  use PhxCheckWeb.BubbleBehavior
 
   @u1 "1700000000000x100000000000000001"
   @p1 "1700000000000x200000000000000001"
@@ -733,5 +734,47 @@ defmodule PhxCheckWeb.ReusableParamsBehaviorTest do
              {"", "b", [""]},
              {"", "c", [""]}
            ]
+  end
+
+  # WTF-559: a popup rendered only while open, in a reusable instance in a
+  # repeating group's cell (bRowPop in bRowC): its scope exists only once
+  # the page's first load has read the list. Asked for before that (a
+  # reconnecting hook asks for what it keeps open; a first visit could
+  # too), the request waits, then the page renders it and tells the hook.
+  test "an overlay asked for in a cell's scope before the data waits for it (WTF-559)", %{
+    conn: conn,
+    user: user
+  } do
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleWorkflows, data_access: true)
+
+    view =
+      hold_first_load(fn ->
+        {:ok, view, html} = Phoenix.LiveViewTest.live(sign_in(conn, user), "/task/#{@t1}")
+        await_held()
+        refute html =~ "Row popup open"
+
+        render_hook(view, "bubble:overlay", %{
+          "scope" => row(@t1),
+          "element" => "bRowPop",
+          "open" => true
+        })
+
+        assert_reply(view, %{open: false, queued: true})
+        view
+      end)
+
+    html = render_async(view, 5_000)
+    assert_push_event(view, "bubble:overlay-ready", %{open: true, element: "bRowPop"})
+    assert html =~ "Row popup open"
+
+    # Once the data is in, it is answered at once.
+    render_hook(view, "bubble:overlay", %{
+      "scope" => row(@t1),
+      "element" => "bRowPop",
+      "open" => false
+    })
+
+    assert_reply(view, %{open: false} = reply)
+    refute Map.has_key?(reply, :queued)
   end
 end

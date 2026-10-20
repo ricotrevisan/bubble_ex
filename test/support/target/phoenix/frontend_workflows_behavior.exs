@@ -8,7 +8,8 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
 
   use Oban.Testing, repo: PhxCheck.Repo
 
-  import Phoenix.LiveViewTest
+  # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
+  use PhxCheckWeb.BubbleBehavior
 
   defp change(view, element, value, scope \\ "") do
     render_change(view, "bubble:change", %{
@@ -71,7 +72,9 @@ defmodule PhxCheckWeb.FrontendWorkflowsBehaviorTest do
   end
 
   test "custom states start at their defaults; page load runs", %{conn: conn} do
-    {:ok, view, html} = live(conn, "/")
+    # The join's own render, before the page-loaded event (not `live/2`
+    # above, which waits for the first load and what follows it).
+    {:ok, view, html} = Phoenix.LiveViewTest.live(conn, "/")
     assert html =~ "Label: start"
     assert html =~ "Loaded: no"
     assert render(view) =~ "Loaded: yes"

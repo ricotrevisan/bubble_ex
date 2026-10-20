@@ -20,7 +20,8 @@ defmodule PhxCheckWeb.ShapesBehaviorTest do
   use PhxCheckWeb.ConnCase, async: false
 
   import ExUnit.CaptureLog
-  import Phoenix.LiveViewTest
+  # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
+  use PhxCheckWeb.BubbleBehavior
 
   alias PhxCheck.Bubble.Runtime
   alias PhxCheck.Enums.{Kind, Status}
@@ -134,15 +135,18 @@ defmodule PhxCheckWeb.ShapesBehaviorTest do
     assert render(view) =~ "Console page"
   end
 
+  # The page-load workflows leave the page once its first load's data is
+  # in (WTF-559): the join's own view, not `live/2` above, which renders
+  # after that load.
   test "JSON-safe is text: anyone else is sent home", %{conn: conn, other: other} do
-    {:ok, view, _html} = live(sign_in(conn, other), "/console")
+    {:ok, view, _html} = Phoenix.LiveViewTest.live(sign_in(conn, other), "/console")
     assert_redirect(view, "/")
   end
 
   test "two navigations of one page load: the first wins, the page does not crash",
        %{conn: conn} do
     # Logged out, both of the page's page-load workflows go home.
-    {:ok, view, _html} = live(conn, "/console")
+    {:ok, view, _html} = Phoenix.LiveViewTest.live(conn, "/console")
     assert_redirect(view, "/")
   end
 

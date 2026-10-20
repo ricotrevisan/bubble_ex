@@ -78,7 +78,7 @@ lists for that element.
 |--------|----------|
 | An element is clicked | `phx-click` (plus Enter and `role="button"` on an element that is not a control); in a repeating group's cell, with the cell's scope (below) |
 | An input's value is changed | the input in its own `<form phx-change>` (`display: contents`); in a repeating group's cell, one per cell, its value kept per cell (below) |
-| Page is loaded | a message after the connected mount (the mount itself loads nothing) |
+| Page is loaded | a message after the connected mount (the mount itself loads nothing), handled once the first load's data is in (WTF-559: that load runs in a task, and what comes before it waits, `docs/page-data.md`) |
 | Do when condition is true | re-evaluated after every event; runs when it becomes true (`every time`), or once per page load |
 | A custom event | a function; called, or scheduled with `Process.send_after` |
 | Do every N seconds | `:timer.send_interval` (a constant interval only) |

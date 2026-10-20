@@ -10,7 +10,8 @@ defmodule PhxCheckWeb.ButtonsBehaviorTest do
   # a button with no text is named after its icon (marked) and one is never clickable.
   use PhxCheckWeb.ConnCase, async: false
 
-  import Phoenix.LiveViewTest
+  # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
+  use PhxCheckWeb.BubbleBehavior
 
   @ada "1700000000000x100000000000000001"
   @bo "1700000000000x100000000000000002"

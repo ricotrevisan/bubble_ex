@@ -15,7 +15,8 @@ defmodule PhxCheckWeb.NestedListsBehaviorTest do
   # every outer cell together: the queries do not grow with the cells.
   use PhxCheckWeb.ConnCase, async: false
 
-  import Phoenix.LiveViewTest
+  # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
+  use PhxCheckWeb.BubbleBehavior
 
   @ada "1700000000000x100000000000000001"
   @bo "1700000000000x100000000000000002"

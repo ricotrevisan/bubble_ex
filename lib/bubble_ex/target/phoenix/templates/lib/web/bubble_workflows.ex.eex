@@ -72,6 +72,25 @@ defmodule <%= @web %>.BubbleWorkflows do
   among equal ones, `<%= @web %>.Bubble.cell_scope/5`): a list of texts,
   numbers or dates (cells by position) takes no event per cell.
 
+  A connected page's first load reads its data in a task (WTF-559,
+  `<%= @web %>.BubbleData.load_async/3`; a reconnect reads it in place, as
+  before): the page is shown at once, as its static render shows it, and
+  its data when the task ends. What comes before the data waits for it,
+  and runs one at a time in the order it came once the data is in, the
+  page-loaded event first: a click, an input's change or commit, a
+  Popup's report, a patch, every message (a "do every" tick at most once,
+  a data call's end), and an overlay asked for in a scope the data makes
+  (a reusable instance in a cell). Nothing runs on data not read yet as
+  if it were empty. When one leaves the page the rest is dropped; when
+  one patches it the rest runs after that patch. Typing replaces the
+  typing of the same input just before it. At most 100 browser events
+  wait: past that a click or a Popup's report is dropped with the
+  refusal notice, and an input's change still waits (replacing the same
+  input's change just before it), up to 200. An input the page does not
+  track never waits. A first load that crashes is logged and read again in the
+  page's process; one past `:data_timeout` (default 15_000 ms) is logged
+  and still waited for.
+
   Event parameters never become atoms, never name a workflow, a module or a
   record: the page looks the element up in its own static lists and runs
   the workflows listed there, with the values it keeps (current user,
@@ -191,6 +210,7 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   import Phoenix.LiveView,
     only: [
+      attach_hook: 4,
       connected?: 1,
       get_connect_params: 1,
       push_event: 3,
@@ -204,6 +224,12 @@ defmodule <%= @web %>.BubbleWorkflows do
   alias <%= @web %>.BubbleData
 
   @max_rounds 10
+  # The events that wait for a page's first load (WTF-559), and how many may.
+  @waiting_events ["bubble:click", "bubble:change", "bubble:commit", "bubble:popup"]
+  @max_waiting 100
+  # Input changes still wait past @max_waiting (the page keeps the value
+  # the browser shows), up to this.
+  @max_waiting_inputs 200
   @max_input_bytes Application.compile_env(:<%= @app %>, [__MODULE__, :max_input_bytes], 100_000)
   # The tracked inputs a reconnected hook may send with an overlay (WTF-559).
   @max_seeded_inputs 100
@@ -300,9 +326,14 @@ defmodule <%= @web %>.BubbleWorkflows do
   once connected, schedules its page-loaded workflows. It reads the
   current user for this page load (<%= if @enforced? do %>the actor, with data access on, and <% end %>the user as the visibility
   conditionals see them, WTF-501) and loads no data (`handle_params/4`
-  does, WTF-420). With data access on, the static render never has the
-  data (`@bubble_data_pending`, WTF-563): a visibility conditional reading
-  it keeps its fallback there instead of deciding as if it were empty.
+  does, WTF-420). With data access on, the data is pending until the
+  first connected load has read it (`@bubble_data_pending`, WTF-563): the
+  static render never has it, and a connected page's first load runs in a
+  task (WTF-559), so the join replies with the page as the static render
+  shows it. A visibility conditional reading the data keeps its fallback
+  while it is pending instead of deciding as if it were empty. Once
+  connected it attaches the hook that takes that task's result
+  (`handle_async/4`).
   """
   def mount(socket, page) do
     surfaces = surfaces(page)
@@ -343,7 +374,9 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_open, %{})
     |> assign(:bubble_conditions, %{})
     |> assign(:bubble_data, %{})
-    |> assign(:bubble_data_pending, BubbleData.data_access?() and not connected?(socket))
+    |> assign(:bubble_data_pending, BubbleData.data_access?())
+    |> assign(:bubble_data_loading, nil)
+    |> assign(:bubble_queued, [])
     |> assign(:bubble_data_stale, false)
     |> assign(:bubble_data_inputs, MapSet.new())
     |> assign(:bubble_displayed, %{})
@@ -357,6 +390,49 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> then(&if(BubbleData.data_access?(), do: refresh_actor(&1), else: &1))<% end %>
     |> refresh_viewer()
     |> assign(:bubble_mounted, true)
+    |> attach_data_hook(page)
+  end
+
+  # The hook that takes the first load's result (`BubbleData.load_async/3`,
+  # WTF-559) in the page's process: the page modules need no
+  # `handle_async/3` of their own. Only on a LiveView's first connected
+  # mount: not on a static render, not on a socket outside a LiveView
+  # (`socket/2`'s), and not on a reconnect (`_mounts` above 0), which all
+  # load in place, as before (a reconnected page keeps showing what it
+  # showed until the join's reply).
+  defp attach_data_hook(socket, page) do
+    if connected?(socket) and is_map(socket.private[:lifecycle]) and first_mount?(socket) do
+      socket
+      |> attach_hook(:bubble_data, :handle_async, fn name, result, socket ->
+        if name == :bubble_data,
+          do: {:halt, handle_async(socket, page, result)},
+          else: {:cont, socket}
+      end)
+      |> assign(:bubble_data_async, true)
+    else
+      assign(socket, :bubble_data_async, false)
+    end
+  end
+
+  # The LiveView's first mount in this browser tab, not a reconnect
+  # (LiveView's `_mounts` connect parameter, 0 the first time).
+  defp first_mount?(socket) do
+    case get_connect_params(socket) do
+      %{"_mounts" => mounts} when is_integer(mounts) -> mounts == 0
+      _ -> true
+    end
+  rescue
+    RuntimeError -> true
+  end
+
+  @doc """
+  The first load's task ended (`BubbleData.loaded/3`): the page shows its
+  data, then runs what waited for it (`replay/2`), in the order it came.
+  """
+  def handle_async(socket, page, result) do
+    socket
+    |> BubbleData.loaded(page, result)
+    |> replay(page)
   end
 
   # The viewport's width the browser connected with (`bubble_page_width`
@@ -431,8 +507,34 @@ defmodule <%= @web %>.BubbleWorkflows do
   data again only when the URL it reads changed, or the user as read with
   privacy enforced did (`BubbleData.load_url/3`, WTF-562). A connected mount's page-loaded
   workflows run on the data this load read<%= if @enforced? do %>, as the actor read again<% end %> (`handle_info/3`).
+
+  A connected page's first load runs in a task (`BubbleData.load_async/3`,
+  WTF-559): this returns at once, with the data pending, and the page shows
+  it when the task ends (`handle_async/3`). A patch before then (or while
+  what waited for the data has not all run) waits too, in the order it
+  came: the URL the page reads changes when its turn comes (`replay/2`).
+  Every later load (a patch, a change notification, an input, the width,
+  an event's stale data) reads in the page's process, as before.
   """
   def handle_params(socket, page, params, uri) do
+    cond do
+      # The patch a waiting event made (`replay/2`): it runs now, then the
+      # rest of what waited.
+      Map.get(socket.assigns, :bubble_resume_after_patch, false) ->
+        socket
+        |> assign(:bubble_resume_after_patch, false)
+        |> params_now(page, params, uri)
+        |> replay(page)
+
+      waiting?(socket) and not Map.get(socket.assigns, :bubble_mounted, false) ->
+        wait(socket, page, {:params, params, uri})
+
+      true ->
+        params_now(socket, page, params, uri)
+    end
+  end
+
+  defp params_now(socket, page, params, uri) do
     mounted? = Map.get(socket.assigns, :bubble_mounted, false)
 
     socket =
@@ -492,8 +594,40 @@ defmodule <%= @web %>.BubbleWorkflows do
   defp takes_thing?(page),
     do: Enum.any?(BubbleData.sources(page), &match?(%{read: :url_thing, fun: f} when f != nil, &1))
 
-  @doc "Runs the workflows of a click or an input change the page lists."
-  def handle_event(socket, page, "bubble:click", %{"scope" => scope, "element" => element})
+  @doc """
+  Runs the workflows of a click or an input change the page lists. While
+  the page's first load runs (`BubbleData.loading?/1`, WTF-559), and until
+  what waited for it has run, a click, an input's change or commit and a
+  Popup's report wait for the data (`wait/2`) and run once it is in
+  (`replay/2`), in the order they came: never on data not read yet as if
+  it were empty. An overlay's contents (`bubble:overlay`) are rendered at
+  once, unless its scope is one the data makes (a reusable instance in a
+  repeating group's cell): that request waits too, replied to with
+  `queued: true`, and the page tells the hook when its turn came
+  (`bubble:overlay-ready`, with the reply).
+  """
+  def handle_event(socket, page, "bubble:overlay" = event, %{"scope" => scope} = params)
+      when is_binary(scope) do
+    cond do
+      not waiting?(socket) or surface(socket, page, scope) != :error ->
+        event_now(socket, page, event, params)
+
+      full?(socket) ->
+        Logger.warning("bubble: an overlay asked for before the page's data was refused (#{@max_waiting} waiting)")
+        {:reply, %{open: false}, socket}
+
+      true ->
+        {:reply, %{open: false, queued: true}, wait(socket, page, {:event, event, params})}
+    end
+  end
+
+  def handle_event(socket, page, event, params) do
+    if event in @waiting_events and waiting?(socket),
+      do: {:noreply, wait(socket, page, {:event, event, params})},
+      else: event_now(socket, page, event, params)
+  end
+
+  defp event_now(socket, page, "bubble:click", %{"scope" => scope, "element" => element})
       when is_binary(scope) and is_binary(element) do
     with {:ok, run} <- click(socket, page, scope, element) do
       socket = assign(socket, :bubble_refused, false)
@@ -507,7 +641,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   # Enter) is its value for the page's data and conditions only; its
   # workflows run when it is committed (`bubble:commit`, on blur). Any
   # other input's change commits it.
-  def handle_event(socket, page, "bubble:change", %{"bubble" => %{} = params}) do
+  defp event_now(socket, page, "bubble:change", %{"bubble" => %{} = params}) do
     with {:ok, module, scope, element, value, cell} <- input_event(socket, page, params) do
       socket = assign(socket, :bubble_refused, false) |> put_input(scope, element, value)
 
@@ -524,7 +658,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   # A text input committed on blur (`phx-blur`: the scope, empty on the
   # page itself, and the element as values). Its workflows run when its
   # value differs from the one last committed (or set by a workflow).
-  def handle_event(socket, page, "bubble:commit", %{} = params) do
+  defp event_now(socket, page, "bubble:commit", %{} = params) do
     params = Map.put_new(params, "scope", "")
 
     with {:ok, module, scope, element, value, cell} <- input_event(socket, page, params) do
@@ -544,7 +678,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   # with what was typed in their tracked inputs (`inputs`, at most
   # @max_seeded_inputs): taken as typing is (`bubble:change` before a
   # commit, no workflow runs), so the contents render with them.
-  def handle_event(socket, page, "bubble:overlay", %{"scope" => scope, "element" => element} = params)
+  defp event_now(socket, page, "bubble:overlay", %{"scope" => scope, "element" => element} = params)
       when is_binary(scope) and is_binary(element) do
     open? = Map.get(params, "open") == true
 
@@ -561,7 +695,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   # closed" workflows, when the page lists them. A report a server-side
   # step caused runs on the budgets the page kept for it; any other is a
   # root run, as a click.
-  def handle_event(socket, page, "bubble:popup", %{"scope" => scope, "element" => element} = params)
+  defp event_now(socket, page, "bubble:popup", %{"scope" => scope, "element" => element} = params)
       when is_binary(scope) and is_binary(element) do
     key =
       case Map.get(params, "event") do
@@ -603,7 +737,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   # it, as after an input's change; any other page only keeps it. The
   # same width again, or one that is not a whole number of pixels in
   # range, is ignored.
-  def handle_event(socket, _page, "bubble:page_width", %{"width" => width})
+  defp event_now(socket, _page, "bubble:page_width", %{"width" => width})
       when is_integer(width) and width >= 0 and width <= @max_page_width do
     cond do
       Map.get(socket.assigns, :bubble_page_width) == width ->
@@ -621,7 +755,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     end
   end
 
-  def handle_event(socket, _page, _event, _params), do: {:noreply, socket}
+  defp event_now(socket, _page, _event, _params), do: {:noreply, socket}
 
   # Values a reconnected hook sends for the tracked inputs of an open
   # overlay rendered only while open (WTF-559): each checked as a typed
@@ -806,14 +940,30 @@ defmodule <%= @web %>.BubbleWorkflows do
     {:noreply, socket |> event(page, runs, nil, :deferred) |> notice()}
   end
 
-  @doc "Page loaded, delayed custom events and \"do every\" workflows."
-  def handle_info(socket, page, {:bubble, :page_loaded}) do
+  @doc """
+  Page loaded, delayed custom events and "do every" workflows. While the
+  page's first load runs (`BubbleData.loading?/1`, WTF-559), every message
+  waits for the data (`wait/2`) and is handled once it is in
+  (`replay/2`), in the order it came: the page-loaded event first, as it
+  was sent from the mount. Only the load's own timeout is handled at once.
+  """
+  def handle_info(socket, _page, {:bubble, :data_timeout, ref}),
+    do: {:noreply, BubbleData.timed_out(socket, ref)}
+
+  def handle_info(socket, page, message) do
+    if waiting?(socket),
+      do: {:noreply, wait(socket, page, {:info, message})},
+      else: info_now(socket, page, message)
+  end
+
+  defp info_now(socket, page, {:bubble, :page_loaded}) do
     runs =
       for {scope, module} <- surfaces(page),
           do: {module, scope, module.__bubble__(:surface).loaded, %{}}
 
-    # Sent from a connected mount: handle_params/4 has loaded the data
-    # already. The page-load workflows and conditions run on that load; a
+    # Sent from a connected mount: handled once handle_params/4 has loaded
+    # the data (its task's result, WTF-559: the message waits for it). The
+    # page-load workflows and conditions run on that load; a
     # workflow that changes it marks it stale and the page reads again.
     # Its workflows may write: they run as the current user read afresh
     # (WTF-501); the viewer the load rendered with is kept, unless
@@ -823,7 +973,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     {:noreply, event(socket, page, runs, nil, if(fresh?, do: :mount_loaded, else: :already_loaded))}
   end
 
-  def handle_info(socket, page, {:bubble, :run, scope, module, id, args, budget}) do
+  defp info_now(socket, page, {:bubble, :run, scope, module, id, args, budget}) do
     socket = delivered(socket)
 
     if surface(socket, page, scope) == {:ok, module} and budget?(budget),
@@ -833,10 +983,10 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   # Marks the data stale and coalesces a burst of changes into one read;
   # ignores notifications for other pages' topics.
-  def handle_info(socket, _page, {:bubble, :data_changed, topic}) when is_binary(topic),
+  defp info_now(socket, _page, {:bubble, :data_changed, topic}) when is_binary(topic),
     do: {:noreply, BubbleData.changed(socket, topic)}
 
-  def handle_info(socket, page, {:bubble, :data_refresh, ref}) do
+  defp info_now(socket, page, {:bubble, :data_refresh, ref}) do
     if BubbleData.pending?(socket, ref) do<%= if @enforced? do %>
       socket = refresh_actor(socket)<% end %>
       socket = refresh_viewer(socket)
@@ -861,7 +1011,7 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   # The last of a burst of width reports (`handle_event/4`): what reads the
   # width is read again, and the conditions checked, once.
-  def handle_info(socket, page, {:bubble, :page_width, ref}) do
+  defp info_now(socket, page, {:bubble, :page_width, ref}) do
     if Map.get(socket.assigns, :bubble_page_width_ref) == ref do
       socket =
         socket
@@ -876,17 +1026,17 @@ defmodule <%= @web %>.BubbleWorkflows do
 
 <%= if @api_data? do %>  # A data call of the page ended (WTF-533, `BubbleData.api/5`): what reads
   # it is read again, and the conditions checked.
-  def handle_info(socket, page, {:bubble, :api_data, {module, function, params} = key, result})
+  defp info_now(socket, page, {:bubble, :api_data, {module, function, params} = key, result})
       when is_atom(module) and is_atom(function) and is_map(params) do
     {:noreply, event(BubbleData.api_done(socket, key, result), page, [])}
   end
 
   # The page's data calls that waited for its budget or a slot may start.
-  def handle_info(socket, page, {:bubble, :api_retry}),
+  defp info_now(socket, page, {:bubble, :api_retry}),
     do: {:noreply, event(BubbleData.api_retry(socket), page, [])}
 
 <% end %>  # The rest of a paused workflow (WTF-451), sent by the page itself.
-  def handle_info(socket, page, {:bubble, :resume, frames, now, budget}) do
+  defp info_now(socket, page, {:bubble, :resume, frames, now, budget}) do
     socket = delivered(socket)
 
     cond do
@@ -905,14 +1055,171 @@ defmodule <%= @web %>.BubbleWorkflows do
     end
   end
 
-  def handle_info(socket, page, {:bubble, :interval, scope, id}) do
+  defp info_now(socket, page, {:bubble, :interval, scope, id}) do
     case surface(socket, page, scope) do
       {:ok, module} -> {:noreply, event(socket, page, [{module, scope, [id], %{}}])}
       _ -> {:noreply, socket}
     end
   end
 
-  def handle_info(socket, _page, _message), do: {:noreply, socket}
+  defp info_now(socket, _page, _message), do: {:noreply, socket}
+
+  # --- what waits for the first load (WTF-559) --------------------------------------
+
+  # Whether what comes now waits: the first load runs, or what waited for
+  # it has not all run yet (it runs in the order it came).
+  defp waiting?(socket) do
+    BubbleData.loading?(socket) or
+      (queued(socket) != [] and not Map.get(socket.assigns, :bubble_replaying, false))
+  end
+
+  # What waits, oldest first: browser events (`{:event, name, params}`),
+  # messages (`{:info, message}`) and patches (`{:params, params, uri}`).
+  defp queued(socket), do: Map.get(socket.assigns, :bubble_queued) || []
+
+  # At most @max_waiting browser events wait; messages and patches always
+  # do (a data call's end must reach the page, or its call stays in
+  # flight).
+  defp full?(socket), do: Enum.count(queued(socket), &browser?/1) >= @max_waiting
+
+  defp browser?({:event, _event, _params}), do: true
+  defp browser?(_entry), do: false
+
+  # An input's event: what it is (typing, sent while typing, runs no
+  # workflow; a change that commits; a commit on blur) and the input it is
+  # of (`{scope, element}`), else nil.
+  defp input_key({:event, "bubble:change", %{"bubble" => %{} = b}}),
+    do: {if(Map.get(b, "on") == "blur", do: :typing, else: :change), Map.get(b, "scope", ""), Map.get(b, "element")}
+
+  defp input_key({:event, "bubble:commit", %{} = p}),
+    do: {:commit, Map.get(p, "scope", ""), Map.get(p, "element")}
+
+  defp input_key({:event, event, _params}) when event in ["bubble:change", "bubble:commit"],
+    do: {:malformed, nil, nil}
+
+  defp input_key(_entry), do: nil
+
+  # Whether `element` is an input the page tracks: on a surface it renders
+  # or in a repeating group's cell of one (the cell's scope is checked
+  # when it runs, once the data is in).
+  defp tracked_input?(page, element) when is_binary(element) do
+    Enum.any?(surfaces(page), fn {_scope, m} ->
+      modules = [m | for({_rg, entries} <- cells(m), {_s, c} <- entries, do: c)]
+
+      Enum.any?(modules, fn module ->
+        surface = module.__bubble__(:surface)
+
+        Map.has_key?(Map.get(surface, :inputs, %{}), element) or
+          Map.has_key?(Map.get(surface, :cell_inputs, %{}), element)
+      end)
+    end)
+  end
+
+  defp tracked_input?(_page, _element), do: false
+
+  # Keeps `entry` to run once the data is in.
+  #
+  # * A "do every" tick already waiting is not kept twice.
+  # * An input's event of an input the page does not track is dropped (it
+  #   would be ignored when it runs).
+  # * An input's event replaces the one just before it, when that is the
+  #   same kind for the same input and nothing came after it: typing
+  #   always (the input's value is the last one, as the page would have
+  #   kept it), a change or a commit past @max_waiting browser events.
+  #   An earlier one, with anything after it, is kept: what came between
+  #   saw its value.
+  # * Past @max_waiting browser events a click or a Popup's report is
+  #   dropped; past @max_waiting_inputs any browser event is. Logged, with
+  #   the refusal notice.
+  defp wait(socket, page, entry) do
+    queued = queued(socket)
+    key = input_key(entry)
+    count = Enum.count(queued, &browser?/1)
+    full? = count >= @max_waiting
+
+    cond do
+      match?({:info, {:bubble, :interval, _, _}}, entry) and entry in queued ->
+        socket
+
+      key != nil and not tracked_input?(page, elem(key, 2)) ->
+        socket
+
+      key != nil and queued != [] and input_key(List.last(queued)) == key and
+          (elem(key, 0) == :typing or full?) ->
+        assign(socket, :bubble_queued, List.replace_at(queued, -1, entry))
+
+      browser?(entry) and (count >= @max_waiting_inputs or (full? and key == nil)) ->
+        Logger.warning(
+          "bubble: an event that came before the page's data was dropped (#{count} waiting)"
+        )
+
+        socket |> assign(:bubble_refused, true) |> notice()
+
+      true ->
+        assign(socket, :bubble_queued, queued ++ [entry])
+    end
+  end
+
+  # Runs what waited for the first load, one at a time in the order it
+  # came, once the load ended. When one leaves the page (a redirect, a
+  # "Go to page" to another page, log out) the rest is dropped (logged):
+  # it would have run on a page Bubble no longer shows, past the
+  # page-load workflow that sent the user away. When one patches the
+  # page (a "Go to page" to this page with other parameters) the rest
+  # waits for that patch's `handle_params/4`, then runs.
+  defp replay(socket, page) do
+    if BubbleData.loading?(socket),
+      do: socket,
+      else: socket |> assign(:bubble_replaying, true) |> replay_next(page)
+  end
+
+  defp replay_next(socket, page) do
+    case queued(socket) do
+      [] ->
+        assign(socket, :bubble_replaying, false)
+
+      [entry | rest] ->
+        socket = socket |> assign(:bubble_queued, rest) |> run_waited(page, entry)
+
+        case socket.redirected do
+          nil ->
+            replay_next(socket, page)
+
+          {:live, :patch, _} ->
+            socket
+            |> assign(:bubble_replaying, false)
+            |> assign(:bubble_resume_after_patch, rest != [])
+
+          _ ->
+            if rest != [],
+              do: Logger.info("bubble: the page was left; #{length(rest)} events waiting for its data were dropped")
+
+            socket |> assign(:bubble_queued, []) |> assign(:bubble_replaying, false)
+        end
+    end
+  end
+
+  defp run_waited(socket, page, {:event, "bubble:overlay", params}) do
+    case event_now(socket, page, "bubble:overlay", params) do
+      {:reply, reply, socket} ->
+        push_event(
+          socket,
+          "bubble:overlay-ready",
+          Map.merge(reply, %{scope: Map.get(params, "scope"), element: Map.get(params, "element")})
+        )
+
+      {:noreply, socket} ->
+        socket
+    end
+  end
+
+  defp run_waited(socket, page, {:event, event, params}),
+    do: socket |> event_now(page, event, params) |> elem(1)
+
+  defp run_waited(socket, page, {:info, message}),
+    do: socket |> info_now(page, message) |> elem(1)
+
+  defp run_waited(socket, page, {:params, params, uri}), do: params_now(socket, page, params, uri)
 
 <%= if @enforced? do %>  @doc """
   Reads the current user afresh with what the privacy policies read

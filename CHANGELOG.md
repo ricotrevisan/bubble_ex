@@ -201,6 +201,72 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- **A connected page's first data load runs in a task (WTF-559).** The
+  join waited for `BubbleData.load` in the connected `handle_params`
+  (about 1.6 s of Ash reads on the private fixture app's
+  `/meeting/<id>`). That load now runs in a task
+  (`BubbleData.load_async/3`, LiveView's `start_async/3`). A hook that
+  `BubbleWorkflows.mount/2` attaches takes the result, so owned page
+  modules need no change. The join replies with the page as its static
+  render shows it: while `@bubble_data_pending` is set, what reads page
+  data keeps its WTF-563 fallback. The data follows in a render of its
+  own.
+  - Only on a LiveView's first mount. A reconnect (`_mounts` above 0)
+    loads in `handle_params`, as before, so a reconnecting page keeps
+    what it shows.
+  - The page-loaded event waits for the data. Then the page-load
+    workflows run on it, and the conditions settle, in the same order as
+    before.
+  - Clicks, input changes and commits, Popup reports, patches and every
+    `:bubble` message that arrive before the data are queued. They run
+    one at a time, in arrival order, once the data is in. Nothing runs on
+    unread data as if it were empty.
+  - When a queued event leaves the page (a page-load workflow that sends
+    the user home, log out), the rest of the queue is dropped. When one
+    patches the page, the rest runs after that patch.
+  - Consecutive typing in one input waits as its last value. At most 100
+    browser events wait: past that a click or a Popup report is dropped
+    with the refusal notice, while input changes still wait (coalesced
+    per input when consecutive) up to 200. Events of inputs the page does
+    not track never wait. Server messages (a data call's end included)
+    are never dropped.
+  - An overlay asked for in a scope only the data makes (a reusable
+    instance in a repeating group's cell) waits too: the page replies
+    `queued: true` and pushes `bubble:overlay-ready` when it rendered it.
+  - Only the first connected load is a task. Later loads (patches,
+    change notices, inputs, the width, stale data before a workflow)
+    still read in the page's process.
+  - A task that crashes is logged, and the page reads its data in its
+    own process. One still running at `:data_timeout` (default 15_000
+    ms) is logged as a warning and still waited for.
+  - The task reads a copy of the page's assigns, with the same actor and
+    policies. Its result is used only while the page still has that
+    actor.
+  - Data calls (WTF-533) asked for by the first load answer the page.
+    `ApiClients.Data.call/3` takes a `pid`, the call state comes back
+    with the data, and after a crash the page takes the task's calls as
+    its own in flight (`ApiClients.Data.waiting_for/1`).
+  - `async_data: false` (`config :<app>, <Web>.BubbleWorkflows`) brings
+    back the old synchronous load.
+  - Tests: `live/2` now returns the pending page. Call
+    `render_async(view)` before asserting on data or sending events.
+  See `docs/page-data.md`, "The first connected load, in a task".
+  Measured on the private fixture app's `/meeting/<id>`: dev server,
+  privacy enforced, slice `async-check` on the same server and data,
+  `async_data: false` as "before", 9 interleaved visits each, medians:
+
+  | | before | after |
+  |---|---|---|
+  | join (`phx_join` to reply) | 1,608 ms | 116 ms |
+  | navigation to `phx-connected` (shell shown and connected) | 2,072 ms | 540 ms |
+  | navigation to data shown | 1,891 ms (in the join reply) | 2,102 ms (its diff) |
+  | join reply | 1,158,932 B | 973,911 B |
+  | data diff | none | 258,530 B |
+
+  The page connects about 1.5 s sooner. The data shows about 0.1 to
+  0.2 s later (80 ms and 211 ms in two runs), because it now takes a
+  second frame, and the two frames send 73 KB (6%) more in total.
+
 - **A group hidden by its conditions renders its contents only while
   they show it (WTF-559).** An element hidden by its visibility
   conditionals was rendered whole, with `hidden`. A group (or a

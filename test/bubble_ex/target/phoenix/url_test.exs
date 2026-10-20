@@ -218,7 +218,7 @@ defmodule BubbleEx.Target.Phoenix.UrlTest do
     runtime = files["lib/shop_web/bubble_workflows.ex"]
 
     assert runtime =~
-             ~s|def handle_event(socket, _page, "bubble:page_width", %{"width" => width})|
+             ~s|defp event_now(socket, _page, "bubble:page_width", %{"width" => width})|
 
     assert runtime =~ ~s|%{"bubble_page_width" => width}|
     assert runtime =~ "page_width: Map.get(socket.assigns, :bubble_page_width)"

@@ -7,7 +7,8 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
   # test/visibility_behavior_test.exs, with a database).
   use PhxCheckWeb.ConnCase, async: false
 
-  import Phoenix.LiveViewTest
+  # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
+  use PhxCheckWeb.BubbleBehavior
 
   @u1 "1700000000000x100000000000000001"
   @p1 "1700000000000x200000000000000001"
