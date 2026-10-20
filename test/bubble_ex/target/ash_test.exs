@@ -428,6 +428,23 @@ defmodule BubbleEx.Target.AshTest do
       assert codes(p, %{type: "invoice", field: "old_ref_custom_ghost"}) == [:ash_deleted_omitted]
     end
 
+    test "keep_deleted_fields keeps every deleted field of a live type, read or not" do
+      app = fixture("missing_and_deleted")
+      p = project!(app, keep_deleted_fields: true)
+
+      assert %{type: :float, public?: false} = field(p, "invoice", "old_total_number")
+      assert %{public?: false} = field(p, "invoice", "old_ref_custom_ghost")
+      # Its target type is missing: kept as Bubble IDs, as a live field would be.
+      assert codes(p, %{type: "invoice", field: "old_ref_custom_ghost"}) ==
+               [:ash_deleted_kept, :ash_unresolved_reference]
+
+      # A deleted type stays omitted, with its fields.
+      refute Enum.any?(p.resources, &(&1.source.type == "archive"))
+
+      {:ok, model} = Model.build(app)
+      assert {:error, %{kind: :invalid_input}} = Ash.map(model, [], keep_deleted_fields: :yes)
+    end
+
     test "API types: known shapes are typed structs, unknown ones and cycle edges JSON" do
       p = project!(fixture("external_types"))
       modules = Enum.map(p.types ++ p.typed_structs, & &1.module)
