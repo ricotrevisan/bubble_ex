@@ -566,8 +566,11 @@ defmodule BubbleEx.Target.Phoenix do
   page's data, which keep their fallback (the page-load visibility, or
   hidden with privacy: :enforced when they may hide the element) until
   the data loads (WTF-563: the static render has none);
+  `"text_conditions_compiled"` / `"text_conditions_marked"` the
+  conditional states that set a Text's content or a button's label,
+  rendered from a helper or kept as on page load with a marker (WTF-582);
   `"conditions_other_properties"` the states that set anything else
-  (colors, text…), not lowered yet.
+  (colors, icons…), not lowered yet.
   `"assets_<status>"` count `.wtf/assets.json`'s assets by status;
   `"assets_external"` (images linked to other hosts, as in Bubble) is
   informational, not work to do.

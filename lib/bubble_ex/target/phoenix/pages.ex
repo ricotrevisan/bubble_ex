@@ -83,7 +83,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       decide on an empty value. Conditionals that do not compile, read
       what the page does not keep or load, or belong to an overlay or a
       breakpoint-shown element keep the visibility on page load and get a
-      marker. Conditionals that set other properties are only counted
+      marker. A Text's content or a button's label that conditionals set
+      (WTF-582) is a helper folding them from the content on page load, on
+      every render, reading the current user as visibility does; with
+      BBCode in its literal text, each value is `Bubble.bbcode/1`'s nodes.
+      Ones the page cannot decide (they do not compile, read what the page
+      does not keep or load, or a property with no value, or the content
+      is an instance's own) keep the content on page load, with a marker.
+      Conditionals that set other properties are only counted
       (`conditions_other_properties`)
     * a reusable instance's parameters reach its component: a link
       destination through the page map and URL allowlist, a Text's
@@ -782,6 +789,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         "visibility_conditions_plugin_state" => 0,
         "visibility_conditions_pending_data" => 0,
         "visibility_contents_skipped" => 0,
+        "text_conditions_compiled" => 0,
+        "text_conditions_marked" => 0,
         "conditions_other_properties" => 0
       }
     }
@@ -929,7 +938,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp emit(%Node{kind: :reusable_instance} = node, ctx, acc), do: instance(node, ctx, acc)
 
   defp emit(%Node{kind: :text} = node, ctx, acc) do
-    {text, acc} = slot(node, "text", ctx, acc)
+    {text, acc} = text_slot(node, "text", ctx, acc)
 
     case text do
       {:static, raw} ->
@@ -960,7 +969,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   defp emit(%Node{kind: :button} = node, ctx, acc) do
-    {label, acc} = slot(node, "label", ctx, acc)
+    {label, acc} = text_slot(node, "label", ctx, acc)
     {label, acc} = if label == {:static, ""}, do: slot(node, "text", ctx, acc), else: {label, acc}
     navigation? = navigation_button?(node, ctx)
     tag = if navigation?, do: "a", else: "button"
@@ -2993,6 +3002,124 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     {helper <> "(" <> Enum.join(reads, ", ") <> ")", %{acc | helpers: [entry | acc.helpers]}}
   end
 
+  # --- conditional text (WTF-582) -------------------------------------------------
+
+  # A Text's content or a button's label whose conditionals set its text
+  # (WTF-582): a helper folding them in Bubble's order from the content on
+  # page load (`BubbleEx.Target.Elixir.Frontend`), evaluated on every
+  # render, as a visibility conditional is. Conditionals the page cannot
+  # decide (they do not compile, read what the page does not keep or
+  # load, a reusable element's property with no value, or the content is
+  # an instance's own) keep the content on page load, marked, and with the
+  # developer markers on, the element is outlined with a tooltip.
+  defp text_slot(node, name, ctx, acc) do
+    case node.bindings["condition"] do
+      %{kind: :condition, id: id, payload: payload} ->
+        case length(Conditions.property(payload, "text")) do
+          0 ->
+            slot(node, name, ctx, acc)
+
+          states ->
+            conditional_text(
+              node,
+              name,
+              states,
+              ctx.expressions[Conditions.text_id(id)],
+              ctx,
+              acc
+            )
+        end
+
+      _ ->
+        slot(node, name, ctx, acc)
+    end
+  end
+
+  defp conditional_text(node, name, states, compiled, ctx, acc) do
+    case text_unlowered(node, name, compiled, ctx) do
+      nil ->
+        {source, bbcode} = conditional_text_source(node, name, compiled)
+
+        acc =
+          acc
+          |> mark_bbcode(node, bbcode)
+          |> mark_approximated(node, name, compiled)
+          |> count("text_conditions_compiled", states)
+
+        ctx = Map.put(ctx, :viewer, true)
+
+        {call, acc} =
+          add_helper(node, name, %{compiled | source: source}, bbcode != nil, ctx, acc)
+
+        {{if(bbcode, do: :bbcode, else: :expr), call}, acc}
+
+      why ->
+        {slot, acc} = slot(node, name, ctx, acc)
+        noun = if states == 1, do: "conditional", else: "conditionals"
+
+        acc =
+          acc
+          |> mark(node, "text: #{states} #{noun} not lowered (#{why}); shown as on page load")
+          |> add_binding_note(node, "Conditional text not lowered")
+          |> count("text_conditions_marked", states)
+
+        {slot, acc}
+    end
+  end
+
+  # Why the page cannot decide an element's conditional text, or nil.
+  defp text_unlowered(node, name, compiled, ctx) do
+    if override(node, name, ctx),
+      do: "the instance passes its content",
+      else: text_inputs_unlowered(compiled, ctx)
+  end
+
+  defp text_inputs_unlowered(nil, _ctx), do: "it does not compile"
+
+  defp text_inputs_unlowered(%{bindings: vars}, ctx) do
+    cond do
+      var = Enum.find(vars, &plugin_state?(&1, ctx)) ->
+        unkept(var, ctx)
+
+      ctx.surface == :page and Enum.any?(vars, &page_name_input?(&1.input)) ->
+        @page_name_on_page
+
+      var = Enum.find(vars, &(not kept_input?(&1, ctx) or unloaded_data?(&1, ctx))) ->
+        unkept(var, ctx)
+
+      unset_reads(vars, ctx) != {[], []} or own_defaults(vars, ctx) != [] ->
+        "it reads a reusable element's property with no value"
+
+      true ->
+        nil
+    end
+  end
+
+  # Page data a value reads that the page does not load (kept_slot/6).
+  defp unloaded_data?(var, ctx),
+    do:
+      (data_input?(var.input) or unrendered_input?(var.input, ctx)) and
+        not data_read?(var, ctx)
+
+  # The helper's source: the compiled `cond`, or with BBCode in a Text's
+  # literal text (WTF-450), each value as `Bubble.bbcode/1`'s nodes.
+  defp conditional_text_source(node, name, %{text: text} = compiled) do
+    split = fn part -> bbcode_source(node, name, part.source) end
+    tags = Enum.map([text.base | text.branches], &elem(split.(&1), 1))
+
+    if Enum.all?(tags, &is_nil/1) do
+      {compiled.source, nil}
+    else
+      source = Conditions.text_source(text, &bbcode_part(&1, split.(&1)))
+
+      {source, tags |> Enum.reject(&is_nil/1) |> Enum.concat() |> Enum.uniq() |> Enum.sort()}
+    end
+  end
+
+  # A value as nodes: its BBCode's, or the value shown as one text node.
+  defp bbcode_part(_part, {nodes, tags}) when is_list(tags), do: nodes
+  defp bbcode_part(part, _source), do: "[" <> part.shown <> "]"
+
   # --- visibility (WTF-477) ---------------------------------------------------------
 
   # The relationships a condition reads, per variable: the helper refuses
@@ -3022,6 +3149,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
+  # The properties other than visibility a conditional sets that the page
+  # lowers (or marks) elsewhere: a Text's or button's text (text_slot/4).
+  defp lowered_properties(%Node{kind: kind}) when kind in [:text, :button], do: ["text", "%3"]
+  defp lowered_properties(_node), do: []
+
   # The `hidden` attribute of an element: from its compiled visibility
   # conditionals, else as on page load. An overlay's is overlay_attrs/1's.
   defp visibility_attrs(%Node{} = node, ctx, acc) do
@@ -3032,7 +3164,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       end
 
     states = length(Conditions.visibility(payload))
-    others = Conditions.other_properties(payload)
+    others = Conditions.other_properties(payload, lowered_properties(node))
+
     acc = count(acc, "conditions_other_properties", others)
 
     static =
@@ -3530,7 +3663,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   # What else a button's conditionals set that the page keeps at its
-  # page-load value (its icon, text or kind, WTF-520), and an icon it cannot
+  # page-load value (its icon or kind, WTF-520; its text: text_slot/4), and an icon it cannot
   # draw: marked, and with the developer markers on, outlined with a
   # tooltip. An icon-only button whose icon is missing is a placeholder.
   defp button_notes(node, label, inner, acc) do
@@ -3541,7 +3674,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       end
 
     {notes, acc} =
-      for {key, what} <- [{"icon", "icon"}, {"text", "text"}, {"button_type", "kind"}],
+      for {key, what} <- [{"icon", "icon"}, {"button_type", "kind"}],
           states = length(Conditions.property(payload, key)),
           states > 0,
           reduce: {[], acc} do
@@ -4676,7 +4809,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         kind in [:value, :condition],
         pair <-
           if(kind == :condition,
-            do: [{kind, id}, {kind, Conditions.disabled_id(id)}],
+            do: [{kind, id}, {kind, Conditions.disabled_id(id)}, {kind, Conditions.text_id(id)}],
             else: [{kind, id}]
           ),
         do: pair
@@ -4721,9 +4854,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp node_loads(nodes, surface, cell, base) do
     Enum.flat_map(nodes, fn node ->
       own =
-        for {_slot, %{kind: kind, id: id}} <- node.bindings,
-            # Values and visibility conditionals (WTF-477) read alike.
-            kind in [:value, :condition],
+        for {_kind, id} <- binding_ids(node),
+            # Values and conditionals (WTF-477, WTF-582) read alike.
             %{bindings: vars} = compiled <- [base.expressions[id]],
             %{var: var, input: input} <- vars,
             loads = Map.get(Map.get(compiled, :loads, %{}), var, []),
@@ -5609,7 +5741,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     compiled =
       for root <- frontend.pages ++ frontend.reusables,
           node <- tree_nodes(root),
-          %{kind: :condition, id: id} <- [node.bindings["condition"]],
+          %{kind: :condition, id: condition} <- [node.bindings["condition"]],
+          # Visibility and text conditionals (WTF-582).
+          id <- [condition, Conditions.text_id(condition)],
           %{bindings: vars} = c <- [base.expressions[id]],
           Enum.any?(vars, &(&1.input == :current_user)),
           do: c

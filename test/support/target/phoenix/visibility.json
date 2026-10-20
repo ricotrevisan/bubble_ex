@@ -1175,6 +1175,53 @@
                 "width": 300
               },
               "type": "Text"
+            },
+            "bCellLabel": {
+              "id": "bCellLabel",
+              "type": "Text",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 3,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "No title"
+                  }
+                },
+                "width": 300
+              },
+              "states": {
+                "0": {
+                  "condition": {
+                    "type": "CurrentDataItem",
+                    "next": {
+                      "type": "Message",
+                      "name": "title_text",
+                      "next": {
+                        "type": "Message",
+                        "name": "is_not_empty"
+                      }
+                    }
+                  },
+                  "properties": {
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Task ",
+                        "1": {
+                          "type": "CurrentDataItem",
+                          "next": {
+                            "type": "Message",
+                            "name": "title_text"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "type": "State"
+                }
+              }
             }
           },
           "id": "bTasks",
@@ -1620,6 +1667,270 @@
             "width": 300
           },
           "type": "Button"
+        },
+        "bGreet": {
+          "id": "bGreet",
+          "type": "Text",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 40,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Signed out"
+              }
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "type": "CurrentUser",
+                "next": {
+                  "type": "Message",
+                  "name": "logged_in"
+                }
+              },
+              "properties": {
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Hello ",
+                    "1": {
+                      "type": "CurrentUser",
+                      "next": {
+                        "type": "Message",
+                        "name": "email"
+                      }
+                    }
+                  }
+                }
+              },
+              "type": "State"
+            },
+            "1": {
+              "condition": {
+                "next": {
+                  "name": "custom.flag_",
+                  "next": {
+                    "name": "is_true",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bVis"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "text": "Flagged"
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bRoleText": {
+          "id": "bRoleText",
+          "type": "Text",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 41,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Member"
+              }
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "role_text",
+                  "next": {
+                    "args": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "admin"
+                      }
+                    },
+                    "name": "equals",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Admin"
+                  }
+                }
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bFlagLabel": {
+          "id": "bFlagLabel",
+          "type": "Button",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 42,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Flag off"
+              }
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "custom.flag_",
+                  "next": {
+                    "name": "is_true",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bVis"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Flag on"
+                  }
+                }
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bBold": {
+          "id": "bBold",
+          "type": "Text",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 43,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "[b]Out[/b]"
+              }
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "type": "CurrentUser",
+                "next": {
+                  "type": "Message",
+                  "name": "logged_in"
+                }
+              },
+              "properties": {
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "[b]",
+                    "1": {
+                      "type": "CurrentUser",
+                      "next": {
+                        "type": "Message",
+                        "name": "email"
+                      }
+                    },
+                    "2": "[/b]"
+                  }
+                }
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bTextBad": {
+          "id": "bTextBad",
+          "type": "Text",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 44,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Kept"
+              }
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "type": "NoSuchThing"
+              },
+              "properties": {
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Never"
+                  }
+                }
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bHoverText": {
+          "id": "bHoverText",
+          "type": "Text",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 45,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Still"
+              }
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "type": "ThisElement",
+                "next": {
+                  "type": "Message",
+                  "name": "is_hovered"
+                }
+              },
+              "properties": {
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Hovered"
+                  }
+                }
+              },
+              "type": "State"
+            }
+          }
         }
       },
       "id": "bVis",

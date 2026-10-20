@@ -930,12 +930,20 @@ defmodule BubbleEx.Target.Phoenix.PagesTest do
       assert write =~ "Conditional icon not lowered; Icon not available (note-pencil)"
 
       # A label button's "isn't clickable" on the current user: lowered to
-      # `disabled`; its conditional text is marked.
+      # `disabled`; its conditional text too (WTF-582), from its label on
+      # page load.
       save = button.("bSave")
       assert save =~ "disabled={disabled_bsave(@current_user)}"
       refute save =~ "isn't clickable"
-      assert save =~ "TODO(bubble:bSave) text: 1 conditional not lowered"
-      assert save =~ ~s|title={Bubble.dev_marker("Conditional text not lowered")}|
+      assert save =~ ">{label_bsave(@current_user)}</button>"
+      refute save =~ "not lowered"
+
+      assert files["lib/shop_web/live/tools_live.ex"] =~ """
+               cond do
+                   not is_nil(current_user) == true -> "Saved"
+                   true -> "Save"
+                 end
+             """
 
       # One the page cannot decide (hovering is not kept): disabled, fail
       # closed, and marked.
