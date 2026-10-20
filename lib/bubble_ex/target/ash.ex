@@ -527,6 +527,7 @@ defmodule BubbleEx.Target.Ash do
           | {:index, BubbleEx.Index.t()}
           | {:privacy, privacy()}
           | {:decisions_sha256, String.t()}
+          | {:keep_deleted_fields, boolean()}
 
   @doc """
   Dependency pins for a project that compiles the generated source, as Mix
@@ -566,10 +567,14 @@ defmodule BubbleEx.Target.Ash do
       so there is nothing to bypass)
     * `:index` is required when `decisions` hold a drop (WTF-422): each
       drop is checked against it
-    * with `:index`, a deleted field something still reads (a search's
-      constraint or sort, a displayed value) is kept as a private attribute
+    * with `:index`, a deleted field the index shows readers for (a
+      search's constraint or sort, ...) is kept as a private attribute
       (`:ash_deleted_kept`): Bubble's runtime keeps and reads its stored
-      values (WTF-566)
+      values (WTF-566). The index does not see every read (a field read
+      through a parent group's or cell's thing is not typed there)
+    * `:keep_deleted_fields` - `true` keeps every deleted field of a live
+      data type that way, read or not, as Bubble keeps their values (for a
+      runtime executing the app as is); default `false`
     * `:decisions_sha256` - `BubbleEx.Decision.decisions_sha256/1` of the
       decision records `decisions` were resolved from, recorded as
       `project.decisions_sha256`. Required when `decisions` is not empty
@@ -581,14 +586,15 @@ defmodule BubbleEx.Target.Ash do
     with {:ok, privacy} <- validate_privacy(Keyword.get(opts, :privacy, :omit)),
          {:ok, names} <- validate_names(Keyword.get(opts, :names, %{})),
          {:ok, index} <- validate_index(Keyword.get(opts, :index)),
+         {:ok, keep} <- validate_keep_deleted(Keyword.get(opts, :keep_deleted_fields, false)),
          :ok <- index_for_drops(index, decisions),
          {:ok, sha} <- validate_decisions_sha256(Keyword.get(opts, :decisions_sha256), decisions),
          {:ok, plan} <- Decisions.plan(model, decisions, names, index) do
-      project = build(model, plan, index, privacy, sha)
+      project = build(model, plan, {index, keep}, privacy, sha)
 
       undisplaced(
         project,
-        fn -> build(model, %{plan | names: names}, index, privacy, sha) end,
+        fn -> build(model, %{plan | names: names}, {index, keep}, privacy, sha) end,
         plan
       )
     end
@@ -611,6 +617,15 @@ defmodule BubbleEx.Target.Ash do
        %{privacy: inspect(mode)}
      )}
   end
+
+  defp validate_keep_deleted(keep) when is_boolean(keep), do: {:ok, keep}
+
+  defp validate_keep_deleted(keep),
+    do:
+      {:error,
+       Error.new(:invalid_input, "the :keep_deleted_fields option must be a boolean", %{
+         keep_deleted_fields: inspect(keep)
+       })}
 
   defp validate_index(nil), do: {:ok, nil}
   defp validate_index(%BubbleEx.Index{} = index), do: {:ok, index}
@@ -670,7 +685,7 @@ defmodule BubbleEx.Target.Ash do
       |> Map.fetch!("applied")
       |> CanonicalJson.sha256()
 
-  defp build(model, plan, index, privacy, decisions_sha256) do
+  defp build(model, plan, {index, keep_deleted}, privacy, decisions_sha256) do
     names = plan.names
 
     {types, type_diags} = live(model.data_types, &type_subject/1, "data_type")
@@ -688,7 +703,7 @@ defmodule BubbleEx.Target.Ash do
       names: names,
       text_ref: plan.text_ref,
       drops: plan.drops,
-      read_deleted: read_deleted(model, index)
+      read_deleted: kept_deleted(model, index, keep_deleted)
     }
 
     ctx = assign_modules(ctx, types, sets)
@@ -825,11 +840,19 @@ defmodule BubbleEx.Target.Ash do
     end)
   end
 
-  # Deleted fields of live types with readers in the index, keyed
-  # `{type, field}`, valued by their reader count (no index: none).
-  defp read_deleted(_model, nil), do: %{}
+  # Deleted fields of live types kept, keyed `{type, field}`: every one
+  # with `keep_deleted_fields: true` (valued `:all`), else those with
+  # readers in the index (valued by their reader count; no index: none).
+  defp kept_deleted(model, _index, true) do
+    for %{deleted: false} = type <- model.data_types,
+        %Field{deleted: true, raw: nil} = field <- type.fields,
+        into: %{},
+        do: {{type.id, field.id}, :all}
+  end
 
-  defp read_deleted(model, index) do
+  defp kept_deleted(_model, nil, false), do: %{}
+
+  defp kept_deleted(model, index, false) do
     for %{deleted: false} = type <- model.data_types,
         %Field{deleted: true, raw: nil} = field <- type.fields,
         readers = BubbleEx.Index.readers(index, "field:#{type.id}/#{field.id}"),
@@ -1251,7 +1274,7 @@ defmodule BubbleEx.Target.Ash do
       Diagnostic.new(
         :ash_deleted_kept,
         field.path,
-        "deleted field #{inspect(field.id)} is still read; kept as a private attribute",
+        "deleted field #{inspect(field.id)} is kept as a private attribute",
         target: :ash,
         subject: %{type: type.id, field: field.id},
         details: %{readers: Map.fetch!(ctx.read_deleted, {type.id, field.id})}
