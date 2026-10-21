@@ -219,7 +219,7 @@
           "id": "bZero",
           "type": "Group",
           "properties": {
-            "order": 3,
+            "order": 10,
             "width": 0,
             "height": 0,
             "min_height_css": "0px",
