@@ -299,7 +299,16 @@ defmodule BubbleEx.Frontend.RenderDiff do
 
     {known, unexplained} = Enum.split_with(roots, &(&1.category in @known_categories))
     listed = Keyword.fetch!(opts, :known)
-    used = for d <- roots, entry = known_for(listed, d), entry, into: MapSet.new(), do: d.id
+    # Every difference an entry covers, folded or not: an entry on an
+    # element folded into an ancestor's difference still matches, but only
+    # the root is categorized, so the owner should list the root.
+    used = for d <- raw, known_for(listed, d), into: MapSet.new(), do: d.id
+
+    folded =
+      for d <- nested,
+          known_for(listed, d),
+          into: %{},
+          do: {d.id, root[{d.id, d.kind}]}
 
     %{
       path: bubble["path"],
@@ -331,7 +340,10 @@ defmodule BubbleEx.Frontend.RenderDiff do
         |> Map.keys()
         |> Enum.filter(&(Map.has_key?(b.by_id, &1) or Map.has_key?(o.by_id, &1)))
         |> Enum.reject(&MapSet.member?(used, &1))
-        |> Enum.sort()
+        |> Enum.sort(),
+      # Owner-listed elements whose difference folds into an ancestor's
+      # (`%{id => root id}`): the root's category is what counts.
+      known_folded: folded
     }
   end
 
@@ -564,8 +576,16 @@ defmodule BubbleEx.Frontend.RenderDiff do
   # `%{id => reason}` (the older form) or parsed entries.
   defp normalize_known(known) do
     Map.new(known, fn
-      {id, reason} when is_binary(reason) -> {id, %{reason: reason, class: "other", kinds: :all}}
-      {id, %{reason: _} = entry} -> {id, entry}
+      {id, reason} when is_binary(reason) ->
+        {id, %{reason: reason, class: "other", kinds: :all}}
+
+      {id, %{reason: r} = entry} when is_binary(r) ->
+        {id, Map.merge(%{class: "other", kinds: :all}, entry)}
+
+      {id, other} ->
+        raise ArgumentError,
+              "known entry #{inspect(id)}: expected a reason or an entry from parse_known/1, " <>
+                "got #{inspect(other)}"
     end)
   end
 
@@ -744,6 +764,7 @@ defmodule BubbleEx.Frontend.RenderDiff do
 
     known = fn category -> Enum.filter(report.known, &(&1.category == category)) end
     unused = Map.get(report, :known_unused, [])
+    folded = Map.get(report, :known_folded, %{})
 
     (header ++
        group.("Unexplained (candidate bugs)", report.unexplained) ++
@@ -755,6 +776,14 @@ defmodule BubbleEx.Frontend.RenderDiff do
          else: [
            "",
            "Owner-listed but no difference here (fixed or stale): " <> Enum.join(unused, ", ")
+         ]
+       ) ++
+       if(folded == %{},
+         do: [],
+         else: [
+           "",
+           "Owner-listed but folded into another difference (list that one): " <>
+             (folded |> Enum.sort() |> Enum.map_join(", ", fn {id, r} -> "#{id} in #{r}" end))
          ]
        ))
     |> Enum.join("\n")

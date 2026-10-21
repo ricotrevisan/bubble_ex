@@ -64,7 +64,7 @@
       const a = auth(raw.authentication);
       if (a) raw.authentication = a; else delete raw.authentication;
     }
-    const type = typeof v.type === "string" ? v.type : raw && typeof raw._type === "string" ? raw._type : null;
+    const type = typeof v.type === "string" ? v.type : null;
     records[id] = { type, raw };
   }
   return JSON.stringify({ source: "bubble", path: location.pathname, user_id: userId, records });

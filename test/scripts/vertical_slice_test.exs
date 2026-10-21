@@ -418,12 +418,18 @@ defmodule BubbleEx.Scripts.VerticalSliceTest do
            "raw" => %{"_id" => "u2", "authentication" => %{"email" => "b@example.test"}}
          }},
         {"g1", %{"type" => "custom.ghost", "raw" => %{"_id" => "g1"}}},
+        # Only a user carries a sign-in.
+        {"p2",
+         %{
+           "type" => "custom.project",
+           "raw" => %{"_id" => "p2", "authentication" => %{"email" => "x"}}
+         }},
         {"x1", %{"type" => nil, "raw" => nil}}
       ]
 
       {rows, report} = Captured.rows(model, records)
 
-      assert rows["project"] == [%{"_id" => "p1", "name_text" => "Alpha"}]
+      assert rows["project"] == [%{"_id" => "p1", "name_text" => "Alpha"}, %{"_id" => "p2"}]
 
       assert [task] = rows["task"]
       assert task["_id"] == "t1"
@@ -443,11 +449,11 @@ defmodule BubbleEx.Scripts.VerticalSliceTest do
       assert b["authentication"] == %{"email" => %{"email" => "b@example.test"}}
 
       assert report == %{
-               records: 6,
+               records: 7,
                skipped: 1,
                ids_filled: 1,
                unknown_types: %{"ghost" => 1},
-               dropped_fields: %{"task" => ["not_a_field_text"]}
+               dropped_fields: %{"project" => ["authentication"], "task" => ["not_a_field_text"]}
              }
     end
 
@@ -519,6 +525,12 @@ defmodule BubbleEx.Scripts.VerticalSliceTest do
 
       File.write!(b, Jason.encode!(%{"elements" => []}))
       assert_raise RuntimeError, ~r/not a record capture/, fn -> Captured.read!([b]) end
+
+      File.write!(b, Jason.encode!(%{"source" => "bubble", "error" => "no client record cache"}))
+
+      assert_raise RuntimeError, ~r/failed in the page: "no client record cache"/, fn ->
+        Captured.read!([b])
+      end
     end
 
     test "dangling references by type and field" do

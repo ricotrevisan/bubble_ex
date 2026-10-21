@@ -10,7 +10,9 @@
 // side) and its widths; it writes <out>/<NAME>-<width>.json and .png (0600, <out> created
 // 0700). The page loads once per spec at 1280 px and is then resized to each width (as the
 // Bubble capture is), settling each time on network idle plus 3 s without DOM mutations, then
-// captured again (2 s later, settled) until two captures agree.
+// captured again (2 s later, settled) until two captures agree. It exits 1 when a capture is
+// not to be trusted (never settled or stable, an error status, redirected elsewhere), after
+// writing it. An existing <out> must already be private (no group or other access).
 //
 // CAPTURE_EMAIL (read from the environment, never printed or written): the user to sign in
 // as with a magic link from the server's local mailbox (/dev/mailbox, dev only); unset, the
@@ -40,8 +42,8 @@ if (!opts.base || !opts.out || specs.length === 0) {
 }
 
 const base = new URL(opts.base);
-if (base.hostname !== "127.0.0.1") {
-  console.error("--base must be a server on 127.0.0.1");
+if (base.hostname !== "127.0.0.1" || !["http:", "https:"].includes(base.protocol)) {
+  console.error("--base must be an http(s) server on 127.0.0.1");
   process.exit(2);
 }
 
@@ -57,8 +59,16 @@ const parsed = specs.map((spec) => {
 
 const email = process.env.CAPTURE_EMAIL || null;
 const out = opts.out;
-fs.mkdirSync(out, { recursive: true, mode: 0o700 });
-fs.chmodSync(out, 0o700);
+// A directory the script creates is 0700; an existing one must already be private.
+if (fs.existsSync(out)) {
+  if ((fs.statSync(out).mode & 0o077) !== 0) {
+    console.error(`--out ${out} is readable by others: use a private (0700) directory`);
+    process.exit(2);
+  }
+} else {
+  fs.mkdirSync(out, { recursive: true, mode: 0o700 });
+  fs.chmodSync(out, 0o700);
+}
 const capture = fs.readFileSync(new URL("./render_capture.js", import.meta.url), "utf8");
 
 const writePrivate = (file, data) => {
@@ -98,7 +108,7 @@ try {
       if ((await page.evaluate(() => performance.now() - window.__captureMutated)) >= 3000) return Date.now() - t0;
       await page.waitForTimeout(500);
     }
-    return -1;
+    return null;
   };
 
   if (email) await signIn(page, context, connected);
@@ -114,29 +124,45 @@ try {
       // spell (a slow first load) changes the second.
       // They agree when the same elements show the same texts (boxes may move by subpixels).
       const shape = (j) => JSON.stringify(JSON.parse(j).elements.map((e) => [e.id, e.visible, e.text]));
-      let settled = await settle();
+      const t0 = Date.now();
+      let quiet = (await settle()) !== null;
       let json = await page.evaluate(capture);
       let stable = false;
       for (let tries = 0; tries < 5 && !stable; tries++) {
         await page.waitForTimeout(2000);
-        settled += 2000 + (await settle());
+        quiet = (await settle()) !== null;
         const again = await page.evaluate(capture);
-        stable = shape(again) === shape(json);
+        stable = quiet && shape(again) === shape(json);
         json = again;
       }
+      const settled = Date.now() - t0;
+      // A capture to distrust: never quiet or never stable, an error status, or another page
+      // (a redirect, e.g. to the sign-in page). It is written, and the run fails.
+      const status = response && response.status();
+      const landed = new URL(page.url()).pathname;
+      const problems = [
+        !stable && "UNSTABLE",
+        !(status >= 200 && status < 400) && `status ${status}`,
+        landed !== new URL(pagePath, base).pathname && "redirected",
+      ].filter(Boolean);
+      if (problems.length) failed = true;
       writePrivate(path.join(out, `${name}-${w}.json`), json);
       const png = await page.screenshot({ fullPage: true });
       writePrivate(path.join(out, `${name}-${w}.png`), png);
       const d = JSON.parse(json);
       console.log(
-        [name, w, "status", response && response.status(), "settled_ms", settled, stable ? "stable" : "UNSTABLE",
-          "elements", d.elements.length,
-          "visible", d.elements.filter((e) => e.visible).length].join(" "),
+        [name, w, "status", status, "settled_ms", settled, problems.length ? problems.join(",") : "stable",
+          "elements", d.elements.length, "visible", d.elements.filter((e) => e.visible).length].join(" "),
       );
     }
   }
 } catch (error) {
-  console.error(String(error && error.message ? error.message : error).replaceAll(email || "\u0000", "<email>"));
+  // Never the email or the magic link's token (a navigation timeout names the URL).
+  console.error(
+    String(error && error.message ? error.message : error)
+      .replaceAll(email || "\u0000", "<email>")
+      .replace(/magic_link[^\s"'<]*/g, "magic_link<redacted>"),
+  );
   failed = true;
 } finally {
   await browser.close();

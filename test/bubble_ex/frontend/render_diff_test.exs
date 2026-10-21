@@ -226,6 +226,27 @@ defmodule BubbleEx.Frontend.RenderDiffTest do
       assert text =~ "Owner-listed but no difference here (fixed or stale): bLabel"
     end
 
+    test "an entry on an element folded into an ancestor's difference is named, not stale",
+         %{index: index} do
+      report = RenderDiff.diff(bubble(), ours(), index, known: %{"bInner" => %{reason: "inside"}})
+
+      assert %{category: :unexplained, nested: 1} = find(report, "bGroup", :only_bubble)
+      assert report.known_unused == []
+      assert report.known_folded == %{"bInner" => "bGroup"}
+
+      assert RenderDiff.summary(report, 5) =~
+               "folded into another difference (list that one): bInner in bGroup"
+    end
+
+    test "diff/4 takes partial entries and refuses what it cannot read", %{index: index} do
+      report = RenderDiff.diff(bubble(), ours(), index, known: %{"bGroup" => %{reason: "r"}})
+      assert %{category: :known, known_class: "other"} = find(report, "bGroup", :only_bubble)
+
+      assert_raise ArgumentError, ~r/parse_known/, fn ->
+        RenderDiff.diff(bubble(), ours(), index, known: %{"bGroup" => %{"reason" => "r"}})
+      end
+    end
+
     test "ranks by visible content and counts the matches", %{report: report} do
       assert report.matched.bubble_with_id == 11
       assert report.matched.not_in_export == 1

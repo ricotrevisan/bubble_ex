@@ -8,8 +8,10 @@ defmodule VerticalSlice.Captured do
 
   alias BubbleEx.Model
 
-  # Row members that are not fields but the loader reads (BubbleEx.Load.Scan).
-  @not_fields ~w(_id authentication user_signed_up)
+  # Row members that are not fields but the loader reads (BubbleEx.Load.Scan):
+  # the ID, and a user's sign-in.
+  @not_fields ~w(_id)
+  @user_not_fields ~w(authentication user_signed_up)
 
   # The client's references carry a cache prefix: `<n>__LOOKUP__<id>`.
   @lookup ~r/^\d+__LOOKUP__/
@@ -24,6 +26,9 @@ defmodule VerticalSlice.Captured do
       case path |> File.read!() |> Jason.decode!() do
         %{"records" => records} when is_map(records) ->
           Enum.sort(records)
+
+        %{"error" => error} ->
+          raise "#{path}: the capture failed in the page: #{inspect(error)}"
 
         _ ->
           raise "#{path}: not a record capture (no \"records\" object; see render_records.js)"
@@ -87,7 +92,8 @@ defmodule VerticalSlice.Captured do
     else
       {kept, dropped} =
         Enum.split_with(raw, fn {key, _} ->
-          key in @not_fields or Model.field(model, type, key) != :error
+          key in @not_fields or (type == "user" and key in @user_not_fields) or
+            Model.field(model, type, key) != :error
         end)
 
       row =

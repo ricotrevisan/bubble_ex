@@ -22,9 +22,10 @@ defmodule Mix.Tasks.Bubble.RenderDiff do
       `{"reason": ..., "class": ..., "kinds": [...]}` (classes `privacy`,
       `server_data`, `drift`, `capture_gap`, `other`); see
       `BubbleEx.Frontend.RenderDiff.parse_known/1`. They are reported
-      apart from the candidate bugs, and listed elements on the page that
-      no longer differ are named (fixed, or a stale entry). One file can
-      cover several pages. Keep it with the captures (it names the app's
+      apart from the candidate bugs. Listed elements on the page that no
+      longer differ are named (fixed, or a stale entry), and so are those
+      whose difference folds into an ancestor's (list the ancestor). One
+      file can cover several pages. Keep it with the captures (it names the app's
       elements)
     * `--no-text` - leave the pages' texts out of the printed summary
 
@@ -32,9 +33,9 @@ defmodule Mix.Tasks.Bubble.RenderDiff do
   so the capture holds each marker's reason. The steps, all under
   `scripts/vertical_slice/`:
 
-    1. On the Bubble page, evaluate `render_capture.js` (the elements) and
-       `render_records.js` (the records the page holds in browser memory)
-       at each width.
+    1. On the Bubble page, evaluate `render_capture.js` (the elements)
+       at each width, and `render_records.js` (the records the page holds
+       in browser memory) once per page.
     2. Load those records into the slice under their Bubble IDs:
        `slice.exs records EXPORT DECISIONS OUT RECORDS.json...` (a fresh
        database; see its header). Its dangling references are records the

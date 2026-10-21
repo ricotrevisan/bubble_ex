@@ -31,8 +31,9 @@
 # scripts/vertical_slice/render_records.js wrote from the Bubble pages
 # render_diff compares (scripts/vertical_slice/captured.exs turns them into
 # loader rows), into SLICE_DB's `slice_dev` under their Bubble IDs, so the
-# generated pages show the same records. Load them into a fresh database
-# (no `seed` first), and run it from the bubble_ex commit the project was
+# generated pages show the same records. It refuses a database whose tables
+# already hold rows (a `seed`, an earlier load): recreate and migrate it
+# first. Run it from the bubble_ex commit the project was
 # rendered with, with the same EXPORT, DECISIONS and SLICE_PRIVACY, so the
 # loader's model matches the generated schema. It writes the loader export
 # under OUT/data/captured and OUT/records.json (0600): the counts, what was
@@ -168,6 +169,19 @@ defmodule VerticalSlice.Cli do
       )
 
     pool
+  end
+
+  # Rows already in the project's tables: a captured load goes into an
+  # empty database, else earlier rows (a `seed`, another capture) show as
+  # extra records. A table that does not exist counts 0.
+  def existing_rows(pool, project) do
+    for resource <- project.resources, reduce: 0 do
+      acc ->
+        case Postgrex.query(pool, ~s[SELECT count(*) FROM "#{resource.table}"], []) do
+          {:ok, %{rows: [[n]]}} -> acc + n
+          _ -> acc
+        end
+    end
   end
 
   def write_private!(path, data) do
@@ -399,9 +413,19 @@ case System.argv() do
     data_dir = Cli.private_dir!(Path.join([Cli.private_dir!(Path.join(out, "data")), "captured"]))
 
     source = %{"kind" => "page_capture", "base_url" => "https://capture.example.test"}
+    pool = Cli.dev_pool()
+
+    case Cli.existing_rows(pool, built.project) do
+      0 ->
+        :ok
+
+      n ->
+        raise "slice_dev already holds #{n} rows: load the captured records into a fresh " <>
+                "database (recreate it and migrate)"
+    end
 
     report =
-      case VerticalSlice.Seed.load(built, Cli.dev_pool(), data_dir, rows, source) do
+      case VerticalSlice.Seed.load(built, pool, data_dir, rows, source) do
         {:ok, report} ->
           report
 
