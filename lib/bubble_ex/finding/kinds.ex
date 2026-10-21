@@ -21,10 +21,12 @@ defmodule BubbleEx.Finding.Kinds do
     {:number_type, :decision, [:refine_number_type],
      "a number field whose every write is integral (counts, integer literals, integer increments); store it as an integer"},
     {:plugin, :decision, [:replace_plugin],
-     "a marketplace plugin the app installs or uses; drop it, replace it with a known native equivalent or rebuild it"}
+     "a marketplace plugin the app installs or uses; drop it, replace it with a known native equivalent or rebuild it"},
+    {:workaround_element, :default, [:lower_workaround],
+     "a tiny or never-visible element that works around Bubble (a value holder, keep-alive, spacer or JS bridge); lower it to its intent"}
   ]
 
-  @categories [:decision, :hint]
+  @categories [:decision, :hint, :default]
 
   @registry Map.new(@kinds, fn {kind, category, transforms, doc} ->
               {kind, %{category: category, transforms: transforms, doc: doc}}
@@ -45,7 +47,10 @@ defmodule BubbleEx.Finding.Kinds do
 
   Categories: `:decision` findings propose a model change the owner decides
   on; `:hint` findings are performance hints a target adapter may apply
-  without asking.
+  without asking; `:default` findings carry a default the owner may
+  override: applied without asking when the analyzer is sure
+  (`confidence: :high`), otherwise a question that waits for the owner
+  (`BubbleEx.Decision.applicable/2`, `BubbleEx.Decision.Resolved`).
 
   | Kind | Category | Transforms | Meaning |
   |------|----------|------------|---------|
@@ -74,9 +79,16 @@ defmodule BubbleEx.Finding.Kinds do
       `proposal.features` becomes its `equivalent`, see
       `BubbleEx.Plugins.Catalog`) or `:rebuild` (an agent rebuilds what the
       app uses of it)
+    * `:lower_workaround` - lower a workaround element
+      (`BubbleEx.Workarounds`) as `proposal.option`, one of
+      `proposal.options`: `:page_state` (a value holder: its value is page
+      state and the element renders nothing), `:plugin_event` (a
+      keep-alive: its plugin's or event's own lowering), `:css_gap` (a
+      spacer), `:hook` (a JS bridge: a client hook) or `:keep` (keep the
+      markup as Bubble has it)
   """
 
-  @type category :: :decision | :hint
+  @type category :: :decision | :hint | :default
   @type entry :: %{category: category(), transforms: [atom()], doc: String.t()}
 
   @doc "Every registered kind, in registry order."

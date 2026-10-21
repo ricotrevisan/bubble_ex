@@ -18,7 +18,9 @@
 # `render` writes the generated project with the pinned lock of the Phoenix
 # compile check, its migration plan (.wtf/plan.json), and OUT/slice.json:
 # the chosen page, its statistics and route, the decision states and the
-# app-wide coverage counts. `seed` writes N (default 3) synthetic worlds,
+# app-wide coverage counts, and OUT/workarounds.json: the workaround element
+# catalog (WTF-586), each finding with what applies and whether it is an
+# owner question. `seed` writes N (default 3) synthetic worlds,
 # a record and its twin with negated booleans each, so 2N records per data
 # type, as a loader export and loads them into SLICE_DB's
 # `slice_dev` database through the data loader (scripts/vertical_slice/
@@ -192,6 +194,36 @@ defmodule VerticalSlice.Cli do
     File.write!(path, Jason.encode!(data, pretty: true))
   end
 
+  def workarounds(built), do: Enum.filter(built.findings, &(&1.kind == :workaround_element))
+
+  def workaround_counts(built) do
+    applied = MapSet.new(built.applied, & &1.key)
+
+    built
+    |> workarounds()
+    |> Enum.frequencies_by(fn f ->
+      state = if MapSet.member?(applied, "finding:" <> f.id), do: "applied", else: "not applied"
+      "#{f.proposal.class} #{f.confidence} (#{state})"
+    end)
+  end
+
+  def workarounds_json(built) do
+    applied = Map.new(built.applied, &{&1.key, &1})
+    undecided = MapSet.new(built.resolved.undecided)
+
+    built
+    |> workarounds()
+    |> Enum.map(fn f ->
+      a = applied["finding:" <> f.id]
+
+      f
+      |> BubbleEx.Finding.to_map()
+      |> Map.put("applied", a && %{"option" => to_string(a.proposal.option), "automatic" => a.automatic})
+      |> Map.put("question", MapSet.member?(undecided, f.id))
+    end)
+    |> Jason.encode!(pretty: true)
+  end
+
   def decisions("-"), do: nil
   def decisions(path), do: path
 
@@ -332,12 +364,18 @@ case System.argv() do
         "page_data" => Spec.data_coverage(built.spec)
       },
       "plan" => %{"tasks" => length(built.plan.tasks), "plan_sha256" => built.plan.plan_sha256},
+      "workarounds" => Cli.workaround_counts(built),
       "structural_at_generation" => structural,
       "files" => map_size(files)
     }
 
     File.write!(Path.join(out, "slice.json"), Jason.encode!(slice, pretty: true))
     File.chmod!(Path.join(out, "slice.json"), 0o600)
+
+    # The workaround catalog (WTF-586): every :workaround_element finding,
+    # with what was applied by default and what waits for the owner.
+    File.write!(Path.join(out, "workarounds.json"), Cli.workarounds_json(built))
+    File.chmod!(Path.join(out, "workarounds.json"), 0o600)
 
     IO.puts(
       "rendered #{map_size(files)} files into #{project_dir}; page #{page.id} " <>

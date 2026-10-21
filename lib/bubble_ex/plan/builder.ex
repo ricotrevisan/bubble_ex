@@ -55,7 +55,8 @@ defmodule BubbleEx.Plan.Builder do
          drop_tasks(ctx) ++
          app_tasks(ctx) ++
          surface_tasks(ctx) ++
-         workflow_tasks(ctx) ++ api_tasks(ctx) ++ plugin_tasks(ctx) ++ release_tasks(ctx))
+         workflow_tasks(ctx) ++
+         api_tasks(ctx) ++ plugin_tasks(ctx) ++ workaround_tasks(ctx) ++ release_tasks(ctx))
       |> Map.new(&{&1.id, &1})
       |> statuses()
 
@@ -826,6 +827,23 @@ defmodule BubbleEx.Plan.Builder do
 
   defp decision_task_id("plugin:" <> plugin), do: "decision:plugin/" <> plugin
 
+  # One owner question per workaround element on a kept surface whose
+  # finding is undecided below `:high` confidence (WTF-586). It blocks
+  # nothing: the element keeps its markup until the owner decides.
+  defp workaround_tasks(ctx) do
+    for element <- Map.get(ctx, :questions, []),
+        id = Symbol.id(:element, element),
+        Map.has_key?(ctx.element_surface, id) do
+      %Task{
+        id: "decision:workaround/" <> element,
+        kind: :decision,
+        actor: :owner,
+        subjects: [id],
+        label: label(ctx, id)
+      }
+    end
+  end
+
   # What a drop removed in scope: the plugin's elements and actions, and
   # the workflows its events triggered that went with it.
   defp removed_uses(ctx, plugin) do
@@ -1453,6 +1471,9 @@ defmodule BubbleEx.Plan.Builder do
 
   defp facts(_ctx, %Task{kind: :decision, id: "decision:plugin/" <> plugin}, _tasks),
     do: %{decision: plugin_decision_key("plugin:" <> plugin)}
+
+  defp facts(_ctx, %Task{kind: :decision, id: "decision:workaround/" <> element}, _tasks),
+    do: %{decision: "finding:" <> Finding.id(:workaround_element, %{element: element})}
 
   defp facts(_ctx, t, children), do: %{children: Map.get(children, t.id, [])}
 

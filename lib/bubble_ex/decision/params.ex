@@ -15,6 +15,7 @@ defmodule BubbleEx.Decision.Params do
   | `:text_to_reference` | `target_type` - the data type symbol (`"data_type:<key>"`) the IDs reference: one of the finding's `evidence.target_types`, only when the finding named none |
   | `:add_indexes` | `drop` - indexes (from 0) into `proposal.indexes` not to create |
   | `:replace_plugin` | `option` - `:drop`, `:replace_native` or `:rebuild`: one of the finding's `proposal.options`; `delete_workflows` - with `drop` only: workflows the plugin's events trigger that run other actions too (`evidence.rewire`) to delete instead of re-triggering |
+  | `:lower_workaround` | `option` - `:page_state`, `:plugin_event`, `:css_gap`, `:hook` or `:keep`: one of the finding's `proposal.options` (`BubbleEx.Workarounds`) |
   | `:membership_policy`, `:derive_reverse_relationship` | none |
 
   A `:plugin` finding has no source-faithful mapping to fall back to (a
@@ -39,12 +40,14 @@ defmodule BubbleEx.Decision.Params do
     text_to_reference: [:target_type],
     add_indexes: [:drop],
     replace_plugin: [:option, :delete_workflows],
+    lower_workaround: [:option],
     membership_policy: [],
     derive_reverse_relationship: []
   }
 
   @number_types [:integer, :decimal]
-  @plugin_options [:drop, :replace_native, :rebuild]
+  # `option` values; `check/3` keeps a finding's own `proposal.options`.
+  @options [:drop, :replace_native, :rebuild] ++ BubbleEx.Workarounds.options()
 
   # Finding kinds with no faithful mapping to keep: never rejected.
   @no_reject [:plugin]
@@ -134,7 +137,7 @@ defmodule BubbleEx.Decision.Params do
   end
 
   defp value(:option, option) when is_binary(option) do
-    case Enum.find(@plugin_options, &(Atom.to_string(&1) == option)) do
+    case Enum.find(@options, &(Atom.to_string(&1) == option)) do
       nil -> bad(:option, option)
       option -> {:ok, option}
     end

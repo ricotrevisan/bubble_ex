@@ -22,11 +22,13 @@ defmodule BubbleEx.Finding do
       them changes (e.g. a copied field's type), which `proposal_sha256`
       does not see, and not on caption edits.
     * `kind` - stable atom, listed in `BubbleEx.Finding.Kinds`
-    * `category` - `:decision` (an owner decision) or `:hint` (a performance
-      hint), fixed by the kind
+    * `category` - `:decision` (an owner decision), `:hint` (a performance
+      hint) or `:default` (an owner decision with a default applied when the
+      finding is `:high` confidence), fixed by the kind
     * `subject` - the Bubble IDs the finding is about, keyed like a
       diagnostic's (`:type`, `:option_set`, `:external_type`, `:field`,
-      `:rule`, `:workflow`, `:plugin`). IDs only, never display names.
+      `:rule`, `:workflow`, `:plugin`, `:element`). IDs only, never display
+      names.
     * `path` - RFC 6901 JSON pointer of the subject's definition
     * `evidence` - why: `symbols` (`BubbleEx.Index.Symbol` IDs) and
       `references` (`BubbleEx.Index.Reference`s, e.g. the actions writing a
@@ -102,7 +104,7 @@ defmodule BubbleEx.Finding do
     related: []
   ]
 
-  @subject_keys [:type, :option_set, :external_type, :field, :rule, :workflow, :plugin]
+  @subject_keys [:type, :option_set, :external_type, :field, :rule, :workflow, :plugin, :element]
   @group_keys [:workflows, :pages, :reusables, :privacy_rules]
   @confidences [:high, :medium, :low]
 

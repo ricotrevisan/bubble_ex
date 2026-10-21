@@ -112,7 +112,8 @@ defmodule BubbleEx.Decision do
   @author_kinds [:owner, :agent, :wtf_staff]
   @vias [:chat, :form, :cli]
   @targets ["ash"]
-  @subject_keys [:type, :option_set, :external_type, :field, :rule, :workflow, :plugin, :page]
+  @subject_keys [:type, :option_set, :external_type, :field, :rule, :workflow, :plugin, :page] ++
+                  [:element]
   @basis_keys [
     :finding_id,
     :proposal_sha256,
@@ -915,7 +916,8 @@ defmodule BubbleEx.Decision do
         |> Enum.map(&state(&1, latest, ctx))
 
       undecided =
-        for %Finding{category: :decision, id: id} <- findings,
+        for %Finding{id: id} = f <- findings,
+            f.category == :decision or (f.category == :default and not by_default?(f)),
             not Map.has_key?(latest, "finding:" <> id),
             do: id
 
@@ -1174,7 +1176,8 @@ defmodule BubbleEx.Decision do
           do: applied
 
     automatic =
-      for %Finding{category: :hint} = f <- findings,
+      for %Finding{} = f <- findings,
+          f.category == :hint or by_default?(f),
           not MapSet.member?(decided, "finding:" <> f.id),
           do: %Applied{
             key: "finding:" <> f.id,
@@ -1190,6 +1193,10 @@ defmodule BubbleEx.Decision do
 
     Enum.sort_by(decisions ++ automatic, & &1.key)
   end
+
+  # A `:default` finding the analyzer is sure of applies without a record.
+  defp by_default?(%Finding{category: :default, confidence: :high}), do: true
+  defp by_default?(%Finding{}), do: false
 
   defp applied(%{kind: :finding, choice: choice} = d, by_id) when choice in [:accept, :modify] do
     case Map.fetch(by_id, d.basis.finding_id) do

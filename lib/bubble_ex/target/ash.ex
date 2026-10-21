@@ -403,7 +403,9 @@ defmodule BubbleEx.Target.Ash do
   `BubbleEx.Load`.
 
   `replace_plugin` decisions (`:plugin` findings) do not concern the
-  schema: `map/3` skips them, and `BubbleEx.Plan` interprets them.
+  schema: `map/3` skips them, and `BubbleEx.Plan` interprets them. Nor do
+  `lower_workaround` ones (`:workaround_element` findings, WTF-586):
+  `BubbleEx.Target.Phoenix` and `BubbleEx.Plan` read them.
 
   **Drops (WTF-422).** An applied `:drop` (`BubbleEx.Decision.Drop`)
   removes a data type (its fields and every relationship to it), a field

@@ -129,7 +129,8 @@ defmodule VerticalSlice.Pipeline do
       Plan.build(model, index, frontend, applied,
         residue: residue,
         decisions_sha256: sha,
-        resolved: resolved
+        resolved: resolved,
+        findings: findings
       )
 
     %{
@@ -190,7 +191,8 @@ defmodule VerticalSlice.Pipeline do
       frontend: built.frontend,
       expressions: built.expressions,
       frontend_workflows: built.spec,
-      asset_store: asset_store()
+      asset_store: asset_store(),
+      workarounds: Enum.filter(built.applied, &(&1.transform == :lower_workaround))
     )
   end
 

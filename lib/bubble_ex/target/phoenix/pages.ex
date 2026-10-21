@@ -203,7 +203,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       overrides: overrides(frontend),
       flows: flows,
       enforced?: Map.get(ctx, :enforced?, false),
-      plugin_elements: plugin_elements(frontend)
+      plugin_elements: plugin_elements(frontend),
+      page_state: Keyword.get(opts, :page_state, MapSet.new())
     }
 
     base =
@@ -789,6 +790,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         "visibility_conditions_plugin_state" => 0,
         "visibility_conditions_pending_data" => 0,
         "visibility_contents_skipped" => 0,
+        "workaround_page_state" => 0,
         "text_conditions_compiled" => 0,
         "text_conditions_marked" => 0,
         "conditions_other_properties" => 0
@@ -838,13 +840,17 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # --- nodes ----------------------------------------------------------------------
 
-  defp emit(%Node{kind: :page} = node, ctx, acc) do
+  defp emit(node, ctx, acc) do
+    if page_state?(node, ctx), do: page_state(node, ctx, acc), else: emit_node(node, ctx, acc)
+  end
+
+  defp emit_node(%Node{kind: :page} = node, ctx, acc) do
     {floating, flow} = Enum.split_with(node.children, &floating_boundary?(&1, ctx))
     {inner, acc} = emit_list(flow ++ floating, ctx, acc)
     element("main", node, [], inner, ctx, acc)
   end
 
-  defp emit(%Node{kind: :html_style} = node, ctx, acc) do
+  defp emit_node(%Node{kind: :html_style} = node, ctx, acc) do
     case get_in(node.content, ["html_style", :inline_style]) do
       %{css: css, refs: []} ->
         element("div", node, [], ["<style>", css, "</style>"], ctx, acc)
@@ -861,7 +867,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # A Table (BubbleEx.Frontend.Table): an HTML table. Its repeated row is
   # rendered once per item when the page loads its list (outside other
   # templates); otherwise it is left out, loudly.
-  defp emit(%Node{kind: :placeholder, runtime: %{"type" => "Table"}} = node, ctx, acc) do
+  defp emit_node(%Node{kind: :placeholder, runtime: %{"type" => "Table"}} = node, ctx, acc) do
     rows? =
       Table.dynamic?(node) and match?(%FlowSpec{}, ctx.flows) and not acc.template and
         wired_list?(node, ctx)
@@ -871,7 +877,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # A repeating group whose data source the page loads (WTF-420): its
   # template once per item of its list, with the cell's thing and index.
-  defp emit(
+  defp emit_node(
          %Node{kind: :placeholder, runtime: %{"boundary" => "container", "repeats" => true}} =
            node,
          %{flows: %FlowSpec{}} = ctx,
@@ -885,7 +891,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # A repeating group in a repeating group's cell that the page renders per
   # outer cell (WTF-520, two levels): its list in that cell.
-  defp emit(
+  defp emit_node(
          %Node{kind: :placeholder, runtime: %{"boundary" => "container", "repeats" => true}} =
            node,
          %{flows: %FlowSpec{}} = ctx,
@@ -897,16 +903,20 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       else: runtime_container(node, ctx, acc)
   end
 
-  defp emit(%Node{kind: :placeholder, runtime: %{"boundary" => "container"}} = node, ctx, acc),
-    do: runtime_container(node, ctx, acc)
+  defp emit_node(
+         %Node{kind: :placeholder, runtime: %{"boundary" => "container"}} = node,
+         ctx,
+         acc
+       ),
+       do: runtime_container(node, ctx, acc)
 
-  defp emit(%Node{kind: :placeholder} = node, ctx, acc) do
+  defp emit_node(%Node{kind: :placeholder} = node, ctx, acc) do
     type = node.attributes["data-placeholder-kind"] || "element"
     acc = mark(acc, node, "#{type} is not lowered (plugin or unsupported element)")
     element("div", node, placeholder_marker(type), "", ctx, acc, placeholder: true)
   end
 
-  defp emit(%Node{kind: kind} = node, ctx, acc)
+  defp emit_node(%Node{kind: kind} = node, ctx, acc)
        when kind in [
               :group,
               :floating_group,
@@ -930,14 +940,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
-  defp emit(%Node{kind: :shape} = node, ctx, acc), do: element("div", node, [], "", ctx, acc)
+  defp emit_node(%Node{kind: :shape} = node, ctx, acc), do: element("div", node, [], "", ctx, acc)
 
-  defp emit(%Node{kind: :slider, variant: :range} = node, ctx, acc),
+  defp emit_node(%Node{kind: :slider, variant: :range} = node, ctx, acc),
     do: range_slider(node, ctx, acc)
 
-  defp emit(%Node{kind: :reusable_instance} = node, ctx, acc), do: instance(node, ctx, acc)
+  defp emit_node(%Node{kind: :reusable_instance} = node, ctx, acc), do: instance(node, ctx, acc)
 
-  defp emit(%Node{kind: :text} = node, ctx, acc) do
+  defp emit_node(%Node{kind: :text} = node, ctx, acc) do
     {text, acc} = text_slot(node, "text", ctx, acc)
 
     case text do
@@ -968,7 +978,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
-  defp emit(%Node{kind: :button} = node, ctx, acc) do
+  defp emit_node(%Node{kind: :button} = node, ctx, acc) do
     {label, acc} = text_slot(node, "label", ctx, acc)
     {label, acc} = if label == {:static, ""}, do: slot(node, "text", ctx, acc), else: {label, acc}
     navigation? = navigation_button?(node, ctx)
@@ -985,7 +995,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     element(tag, node, attrs ++ notes, inner, ctx, acc)
   end
 
-  defp emit(%Node{kind: :link} = node, ctx, acc) do
+  defp emit_node(%Node{kind: :link} = node, ctx, acc) do
     {text, acc} = slot(node, "text", ctx, acc)
     {attrs, acc} = file_link_attrs(node, ctx, acc)
 
@@ -998,9 +1008,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     element("a", node, attrs, button_inner(node, text, ctx), ctx, acc)
   end
 
-  defp emit(%Node{kind: :image} = node, ctx, acc), do: image(node, ctx, acc)
+  defp emit_node(%Node{kind: :image} = node, ctx, acc), do: image(node, ctx, acc)
 
-  defp emit(%Node{kind: :icon, variant: :inline_svg} = node, ctx, acc) do
+  defp emit_node(%Node{kind: :icon, variant: :inline_svg} = node, ctx, acc) do
     svg =
       case StaticSvg.parse(node.attributes["inline_svg"]) do
         {:ok, svg} -> escape_braces(svg)
@@ -1010,12 +1020,13 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     element("span", node, [{"aria-hidden", "true"}], svg, ctx, acc)
   end
 
-  defp emit(%Node{kind: :icon} = node, ctx, acc),
+  defp emit_node(%Node{kind: :icon} = node, ctx, acc),
     do: element("span", node, [{"aria-hidden", "true"}], icon_svg(node, ctx), ctx, acc)
 
-  defp emit(%Node{kind: :search} = node, ctx, acc), do: search(node, ctx, acc)
+  defp emit_node(%Node{kind: :search} = node, ctx, acc), do: search(node, ctx, acc)
 
-  defp emit(%Node{kind: kind} = node, ctx, acc) when kind in [:input, :file_input, :slider] do
+  defp emit_node(%Node{kind: kind} = node, ctx, acc)
+       when kind in [:input, :file_input, :slider] do
     {attrs, acc} = input_attrs(node, ctx, acc)
     attrs = if kind == :input, do: tracked_attrs(attrs, node, ctx, acc), else: attrs
 
@@ -1024,7 +1035,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     |> wrap_input(node, ctx)
   end
 
-  defp emit(%Node{kind: :multiline_input} = node, ctx, acc) do
+  defp emit_node(%Node{kind: :multiline_input} = node, ctx, acc) do
     {placeholder, acc} = slot(node, "placeholder", ctx, acc)
     {value, acc} = slot(node, "value", ctx, acc)
 
@@ -1050,7 +1061,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     |> wrap_input(node, ctx)
   end
 
-  defp emit(%Node{kind: :checkbox} = node, ctx, acc) do
+  defp emit_node(%Node{kind: :checkbox} = node, ctx, acc) do
     {label, acc} = slot(node, "label", ctx, acc)
 
     input =
@@ -1077,7 +1088,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     |> wrap_input(node, ctx)
   end
 
-  defp emit(%Node{kind: :dropdown} = node, ctx, acc) do
+  defp emit_node(%Node{kind: :dropdown} = node, ctx, acc) do
     {placeholder, acc} = slot(node, "placeholder", ctx, acc)
     placeholder = static_or_empty(placeholder)
     selected = resolved(node, "value")
@@ -1103,7 +1114,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     |> wrap_input(node, ctx)
   end
 
-  defp emit(%Node{kind: :radio_buttons} = node, ctx, acc) do
+  defp emit_node(%Node{kind: :radio_buttons} = node, ctx, acc) do
     {label, acc} = slot(node, "label", ctx, acc)
     label = static_or_empty(label)
     selected = resolved(node, "value")
@@ -1130,7 +1141,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     element("fieldset", node, attrs, [legend | options], ctx, acc)
   end
 
-  defp emit(%Node{} = node, ctx, acc) do
+  defp emit_node(%Node{} = node, ctx, acc) do
     acc = mark(acc, node, "#{node.kind} is not lowered")
     element("div", node, [], "", ctx, acc, placeholder: true)
   end
@@ -1581,6 +1592,25 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp emit_list(nodes, ctx, acc) do
     {parts, acc} = Enum.map_reduce(nodes, acc, &emit(&1, ctx, &2))
     {Enum.intersperse(parts, "\n"), acc}
+  end
+
+  # A value holder lowered to page state (WTF-586, `BubbleEx.Workarounds`):
+  # its value is already page state (`@bubble_data`, read by whoever reads
+  # it), so it renders as its own element only, without its contents.
+  # Groups, Floating Groups and Repeating Groups (a runtime container).
+  @page_state_kinds [:group, :floating_group, :repeating_group]
+
+  defp page_state?(%Node{} = node, ctx) do
+    holder? =
+      node.kind in @page_state_kinds or
+        match?(%Node{kind: :placeholder, runtime: %{"boundary" => "container"}}, node)
+
+    holder? and MapSet.member?(Map.get(ctx, :page_state, MapSet.new()), bid(node))
+  end
+
+  defp page_state(node, ctx, acc) do
+    acc = count(acc, "workaround_page_state", 1)
+    element("div", node, [{"data-bubble-workaround", "page_state"}], "", ctx, acc)
   end
 
   defp floating_boundary?(%Node{kind: :floating_group}, _ctx), do: true
