@@ -828,8 +828,10 @@ defmodule BubbleEx.Expression.Typing do
   defp item_type("list." <> type), do: type
   defp item_type(type), do: type
 
-  defp listed("list." <> _ = type), do: type
-  defp listed(type), do: "list." <> type
+  @doc "`type` as a list type (`\"list.\" <> type`, unless it is one already)."
+  @spec listed(String.t()) :: String.t()
+  def listed("list." <> _ = type), do: type
+  def listed(type), do: "list." <> type
 
   defp present(value) when is_binary(value), do: {:ok, value}
   defp present(_), do: :error

@@ -39,6 +39,25 @@ defmodule BubbleEx.Target.Elixir.FormatsTzTest do
 
   defp zone(name), do: Application.put_env(@app, :bubble_time_zone, name)
 
+  describe "a date minus a date, rounded down to days (WTF-594)" do
+    test "the days are the user's: rounded down in time_zone/0, then subtracted", %{rt: rt} do
+      days = fn now, due ->
+        rt.date_diff(rt.date_floor(now, "day"), rt.date_floor(due, "day"), :day)
+      end
+
+      # Oct 20, 22:00 in New York minus Oct 14, 11:00: 6 days there, 7 in UTC.
+      now = ~U[2026-10-21 02:00:00Z]
+      due = ~U[2026-10-14 15:00:00Z]
+      assert days.(now, due) == 7
+      zone("America/New_York")
+      assert days.(now, due) == 6
+
+      # Across the clock change of 2026-03-08 the local midnights are 71
+      # hours apart: not whole days, as an interval is milliseconds.
+      assert days.(~U[2026-03-10 17:00:00Z], ~U[2026-03-07 17:00:00Z]) == 71 / 24
+    end
+  end
+
   describe "the repeated hour when clocks go back (New York, 2023-11-05)" do
     test "rounding down stays in the same occurrence of the hour", %{rt: rt} do
       zone("America/New_York")

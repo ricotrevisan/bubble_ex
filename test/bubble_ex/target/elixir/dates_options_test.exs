@@ -8,7 +8,7 @@ defmodule BubbleEx.Target.Elixir.DatesOptionsTest do
 
   import BubbleEx.Test.ExpressionFixture
 
-  alias BubbleEx.Expression.Compiler
+  alias BubbleEx.Expression.{Compiler, IR}
   alias BubbleEx.Target.Elixir, as: Target
   alias BubbleEx.Target.Phoenix.Templates
 
@@ -111,6 +111,20 @@ defmodule BubbleEx.Target.Elixir.DatesOptionsTest do
       before = ~U[2026-03-08 05:00:00Z]
       later = ~U[2026-03-09 04:00:00Z]
       assert rt.date_diff(later, before, :day) == 23 / 24
+    end
+
+    test "a stored interval's to days is not compiled" do
+      stored =
+        IR.node(
+          :interval_to,
+          [IR.node(:input, [:parameter, %{"id" => "p"}], "dateinterval"), :day],
+          "number"
+        )
+
+      assert %{source: nil, diagnostics: [%{message: message}]} =
+               Target.compile(stored, project(), runtime: inspect(@runtime)) |> elem(1)
+
+      assert message =~ "a date interval other than a date minus a date"
     end
 
     test "an interval used as anything else is not compiled" do

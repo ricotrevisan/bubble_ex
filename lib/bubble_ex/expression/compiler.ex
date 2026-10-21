@@ -577,7 +577,7 @@ defmodule BubbleEx.Expression.Compiler do
          true <- props["is_list"] in [nil, true, false],
          {:ok, yes, d1} <- operand_prop(raw, "value_for_true", path, ctx),
          {:ok, no, d2} <- operand_prop(raw, "value_for_false", path, ctx) do
-      type = if props["is_list"] == true, do: "list." <> type, else: type
+      type = if props["is_list"] == true, do: Typing.listed(type), else: type
       {:ok, IR.node(:format_boolean, [subject, yes, no], type), d1 ++ d2}
     else
       _ -> :unknown

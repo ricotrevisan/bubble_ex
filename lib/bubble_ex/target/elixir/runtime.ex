@@ -105,9 +105,11 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   `unit`s, exact (milliseconds over the unit's); empty when either is.
   """
   @callback date_diff(value(), value(), :day | :hour | :minute | :second) :: value()
-  @doc "A date range's start, end and middle (Bubble's `min`, `max`, `average`)."
+  @doc "A date range's start (Bubble's `min`); empty for an empty range."
   @callback range_start(value()) :: value()
+  @doc "A date range's end (Bubble's `max`); empty for an empty range."
   @callback range_end(value()) :: value()
+  @doc "A date range's middle (Bubble's `average`), to the millisecond; empty unless both ends are set."
   @callback range_middle(value()) :: value()
   @doc "`text contains string`: substring."
   @callback text_contains?(value(), value()) :: boolean()

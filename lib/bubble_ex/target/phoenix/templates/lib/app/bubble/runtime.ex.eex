@@ -796,6 +796,7 @@ defmodule <%= @module %>.Bubble.Runtime do
   def range_middle(range) do
     with x when is_integer(x) <- unix_ms(range_start(range)),
          y when is_integer(y) <- unix_ms(range_end(range)) do
+      # Truncated toward zero, as a JavaScript Date truncates a fraction.
       DateTime.from_unix!(Kernel.div(x + y, 2), :millisecond)
     else
       _ -> nil

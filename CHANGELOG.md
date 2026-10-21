@@ -6,6 +6,21 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Date differences, date range parts, typed yes/no formats and option
+  sorts compile (WTF-594, WTF-597).** `(date - date) :to days` (`:to
+  hours`, `:to minutes`, `:to seconds`) is `:interval_to` in the IR and
+  the runtime's exact `date_diff/3` (milliseconds over the unit's, so
+  days across a clock change are not whole). The operators the parser
+  keeps raw (`rounded down to`, `+(days)`, `formatted as`, …) are typed,
+  so `(now :rounded down to day) - (x :rounded down to day)` is an
+  interval. A date range's `min`, `max` and `average` are its start, end
+  and middle (`range_start/1`, `range_end/1`, `range_middle/1`).
+  `format_boolean_as_type` is `:format_boolean` typed by its setting (a
+  yes/no one reads as a condition). Options `:sorted` by a text, number
+  or date attribute are `sort_values_by/3`. A date interval used as any
+  other value (a property, a group's data) is no longer compiled: it was
+  `sub/2`, always empty.
+
 - **A Dropdown of things keeps its value (WTF-596).** A Dropdown whose
   choices are dynamic and of a data type (or the user), outside a
   repeating group's cell, is now rendered natively: `BubbleEx.PageData`
