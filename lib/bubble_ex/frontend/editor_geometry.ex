@@ -301,7 +301,7 @@ defmodule BubbleEx.Frontend.EditorGeometry do
   # min size, 0px, not at its canvas size (WTF-583): the editor keeps the
   # canvas `width`/`height` the element was dropped with (a Floating Group's
   # 320x250, a Repeating Group's 280x350), which Bubble's responsive engine
-  # never reads. The 2026-10-20 mm-137 capture measured every shown element
+  # never reads. A private app's 2026-10-20 capture measured every shown element
   # with a fixed axis and no min size at 0 on that axis, none larger
   # (variable holders: Floating Groups, Repeating Groups and reusables that
   # only hold values), and every fixed axis with a min size at that min.
@@ -311,16 +311,16 @@ defmodule BubbleEx.Frontend.EditorGeometry do
   defp put_fixed_minimums(props, type) when type in ["Popup", "GroupFocus"], do: props
 
   defp put_fixed_minimums(props, _type) do
-    if aspect_ratio?(props) do
-      props
-    else
-      Enum.reduce(~w(width height), props, fn axis, acc ->
-        if acc["single_#{axis}"] == true and is_nil(acc["min_#{axis}_css"]) and
-             is_nil(acc["min_#{axis}_px"]),
-           do: Map.put(acc, "min_#{axis}_css", "0px"),
-           else: acc
-      end)
-    end
+    if aspect_ratio?(props),
+      do: props,
+      else: Enum.reduce(~w(width height), props, &put_fixed_minimum/2)
+  end
+
+  defp put_fixed_minimum(axis, props) do
+    if props["single_#{axis}"] == true and is_nil(props["min_#{axis}_css"]) and
+         is_nil(props["min_#{axis}_px"]),
+       do: Map.put(props, "min_#{axis}_css", "0px"),
+       else: props
   end
 
   # An image that keeps its aspect ratio takes its height from its width,

@@ -938,7 +938,7 @@ defmodule BubbleEx.Frontend.EditorGeometryTest do
     %{classes: classes, rules: rules} = layout(editor_app(column_page(%{"g" => group})))["g"]
 
     assert "w-[0px]" in classes
-    assert inspect(rules) =~ "width: 258px"
+    assert rules =~ ~r/(?<!min-|max-)width: 258px/
   end
 
   test "uncalibrated fixed axes without a min size keep their canvas size" do
