@@ -199,6 +199,24 @@ defmodule BubbleEx.Frontend.HoverTest do
            ] = app |> normalize() |> node("bG") |> Map.get(:hover)
   end
 
+  test "a later hover state leaves what it does not set to the earlier ones" do
+    app =
+      page([
+        el("bT", "Text", 1,
+          props: %{"bgcolor" => "#ffffff", "font_color" => "#000000"},
+          states: %{
+            "0" => %{"condition" => hovered(), "properties" => %{"bgcolor" => "#ff0000"}},
+            "1" => %{"condition" => hovered(), "properties" => %{"font_color" => "#0000ff"}}
+          }
+        )
+      ])
+
+    assert [%{"paint" => %{"background" => "#ff0000"}}, %{"paint" => second}] =
+             app |> normalize() |> node("bT") |> Map.get(:hover)
+
+    assert second == %{"font_color" => "#0000ff"}
+  end
+
   test "a state that sets only what the element already shows stays" do
     app =
       page([

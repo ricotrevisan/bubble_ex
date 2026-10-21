@@ -1846,18 +1846,28 @@ defmodule BubbleEx.Frontend.Normalize do
 
   # The paint a hover conditional sets (WTF-590): what differs from the
   # element's own paint once its properties `props` apply, and the keys of
-  # `keep` (an earlier hover rule sets them) whatever their value.
+  # `keep` (an earlier hover rule sets them) the state sets, whatever their
+  # value.
   defp hover_paint(raw, props, keep) do
     key =
       if Map.has_key?(raw, "%p") and not Map.has_key?(raw, "properties"),
         do: "%p",
         else: "properties"
 
-    on = local_paint(Map.put(raw, key, Map.merge(Payload.properties(raw), props)))
+    merged = Map.merge(Payload.properties(raw), props)
+    on = local_paint(Map.put(raw, key, merged))
     base = local_paint(raw)
+    # Without the state's properties: a key `on` holds only because the
+    # element has it is not the state's.
+    off = local_paint(Map.put(raw, key, Map.drop(merged, Map.keys(props))))
 
-    for({k, v} <- on, Map.get(base, k) != v or MapSet.member?(keep, k), into: %{}, do: {k, v})
-    |> put_paint("text-decoration-line", underline(props["underline"]))
+    paint =
+      for {k, v} <- on,
+          Map.get(base, k) != v or (MapSet.member?(keep, k) and Map.get(off, k) != v),
+          into: %{},
+          do: {k, v}
+
+    put_paint(paint, "text-decoration-line", underline(props["underline"]))
   end
 
   defp underline(true), do: "underline"
