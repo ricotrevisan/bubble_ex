@@ -157,6 +157,10 @@
         "urgent": {
           "display": "Urgent",
           "value": "boolean"
+        },
+        "rank": {
+          "display": "Rank",
+          "value": "number"
         }
       },
       "display": "Status",
@@ -166,14 +170,16 @@
           "db_value": "open",
           "display": "Open",
           "sort_factor": 1,
-          "urgent": false
+          "urgent": false,
+          "rank": 2
         },
         "bSb": {
           "color": "green",
           "db_value": "done",
           "display": "Done",
           "sort_factor": 2,
-          "urgent": true
+          "urgent": true,
+          "rank": 1
         }
       }
     },
@@ -901,6 +907,10 @@
         "title_text": {
           "display": "Title",
           "value": "text"
+        },
+        "window_date_range": {
+          "display": "Window",
+          "value": "date_range"
         }
       },
       "privacy_role": {

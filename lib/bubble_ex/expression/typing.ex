@@ -25,7 +25,9 @@ defmodule BubbleEx.Expression.Typing do
   | `field` on a record, option or API type | the field's, option attribute's or external field's type; on a list, a list of it |
   | element state (`is visible`, `value`, `group's thing`, a reusable's parameter, a custom state, a plugin element's state its plugin's definition types) | from the element tree |
   | comparisons, `and`/`or`, checks, list predicates | yes/no |
-  | arithmetic | the left operand's type |
+  | arithmetic | the left operand's type; `date - date` is a `dateinterval` |
+  | a date interval's `to_days` / `to_hours` / `to_minutes` / `to_seconds`, a date range's `min` / `max` / `average` | number; date |
+  | an operator the parser keeps raw that the compiler lowers (`rounded down to`, `+(days)`, `formatted as`, …) | its result's (`format_boolean_as_type`: its `data_type`, a list when `is_list`) |
   | list operators, `:filtered`, `defaulting to` | from their operands |
 
   A `Property` whose name turns out to be a field of its now-typed subject
@@ -93,6 +95,30 @@ defmodule BubbleEx.Expression.Typing do
     "format_date" => "text",
     "format_number" => "text",
     "url" => "text"
+  }
+
+  # A date interval (`date - date`) converted to a number of units, and a
+  # date range's start, end and middle (`min`, `max`, `average`).
+  @interval_units ~w(to_days to_hours to_minutes to_seconds)
+  @range_parts ~w(min max average)
+
+  # Operators the parser keeps raw (`Ast.Raw`) that the compiler lowers, by
+  # result type. `format_boolean_as_type` is typed by its settings.
+  @raw_operators %{
+    "plus_seconds" => "date",
+    "plus_minutes" => "date",
+    "plus_hours" => "date",
+    "plus_days" => "date",
+    "plus_months" => "date",
+    "plus_years" => "date",
+    "rounded_down" => "date",
+    "extract_from_date" => "number",
+    "format_date" => "text",
+    "format_number" => "text",
+    "format_boolean" => "text",
+    "truncated" => "text",
+    "find_replace" => "text",
+    "split_by" => "list.text"
   }
 
   @page_data %{
@@ -499,6 +525,9 @@ defmodule BubbleEx.Expression.Typing do
 
   @doc "The result type of Bubble operator `name` (a no-argument message) on `operand`, or nil."
   @spec operator_type(String.t(), String.t() | nil) :: String.t() | nil
+  def operator_type(name, "dateinterval") when name in @interval_units, do: "number"
+  def operator_type(name, "date_range") when name in @range_parts, do: "date"
+
   def operator_type(name, operand) do
     case Map.get(@operators, name) do
       :same -> operand
@@ -603,7 +632,7 @@ defmodule BubbleEx.Expression.Typing do
 
   defp t(%Raw{subject: subject} = n, base, ctx) do
     {subject, spath, diags} = t(subject, base, ctx)
-    {%{n | subject: subject}, spath ++ [link(n)], diags}
+    {%{n | subject: subject, type: raw_type(n.raw)}, spath ++ [link(n)], diags}
   end
 
   defp t(%Field{} = n, base, ctx) do
@@ -776,14 +805,33 @@ defmodule BubbleEx.Expression.Typing do
 
   defp list_type(_, subject), do: subject.type
 
+  defp raw_type(raw) when is_map(raw) do
+    case Keys.value(raw, :name) do
+      "format_boolean_as_type" ->
+        boolean_as_type(Keys.normalize(Keys.value(raw, :properties) || %{}))
+
+      name ->
+        Map.get(@raw_operators, name)
+    end
+  end
+
+  defp raw_type(_raw), do: nil
+
+  defp boolean_as_type(%{"data_type" => type} = props) when is_binary(type) and type != "",
+    do: if(props["is_list"] == true, do: listed(type), else: type)
+
+  defp boolean_as_type(_props), do: nil
+
   defp arithmetic_type(op, "date", "date") when op == :minus, do: "dateinterval"
   defp arithmetic_type(_op, left, right), do: left || right
 
   defp item_type("list." <> type), do: type
   defp item_type(type), do: type
 
-  defp listed("list." <> _ = type), do: type
-  defp listed(type), do: "list." <> type
+  @doc "`type` as a list type (`\"list.\" <> type`, unless it is one already)."
+  @spec listed(String.t()) :: String.t()
+  def listed("list." <> _ = type), do: type
+  def listed(type), do: "list." <> type
 
   defp present(value) when is_binary(value), do: {:ok, value}
   defp present(_), do: :error

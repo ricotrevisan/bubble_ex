@@ -64,6 +64,8 @@ defmodule BubbleEx.Target.Elixir do
   | `lowercase/uppercase/trim/capitalize_words/text_length/json_encode/url_encode/is_email/abs/round/to_text/to_number(x)` | the operators |
   | `format_date(x, format[, zone])`, `format_number(x, options)`, `date_floor(x, unit[, zone])`, `date_part(x, unit[, zone])`, `date_add(x, n, unit)` | Bubble's date and number formats and calendar operators (`BubbleEx.Target.Elixir.Formats`); `zone` only when the expression names one |
   | `format_boolean(x, yes, no)`, `truncate(x, n)`, `replace(x, find, replace, regex?)`, `split(x, sep)`, `text_contains?(a, b)`, `text_contains_words?(a, b)` | the other formatting and text operators |
+  | `date_diff(a, b, unit)` | `(a - b) :to days` … `:to seconds` (WTF-594): exact, milliseconds over the unit's; a date interval is read only so (any other use of one is not compiled) |
+  | `range_start/range_end/range_middle(r)` | a date range's `min`, `max` and `average` (WTF-597) |
 
   List algebra (`:merged with`, `:unique elements`, `:minus list`,
   `:intersect with`, `:plus item`, `:minus item`, `:items until #`, `:item
@@ -71,7 +73,9 @@ defmodule BubbleEx.Target.Elixir do
   which compares things by Bubble ID, records and IDs alike; `:filtered`
   over options, texts, numbers or dates is `Enum.filter/2` with the
   constraints per item (`item`); `:sorted` on texts, numbers or dates is
-  `sort_values(list, descending?)`. An option's label or attribute of a list
+  `sort_values(list, descending?)`, and on options by a text, number or
+  date attribute `sort_values_by(list, &<enum>.attributes(&1).<attr>,
+  descending?)` (WTF-594), in the same order. An option's label or attribute of a list
   of options maps over it (a list attribute of each is one list of their
   items). A field of `x :converted to list` is the field of `x`, converted
   (`(x's a) :converted to list`).
@@ -450,6 +454,39 @@ defmodule BubbleEx.Target.Elixir do
     runtime(st, :sort_values, [l, inspect(desc)])
   end
 
+  # `:sorted` on a list of options by a text, number or date attribute
+  # (WTF-594): `:sorted` by value's order applied to each option's
+  # attribute (empty first ascending, last descending; equal keys keep
+  # their order).
+  defp value(%IR{op: :sort, args: [list, attr, desc]}, st)
+       when is_binary(attr) and is_boolean(desc) do
+    case classify(list.type) do
+      %Type{kind: :option, cardinality: :many, target: set} ->
+        option_sort(list, set, attr, desc, st)
+
+      _ ->
+        unsupported(st, {"sort", nil})
+    end
+  end
+
+  # A date interval (`date - date`, WTF-594) as a number of days, hours,
+  # minutes or seconds: exact, `(a - b) / unit`, so not whole across a
+  # clock change. Any other interval (a stored one) is not compiled.
+  defp value(%IR{op: :interval_to, args: [%IR{op: :sub, args: [a, b]}, unit]}, st) do
+    {[x, y], st} = Enum.map_reduce([a, b], st, &value/2)
+    runtime(st, :date_diff, [x, y, lit(unit)])
+  end
+
+  defp value(%IR{op: :interval_to}, st),
+    do: unsupported(st, {"a date interval other than a date minus a date", nil})
+
+  # A date range's start, end and middle (WTF-597).
+  defp value(%IR{op: op, args: [range]}, st)
+       when op in [:range_start, :range_end, :range_middle] do
+    {r, st} = value(range, st)
+    runtime(st, op, [r])
+  end
+
   # `:filtered` over options, texts, numbers, dates or yes/no values: the
   # constraints per item. A list of things is filtered by its target (a
   # database query: the items' fields are not read here).
@@ -461,6 +498,10 @@ defmodule BubbleEx.Target.Elixir do
       item_filter(l, pred, st)
     end
   end
+
+  # A date interval is read only as a number of units (`:interval_to`).
+  defp value(%IR{op: :sub, type: "dateinterval"}, st),
+    do: unsupported(st, {"a date interval used as a value", nil})
 
   defp value(%IR{op: op, args: [l, r]}, st) when op in @arithmetic do
     {[a, b], st} = Enum.map_reduce([l, r], st, &value/2)
@@ -547,6 +588,27 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   defp value(%IR{op: op}, st), do: unsupported(st, {"#{op}", nil})
+
+  defp option_sort(list, set, attr, desc, st) do
+    with %{module: module, attributes: attributes} <- st.lookup.enums[set],
+         %{name: name, bubble_type: bubble_type} <-
+           Enum.find(attributes, &(&1.source.field == attr)),
+         %Type{kind: :scalar, base: base, cardinality: :one} when base in [:text, :number, :date] <-
+           classify(bubble_type) do
+      {l, st} = value(list, st)
+      key = "&#{st.namespace}.#{module}.attributes(&1).#{name}"
+      runtime(st, :sort_values_by, [l, key, inspect(desc)])
+    else
+      nil when is_map_key(st.lookup.enums, set) ->
+        unsupported(st, {"an unmapped option attribute", "#{set}.#{attr}"})
+
+      nil ->
+        unsupported(st, {"an unmapped option set", set})
+
+      _ ->
+        unsupported(st, {"sort", nil})
+    end
+  end
 
   # --- conditions ---------------------------------------------------------------------
 
@@ -791,9 +853,10 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   # A yes/no folded from conditional states (an element's visibility read
-  # by another, WTF-578; an input's initial content): a yes/no value, an
-  # empty one reading as no, as a stored one.
-  defp atom_(%IR{op: :if, type: "boolean"} = ir, st) do
+  # by another, WTF-578; an input's initial content), or a yes/no
+  # `formatted as` a yes/no (WTF-597): a yes/no value, an empty one
+  # reading as no, as a stored one.
+  defp atom_(%IR{op: op, type: "boolean"} = ir, st) when op in [:if, :format_boolean] do
     {part, st} = value(ir, st)
     {all_ok({"(#{part} == true)", "(#{part} != true)", []}, [part]), st}
   end

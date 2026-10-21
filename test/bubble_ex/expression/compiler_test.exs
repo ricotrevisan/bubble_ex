@@ -192,6 +192,127 @@ defmodule BubbleEx.Expression.CompilerTest do
     end
   end
 
+  describe "date intervals, date ranges, typed yes/no formats and option sorts (WTF-594, WTF-597)" do
+    setup do
+      %{
+        date: chain(src("CurrentPageItem"), [msg("due_date")]),
+        range: chain(src("CurrentPageItem"), [msg("window_date_range")]),
+        opts: [host: "bT4"]
+      }
+    end
+
+    test "a date minus a date, both rounded down, to days", %{date: date, opts: opts} do
+      day = %{"component_to_extract" => "day"}
+      now = src("PageData", %{"name" => "Current Date/Time"})
+
+      raw =
+        chain(now, [
+          msg("rounded_down", nil, day),
+          msg("minus", chain(date, [msg("rounded_down", nil, day)])),
+          msg("to_days")
+        ])
+
+      assert %IR{
+               op: :interval_to,
+               type: "number",
+               args: [
+                 %IR{
+                   op: :sub,
+                   type: "dateinterval",
+                   args: [
+                     %IR{op: :date_floor, args: [%IR{op: :input}, "day", nil]},
+                     %IR{op: :date_floor, args: [%IR{op: :field}, "day", nil]}
+                   ]
+                 },
+                 :day
+               ]
+             } = ir(raw, opts)
+
+      for {name, unit} <- [
+            {"to_hours", :hour},
+            {"to_minutes", :minute},
+            {"to_seconds", :second}
+          ] do
+        assert %IR{op: :interval_to, args: [%IR{op: :sub}, ^unit]} =
+                 ir(chain(now, [msg("minus", date), msg(name)]), opts)
+      end
+    end
+
+    test "to days of anything but a date interval is not an interval conversion",
+         %{opts: opts} do
+      number = chain(el("bI1"), [msg("get_data")])
+      assert %{ir: nil} = compile(chain(number, [msg("to_days")]), opts)
+    end
+
+    test "a date range's min, max and average", %{range: range, opts: opts} do
+      for {name, op} <- [{"min", :range_start}, {"max", :range_end}, {"average", :range_middle}] do
+        assert %IR{op: ^op, type: "date", args: [%IR{op: :field, type: "date_range"}]} =
+                 ir(chain(range, [msg(name)]), opts)
+      end
+
+      custom = %{"formatting_type" => "custom", "custom_format" => "mmm d"}
+
+      assert %IR{op: :format_date, args: [%IR{op: :range_end}, "mmm d", nil]} =
+               ir(chain(range, [msg("max"), msg("format_date", nil, custom)]), opts)
+    end
+
+    test "a yes/no formatted as a typed value", %{range: range, opts: opts} do
+      as_type = fn props, yes, no ->
+        msg(
+          "format_boolean_as_type",
+          nil,
+          Map.merge(props, %{"value_for_true" => yes, "value_for_false" => no})
+        )
+      end
+
+      text =
+        chain(range, [
+          msg("is_not_empty"),
+          as_type.(%{"data_type" => "text", "is_list" => false}, text(["Due"]), text([""]))
+        ])
+
+      assert %IR{op: :format_boolean, type: "text", args: [%IR{op: :not}, _, _]} =
+               ir(text, opts)
+
+      flipped =
+        chain(cu(), [
+          msg("admin_boolean"),
+          as_type.(%{"data_type" => "boolean", "is_list" => false}, false, true)
+        ])
+
+      assert %IR{
+               op: :format_boolean,
+               type: "boolean",
+               args: [_, %IR{op: :literal, args: [false]}, %IR{op: :literal, args: [true]}]
+             } = ir(flipped)
+
+      users =
+        chain(cu(), [
+          msg("admin_boolean"),
+          as_type.(%{"data_type" => "user", "is_list" => true}, cu(), cu())
+        ])
+
+      assert %IR{op: :format_boolean, type: "list.user"} = ir(users)
+
+      untyped = chain(cu(), [msg("admin_boolean"), as_type.(%{}, text(["a"]), text(["b"]))])
+      assert %{ir: nil} = compile(untyped)
+    end
+
+    test "options sorted by an attribute" do
+      sorted =
+        chain(opt("status", "all values"), [
+          msg("sorted", nil, %{"sort_field" => "rank", "descending" => true})
+        ])
+
+      assert ir(sorted) ==
+               n(
+                 :sort,
+                 [n(:all_options, ["status"], "list.option.status"), "rank", true],
+                 "list.option.status"
+               )
+    end
+  end
+
   describe "date and number formats (WTF-456)" do
     setup do
       %{date: chain(src("CurrentPageItem"), [msg("due_date")]), opts: [host: "bT4"]}

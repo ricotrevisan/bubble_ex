@@ -641,6 +641,19 @@ defmodule <%= @module %>.Bubble.Runtime do
     a |> list() |> Enum.sort(sorter)
   end
 
+  @doc """
+  `:sorted` by a key (an option's attribute, `key.(item)`): `sort_values/2`'s
+  order on the keys; items with equal keys keep their order.
+  """
+  def sort_values_by(a, key, descending?) do
+    sorter =
+      if descending?,
+        do: &(value_order(elem(&1, 0), elem(&2, 0)) != :lt),
+        else: &(value_order(elem(&1, 0), elem(&2, 0)) != :gt)
+
+    a |> list() |> Enum.map(&{key.(&1), &1}) |> Enum.sort(sorter) |> Enum.map(&elem(&1, 1))
+  end
+
   defp value_order(a, b) do
     case {empty?(a), empty?(b)} do
       {true, true} -> :eq
@@ -746,4 +759,53 @@ defmodule <%= @module %>.Bubble.Runtime do
   end
 
   def date_part(_x, _unit, _zone), do: nil
+
+  @unit_ms %{day: 86_400_000, hour: 3_600_000, minute: 60_000, second: 1000}
+
+  @doc """
+  A date minus a date (a date interval) as a number of `unit`s (`:day`,
+  `:hour`, `:minute`, `:second`): exact, the milliseconds between them
+  over the unit's, so days across a clock change are not whole (as in
+  Bubble, where an interval is milliseconds). Empty when either is empty.
+  """
+  def date_diff(a, b, unit) do
+    with x when is_integer(x) <- unix_ms(a),
+         y when is_integer(y) <- unix_ms(b),
+         %{^unit => ms} <- @unit_ms do
+      n = (x - y) / ms
+      if n == trunc(n), do: trunc(n), else: n
+    else
+      _ -> nil
+    end
+  end
+
+  @doc "A date range's start (Bubble's `min`); empty for an empty range."
+  def range_start(%{start: x}), do: x
+  def range_start(%{"start" => x}), do: x
+  def range_start(_range), do: nil
+
+  @doc "A date range's end (Bubble's `max`); empty for an empty range."
+  def range_end(%{end: x}), do: x
+  def range_end(%{"end" => x}), do: x
+  def range_end(_range), do: nil
+
+  @doc """
+  A date range's middle (Bubble's `average`): the instant halfway between
+  its start and end, to the millisecond; empty unless both are set.
+  """
+  def range_middle(range) do
+    with x when is_integer(x) <- unix_ms(range_start(range)),
+         y when is_integer(y) <- unix_ms(range_end(range)) do
+      # Truncated toward zero, as a JavaScript Date truncates a fraction.
+      DateTime.from_unix!(Kernel.div(x + y, 2), :millisecond)
+    else
+      _ -> nil
+    end
+  end
+
+  # Ecto's naive datetimes hold UTC; a calendar day is its midnight in UTC.
+  defp unix_ms(%DateTime{} = x), do: DateTime.to_unix(x, :millisecond)
+  defp unix_ms(%NaiveDateTime{} = x), do: x |> DateTime.from_naive!("Etc/UTC") |> unix_ms()
+  defp unix_ms(%Date{} = x), do: x |> DateTime.new!(~T[00:00:00], "Etc/UTC") |> unix_ms()
+  defp unix_ms(_x), do: nil
 end
