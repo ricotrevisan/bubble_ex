@@ -542,13 +542,14 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     {:ok, view, _html} = live(conn, "/")
     assert hidden?(view, "bVisG")
     assert hidden?(view, "bVisOf")
-    refute hidden?(view, "bNotVisOf")
+    # Hidden while bVisG isn't visible.
+    assert hidden?(view, "bNotVisOf")
     assert hidden?(view, "bVisChild")
 
     {:ok, view, _html} = live(sign_in(conn, user), "/")
     refute hidden?(view, "bVisG")
     refute hidden?(view, "bVisOf")
-    assert hidden?(view, "bNotVisOf")
+    refute hidden?(view, "bNotVisOf")
     refute hidden?(view, "bVisChild")
   end
 end
