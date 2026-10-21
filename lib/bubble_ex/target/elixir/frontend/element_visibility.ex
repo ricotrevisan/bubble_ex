@@ -28,14 +28,20 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
       knows
     * it is an overlay (a Popup, Group Focus or Floating Group: workflows
       show and hide it) or an ancestor on the way is one, or is a runtime
-      container (the element is in a repeating group's cell the reader is
-      not in)
+      container (the element is in a repeating group's cell, a table or a
+      plugin container the reader is not in)
     * a breakpoint sets its display, or an ancestor's on the way
     * a conditional on the way sets the visibility to something other
       than a yes/no literal, or does not compile
     * it is on another page or reusable element, or not found
-    * it reads itself back (the element's own visibility, directly or
-      through others), which Bubble settles at runtime
+    * it reads itself back (the element's own visibility, directly, by
+      a group reading its own contents, or through others), which Bubble
+      settles at runtime
+
+  An element holding the reader is visible only while the reader is
+  shown: the read is for what the reader shows (its visibility, text,
+  "isn't clickable" and shown values), not for a value it hands on while
+  hidden.
 
   The inlined conditions read their own inputs, so the page decides the
   reader with what it keeps, as for any other condition: an input it does
@@ -151,7 +157,9 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
       holders = [host | reader.ancestors]
 
       cond do
-        id == host and MapSet.member?(seen, id) -> :error
+        # Its visibility, or a holder's, is what is being compiled: it
+        # reads itself back (a group reading its own child, say).
+        Enum.any?([id | target.ancestors], &MapSet.member?(seen, &1)) -> :error
         id in holders -> {:ok, literal(true)}
         true -> path_visible(path(id, target, holders), seen, index)
       end

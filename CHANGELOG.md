@@ -16,8 +16,13 @@ All notable changes to this project are documented here.
   runtime reports. An element holding the reader is visible. A read stays
   marked when the browser may change what decides it: a workflow step
   shows, hides, toggles or animates the element or an ancestor on the way,
-  an overlay or a repeating group's cell is on the way, a breakpoint sets
-  its display, a conditional does not compile, or it reads itself back.
+  an overlay or a runtime container (a repeating group's cell, a table) is
+  on the way, a breakpoint sets its display, a conditional does not
+  compile, or it reads itself back (a group reading its own contents
+  too). States a read decides when compiling are settled: a no never
+  applies, the last yes sets the value the earlier ones and the page-load
+  value would, and an element whose states are all decided renders that
+  visibility (or "isn't clickable") statically.
   The inlined conditions' own inputs then decide, so a read whose element
   reads data the page does not load is marked for that instead.
 

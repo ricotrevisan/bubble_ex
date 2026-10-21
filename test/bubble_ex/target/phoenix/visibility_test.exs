@@ -1214,5 +1214,135 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
                "TODO(bubble:bNotVisOf) visibility: 1 conditional not lowered (it reads a value " <>
                  "the page does not keep: element_state:isnt_visible)"
     end
+
+    test "is not decided where a group reads its own contents, or a step shows an ancestor",
+         %{} do
+      reads = fn element, state ->
+        %{
+          "type" => "GetElement",
+          "properties" => %{"element_id" => element},
+          "next" => %{"type" => "Message", "name" => state}
+        }
+      end
+
+      # bVisG shown when its own child is: Bubble keeps it hidden.
+      template =
+        app()
+        |> put_in(
+          ["pages", "index", "elements", "bVisG", "states", "0", "condition"],
+          reads.("bVisGT", "is_visible")
+        )
+        |> build()
+        |> Map.fetch!(:files)
+        |> Map.fetch!("lib/shop_web/live/index_live.html.heex")
+
+      assert template =~
+               "TODO(bubble:bVisG) visibility: 1 conditional not lowered (it reads a value " <>
+                 "the page does not keep: element_state:is_visible)"
+
+      assert tag(template, "bVisG") =~ ~r/\shidden[\s>]/
+
+      # A step shows bVisG: neither bVisG nor what is inside it is decided.
+      template =
+        app()
+        |> put_in(
+          ["pages", "index", "workflows", "wShow", "actions", "0", "properties", "element_id"],
+          "bVisG"
+        )
+        |> build()
+        |> Map.fetch!(:files)
+        |> Map.fetch!("lib/shop_web/live/index_live.html.heex")
+
+      for id <- ~w(bVisOf bVisChild) do
+        assert template =~
+                 "TODO(bubble:#{id}) visibility: 1 conditional not lowered (it reads a value " <>
+                   "the page does not keep: element_state:is_visible)"
+      end
+    end
+
+    test "isn't visible of an element and its group is either one hidden", %{} do
+      app =
+        put_in(
+          app(),
+          ["pages", "index", "elements", "bVisG", "elements", "bVisGT", "states"],
+          %{
+            "0" => %{
+              "type" => "State",
+              "condition" => %{
+                "type" => "CurrentUser",
+                "next" => %{
+                  "type" => "Message",
+                  "name" => "role_text",
+                  "next" => %{"type" => "Message", "name" => "is_empty"}
+                }
+              },
+              "properties" => %{"is_visible" => false}
+            }
+          }
+        )
+        |> put_in(["pages", "index", "elements", "bNotVisOf", "states", "0", "condition"], %{
+          "type" => "GetElement",
+          "properties" => %{"element_id" => "bVisGT"},
+          "next" => %{"type" => "Message", "name" => "isnt_visible"}
+        })
+
+      live = build(app).files["lib/shop_web/live/index_live.ex"]
+      [helper] = Regex.run(~r/defp visible_bnotvisof\(.*?\n  end\n/s, live)
+
+      # Not (bVisGT shown and bVisG shown): either one's fold is not yes.
+      assert helper =~ " or "
+      assert length(Regex.scan(~r/!=\s+true/, helper)) == 2
+    end
+
+    test "a state decided when compiling sets the value also until the page has a width", %{} do
+      app =
+        put_in(app(), ["pages", "index", "elements", "bVisG", "elements", "bVisGW"], %{
+          "id" => "bVisGW",
+          "type" => "Text",
+          "properties" => %{
+            "height" => 40,
+            "width" => 300,
+            "order" => 3,
+            "is_visible" => false,
+            "text" => %{"type" => "TextExpression", "entries" => %{"0" => "Wide"}}
+          },
+          "states" => %{
+            "0" => %{
+              "type" => "State",
+              "condition" => %{
+                "type" => "GetElement",
+                "properties" => %{"element_id" => "bVisG"},
+                "next" => %{"type" => "Message", "name" => "is_visible"}
+              },
+              "properties" => %{"is_visible" => true}
+            },
+            "1" => %{
+              "type" => "State",
+              "condition" => %{
+                "type" => "PageData",
+                "properties" => %{"name" => "Current Page Width"},
+                "next" => %{"type" => "Message", "name" => "less_than", "args" => 600}
+              },
+              "properties" => %{"is_visible" => false}
+            }
+          }
+        })
+
+      live = build(app).files["lib/shop_web/live/index_live.ex"]
+
+      assert squash(live) =~
+               squash("""
+               defp visible_bvisgw(page_data_current_page_width) do
+                 cond do
+                   is_nil(page_data_current_page_width) -> true
+               """)
+
+      assert squash(live) =~
+               squash("""
+                   Shop.Bubble.Runtime.compare(:lt, page_data_current_page_width, 600) == true -> false
+                   true -> true
+                 end
+               """)
+    end
   end
 end

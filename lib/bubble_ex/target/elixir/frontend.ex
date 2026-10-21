@@ -79,7 +79,8 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   or reusable element compiles to that element's visibility, folded from
   its conditionals and its ancestors' up to the one the reader shares, when
   only the server decides it (WTF-578, `ElementVisibility`): no workflow
-  step shows or hides it, no overlay or cell is on the way. Its
+  step shows, hides, toggles or animates it, no overlay or runtime
+  container (a repeating group's cell, a table) is on the way. Its
   conditions' inputs become the reader's.
 
   A repeating group's `is loading` compiles to a constant no (replayed
@@ -281,7 +282,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
       results = Enum.map(parts, &elem(&1, 2))
 
       %{
-        source: fold_source(parts, bindings, initial, default),
+        source: fold_source(parts, bindings, default),
         bindings: bindings,
         runtime: results |> Enum.flat_map(& &1.runtime) |> Enum.uniq() |> Enum.sort(),
         loads: merge_loads(results),
@@ -324,7 +325,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
       results = Enum.map(parts, &elem(&1, 2))
 
       %{
-        source: fold_source(parts, bindings, initial, default),
+        source: fold_source(parts, bindings, default),
         bindings: bindings,
         runtime: results |> Enum.flat_map(& &1.runtime) |> Enum.uniq() |> Enum.sort(),
         loads: merge_loads(results),
@@ -459,15 +460,15 @@ defmodule BubbleEx.Target.Elixir.Frontend do
     do: %{source: inspect(text), bindings: [], runtime: [], loads: %{}, literal?: true}
 
   # The states in Bubble's order as one `cond`: the last true one decides,
-  # else `default` (the value on page load, see settle/2); until the page
-  # has a width, the value on page load.
-  defp fold_source(parts, bindings, initial, default) do
+  # else `default` (the value on page load, or the one a state decided
+  # when compiling sets, see settle/2), also until the page has a width.
+  defp fold_source(parts, bindings, default) do
     clauses =
       parts
       |> Enum.reverse()
       |> Enum.map_join("\n", fn {source, value, _result} -> "#{truth(source)} -> #{value}" end)
 
-    "cond do\n#{width_guard(bindings, initial)}#{clauses}\ntrue -> #{default}\nend"
+    "cond do\n#{width_guard(bindings, default)}#{clauses}\ntrue -> #{default}\nend"
     |> Code.format_string!()
     |> IO.iodata_to_binary()
   end

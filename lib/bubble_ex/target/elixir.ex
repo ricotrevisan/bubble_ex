@@ -791,8 +791,8 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   # A yes/no folded from conditional states (an element's visibility read
-  # by another, WTF-578): its condition is decided where it is, so the
-  # value is yes or no, never empty, and its negation its complement.
+  # by another, WTF-578; an input's initial content): a yes/no value, an
+  # empty one reading as no, as a stored one.
   defp atom_(%IR{op: :if, type: "boolean"} = ir, st) do
     {part, st} = value(ir, st)
     {all_ok({"(#{part} == true)", "(#{part} != true)", []}, [part]), st}
