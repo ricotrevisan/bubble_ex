@@ -67,7 +67,12 @@
 #     phoenix_api_calls, API Connector calls from a backend and a page
 #     workflow through the generated Req clients, against a stub, and
 #     their secrets only from the configuration (WTF-533,
-#     test/support/target/phoenix/api_calls_behavior.exs)
+#     test/support/target/phoenix/api_calls_behavior.exs); for
+#     phoenix_hover, "is hovered" conditionals lowered to the browser's
+#     hover: hover-shown elements rendered hidden with their contents,
+#     nothing sent to the server, the rules in the stylesheet (WTF-590,
+#     test/support/target/phoenix/hover_behavior.exs; the hovering itself
+#     is scripts/hover_browser_check.sh, in Chrome)
 #   * the same checks with privacy: :enforced (WTF-423) on the fixtures
 #     with privacy rules, pages and workflows (among them
 #     phoenix_deleted_kept, rendered with the app's index: deleted fields a
@@ -272,6 +277,15 @@ for fixture in $fixtures; do
         test/plugin_states_behavior_test.exs
       mix test test/plugin_states_behavior_test.exs
       rm test/plugin_states_behavior_test.exs
+    fi
+
+    # "is hovered" conditionals (WTF-590): lowered to the stylesheet,
+    # nothing on the server.
+    if [[ "$fixture" == phoenix_hover ]]; then
+      cp "$root/test/support/target/phoenix/hover_behavior.exs" \
+        test/hover_behavior_test.exs
+      mix test test/hover_behavior_test.exs
+      rm test/hover_behavior_test.exs
     fi
 
     # Visibility conditionals (WTF-477): the hidden attribute per user and

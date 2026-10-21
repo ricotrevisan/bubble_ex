@@ -605,7 +605,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp page(entry, base) do
     {page, hidden} = shown(entry.node)
     entry = %{entry | node: page}
-    lowered = page |> Css.lower(selector: &selector/1) |> index_lowered()
+
+    lowered =
+      page |> Css.lower(selector: &selector/1, id_selector: &id_selector/1) |> index_lowered()
 
     ctx =
       base
@@ -652,7 +654,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     lowered =
       definition
-      |> Css.lower_definition_children(selector: &selector/1)
+      |> Css.lower_definition_children(selector: &selector/1, id_selector: &id_selector/1)
       |> index_lowered()
 
     ctx =
@@ -1186,7 +1188,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       else
         lowered =
           node.children
-          |> Enum.flat_map(fn child -> Css.lower(child, selector: &selector/1) end)
+          |> Enum.flat_map(fn child ->
+            Css.lower(child, selector: &selector/1, id_selector: &id_selector/1)
+          end)
           |> index_lowered()
 
         inner_ctx =
@@ -1233,7 +1237,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     lowered =
       node.children
-      |> Enum.flat_map(fn child -> Css.lower(child, selector: &selector/1) end)
+      |> Enum.flat_map(fn child ->
+        Css.lower(child, selector: &selector/1, id_selector: &id_selector/1)
+      end)
       |> index_lowered()
 
     # The reusable instances the page renders per cell (WTF-494): the ones
@@ -1357,12 +1363,14 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         mode = (cell.layout || %{})[:mode]
 
         Enum.flat_map(cell.children, fn child ->
-          Css.lower(child, selector: &selector/1, parent_mode: mode)
+          Css.lower(child, selector: &selector/1, id_selector: &id_selector/1, parent_mode: mode)
         end)
       end)
 
     (node.children ++ cells)
-    |> Enum.flat_map(fn part -> Css.lower(part, selector: &selector/1) end)
+    |> Enum.flat_map(fn part ->
+      Css.lower(part, selector: &selector/1, id_selector: &id_selector/1)
+    end)
     |> Kernel.++(contents)
     |> index_lowered()
   end
@@ -2272,7 +2280,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp default_text_class(_node), do: nil
 
-  defp selector(node), do: ~s([data-bubble-id="#{css_escape(bid(node))}"])
+  defp selector(node), do: id_selector(bid(node))
+
+  # An element by its Bubble ID (a hover conditional reading another
+  # element, WTF-590).
+  defp id_selector(id), do: ~s([data-bubble-id="#{css_escape(id)}"])
 
   # The element's Bubble ID; a normalized node without one (a synthetic
   # container) is marked by its map key.
@@ -3250,8 +3262,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # shown/1 (`ctx.entry.id` its surface): the decisions of
   # visibility_attrs/3 and conditional_visibility/6, without their marks.
   # `Overlays.hidden_contents/4` leaves the contents out of those only.
+  # An element a hover conditional shows or hides (WTF-590) keeps its
+  # contents: the browser shows it, not the server.
   defp compiled_visibility?(%Node{} = node, ctx) do
-    with %{kind: :condition, payload: payload, id: id} <- node.bindings["condition"],
+    with false <- hover_visibility?(node),
+         %{kind: :condition, payload: payload, id: id} <- node.bindings["condition"],
          [_ | _] <- Conditions.visibility(payload),
          false <- match?(%{"boundary" => "overlay"}, node.runtime),
          false <- is_map(node.box) and node.box[:hidden?] == true and breakpoint_display?(node),
@@ -3264,6 +3279,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       _ -> false
     end
   end
+
+  # Whether a hover rule shows or hides the element (WTF-590,
+  # `BubbleEx.Frontend.Hover`, which Pages stays off: it reads expressions).
+  defp hover_visibility?(%Node{hover: rules}), do: Enum.any?(rules, &is_boolean(&1["visible"]))
 
   # The properties other than visibility a conditional sets that the page
   # lowers (or marks) elsewhere: a Text's or button's text (text_slot/4).

@@ -175,7 +175,8 @@ defmodule BubbleEx.Frontend.Export.Css do
         anchored_rule(selector, anchored),
         extra_rule(node, opts),
         responsive_css([entry], opts),
-        breakpoint_css([entry], opts)
+        breakpoint_css([entry], opts),
+        hover_css(entry, opts)
       ]
       |> Enum.reject(&(&1 == ""))
       |> Enum.join("\n")
@@ -1563,6 +1564,78 @@ defmodule BubbleEx.Frontend.Export.Css do
       end)
     end)
   end
+
+  # An element's hover conditionals (WTF-590, `BubbleEx.Frontend.Hover`),
+  # for a target that names elements by Bubble ID (`opts[:id_selector]`,
+  # a function of the ID). Each rule holds its element's selector once
+  # (the hovered parts in `:where()`), so every rule weighs the same as
+  # the element's own: later states win, as in Bubble, and all of them
+  # come after its breakpoint rules. One that shows the element also
+  # beats a `hidden` attribute.
+  defp hover_css({%Node{hover: [_ | _] = rules} = node, parent}, opts) do
+    case Keyword.get(opts, :id_selector) do
+      fun when is_function(fun, 1) ->
+        self = selector(node, opts)
+
+        Enum.map_join(rules, "\n", fn rule ->
+          rule
+          |> hover_decls(node, parent)
+          |> hover_rule(rule, self, fun)
+        end)
+
+      _ ->
+        ""
+    end
+  end
+
+  defp hover_css(_entry, _opts), do: ""
+
+  defp hover_decls(rule, node, parent) do
+    shown =
+      case rule["visible"] do
+        # `revert` would give a `hidden` element the browser's own
+        # `display: none` back: a box without a display of its own is a
+        # block, as an element's is.
+        true ->
+          %{"display" => "revert"} |> restore_visible_display(node, parent) |> block_display()
+
+        false ->
+          %{"display" => "none"}
+
+        nil ->
+          %{}
+      end
+
+    Map.merge(rule["paint"] || %{}, shown)
+  end
+
+  defp block_display(%{"display" => "revert"} = paint), do: Map.put(paint, "display", "block")
+  defp block_display(paint), do: paint
+
+  defp hover_rule(paint, _rule, _self, _fun) when map_size(paint) == 0, do: ""
+
+  defp hover_rule(paint, rule, self, fun) do
+    hidden? = rule["visible"] == true
+
+    selectors =
+      Enum.flat_map(rule["on"], fn on ->
+        variants = if hidden?, do: ["", "[hidden]"], else: [""]
+        Enum.map(variants, &hovered_selector(on, self <> &1, fun))
+      end)
+
+    "#{Enum.join(selectors, ",\n")} {\n#{declarations_from_paint(paint)}}\n"
+  end
+
+  defp hovered_selector(%{"element" => "self"}, self, _fun), do: "#{self}:where(:hover)"
+
+  defp hovered_selector(%{"element" => id, "relation" => "ancestor"}, self, fun),
+    do: ":where(#{fun.(id)}:hover) #{self}"
+
+  defp hovered_selector(%{"element" => id, "relation" => "descendant"}, self, fun),
+    do: "#{self}:where(:has(#{fun.(id)}:hover))"
+
+  defp hovered_selector(%{"element" => id, "within" => within}, self, fun),
+    do: ":where(#{fun.(within)}:has(#{fun.(id)}:hover)) #{self}"
 
   defp restore_visible_display(%{"display" => "revert"} = paint, node, parent) do
     visible = %{node | box: Map.drop(node.box, [:hidden?, :collapsed?, "hidden?", "collapsed?"])}

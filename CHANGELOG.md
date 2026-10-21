@@ -6,6 +6,23 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **"is hovered" lowered to the browser's hover (WTF-590).** A
+  conditional whose condition is only "This element is hovered", another
+  element's "is hovered", or an "or" of them no longer waits for the
+  server: normalizing moves it to the node's hover rules
+  (`BubbleEx.Frontend.Hover`), and the page's residue stylesheet applies
+  it with `:hover` (another element read as one holding it, one it holds
+  through `:has()`, or a sibling within their nearest common group). It
+  carries the state's paint (colors, borders, shadows, opacity,
+  typography, underline) and its visibility (shown over the `hidden`
+  attribute, its contents rendered) when no later state that stays sets
+  the visibility. No round trip, no client code. An "is hovered" read
+  alongside anything else, an element in a repeating group's cell, an
+  overlay or another surface, the reusable element itself, and
+  properties a stylesheet does not set stay conditionals as before.
+  Touch screens get the browser's own tap emulation of `:hover`; Bubble's
+  behaviour there is not replayed. `scripts/hover_browser_check.sh`
+  hovers the new `phoenix_hover` fixture in Chrome.
 - **Date differences, date range parts, typed yes/no formats and option
   sorts compile (WTF-594, WTF-597).** `(date - date) :to days` (`:to
   hours`, `:to minutes`, `:to seconds`) is `:interval_to` in the IR and

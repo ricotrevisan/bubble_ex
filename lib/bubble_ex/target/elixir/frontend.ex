@@ -44,7 +44,9 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   (`Conditions.text_source/2`), so a target can print the values again
   (as BBCode nodes). It compiles only when every condition and every text
   does. Anything else conditionals set (colors, icons…) is not compiled
-  here.
+  here. States whose condition is only "is hovered" reads are not here
+  either: normalizing moved them to the node's hover rules, which the
+  page's stylesheet applies (WTF-590, `BubbleEx.Frontend.Hover`).
 
   A condition, like a shown value, may read a URL parameter as its type
   (text, a number, a yes/no, a date) and the URL's path (its segments,

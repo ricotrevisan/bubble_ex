@@ -16,6 +16,10 @@ defmodule BubbleEx.Frontend.Normalized.Node do
   #     rendered at runtime (a dynamic Repeating Group, a Table, a plugin
   #     container): its `children` are the normalized content, a per-item
   #     template when `"repeats"` is true. Static exports do not render them.
+  #
+  # `hover` holds the conditionals the browser applies while an element is
+  # hovered, moved out of the `:condition` binding (WTF-590,
+  # `BubbleEx.Frontend.Hover`).
 
   @type kind ::
           :page
@@ -59,7 +63,8 @@ defmodule BubbleEx.Frontend.Normalized.Node do
           attributes: map(),
           responsive: [map()],
           occurrence: [non_neg_integer()],
-          runtime: map() | nil
+          runtime: map() | nil,
+          hover: [map()]
         }
 
   @enforce_keys [:exporter_id, :kind, :map_key, :source]
@@ -82,6 +87,7 @@ defmodule BubbleEx.Frontend.Normalized.Node do
     attributes: %{},
     responsive: [],
     occurrence: [],
-    runtime: nil
+    runtime: nil,
+    hover: []
   ]
 end

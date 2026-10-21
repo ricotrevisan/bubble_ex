@@ -31,6 +31,8 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
       container (the element is in a repeating group's cell, a table or a
       plugin container the reader is not in)
     * a breakpoint sets its display, or an ancestor's on the way
+    * a hover conditional shows or hides it, or an ancestor on the way
+      (WTF-590, `BubbleEx.Frontend.Hover`): the browser applies it
     * a conditional on the way sets the visibility to something other
       than a yes/no literal, or does not compile
     * it is on another page or reusable element, or not found
@@ -50,7 +52,7 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
 
   alias BubbleEx.Expression
   alias BubbleEx.Expression.{Compiler, IR}
-  alias BubbleEx.Frontend.{Conditions, Normalized, Payload, Responsive}
+  alias BubbleEx.Frontend.{Conditions, Hover, Normalized, Payload, Responsive}
   alias BubbleEx.Frontend.Normalized.Node
 
   @states ["is_visible", "isnt_visible"]
@@ -200,6 +202,7 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
       match?(%{"boundary" => "overlay"}, node.runtime) -> :error
       not target? and match?(%{"boundary" => _}, node.runtime) -> :error
       breakpoint_display?(node) -> :error
+      Hover.visibility?(node) -> :error
       true -> fold(node, id, MapSet.put(seen, id), index)
     end
   end
