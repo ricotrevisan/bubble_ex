@@ -232,7 +232,7 @@ defmodule BubbleEx.Frontend.RenderDiffTest do
 
       assert %{category: :unexplained, nested: 1} = find(report, "bGroup", :only_bubble)
       assert report.known_unused == []
-      assert report.known_folded == %{"bInner" => "bGroup"}
+      assert report.known_folded == %{"bInner" => ["bGroup"]}
 
       assert RenderDiff.summary(report, 5) =~
                "folded into another difference (list that one): bInner in bGroup"

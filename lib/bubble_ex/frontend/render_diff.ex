@@ -305,10 +305,9 @@ defmodule BubbleEx.Frontend.RenderDiff do
     used = for d <- raw, known_for(listed, d), into: MapSet.new(), do: d.id
 
     folded =
-      for d <- nested,
-          known_for(listed, d),
-          into: %{},
-          do: {d.id, root[{d.id, d.kind}]}
+      for(d <- nested, known_for(listed, d), do: {d.id, root[{d.id, d.kind}]})
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+      |> Map.new(fn {id, roots} -> {id, roots |> Enum.uniq() |> Enum.sort()} end)
 
     %{
       path: bubble["path"],
@@ -342,7 +341,7 @@ defmodule BubbleEx.Frontend.RenderDiff do
         |> Enum.reject(&MapSet.member?(used, &1))
         |> Enum.sort(),
       # Owner-listed elements whose difference folds into an ancestor's
-      # (`%{id => root id}`): the root's category is what counts.
+      # (`%{id => [root id]}`): the root's category is what counts.
       known_folded: folded
     }
   end
@@ -783,7 +782,9 @@ defmodule BubbleEx.Frontend.RenderDiff do
          else: [
            "",
            "Owner-listed but folded into another difference (list that one): " <>
-             (folded |> Enum.sort() |> Enum.map_join(", ", fn {id, r} -> "#{id} in #{r}" end))
+             (folded
+              |> Enum.sort()
+              |> Enum.map_join(", ", fn {id, roots} -> "#{id} in #{Enum.join(roots, "/")}" end))
          ]
        ))
     |> Enum.join("\n")

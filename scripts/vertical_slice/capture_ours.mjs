@@ -61,8 +61,9 @@ const email = process.env.CAPTURE_EMAIL || null;
 const out = opts.out;
 // A directory the script creates is 0700; an existing one must already be private.
 if (fs.existsSync(out)) {
-  if ((fs.statSync(out).mode & 0o077) !== 0) {
-    console.error(`--out ${out} is readable by others: use a private (0700) directory`);
+  const st = fs.statSync(out);
+  if (!st.isDirectory() || (st.mode & 0o077) !== 0) {
+    console.error(`--out ${out} must be a private (0700) directory`);
     process.exit(2);
   }
 } else {

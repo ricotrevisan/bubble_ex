@@ -173,13 +173,15 @@ defmodule VerticalSlice.Cli do
 
   # Rows already in the project's tables: a captured load goes into an
   # empty database, else earlier rows (a `seed`, another capture) show as
-  # extra records. A table that does not exist counts 0.
+  # extra records. A table that does not exist counts 0; any other error
+  # stops the load.
   def existing_rows(pool, project) do
-    for resource <- project.resources, reduce: 0 do
+    for resource <- project.resources ++ project.joins, reduce: 0 do
       acc ->
         case Postgrex.query(pool, ~s[SELECT count(*) FROM "#{resource.table}"], []) do
           {:ok, %{rows: [[n]]}} -> acc + n
-          _ -> acc
+          {:error, %Postgrex.Error{postgres: %{code: :undefined_table}}} -> acc
+          {:error, error} -> raise "cannot count the rows of #{resource.table}: #{Exception.message(error)}"
         end
     end
   end
