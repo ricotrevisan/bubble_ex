@@ -1,5 +1,5 @@
 {
-  "_comment": "WTF-520: searches in a repeating group's cells, read for every cell together (one query per cell round, never one per cell; two keys: the customer and its owner). A reusable tag rendered only in the cells searches with a text comparison no batch can key: that search alone is not loaded, the tag is still rendered per cell. A second tag with the same search is also rendered once, outside the list: there the search loads, and its instances in the cells are not rendered per cell. Customers and their orders, all data invented; test/support/target/phoenix/cell_searches_behavior.exs counts the queries.",
+  "_comment": "WTF-520: searches in a repeating group's cells, read for every cell together (one query per cell round, never one per cell; two keys: the customer and its owner). A reusable tag rendered only in the cells searches with a text comparison no batch can key: that search alone is not loaded, the tag is still rendered per cell. A second tag with the same search is also rendered once, outside the list: there the search loads, and its instances in the cells are not rendered per cell. Customers and their orders, all data invented; test/support/target/phoenix/cell_searches_behavior.exs counts the queries. Two option keys (WTF-589): the count of a customer's orders of its own tier (the customer and the tier), and of every order of its tier (the tier alone); Dune has no tier, which the search reads as nothing.",
   "_id": "cell-searches-fixture",
   "user_types": {
     "user": {
@@ -44,6 +44,10 @@
         "owner_user": {
           "display": "Owner",
           "value": "user"
+        },
+        "tier_option_tier": {
+          "display": "Tier",
+          "value": "option.tier"
         }
       },
       "privacy_role": {
@@ -76,6 +80,10 @@
         "owner_user": {
           "display": "Owner",
           "value": "user"
+        },
+        "tier_option_tier": {
+          "display": "Tier",
+          "value": "option.tier"
         }
       },
       "privacy_role": {
@@ -1104,6 +1112,127 @@
                   "type": "CurrentDataItem"
                 }
               }
+            },
+            "bTier": {
+              "id": "bTier",
+              "type": "Group",
+              "properties": {
+                "order": 15,
+                "width": 300,
+                "height": 40,
+                "group_type": "number",
+                "data_source": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.order",
+                    "sort_field": "title_text",
+                    "descending": false,
+                    "ignore_empty_constraints": false,
+                    "constraints": {
+                      "0": {
+                        "constraint_type": "equals",
+                        "key": "customer_custom_customer",
+                        "value": {
+                          "type": "CurrentDataItem"
+                        }
+                      },
+                      "1": {
+                        "constraint_type": "equals",
+                        "key": "tier_option_tier",
+                        "value": {
+                          "type": "CurrentDataItem",
+                          "next": {
+                            "type": "Message",
+                            "name": "tier_option_tier"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "count"
+                  }
+                }
+              },
+              "elements": {
+                "bTierN": {
+                  "id": "bTierN",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Tier: ",
+                        "1": {
+                          "type": "ElementParent"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bSameTier": {
+              "id": "bSameTier",
+              "type": "Group",
+              "properties": {
+                "order": 16,
+                "width": 300,
+                "height": 40,
+                "group_type": "number",
+                "data_source": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.order",
+                    "sort_field": "title_text",
+                    "descending": false,
+                    "ignore_empty_constraints": false,
+                    "constraints": {
+                      "0": {
+                        "constraint_type": "equals",
+                        "key": "tier_option_tier",
+                        "value": {
+                          "type": "CurrentDataItem",
+                          "next": {
+                            "type": "Message",
+                            "name": "tier_option_tier"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "count"
+                  }
+                }
+              },
+              "elements": {
+                "bSameTierN": {
+                  "id": "bSameTierN",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 300,
+                    "height": 40,
+                    "min_height_css": "40px",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Same: ",
+                        "1": {
+                          "type": "ElementParent"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         },
@@ -1142,6 +1271,23 @@
               }
             }
           }
+        }
+      }
+    }
+  },
+  "option_sets": {
+    "tier": {
+      "display": "Tier",
+      "values": {
+        "gold": {
+          "display": "Gold",
+          "db_value": "gold",
+          "sort_factor": 1
+        },
+        "silver": {
+          "display": "Silver",
+          "db_value": "silver",
+          "sort_factor": 2
         }
       }
     }

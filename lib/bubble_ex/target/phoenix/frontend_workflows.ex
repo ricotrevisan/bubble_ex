@@ -1203,7 +1203,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     keys =
       "[" <>
         Enum.map_join(batch.keys, ", ", fn k ->
-          "{:#{k.var}, #{atom(k.attr)}, #{inspect(k.kind)}, #{if k.unless, do: ":" <> k.unless, else: "nil"}}"
+          "{:#{k.var}, #{atom(k.attr)}, #{key_kind(k, ctx)}, #{if k.unless, do: ":" <> k.unless, else: "nil"}}"
         end) <> "]"
 
     sort =
@@ -1251,6 +1251,13 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       l -> "BubbleData.load_value(#{read}, #{loads_source(l)}, ctx)"
     end
   end
+
+  # An option's key (WTF-589) names its option set's enum: a cell whose
+  # value is not one of the set's reads its own query.
+  defp key_kind(%{kind: :eq, enum: enum}, ctx) when is_binary(enum),
+    do: "{:eq, #{ctx.module}.#{enum}}"
+
+  defp key_kind(%{kind: kind}, _ctx), do: inspect(kind)
 
   # The queries a source reads first (WTF-495: searches under list
   # operators), in order, after the page values they all read; `values`

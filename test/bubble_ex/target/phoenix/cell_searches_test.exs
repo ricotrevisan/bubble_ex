@@ -144,6 +144,28 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
       assert is_binary(u1) and is_binary(u2)
     end
 
+    test "an option read from the cell is a key, naming its set's enum (WTF-589)" do
+      %{spec: spec} = spec(app())
+
+      # The customer and its tier: two keys.
+      assert %{residue: [], read: {:query, %{batch: %{keys: keys} = batch}}} =
+               data(spec, "bTier")
+
+      assert [
+               %{attr: "customer_id", kind: :eq, unless: nil} = customer,
+               %{attr: "tier", kind: :eq, enum: "Enums.Tier", unless: nil}
+             ] = keys
+
+      refute Map.has_key?(customer, :enum)
+      assert BubbleEx.Target.Ash.Source.filter(batch.filter) =~ "tier in ^"
+
+      # The tier alone: one key. A customer with no tier matches nothing.
+      assert %{residue: [], read: {:query, %{batch: %{keys: [key], void: [_]}}}} =
+               data(spec, "bSameTier")
+
+      assert %{attr: "tier", kind: :eq, enum: "Enums.Tier"} = key
+    end
+
     test "a reusable element rendered per cell batches its search on its thing" do
       %{spec: spec} = spec(app())
 
@@ -349,6 +371,22 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
       assert {:and, [_, {:op, "in", {:ref, [], "customer_id"}, {:pin, "k"}}, _]} = f.expr
     end
 
+    test "an option is a key (WTF-589), naming its set's enum; a text or a number is not" do
+      expr = {:op, "==", {:ref, [], "status"}, {:pin, "o"}}
+      option = "option.status" |> then(&pin("o", nil, &1)) |> Map.put(:enum, "Enums.Status")
+
+      assert {:ok, %{keys: [%{var: "o", attr: "status", kind: :eq, enum: "Enums.Status"}]}} =
+               Data.cell_batch(query(expr, [option]), %{"o" => true})
+
+      # An option of a set the project does not map has no enum: not a key.
+      unmapped = pin("o", nil, "option.status")
+      assert :error = Data.cell_batch(query(expr, [unmapped]), %{"o" => true})
+
+      for type <- ~w(text number) do
+        assert :error = Data.cell_batch(query(expr, [pin("o", nil, type)]), %{"o" => true})
+      end
+    end
+
     test "a value differing per cell anywhere but a key or a yes/no is not batched" do
       expr =
         {:and,
@@ -438,6 +476,13 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
       assert runtime =~ "IN (SELECT * FROM unnest(?::text[], ?::text[]))"
       # A batch of lists' records is not sorted by its union's positions.
       assert module =~ "BubbleData.listed_batch(q1_pin_1)"
+
+      # An option's key names its set's enum (WTF-589); the runtime keys a
+      # cell on it only when its value is one of the set's.
+      assert module =~ ~r/\{:pin_\d+, :tier, \{:eq, Shop\.Enums\.Tier\}, nil\}/
+
+      assert runtime =~
+               "defp keyed?(value, {:eq, enum}), do: is_binary(value) and value in enum.values()"
     end
 
     test "the fixture's tag, only in cells: rendered per cell, its unbatched search marked" do

@@ -1159,8 +1159,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # parts are either the same in every cell, or one of:
   #
   #   * a key: `attribute == ^pin` / `is_not_distinct_from(attribute,
-  #     ^pin)` on a thing's unique ID (`:eq`), or `attribute in ^pin` on
-  #     unique IDs (`:in`, the records a list holds), the attribute of the
+  #     ^pin)` on a thing's unique ID or an option (`:eq`; an option's key
+  #     names its set's `enum`, WTF-589), or `attribute in ^pin` on unique
+  #     IDs (`:in`, the records a list holds), the attribute of the
   #     searched resource itself;
   #   * a key under an empty constraint dropped (`^empty == true or key`:
   #     the key holds only where the value is not empty, `unless`);
@@ -1282,7 +1283,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp guard_var(_node), do: nil
 
   # A key: the searched record's own attribute equal to a thing's unique
-  # ID, or in a list of unique IDs, that differs from cell to cell.
+  # ID or an option (WTF-589, `enum`: its option set's), or in a list of
+  # unique IDs, that differs from cell to cell. Both compare exactly, in
+  # the database and in each cell alike; a text or a number does not.
   defp key_atom({:op, "==", a, b}, by_var, varies?), do: eq_key(a, b, by_var, varies?)
 
   defp key_atom({:call, "is_not_distinct_from", [a, b]}, by_var, varies?),
@@ -1296,7 +1299,19 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp key_atom(_node, _by_var, _varies?), do: nil
 
   defp eq_key({:ref, [], attr}, {:pin, var}, by_var, varies?) do
-    if varies?.(var) and by_var[var].ref == :one, do: %{var: var, attr: attr, kind: :eq}
+    cond do
+      not varies?.(var) ->
+        nil
+
+      by_var[var].ref == :one ->
+        %{var: var, attr: attr, kind: :eq}
+
+      is_binary(Map.get(by_var[var], :enum)) ->
+        %{var: var, attr: attr, kind: :eq, enum: by_var[var].enum}
+
+      true ->
+        nil
+    end
   end
 
   defp eq_key({:pin, _} = pin, {:ref, [], _} = ref, by_var, varies?),
@@ -2003,6 +2018,20 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   defp listed(result, _listed?), do: result
 
+  # An option pin (WTF-589) names its option set's enum (`enum`, relative
+  # module): a batch keyed on it (`cell_batch/2`) compares only the set's
+  # own values, exactly, in each cell.
+  defp with_enum(%{ref: nil, type: type} = pin, ctx) do
+    with %Type{kind: :option, cardinality: :one, target: set} <- classify(type),
+         %{module: module} <- Enum.find(ctx.project.enums, &(&1.source.option_set == set)) do
+      Map.put(pin, :enum, module)
+    else
+      _ -> pin
+    end
+  end
+
+  defp with_enum(pin, _ctx), do: pin
+
   # A list's things' IDs for a listed query, else what the pin holds.
   defp pin_ref(arg, hoisted), do: if(pinned?(arg, hoisted), do: :listed, else: ref_kind(arg.type))
 
@@ -2021,7 +2050,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
         case pin_value(arg, hoisted, s, ctx, fns, acc) do
           {:ok, value, acc} ->
-            pin = %{var: var, value: value, ref: pin_ref(arg, hoisted), type: arg.type}
+            pin =
+              with_enum(
+                %{var: var, value: value, ref: pin_ref(arg, hoisted), type: arg.type},
+                ctx
+              )
+
             {[{arg.name, pin} | args], residue, acc}
 
           {:error, r} ->

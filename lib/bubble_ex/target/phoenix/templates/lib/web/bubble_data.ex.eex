@@ -2433,7 +2433,9 @@ defmodule <%= @web %>.BubbleData do
   A search a source reads in a repeating group's cell, read for every
   cell together (see "Searches in cells"). `spec`: the search (`ref`),
   its pins (`pins`, the cell's values), the keys that differ from cell to
-  cell (`keys`: `{pin, attribute, :eq | :in, unless}`, a key holding only
+  cell (`keys`: `{pin, attribute, kind, unless}`, `kind` `:eq` on a
+  thing's unique ID, `{:eq, enum}` on an option of `enum`'s set, or `:in`
+  on unique IDs, a key holding only
   where the pin `unless` is not yes), the yes/no pins making it match
   nothing (`void`: `{pin, :yes}` when yes, `{pin, :no}` unless yes), its sort's attributes (`sort`), how
   much of it is taken (`take`, `page_size`, as `read/4`'s) and the
@@ -2682,6 +2684,9 @@ defmodule <%= @web %>.BubbleData do
   end
 
   defp keyed?(value, :eq), do: is_binary(value)
+  # An option (WTF-589): one of its set's values, exactly; any other (an
+  # unknown option) reads its own query, as the cell would alone.
+  defp keyed?(value, {:eq, enum}), do: is_binary(value) and value in enum.values()
   defp keyed?(value, :in), do: is_list(value)
 
   defp key_values(value) when is_binary(value), do: [value]
@@ -2789,7 +2794,7 @@ defmodule <%= @web %>.BubbleData do
         count_results(query, requests, active, actor)
 
       _ when first.take in [:first, {:item, 1}] ->
-        if Enum.all?(active, &match?({_var, _attr, :eq}, &1)),
+        if Enum.all?(active, fn {_var, _attr, kind} -> kind == :eq or match?({:eq, _}, kind) end),
           do: first_results(query, requests, active, actor),
           else: round_results(requests, active, first, actor, %{}, 1)
 

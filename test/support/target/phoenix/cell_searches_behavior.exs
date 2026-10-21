@@ -15,7 +15,9 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
   # orders keyed on another search's first record, read a round later),
   # and a reusable tag rendered only in the cells: its customer's name,
   # and a search of orders no batch can key (a text comparison with the
-  # customer), which alone is not loaded rather than read once per cell.
+  # customer), which alone is not loaded rather than read once per cell;
+  # and two searches keyed on an option (WTF-589): the customer's orders of
+  # its own tier, and every order of its tier (Dune has no tier: nothing).
   # Each of those searches is read for every cell together: one query per
   # round of cells, never one per cell.
   use PhxCheckWeb.ConnCase, async: false
@@ -28,9 +30,19 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
 
   # The searches the cells read (count, first, last, open, two, listed,
   # the card's count, and the newest open order of a cell's own list: its
-  # records, then those sorted): one query of orders each, whatever the
-  # number of cells; and the second tag's, read once outside the list.
-  @order_queries 13
+  # records, then those sorted; the two keyed on a tier): one query of
+  # orders each, whatever the number of cells; and the second tag's, read
+  # once outside the list.
+  @order_queries 15
+
+  # The customers' and the orders' tiers (an option, WTF-589).
+  @tiers %{
+    "Acme" => "gold",
+    "Bolt" => "silver",
+    "Core" => "gold",
+    "Dune" => nil,
+    "Echo" => "silver"
+  }
 
   # The customers' owners (Dune has none).
   @owners %{"Acme" => @ada, "Bolt" => @bo, "Core" => @ada, "Dune" => nil, "Echo" => @bo}
@@ -54,15 +66,15 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
       end
 
     orders =
-      for {n, title, customer, open, owner} <- [
-            {1, "Anvil", "Acme", true, @ada},
-            {2, "Arrow", "Acme", false, @bo},
-            {3, "Axe", "Acme", true, @ada},
-            {4, "Bell", "Bolt", true, @bo},
-            {5, "Drum", "Dune", false, @ada},
-            {6, "Ear", "Echo", true, @ada},
-            {7, "Elk", "Echo", true, @bo},
-            {8, "Emu", "Echo", true, @ada}
+      for {n, title, customer, open, owner, tier} <- [
+            {1, "Anvil", "Acme", true, @ada, "gold"},
+            {2, "Arrow", "Acme", false, @bo, "silver"},
+            {3, "Axe", "Acme", true, @ada, "gold"},
+            {4, "Bell", "Bolt", true, @bo, "gold"},
+            {5, "Drum", "Dune", false, @ada, "silver"},
+            {6, "Ear", "Echo", true, @ada, "silver"},
+            {7, "Elk", "Echo", true, @bo, "silver"},
+            {8, "Emu", "Echo", true, @ada, nil}
           ],
           into: %{} do
         {title,
@@ -70,7 +82,8 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
            id: "1700000000000x30000000000000000#{n}",
            customer: customer,
            open: open,
-           owner: owner
+           owner: owner,
+           tier: tier
          }}
       end
 
@@ -92,6 +105,7 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
           id: id,
           name: name,
           owner_id: @owners[name],
+          tier: @tiers[name],
           orders: Enum.map(list, &orders[&1].id)
         })
 
@@ -104,7 +118,8 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
         title: title,
         open: o.open,
         customer_id: customers[o.customer],
-        owner_id: o.owner
+        owner_id: o.owner,
+        tier: o.tier
       })
     end
 
@@ -201,6 +216,8 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
       assert shown(html, "Pair") == ~w(2 0 0 0 0)
       assert shown(html, "Loose") == ~w(2 0 0 1 0)
       assert shown(html, "Chain") == ~w(2 0 2 0 0)
+      assert shown(html, "Tier") == ~w(2 0 0 0 1)
+      assert shown(html, "Same") == ~w(2 2 2 0 2)
     else
       assert shown(html, "Count") == ~w(3 1 0 1 3)
       assert shown(html, "First") == ["Anvil", "Bell", "", "Drum", "Ear"]
@@ -213,10 +230,12 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
       assert shown(html, "Pair") == ~w(2 1 0 0 1)
       assert shown(html, "Loose") == ~w(2 1 0 1 1)
       assert shown(html, "Chain") == ~w(3 1 3 0 1)
+      assert shown(html, "Tier") == ~w(2 0 0 0 2)
+      assert shown(html, "Same") == ~w(3 4 3 0 4)
     end
 
-    # Five cells, twelve searches of orders each, and one outside the list:
-    # one query per search, not one per cell (60).
+    # Five cells, fourteen searches of orders each, and one outside the
+    # list: one query per search, not one per cell (70).
     orders = Map.get(by_table, "order", 0)
 
     assert orders > 0 and orders <= @order_queries,
@@ -349,13 +368,14 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
       end)
 
     warnings = Regex.scan(~r/reached :max_batched/, log)
-    # One warning per count search (Count, Open, Card, Chain), never per round.
-    assert length(warnings) in 1..4
+    # One warning per count search (Count, Open, Card, Chain, and Same: all
+    # seven orders with a tier), never per round.
+    assert length(warnings) in 1..5
 
     # Each count search: one batch, then each cell's own count; nothing read
     # again in a later round.
     # (and Two, whose capped limit may leave its short cells to read alone)
-    assert Map.get(by_table, "order", 0) <= @order_queries + 4 * 5 + 5
+    assert Map.get(by_table, "order", 0) <= @order_queries + 5 * 5 + 5
   end
 
   test "past :max_batched key combinations, the cells are read in chunks, once logged", %{

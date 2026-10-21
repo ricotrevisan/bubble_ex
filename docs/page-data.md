@@ -1182,7 +1182,12 @@ cell are:
   unique ID read from the cell (`customer = Current cell's customer`, a
   group's thing in the cell, the instance's thing or property), or its
   unique ID in a list the cell holds (the records of `Current cell's
-  customer's orders :filtered`, WTF-495);
+  customer's orders :filtered`, WTF-495), or equal to an **option** read
+  from the cell (`status = Current cell's Done/Not done`, `type =
+  Parent group's thing's type`, WTF-589): an option is its set's stable
+  key, compared exactly in the database and in each cell alike. The key
+  names its set's enum (`{:eq, <App>.Enums.<Set>}`): a cell whose value
+  is not one of the set's values reads its own query;
 * such a key under a constraint dropped when its value is empty
   (`ignore_empty_constraints`): it holds only in the cells whose value is
   not empty;
@@ -1247,8 +1252,8 @@ searches (`:search_field_restricted`, WTF-457) or hidden along a path
 (`:search_field_hidden`) stays refused, as for any search. With data
 access off nothing is read.
 
-**Not yet:** a key on a value other than a unique ID (a text or a number
-read from the cell). A repeating group inside a cell is read per outer
+**Not yet:** a key on a text or a number read from the cell (their
+comparison in the database need not match Elixir's). A repeating group inside a cell is read per outer
 cell (below), its list batched like any other search in a cell.
 
 ## Repeating groups in a repeating group's cell (WTF-520)
