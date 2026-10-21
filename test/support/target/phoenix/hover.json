@@ -1,0 +1,440 @@
+{
+  "_id": "hover-fixture",
+  "_comment": "\"is hovered\" conditionals lowered to the browser's hover (WTF-590): a Text's own hover sets its color (bCardTitle), a group's hover shows a hidden group inside it with its contents (bCard, bCardTools), a Text's hover paints a sibling (bCardDot, a rule within bCard), a child's hover paints the group holding it (bRowIcon, bRow), and a zero-size hover group shows a Text inside it (bZero, bZeroShown). An \"is hovered\" combined with another condition stays a conditional the page does not keep (bComboVis), and so does a hover that hides an element before a later state that sets its visibility (bOrder). Another element's \"is visible\" of an element a hover shows is not decided on the server (bToolsEcho). All data invented. test/support/target/phoenix/hover_behavior.exs, scripts/hover_browser_check.sh",
+  "user_types": {
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        }
+      },
+      "privacy_role": {
+        "everyone": {
+          "display": "everyone",
+          "permissions": {
+            "auto_binding": false,
+            "search_for": true,
+            "view_all": false,
+            "view_attachments": false,
+            "view_fields": [
+              "email"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "pages": {
+    "index": {
+      "id": "bHome",
+      "name": "index",
+      "type": "Page",
+      "properties": {
+        "title": "Home"
+      },
+      "elements": {
+        "bCard": {
+          "id": "bCard",
+          "type": "Group",
+          "properties": {
+            "order": 1,
+            "width": 300,
+            "height": 140,
+            "min_height_css": "140px",
+            "container_layout": "column",
+            "background_style": "bgcolor",
+            "bgcolor": "rgba(240, 240, 240, 1)"
+          },
+          "elements": {
+            "bCardTitle": {
+              "id": "bCardTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 200,
+                "height": 30,
+                "min_height_css": "30px",
+                "font_color": "rgba(20, 20, 20, 1)",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Card title"
+                  }
+                }
+              },
+              "states": {
+                "0": {
+                  "type": "State",
+                  "condition": {
+                    "type": "ThisElement",
+                    "next": {
+                      "type": "Message",
+                      "name": "is_hovered"
+                    }
+                  },
+                  "properties": {
+                    "font_color": "rgba(200, 0, 0, 1)"
+                  }
+                }
+              }
+            },
+            "bCardTools": {
+              "id": "bCardTools",
+              "type": "Group",
+              "properties": {
+                "order": 2,
+                "width": 200,
+                "height": 30,
+                "min_height_css": "30px",
+                "container_layout": "row",
+                "background_style": "bgcolor",
+                "bgcolor": "rgba(240, 240, 240, 1)",
+                "is_visible": false
+              },
+              "elements": {
+                "bCardToolsText": {
+                  "id": "bCardToolsText",
+                  "type": "Text",
+                  "properties": {
+                    "order": 1,
+                    "width": 200,
+                    "height": 30,
+                    "min_height_css": "30px",
+                    "font_color": "rgba(20, 20, 20, 1)",
+                    "text": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Tools"
+                      }
+                    }
+                  }
+                }
+              },
+              "states": {
+                "0": {
+                  "type": "State",
+                  "condition": {
+                    "type": "GetElement",
+                    "properties": {
+                      "element_id": "bCard"
+                    },
+                    "next": {
+                      "type": "Message",
+                      "name": "is_hovered"
+                    }
+                  },
+                  "properties": {
+                    "is_visible": true
+                  }
+                }
+              }
+            },
+            "bCardDot": {
+              "id": "bCardDot",
+              "type": "Group",
+              "properties": {
+                "order": 3,
+                "width": 10,
+                "height": 10,
+                "min_height_css": "10px",
+                "container_layout": "column",
+                "background_style": "bgcolor",
+                "bgcolor": "rgba(240, 240, 240, 1)"
+              },
+              "elements": {},
+              "states": {
+                "0": {
+                  "type": "State",
+                  "condition": {
+                    "type": "GetElement",
+                    "properties": {
+                      "element_id": "bCardTitle"
+                    },
+                    "next": {
+                      "type": "Message",
+                      "name": "is_hovered"
+                    }
+                  },
+                  "properties": {
+                    "bgcolor": "rgba(0, 0, 200, 1)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bRow": {
+          "id": "bRow",
+          "type": "Group",
+          "properties": {
+            "order": 2,
+            "width": 300,
+            "height": 40,
+            "min_height_css": "40px",
+            "container_layout": "row",
+            "background_style": "bgcolor",
+            "bgcolor": "rgba(240, 240, 240, 1)"
+          },
+          "elements": {
+            "bRowIcon": {
+              "id": "bRowIcon",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 200,
+                "height": 30,
+                "min_height_css": "30px",
+                "font_color": "rgba(20, 20, 20, 1)",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Icon"
+                  }
+                }
+              }
+            }
+          },
+          "states": {
+            "0": {
+              "type": "State",
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bRowIcon"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "is_hovered"
+                }
+              },
+              "properties": {
+                "bgcolor": "rgba(0, 150, 0, 1)"
+              }
+            }
+          }
+        },
+        "bZero": {
+          "id": "bZero",
+          "type": "Group",
+          "properties": {
+            "order": 10,
+            "width": 0,
+            "height": 0,
+            "min_height_css": "0px",
+            "container_layout": "column",
+            "background_style": "bgcolor",
+            "bgcolor": "rgba(240, 240, 240, 1)",
+            "single_width": true,
+            "single_height": true,
+            "min_width_css": "0px"
+          },
+          "elements": {
+            "bZeroLabel": {
+              "id": "bZeroLabel",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 200,
+                "height": 30,
+                "min_height_css": "30px",
+                "font_color": "rgba(20, 20, 20, 1)",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Zero-size hover group"
+                  }
+                }
+              }
+            },
+            "bZeroShown": {
+              "id": "bZeroShown",
+              "type": "Text",
+              "properties": {
+                "order": 2,
+                "width": 200,
+                "height": 30,
+                "min_height_css": "30px",
+                "font_color": "rgba(20, 20, 20, 1)",
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Shown on hover"
+                  }
+                },
+                "is_visible": false
+              },
+              "states": {
+                "0": {
+                  "type": "State",
+                  "condition": {
+                    "type": "GetElement",
+                    "properties": {
+                      "element_id": "bZero"
+                    },
+                    "next": {
+                      "type": "Message",
+                      "name": "is_hovered"
+                    }
+                  },
+                  "properties": {
+                    "is_visible": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bComboVis": {
+          "id": "bComboVis",
+          "type": "Text",
+          "properties": {
+            "order": 4,
+            "width": 200,
+            "height": 30,
+            "min_height_css": "30px",
+            "font_color": "rgba(20, 20, 20, 1)",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Hovered and signed in"
+              }
+            },
+            "is_visible": false
+          },
+          "states": {
+            "0": {
+              "type": "State",
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bCard"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "is_hovered",
+                  "next": {
+                    "type": "Message",
+                    "name": "and_",
+                    "args": {
+                      "type": "CurrentUser",
+                      "next": {
+                        "type": "Message",
+                        "name": "logged_in"
+                      }
+                    }
+                  }
+                }
+              },
+              "properties": {
+                "is_visible": true
+              }
+            }
+          }
+        },
+        "bOrder": {
+          "id": "bOrder",
+          "type": "Text",
+          "properties": {
+            "order": 5,
+            "width": 200,
+            "height": 30,
+            "min_height_css": "30px",
+            "font_color": "rgba(20, 20, 20, 1)",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Order"
+              }
+            }
+          },
+          "states": {
+            "0": {
+              "type": "State",
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bCard"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "is_hovered"
+                }
+              },
+              "properties": {
+                "is_visible": false
+              }
+            },
+            "1": {
+              "type": "State",
+              "condition": {
+                "type": "CurrentUser",
+                "next": {
+                  "type": "Message",
+                  "name": "logged_in"
+                }
+              },
+              "properties": {
+                "is_visible": true
+              }
+            }
+          }
+        },
+        "bPlain": {
+          "id": "bPlain",
+          "type": "Text",
+          "properties": {
+            "order": 6,
+            "width": 200,
+            "height": 30,
+            "min_height_css": "30px",
+            "font_color": "rgba(20, 20, 20, 1)",
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Plain"
+              }
+            }
+          }
+        },
+        "bToolsEcho": {
+          "id": "bToolsEcho",
+          "type": "Text",
+          "properties": {
+            "order": 7,
+            "width": 200,
+            "height": 30,
+            "min_height_css": "30px",
+            "font_color": "rgba(20, 20, 20, 1)",
+            "is_visible": false,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Tools are visible"
+              }
+            }
+          },
+          "states": {
+            "0": {
+              "type": "State",
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bCardTools"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "is_visible"
+                }
+              },
+              "properties": {
+                "is_visible": true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

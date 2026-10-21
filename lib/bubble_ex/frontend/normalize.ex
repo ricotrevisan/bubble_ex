@@ -84,6 +84,15 @@ defmodule BubbleEx.Frontend.Normalize do
     "transform",
     "z-index"
   ]
+  # The properties an element's paint reads (`local_paint/1`), which a
+  # hover conditional may set (WTF-590).
+  # Underline (`"underline"`, a yes/no) too: the static paint does not
+  # read it yet, so a hover sets it alone.
+  @paint_keys @raw_background_properties ++
+                @raw_border_properties ++
+                @raw_shadow_properties ++
+                @raw_opacity_properties ++ @typography_properties ++ ["underline"]
+
   @compact_control_properties ["%1m", "%c1", "%cf", "%ch", "%ct", "%d1", "%lab", "%ps"]
 
   @spec run(term(), keyword()) :: {:ok, Normalized.t()} | {:error, Error.t()}
@@ -186,6 +195,7 @@ defmodule BubbleEx.Frontend.Normalize do
       |> Enum.map(&mark_overlay_instances(&1, overlays))
       |> Enum.map(&resolve_overlay_references/1)
       |> apply_breakpoints(Payload.pages(payload), breakpoints)
+      |> BubbleEx.Frontend.Hover.lower(Payload.pages(payload), &hover_paint/3, @paint_keys)
       |> BubbleEx.Frontend.StaticRepeating.expand()
       |> BubbleEx.Frontend.StaticGroupData.expand()
 
@@ -194,6 +204,7 @@ defmodule BubbleEx.Frontend.Normalize do
       |> Enum.map(&mark_overlay_instances(&1, overlays))
       |> Enum.map(&resolve_overlay_references/1)
       |> apply_breakpoints(Payload.reusables(payload), breakpoints)
+      |> BubbleEx.Frontend.Hover.lower(Payload.reusables(payload), &hover_paint/3, @paint_keys)
       |> BubbleEx.Frontend.StaticRepeating.expand()
       |> BubbleEx.Frontend.StaticGroupData.expand()
 
@@ -1832,6 +1843,36 @@ defmodule BubbleEx.Frontend.Normalize do
     |> Map.merge(canonical_paint(raw))
     |> button_icon_paint(raw)
   end
+
+  # The paint a hover conditional sets (WTF-590): what differs from the
+  # element's own paint once its properties `props` apply, and the keys of
+  # `keep` (an earlier hover rule sets them) the state sets, whatever their
+  # value.
+  defp hover_paint(raw, props, keep) do
+    key =
+      if Map.has_key?(raw, "%p") and not Map.has_key?(raw, "properties"),
+        do: "%p",
+        else: "properties"
+
+    merged = Map.merge(Payload.properties(raw), props)
+    on = local_paint(Map.put(raw, key, merged))
+    base = local_paint(raw)
+    # Without the state's properties: a key `on` holds only because the
+    # element has it is not the state's.
+    off = local_paint(Map.put(raw, key, Map.drop(merged, Map.keys(props))))
+
+    paint =
+      for {k, v} <- on,
+          Map.get(base, k) != v or (MapSet.member?(keep, k) and Map.get(off, k) != v),
+          into: %{},
+          do: {k, v}
+
+    put_paint(paint, "text-decoration-line", underline(props["underline"]))
+  end
+
+  defp underline(true), do: "underline"
+  defp underline(false), do: "none"
+  defp underline(_value), do: nil
 
   defp button_icon_paint(paint, raw) do
     if Payload.type(raw) in ["Button", "Link"] do
