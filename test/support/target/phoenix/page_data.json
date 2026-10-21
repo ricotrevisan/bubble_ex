@@ -364,6 +364,86 @@
               }
             }
           }
+        },
+        "bDdDirect": {
+          "id": "bDdDirect",
+          "type": "Text",
+          "properties": {
+            "order": 6,
+            "width": 300,
+            "height": 40,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Direct: ",
+                "1": {
+                  "type": "GetElement",
+                  "properties": {
+                    "element_id": "bDd"
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "get_data",
+                    "next": {
+                      "type": "Message",
+                      "name": "project_custom_project",
+                      "next": {
+                        "type": "Message",
+                        "name": "name_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bDdNoProj": {
+          "id": "bDdNoProj",
+          "type": "Text",
+          "properties": {
+            "_comment": "Not visible on page load; shown when bDd's value's project has no name.",
+            "order": 7,
+            "width": 300,
+            "height": 40,
+            "is_visible": false,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "No project"
+              }
+            }
+          },
+          "states": {
+            "0": {
+              "type": "State",
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bDd"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "get_data",
+                  "next": {
+                    "type": "Message",
+                    "name": "project_custom_project",
+                    "next": {
+                      "type": "Message",
+                      "name": "name_text",
+                      "next": {
+                        "type": "Message",
+                        "name": "is_empty"
+                      }
+                    }
+                  }
+                }
+              },
+              "properties": {
+                "is_visible": true
+              }
+            }
+          }
         }
       }
     },

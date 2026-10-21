@@ -349,28 +349,41 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
     # A Dropdown whose default does not load is not tracked; nor is the
     # default of one whose choices do not.
-    kept_choices =
-      MapSet.reject(kept_choices, &(has_default?(page_data, &1) and not MapSet.member?(kept, &1)))
+    {defaults, dropdowns} = thing_sources(page_data)
 
-    kept =
-      MapSet.reject(kept, &(choices?(page_data, &1) and not MapSet.member?(kept_choices, &1)))
+    kept_choices =
+      MapSet.reject(kept_choices, &(&1 in defaults and &1 not in kept))
+
+    kept = MapSet.reject(kept, &(&1 in dropdowns and &1 not in kept_choices))
 
     if kept == initial and kept_choices == choices,
       do: {ctx, data, bound},
       else: bind_with_inputs(kept, kept_choices, lowered, page_data, base)
   end
 
-  defp has_default?(page_data, element),
-    do: Enum.any?(page_data.sources, &(&1.kind == :input and &1.element == element))
+  # The elements with a default or initial content (`:input`) and the
+  # Dropdowns with choices (`:choices`).
+  defp thing_sources(nil), do: {MapSet.new(), MapSet.new()}
 
-  defp choices?(page_data, element),
-    do: Enum.any?(page_data.sources, &(&1.kind == :choices and &1.element == element))
+  defp thing_sources(page_data) do
+    by = fn kind ->
+      for %{kind: ^kind, element: e} <- page_data.sources, into: MapSet.new(), do: e
+    end
+
+    {by.(:input), by.(:choices)}
+  end
 
   # The elements with a data source of their own, or nil without page data.
   defp own_elements(nil), do: nil
 
   defp own_elements(page_data),
-    do: for(s <- page_data.sources, s.kind != :param, into: MapSet.new(), do: s.element)
+    do:
+      for(
+        s <- page_data.sources,
+        s.kind not in [:param, :choices],
+        into: MapSet.new(),
+        do: s.element
+      )
 
   # The page data with the initial contents of the inputs `initial` only,
   # and the choices of the Dropdowns `choices` only.

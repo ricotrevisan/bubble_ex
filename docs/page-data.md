@@ -850,7 +850,12 @@ input's initial content's). When both load, the page tracks it as a
   holds selected. A default that is not among the choices is shown too
   while the dropdown holds it;
 * its first value is `:data` (its default, as computed) or empty; the
-  browser sends the chosen thing's unique ID, kept as `{:choice, id}`;
+  browser sends the chosen thing's unique ID, kept as `{:choice, id}`.
+  The placeholder is not a choice the user can pick back (as for a text
+  Dropdown): the dropdown holds nothing again only on a reset (with no
+  default) or when its choice is gone. With no placeholder, an empty
+  first option shows while it holds nothing, so the browser never shows
+  a choice the page does not hold;
 * **the browser chooses only what the page offers**: an ID is taken
   only when it is one of the choices the page read for the current user
   (through Ash, with the policies), or the default it holds
@@ -863,7 +868,9 @@ input's initial content's). When both load, the page tracks it as a
   constraint, a text, a condition, a workflow) is read after its choices
   and default (`reads`), again when it changes (`inputs`), and per cell
   where a cell reads it; a thing read through it is read again through
-  Ash as the current user (`BubbleData.records/5`);
+  Ash as the current user (`BubbleData.records/5`). What a binding reads
+  through its value (`Dropdown's value's project's name`), or a label
+  through its choice, is loaded with its choices and its default;
 * a conditional reading it waits for the page's data (WTF-563): until
   the first load, neither its choices nor its default are known;
 * "An input's value is changed" runs once per change; the default sent

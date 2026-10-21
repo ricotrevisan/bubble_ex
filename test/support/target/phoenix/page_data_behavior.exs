@@ -3229,6 +3229,9 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     assert dd_selected(html) == @t4
     assert picked(html) == ["Draw"]
     assert html =~ "Proj: Apollo"
+    # Read through the value directly, its relationship loaded with it.
+    assert html =~ "Direct: Apollo"
+    assert hidden_in?(html, "bDdNoProj")
     assert dd_cells(html) == [["Answer", "Draw"]]
     assert hidden_in?(html, "bDdEmpty")
 
@@ -3249,7 +3252,9 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     |> Ash.update!(authorize?: false)
 
     Process.sleep(150)
-    assert picked(render(view)) == ["Cleaner"]
+    html = render(view)
+    assert picked(html) == ["Cleaner"]
+    assert html =~ "Direct: Apollo"
 
     # The placeholder: nothing held, what reads it reads empty.
     dd_pick(view, "")
@@ -3302,5 +3307,43 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     refute hidden_in?(html, "bDdEmpty")
     dd_pick(view, @t3)
     assert picked(render(view)) == [""]
+  end
+
+  defp set_done(id, done) do
+    PhxCheck.Task
+    |> Ash.get!(id, authorize?: false)
+    |> Ash.Changeset.for_update(:update, %{done: done})
+    |> Ash.update!(authorize?: false)
+  end
+
+  test "a Dropdown of things: a default its choices leave out, a choice they drop", %{conn: conn} do
+    on()
+    # The default (Draw) is done: not among the choices, still held and
+    # shown, first.
+    set_done(@t4, true)
+    {:ok, view, html} = live(conn, "/pickthing")
+    assert [{@t4, "Draw"}, {@t1, "Bake"}, {@t3, "Clean"} | _] = dd_options(html)
+    assert dd_selected(html) == @t4
+    assert picked(html) == ["Draw"]
+
+    # Choosing another drops it from the options; choosing it back (the
+    # default the page read) is taken.
+    dd_pick(view, @t3)
+    Process.sleep(200)
+    html = render(view)
+    assert picked(html) == ["Clean"]
+    refute {@t4, "Draw"} in dd_options(html)
+    dd_pick(view, @t4)
+    Process.sleep(200)
+    assert picked(render(view)) == ["Draw"]
+
+    # A choice the choices drop (Clean done) reads as empty.
+    dd_pick(view, @t3)
+    Process.sleep(200)
+    set_done(@t3, true)
+    Process.sleep(200)
+    html = render(view)
+    assert picked(html) == [""]
+    refute hidden_in?(html, "bDdEmpty")
   end
 end

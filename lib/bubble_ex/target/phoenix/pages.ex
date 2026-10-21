@@ -4337,9 +4337,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         other -> escape(static_or_empty(other))
       end
 
+    # With no placeholder, an empty first option: the browser would
+    # otherwise show the first choice selected while the page holds none.
     placeholder =
       if placeholder == "",
-        do: "",
+        do: [~s|<option :if={is_nil(#{selected})} selected value=""></option>|],
         else: [
           ~s|<option disabled selected={is_nil(#{selected})} value="">|,
           escape(placeholder),
@@ -5053,21 +5055,36 @@ defmodule BubbleEx.Target.Phoenix.Pages do
             %{var: var, input: input} <- vars,
             loads = Map.get(Map.get(compiled, :loads, %{}), var, []),
             loads != [],
-            key =
-              load_key(FlowSpec.read(base.flows, surface, input, cell)) || choice_key(node, input),
-            key != nil,
+            key <- load_keys(node, input, surface, cell, base),
             do: {key, loads}
 
       own ++ inner_loads(node, surface, cell, base)
     end)
   end
 
-  # What a Dropdown's choice label reads through the choice (WTF-596) is
-  # loaded with its choices.
-  defp choice_key(%Node{kind: :dropdown, variant: :dynamic} = node, {:this, :context}),
-    do: FlowSpec.choices_key(bid(node))
+  # Where what a binding reads through an input is loaded. A Dropdown of
+  # things (WTF-596) holds one of its choices or its default: what a
+  # binding reads through its value, or a choice label through the choice
+  # (which may be the default it holds), is loaded with both.
+  defp load_keys(node, input, surface, cell, base) do
+    case {FlowSpec.read(base.flows, surface, input, cell), input} do
+      {nil, {:this, :context}} ->
+        case node do
+          %Node{kind: :dropdown, variant: :dynamic} -> thing_keys(bid(node))
+          _ -> []
+        end
 
-  defp choice_key(_node, _input), do: nil
+      {{:input, %{path: [], element: e}}, _} ->
+        if get_in(base.flows.surfaces, [surface, Access.key(:inputs, %{}), e]) == :thing,
+          do: thing_keys(e),
+          else: []
+
+      {read, _} ->
+        List.wrap(load_key(read))
+    end
+  end
+
+  defp thing_keys(element), do: [element, FlowSpec.choices_key(element)]
 
   # A table's repeated row reads per row when the page loads its list; its
   # other rows (all of a static table's) read like the page's elements.

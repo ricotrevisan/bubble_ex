@@ -1521,6 +1521,8 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   # A value a browser could send for an input of `type`.
   defp sample({:number, _}), do: ~s("1")
   defp sample({:boolean, _}), do: ~s("true")
+  # A Dropdown of things (WTF-596): no choice, which the page always takes.
+  defp sample({:thing, _}), do: ~s("")
   defp sample(_input), do: ~s("text")
 
   # --- source helpers -----------------------------------------------------------------------
