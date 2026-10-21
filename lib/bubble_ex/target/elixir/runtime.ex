@@ -73,6 +73,13 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @callback is_email(value()) :: boolean()
   @callback abs(value()) :: value()
   @callback round(value()) :: value()
+  @doc """
+  A number's `:ceiling`: the nearest whole number at or above it (toward
+  positive infinity, as JavaScript's `Math.ceil`); empty stays empty.
+  """
+  @callback ceiling(value()) :: value()
+  @doc "A number's `:floor`: the nearest whole number at or below it (`Math.floor`)."
+  @callback floor(value()) :: value()
   @callback to_text(value()) :: value()
   @callback to_number(value()) :: value()
   @doc """

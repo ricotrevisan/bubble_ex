@@ -6,6 +6,16 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **A number's `:ceiling` and `:floor` compile (WTF-598).** Bubble's
+  `ceil` and `floor` on a number are `:ceiling` and `:floor` in the IR
+  and the runtime's `ceiling/1` and `floor/1`: the nearest whole number
+  up or down, as JavaScript's `Math.ceil` and `Math.floor`, empty when
+  the number is. So `(now - date) :to days :floor` compiles. On anything
+  but a number they are not compiled. `:rounded to` (`round` with a
+  number of decimals) is not compiled yet: how Bubble rounds a half is
+  not pinned down. The private compile-count snapshot is re-recorded
+  against the current private export (WTF-600).
+
 - **"is hovered" lowered to the browser's hover (WTF-590).** A
   conditional whose condition is only "This element is hovered", another
   element's "is hovered", or an "or" of them no longer waits for the

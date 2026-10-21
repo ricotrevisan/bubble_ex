@@ -46,6 +46,7 @@ defmodule BubbleEx.Expression.IR do
   | `:fallback` | `[x, default]` | `x defaulting to default` |
   | `:if` | `[condition, then, else]` | a conditional state's value: `then` while `condition` is yes (an empty condition is no), else `else` (an input's initial content with the states that set it, WTF-520) |
   | `:lowercase`, `:uppercase`, `:trim`, `:capitalize_words`, `:text_length`, `:json_encode`, `:url_encode`, `:is_email`, `:abs`, `:round`, `:to_text` | `[x]` | text and number operators |
+  | `:ceiling`, `:floor` | `[x]` | a number's `:ceiling` and `:floor` (`ceil`, `floor`): the nearest whole number up or down (WTF-598) |
   | `:to_number` | `[x]` | `converted to number` |
   | `:format_date` | `[date, format, zone]` | `formatted as` a date: `format` is Bubble's pattern (a named format is its own pattern, `custom` its `custom_format`; `"iso_date"` for ISO 8601; nil for Bubble's default); `zone` (see below) |
   | `:format_number` | `[number, options]` | `formatted as` a number; `options` are Bubble's settings with readable keys (`formatting_type`, `decimal_place`, `thousand_separator`, `currency_symbol`) |

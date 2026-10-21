@@ -17,7 +17,7 @@ defmodule <%= @module %>.Bubble.Runtime do
   shows no thousands separator unless the format sets one.
   """
 
-  import Kernel, except: [abs: 1, div: 2, round: 1]
+  import Kernel, except: [abs: 1, ceil: 1, div: 2, floor: 1, round: 1]
 
   # A case-insensitive text (`Ash.CiString`: the User's email) is its text
   # wherever a value is read as text: shown, compared, sorted, or given to
@@ -192,6 +192,19 @@ defmodule <%= @module %>.Bubble.Runtime do
   def abs(x), do: x
   def round(x) when is_float(x), do: Kernel.round(x)
   def round(x), do: x
+
+  @doc """
+  `:ceiling` and `:floor`: the nearest whole number up or down (toward
+  positive or negative infinity, as JavaScript's `Math.ceil` and
+  `Math.floor`), a whole number (an integer). Anything else, such as an
+  empty value, is returned as it is.
+  """
+  def ceiling(x) when is_float(x), do: Kernel.ceil(x)
+  def ceiling(%Decimal{} = x), do: Decimal.round(x, 0, :ceiling)
+  def ceiling(x), do: x
+  def floor(x) when is_float(x), do: Kernel.floor(x)
+  def floor(%Decimal{} = x), do: Decimal.round(x, 0, :floor)
+  def floor(x), do: x
   def to_text(x), do: text(x)
 
   def to_number(x) when ci?(x), do: x |> plain() |> to_number()

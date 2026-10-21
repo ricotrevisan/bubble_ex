@@ -62,6 +62,7 @@ defmodule BubbleEx.Target.Elixir do
   | `add/sub/mul/div/mod(a, b)` | arithmetic; dates plus intervals |
   | `default(x, d)` | `defaulting to`: `x` unless it is empty (as `empty?/1`; a reference is its loaded record, nil when unset or gone), else `d`; a field of it reads through whichever holds |
   | `lowercase/uppercase/trim/capitalize_words/text_length/json_encode/url_encode/is_email/abs/round/to_text/to_number(x)` | the operators |
+  | `ceiling(x)`, `floor(x)` | a number's `:ceiling` and `:floor` (WTF-598): the nearest whole number up or down, as JavaScript's `Math.ceil` and `Math.floor` (toward positive and negative infinity) |
   | `format_date(x, format[, zone])`, `format_number(x, options)`, `date_floor(x, unit[, zone])`, `date_part(x, unit[, zone])`, `date_add(x, n, unit)` | Bubble's date and number formats and calendar operators (`BubbleEx.Target.Elixir.Formats`); `zone` only when the expression names one |
   | `format_boolean(x, yes, no)`, `truncate(x, n)`, `replace(x, find, replace, regex?)`, `split(x, sep)`, `text_contains?(a, b)`, `text_contains_words?(a, b)` | the other formatting and text operators |
   | `date_diff(a, b, unit)` | `(a - b) :to days` … `:to seconds` (WTF-594): exact, milliseconds over the unit's; a date interval is read only so (any other use of one is not compiled) |
@@ -150,7 +151,7 @@ defmodule BubbleEx.Target.Elixir do
           | {:utc, boolean()}
 
   @runtime_unary ~w(lowercase uppercase trim capitalize_words text_length json_encode url_encode
-                    is_email abs round to_text to_number)a
+                    is_email abs round ceiling floor to_text to_number)a
   @arithmetic ~w(add sub mul div mod)a
   @list_ops ~w(as_list unique merge minus_list intersect plus_item minus_item limit item_at)a
   # List operators whose result's things are their operands' (WTF-520).
