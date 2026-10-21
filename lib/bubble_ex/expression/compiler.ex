@@ -55,6 +55,16 @@ defmodule BubbleEx.Expression.Compiler do
   settings (an `Empty` dynamic sort field or geographic reference) are
   ignored; a dynamic or geographic sort has no IR. An option value of
   `"all values"` is the editor's `All <option set>` (`:all_options`).
+
+  ## Date intervals and ranges
+
+  A date minus a date is a date interval (`:sub`, type `"dateinterval"`);
+  its `:to days`, `:to hours`, `:to minutes` and `:to seconds` are
+  `:interval_to` with the unit (WTF-594). A date range's `min`, `max` and
+  `average` are `:range_start`, `:range_end` and `:range_middle`
+  (WTF-597). The operators the parser keeps raw are typed by
+  `BubbleEx.Expression.Typing`, so `(date :rounded down to day) - date`
+  is an interval too.
   """
 
   alias BubbleEx.{Diagnostic, Error, Expression, Model}
@@ -126,6 +136,15 @@ defmodule BubbleEx.Expression.Compiler do
     "convert_to_number" => :to_number,
     "url" => :to_text
   }
+  # A date interval's conversions: exact units (WTF-594).
+  @interval_units %{
+    "to_days" => :day,
+    "to_hours" => :hour,
+    "to_minutes" => :minute,
+    "to_seconds" => :second
+  }
+  # A date range's parts (Bubble's `min`, `max`, `average`).
+  @range_parts %{"min" => :range_start, "max" => :range_end, "average" => :range_middle}
   @search_options ~w(sort_field descending ignore_empty_constraints additional_sort_fields)
   # The lists `:sorted` sorts by their values (no sort field).
   @value_lists ~w(list.text list.number list.date)
@@ -495,6 +514,14 @@ defmodule BubbleEx.Expression.Compiler do
     path = spath ++ [link(n)]
 
     case Map.fetch(@operators, name) do
+      _ when n.subject.type == "dateinterval" and is_map_key(@interval_units, name) ->
+        ir = IR.node(:interval_to, [subject, Map.fetch!(@interval_units, name)], "number")
+        {combine(ir, [subject]), path, diags}
+
+      _ when n.subject.type == "date_range" and is_map_key(@range_parts, name) ->
+        {combine(IR.node(Map.fetch!(@range_parts, name), [subject], "date"), [subject]), path,
+         diags}
+
       _ when name == "format_date" ->
         {combine(IR.node(:format_date, [subject, nil, nil], type), [subject]), path, diags}
 
@@ -538,6 +565,22 @@ defmodule BubbleEx.Expression.Compiler do
     with {:ok, yes, d1} <- operand_prop(raw, "formatting_for_true", path, ctx),
          {:ok, no, d2} <- operand_prop(raw, "formatting_for_false", path, ctx) do
       {:ok, IR.node(:format_boolean, [subject, yes, no], "text"), d1 ++ d2}
+    end
+  end
+
+  # `formatted as` with a type (WTF-597): the values for yes and no are of
+  # `data_type`, a list when `is_list`; otherwise as `format_boolean`.
+  defp raw_operator("format_boolean_as_type", raw, subject, path, ctx) do
+    props = raw |> Keys.value(:properties) |> format_props()
+
+    with type when is_binary(type) and type != "" <- props["data_type"],
+         true <- props["is_list"] in [nil, true, false],
+         {:ok, yes, d1} <- operand_prop(raw, "value_for_true", path, ctx),
+         {:ok, no, d2} <- operand_prop(raw, "value_for_false", path, ctx) do
+      type = if props["is_list"] == true, do: "list." <> type, else: type
+      {:ok, IR.node(:format_boolean, [subject, yes, no], type), d1 ++ d2}
+    else
+      _ -> :unknown
     end
   end
 

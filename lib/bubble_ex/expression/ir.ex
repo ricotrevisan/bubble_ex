@@ -38,8 +38,10 @@ defmodule BubbleEx.Expression.IR do
   | `:count`, `:first`, `:last`, `:unique`, `:as_list` | `[list]` | list operators |
   | `:item_at`, `:limit` | `[list, n]` | `item #`, `items until #` |
   | `:merge`, `:minus_list`, `:intersect`, `:plus_item`, `:minus_item` | `[list, other]` | list algebra |
-  | `:sort` | `[list, field, descending?]` | `:sorted` / a search's sort by one field; a sort by several keys nests, the primary one outermost; `field` is nil for `:sorted` on a list of texts, numbers or dates |
-  | `:add`, `:sub`, `:mul`, `:div`, `:mod` | `[left, right]` | arithmetic |
+  | `:sort` | `[list, field, descending?]` | `:sorted` / a search's sort by one field (on a list of options, an attribute); a sort by several keys nests, the primary one outermost; `field` is nil for `:sorted` on a list of texts, numbers or dates |
+  | `:add`, `:sub`, `:mul`, `:div`, `:mod` | `[left, right]` | arithmetic; `:sub` of two dates is a date interval (type `"dateinterval"`) |
+  | `:interval_to` | `[interval, unit]` | a date interval's `:to days` … `:to seconds` (`to_days`, …): a number of `unit`s (`:day`, `:hour`, `:minute`, `:second`), exact, not rounded |
+  | `:range_start`, `:range_end`, `:range_middle` | `[range]` | a date range's start, end and middle (Bubble's `min`, `max`, `average`) |
   | `:concat` | `[part, …]` | dynamic text: parts in order, each shown as text |
   | `:fallback` | `[x, default]` | `x defaulting to default` |
   | `:if` | `[condition, then, else]` | a conditional state's value: `then` while `condition` is yes (an empty condition is no), else `else` (an input's initial content with the states that set it, WTF-520) |
@@ -47,7 +49,7 @@ defmodule BubbleEx.Expression.IR do
   | `:to_number` | `[x]` | `converted to number` |
   | `:format_date` | `[date, format, zone]` | `formatted as` a date: `format` is Bubble's pattern (a named format is its own pattern, `custom` its `custom_format`; `"iso_date"` for ISO 8601; nil for Bubble's default); `zone` (see below) |
   | `:format_number` | `[number, options]` | `formatted as` a number; `options` are Bubble's settings with readable keys (`formatting_type`, `decimal_place`, `thousand_separator`, `currency_symbol`) |
-  | `:format_boolean` | `[x, yes_text, no_text]` | a yes/no `formatted as` text |
+  | `:format_boolean` | `[x, yes_value, no_value]` | a yes/no `formatted as` text (`format_boolean`), or as a value of the node's type (`format_boolean_as_type`: its `data_type`, a list when `is_list`) |
   | `:truncate` | `[text, n]` | `truncated to` |
   | `:replace` | `[text, find, replace, regex?]` | `find & replace` |
   | `:split` | `[text, separator]` | `split by` |

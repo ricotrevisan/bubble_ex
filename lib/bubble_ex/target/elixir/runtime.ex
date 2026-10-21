@@ -100,6 +100,15 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @callback date_part(value(), String.t()) :: value()
   @doc "`date_part/2` in the time zone the expression names."
   @callback date_part(value(), String.t(), value()) :: value()
+  @doc """
+  `(a - b) :to days` … `:to seconds`: a date minus a date as a number of
+  `unit`s, exact (milliseconds over the unit's); empty when either is.
+  """
+  @callback date_diff(value(), value(), :day | :hour | :minute | :second) :: value()
+  @doc "A date range's start, end and middle (Bubble's `min`, `max`, `average`)."
+  @callback range_start(value()) :: value()
+  @callback range_end(value()) :: value()
+  @callback range_middle(value()) :: value()
   @doc "`text contains string`: substring."
   @callback text_contains?(value(), value()) :: boolean()
   @doc """
@@ -148,6 +157,11 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   ascending, last descending (replay 2026-10-07); a stable sort.
   """
   @callback sort_values(value(), boolean()) :: list()
+  @doc """
+  `:sorted` on a list of options by an attribute (`key`, a function of an
+  item): `sort_values/2`'s order on the keys, a stable sort.
+  """
+  @callback sort_values_by(value(), (value() -> value()), boolean()) :: list()
   @doc "`:minus item`: `a` without `x`."
   @callback minus_item(value(), value()) :: list()
   @doc "`:items until #n`: the first `n` items; none for an empty or non-positive `n`."
