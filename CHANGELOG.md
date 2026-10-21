@@ -33,6 +33,7 @@ All notable changes to this project are documented here.
   Touch screens get the browser's own tap emulation of `:hover`; Bubble's
   behaviour there is not replayed. `scripts/hover_browser_check.sh`
   hovers the new `phoenix_hover` fixture in Chrome.
+
 - **Date differences, date range parts, typed yes/no formats and option
   sorts compile (WTF-594, WTF-597).** `(date - date) :to days` (`:to
   hours`, `:to minutes`, `:to seconds`) is `:interval_to` in the IR and
