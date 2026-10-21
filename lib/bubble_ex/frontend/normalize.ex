@@ -195,7 +195,7 @@ defmodule BubbleEx.Frontend.Normalize do
       |> Enum.map(&mark_overlay_instances(&1, overlays))
       |> Enum.map(&resolve_overlay_references/1)
       |> apply_breakpoints(Payload.pages(payload), breakpoints)
-      |> BubbleEx.Frontend.Hover.lower(Payload.pages(payload), &hover_paint/2, @paint_keys)
+      |> BubbleEx.Frontend.Hover.lower(Payload.pages(payload), &hover_paint/3, @paint_keys)
       |> BubbleEx.Frontend.StaticRepeating.expand()
       |> BubbleEx.Frontend.StaticGroupData.expand()
 
@@ -204,7 +204,7 @@ defmodule BubbleEx.Frontend.Normalize do
       |> Enum.map(&mark_overlay_instances(&1, overlays))
       |> Enum.map(&resolve_overlay_references/1)
       |> apply_breakpoints(Payload.reusables(payload), breakpoints)
-      |> BubbleEx.Frontend.Hover.lower(Payload.reusables(payload), &hover_paint/2, @paint_keys)
+      |> BubbleEx.Frontend.Hover.lower(Payload.reusables(payload), &hover_paint/3, @paint_keys)
       |> BubbleEx.Frontend.StaticRepeating.expand()
       |> BubbleEx.Frontend.StaticGroupData.expand()
 
@@ -1845,8 +1845,9 @@ defmodule BubbleEx.Frontend.Normalize do
   end
 
   # The paint a hover conditional sets (WTF-590): what differs from the
-  # element's own paint once its properties `props` apply.
-  defp hover_paint(raw, props) do
+  # element's own paint once its properties `props` apply, and the keys of
+  # `keep` (an earlier hover rule sets them) whatever their value.
+  defp hover_paint(raw, props, keep) do
     key =
       if Map.has_key?(raw, "%p") and not Map.has_key?(raw, "properties"),
         do: "%p",
@@ -1855,7 +1856,7 @@ defmodule BubbleEx.Frontend.Normalize do
     on = local_paint(Map.put(raw, key, Map.merge(Payload.properties(raw), props)))
     base = local_paint(raw)
 
-    for({k, v} <- on, Map.get(base, k) != v, into: %{}, do: {k, v})
+    for({k, v} <- on, Map.get(base, k) != v or MapSet.member?(keep, k), into: %{}, do: {k, v})
     |> put_paint("text-decoration-line", underline(props["underline"]))
   end
 

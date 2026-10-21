@@ -180,6 +180,56 @@ defmodule BubbleEx.Frontend.HoverTest do
              app |> normalize() |> node("bG") |> Map.get(:hover)
   end
 
+  test "a later hover state putting the element's own value back still wins" do
+    app =
+      page([
+        el("bG", "Group", 1,
+          props: %{"bgcolor" => "#ffffff"},
+          children: [el("bA", "Text", 1)],
+          states: %{
+            "0" => %{"condition" => hovered(), "properties" => %{"bgcolor" => "#ff0000"}},
+            "1" => %{"condition" => hovered("bA"), "properties" => %{"bgcolor" => "#ffffff"}}
+          }
+        )
+      ])
+
+    assert [
+             %{"state" => "0", "paint" => %{"background" => "#ff0000"}},
+             %{"state" => "1", "paint" => %{"background" => "#ffffff"}}
+           ] = app |> normalize() |> node("bG") |> Map.get(:hover)
+  end
+
+  test "a state that sets only what the element already shows stays" do
+    app =
+      page([
+        el("bT", "Text", 1,
+          props: %{"bgcolor" => "#ffffff"},
+          states: %{"0" => %{"condition" => hovered(), "properties" => %{"bgcolor" => "#ffffff"}}}
+        )
+      ])
+
+    t = app |> normalize() |> node("bT")
+    assert t.hover == []
+    assert [{"0", _}] = states(t)
+  end
+
+  test "compact keys: a state's %p and %iv move, and the state goes" do
+    app =
+      page([
+        el("bG", "Group", 1, children: [el("bT", "Text", 1, props: %{"is_visible" => false})])
+        |> put_in(["elements", "bT", "states"], %{
+          "0" => %{"%c" => hovered("bG"), "%p" => %{"%iv" => true}}
+        })
+      ])
+
+    t = app |> normalize() |> node("bT")
+
+    assert [%{"on" => [%{"element" => "bG", "relation" => "ancestor"}], "visible" => true}] =
+             t.hover
+
+    assert t.bindings["condition"] == nil
+  end
+
   test "an element read in a repeating group's cell, or outside the page's tree, is not told apart" do
     cell = el("bCellText", "Text", 1)
 

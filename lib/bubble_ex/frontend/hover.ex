@@ -74,7 +74,8 @@ defmodule BubbleEx.Frontend.Hover do
   properties applied, `(raw element, properties) -> paint`, and
   `paint_keys` are the properties it reads.
   """
-  @spec lower([Node.t()], map(), (map(), map() -> map()), [String.t()]) :: [Node.t()]
+  @spec lower([Node.t()], map(), (map(), map(), MapSet.t() -> map()), [String.t()]) ::
+          [Node.t()]
   def lower(roots, raw_roots, paint, paint_keys) when is_list(roots) do
     Enum.map(roots, fn root ->
       index = index(root)
@@ -215,11 +216,19 @@ defmodule BubbleEx.Frontend.Hover do
 
   # A hover state's paint, and its visibility when `last?`, out of the
   # payload into a rule.
+  #
+  # The paint is what the state sets that differs from the element's own,
+  # and whatever an earlier hover rule of the element sets too (a later
+  # state putting a value back wins in Bubble). A state whose paint comes
+  # out empty (it sets what the element already shows) keeps those
+  # properties: there is nothing to apply, and nothing is dropped unseen.
   defp move({payload, rules}, key, props, on, last?, raw, env) do
+    earlier = for rule <- rules, k <- Map.keys(rule["paint"]), into: MapSet.new(), do: k
     painted = Map.take(props, env.paint_keys)
+    paint = if painted == %{}, do: %{}, else: env.paint.(raw, painted, earlier)
+    painted = if paint == %{}, do: %{}, else: painted
     visible = if last?, do: visibility(props)
     moved = Map.keys(painted) ++ if(is_boolean(visible), do: @visibility, else: [])
-    paint = if painted == %{}, do: %{}, else: env.paint.(raw, painted)
 
     case moved do
       [] ->

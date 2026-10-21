@@ -1595,9 +1595,9 @@ defmodule BubbleEx.Frontend.Export.Css do
       case rule["visible"] do
         # `revert` would give a `hidden` element the browser's own
         # `display: none` back: a box without a display of its own is a
-        # block, as an element's is.
+        # block (a button or input an inline block), as the browser's.
         true ->
-          %{"display" => "revert"} |> restore_visible_display(node, parent) |> block_display()
+          %{"display" => "revert"} |> restore_visible_display(node, parent) |> own_display(node)
 
         false ->
           %{"display" => "none"}
@@ -1609,8 +1609,14 @@ defmodule BubbleEx.Frontend.Export.Css do
     Map.merge(rule["paint"] || %{}, shown)
   end
 
-  defp block_display(%{"display" => "revert"} = paint), do: Map.put(paint, "display", "block")
-  defp block_display(paint), do: paint
+  defp own_display(%{"display" => "revert"} = paint, %Node{kind: kind})
+       when kind in [:button, :input],
+       do: Map.put(paint, "display", "inline-block")
+
+  defp own_display(%{"display" => "revert"} = paint, _node),
+    do: Map.put(paint, "display", "block")
+
+  defp own_display(paint, _node), do: paint
 
   defp hover_rule(paint, _rule, _self, _fun) when map_size(paint) == 0, do: ""
 
