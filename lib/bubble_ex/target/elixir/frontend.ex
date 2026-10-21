@@ -143,8 +143,8 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
     compiled =
       for node <- nodes,
-          {_slot, %{kind: kind, id: id, payload: payload}} <- node.bindings,
-          result = compile_kind(kind, payload, node, env, project, opts),
+          {slot, %{kind: kind, id: id, payload: payload}} <- node.bindings,
+          result = compile_kind(kind, payload, node, slot_env(slot, node, env), project, opts),
           into: %{},
           do: {id, result}
 
@@ -253,6 +253,21 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   end
 
   defp nodes(%Node{} = node), do: [node | Enum.flat_map(node.children, &nodes/1)]
+
+  # A Dropdown's choice label (WTF-596) is about the choice: `This <type>`
+  # is the choice it labels (`{:this, :context}`, bound by the page to each
+  # choice it renders).
+  defp slot_env("choice_label", %Node{kind: :dropdown, content: content}, env) do
+    case content do
+      %{"choices" => %{data_type: type}} when is_binary(type) ->
+        %{env | this_type: type, this_binder: :context}
+
+      _ ->
+        env
+    end
+  end
+
+  defp slot_env(_slot, _node, env), do: env
 
   defp compile_kind(:value, payload, node, env, project, opts),
     do: compile_binding(payload, node, env, project, opts)
@@ -631,8 +646,9 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   defp compile_binding(payload, %Node{source: source}, env, project, opts) do
     env = %{env | host: source && source.bubble_id}
+    parse_opts = [schema: env.schema, this_type: env.this_type, this_binder: env.this_binder]
 
-    with {:ok, %{ast: ast}} <- Expression.parse(payload, schema: env.schema),
+    with {:ok, %{ast: ast}} <- Expression.parse(payload, parse_opts),
          {:ok, %{ir: ir}} when not is_nil(ir) <- Compiler.compile(ast, env),
          ir = element_visibility(ir, env, opts),
          {:ok, %{source: code} = result} when is_binary(code) <-

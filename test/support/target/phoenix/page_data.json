@@ -43,6 +43,410 @@
     }
   },
   "pages": {
+    "pickthing": {
+      "_comment": "WTF-596: a Dropdown of things (tasks not done, by title) with a default (the task titled Draw); a group shows its value, a cell and a conditional read it; changing it runs a workflow; a reset puts the default back.",
+      "id": "bDdPage",
+      "name": "pickthing",
+      "type": "Page",
+      "properties": {
+        "title": "Pick thing"
+      },
+      "workflows": {
+        "wDdChanged": {
+          "id": "wDdChanged",
+          "type": "InputChanged",
+          "properties": {
+            "element_id": "bDd"
+          },
+          "actions": {
+            "0": {
+              "id": "aDdChanged1",
+              "type": "NewThing",
+              "properties": {
+                "thing_type": "custom.task",
+                "initial_values": {
+                  "0": {
+                    "key": "title_text",
+                    "value": {
+                      "type": "TextExpression",
+                      "entries": {
+                        "0": "Picked"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "wDdReset": {
+          "id": "wDdReset",
+          "type": "ButtonClicked",
+          "properties": {
+            "element_id": "bDdReset"
+          },
+          "actions": {
+            "0": {
+              "id": "aDdReset1",
+              "type": "ResetGroup",
+              "properties": {
+                "element_id": "bDdBox"
+              }
+            }
+          }
+        }
+      },
+      "elements": {
+        "bDdBox": {
+          "id": "bDdBox",
+          "type": "Group",
+          "properties": {
+            "order": 1,
+            "width": 300,
+            "height": 40
+          },
+          "elements": {
+            "bDd": {
+              "id": "bDd",
+              "type": "Dropdown",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "choices_style": "dynamic",
+                "dynamic_type": "custom.task",
+                "placeholder": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Pick a task"
+                  }
+                },
+                "data_source": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.task",
+                    "sort_field": "title_text",
+                    "descending": false,
+                    "constraints": {
+                      "0": {
+                        "constraint_type": "equals",
+                        "key": "done_boolean",
+                        "value": false
+                      }
+                    }
+                  }
+                },
+                "option_display_expression": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Opt ",
+                    "1": {
+                      "type": "InjectedValue",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                },
+                "default": {
+                  "type": "Search",
+                  "properties": {
+                    "type_to_find": "custom.task",
+                    "constraints": {
+                      "0": {
+                        "constraint_type": "equals",
+                        "key": "title_text",
+                        "value": {
+                          "type": "TextExpression",
+                          "entries": {
+                            "0": "Draw"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "first_element"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bDdGroup": {
+          "id": "bDdGroup",
+          "type": "Group",
+          "properties": {
+            "order": 2,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "GetElement",
+              "properties": {
+                "element_id": "bDd"
+              },
+              "next": {
+                "type": "Message",
+                "name": "get_data"
+              }
+            }
+          },
+          "elements": {
+            "bDdTitle": {
+              "id": "bDdTitle",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Picked: ",
+                    "1": {
+                      "type": "ElementParent",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "bDdProj": {
+              "id": "bDdProj",
+              "type": "Text",
+              "properties": {
+                "order": 2,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Proj: ",
+                    "1": {
+                      "type": "ElementParent",
+                      "next": {
+                        "type": "Message",
+                        "name": "project_custom_project",
+                        "next": {
+                          "type": "Message",
+                          "name": "name_text"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bDdRows": {
+          "id": "bDdRows",
+          "type": "RepeatingGroup",
+          "properties": {
+            "columns": 1,
+            "rows": 2,
+            "order": 3,
+            "width": 300,
+            "height": 40,
+            "group_type": "custom.task",
+            "data_source": {
+              "type": "Search",
+              "properties": {
+                "type_to_find": "custom.task",
+                "sort_field": "title_text",
+                "descending": false,
+                "constraints": {
+                  "0": {
+                    "constraint_type": "equals",
+                    "key": "done_boolean",
+                    "value": true
+                  }
+                }
+              }
+            }
+          },
+          "elements": {
+            "bDdCell": {
+              "id": "bDdCell",
+              "type": "Text",
+              "properties": {
+                "order": 1,
+                "width": 300,
+                "height": 40,
+                "text": {
+                  "type": "TextExpression",
+                  "entries": {
+                    "0": "Cell: ",
+                    "1": {
+                      "type": "CurrentDataItem",
+                      "next": {
+                        "type": "Message",
+                        "name": "title_text"
+                      }
+                    },
+                    "2": " vs ",
+                    "3": {
+                      "type": "GetElement",
+                      "properties": {
+                        "element_id": "bDd"
+                      },
+                      "next": {
+                        "type": "Message",
+                        "name": "get_data",
+                        "next": {
+                          "type": "Message",
+                          "name": "title_text"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bDdEmpty": {
+          "id": "bDdEmpty",
+          "type": "Text",
+          "properties": {
+            "_comment": "Not visible on page load; shown when bDd holds no task.",
+            "order": 4,
+            "width": 300,
+            "height": 40,
+            "is_visible": false,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "No pick"
+              }
+            }
+          },
+          "states": {
+            "0": {
+              "type": "State",
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bDd"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "get_data",
+                  "next": {
+                    "type": "Message",
+                    "name": "is_empty"
+                  }
+                }
+              },
+              "properties": {
+                "is_visible": true
+              }
+            }
+          }
+        },
+        "bDdReset": {
+          "id": "bDdReset",
+          "type": "Button",
+          "properties": {
+            "order": 5,
+            "width": 300,
+            "height": 40,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Reset pick"
+              }
+            }
+          }
+        },
+        "bDdDirect": {
+          "id": "bDdDirect",
+          "type": "Text",
+          "properties": {
+            "order": 6,
+            "width": 300,
+            "height": 40,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "Direct: ",
+                "1": {
+                  "type": "GetElement",
+                  "properties": {
+                    "element_id": "bDd"
+                  },
+                  "next": {
+                    "type": "Message",
+                    "name": "get_data",
+                    "next": {
+                      "type": "Message",
+                      "name": "project_custom_project",
+                      "next": {
+                        "type": "Message",
+                        "name": "name_text"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "bDdNoProj": {
+          "id": "bDdNoProj",
+          "type": "Text",
+          "properties": {
+            "_comment": "Not visible on page load; shown when bDd's value's project has no name.",
+            "order": 7,
+            "width": 300,
+            "height": 40,
+            "is_visible": false,
+            "text": {
+              "type": "TextExpression",
+              "entries": {
+                "0": "No project"
+              }
+            }
+          },
+          "states": {
+            "0": {
+              "type": "State",
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bDd"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "get_data",
+                  "next": {
+                    "type": "Message",
+                    "name": "project_custom_project",
+                    "next": {
+                      "type": "Message",
+                      "name": "name_text",
+                      "next": {
+                        "type": "Message",
+                        "name": "is_empty"
+                      }
+                    }
+                  }
+                }
+              },
+              "properties": {
+                "is_visible": true
+              }
+            }
+          }
+        }
+      }
+    },
     "keywords": {
       "_comment": "WTF-520: a list filtered by a keyword input (Bubble's `contains keyword(s)`), read conservatively: every word of the input a case-insensitive substring of the title. bWordsAll ignores empty constraints, bWordsStrict does not.",
       "id": "bWordsPage",

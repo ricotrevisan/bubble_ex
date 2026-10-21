@@ -3172,4 +3172,178 @@ defmodule PhxCheckWeb.PageDataBehaviorTest do
     refute Enum.any?(queued, fn {:event, _, p} -> inspect(p) =~ ~r/nope|made-up/ end)
     assert notices(socket) > 0
   end
+
+  # WTF-596: a Dropdown of things (bDd: the tasks not done, by title, its
+  # default the task titled Draw). bDdGroup shows its value (and the
+  # value's project), each cell of bDdRows reads it, bDdEmpty shows when
+  # it holds nothing, and a change runs wDdChanged (creates "Picked").
+  @t2 "1700000000000x200000000000000002"
+  @t3 "1700000000000x200000000000000003"
+  @t4 "1700000000000x200000000000000004"
+
+  defp dd_options(html) do
+    ~r/<option[^>]*value="(\d+x\d+)"[^>]*>\s*Opt (\w+)\s*</s
+    |> Regex.scan(html, capture: :all_but_first)
+    |> Enum.map(fn [id, title] -> {id, title} end)
+  end
+
+  defp dd_selected(html) do
+    ~r/<option([^>]*)>/
+    |> Regex.scan(html, capture: :all_but_first)
+    |> Enum.filter(fn [attrs] -> attrs =~ ~r/\sselected(\s|=|$)/ end)
+    |> Enum.find_value(fn [attrs] -> option_id(attrs) end)
+  end
+
+  defp option_id(attrs) do
+    case Regex.run(~r/value="(\d+x\d+)"/, attrs, capture: :all_but_first) do
+      [id] -> id
+      nil -> nil
+    end
+  end
+
+  defp dd_pick(view, value),
+    do:
+      render_change(view, "bubble:change", %{
+        "bubble" => %{"scope" => "", "element" => "bDd", "value" => value}
+      })
+
+  defp picked(html), do: Regex.run(~r/Picked: (\w*)/, html, capture: :all_but_first)
+  defp dd_cells(html), do: ~r/Cell: (\w+) vs (\w*)/ |> Regex.scan(html, capture: :all_but_first)
+
+  defp picked_runs,
+    do: PhxCheck.Task |> Ash.read!(authorize?: false) |> Enum.count(&(&1.title == "Picked"))
+
+  test "a Dropdown of things offers its choices, holds its default, and what reads it follows", %{
+    conn: conn
+  } do
+    on()
+    {:ok, view, html} = live(conn, "/pickthing")
+
+    assert dd_options(html) == [
+             {@t1, "Bake"},
+             {@t3, "Clean"},
+             {@t4, "Draw"},
+             {"1700000000000x200000000000000005", "Eat"}
+           ]
+
+    assert dd_selected(html) == @t4
+    assert picked(html) == ["Draw"]
+    assert html =~ "Proj: Apollo"
+    # Read through the value directly, its relationship loaded with it.
+    assert html =~ "Direct: Apollo"
+    assert hidden_in?(html, "bDdNoProj")
+    assert dd_cells(html) == [["Answer", "Draw"]]
+    assert hidden_in?(html, "bDdEmpty")
+
+    # Choosing another task: the group, its project, the cells follow, and
+    # the change runs once.
+    html = dd_pick(view, @t3)
+    Process.sleep(200)
+    html = render(view)
+    assert dd_selected(html) == @t3
+    assert picked(html) == ["Clean"]
+    assert dd_cells(html) == [["Answer", "Clean"]]
+    assert picked_runs() == 1
+
+    # The chosen task is read as it is now.
+    PhxCheck.Task
+    |> Ash.get!(@t3, authorize?: false)
+    |> Ash.Changeset.for_update(:update, %{title: "Cleaner"})
+    |> Ash.update!(authorize?: false)
+
+    Process.sleep(150)
+    html = render(view)
+    assert picked(html) == ["Cleaner"]
+    assert html =~ "Direct: Apollo"
+
+    # The placeholder: nothing held, what reads it reads empty.
+    dd_pick(view, "")
+    Process.sleep(200)
+    html = render(view)
+    assert dd_selected(html) == nil
+    assert picked(html) == [""]
+    refute hidden_in?(html, "bDdEmpty")
+
+    # A reset puts the default back.
+    click(view, "bDdReset")
+    Process.sleep(100)
+    html = render(view)
+    assert dd_selected(html) == @t4
+    assert picked(html) == ["Draw"]
+  end
+
+  test "a Dropdown of things takes only a thing it offers this user", %{conn: conn} do
+    on()
+    {:ok, view, _html} = live(conn, "/pickthing")
+    # A task the choices leave out (done), one that does not exist, text
+    # that is not a unique ID: each ignored, as a change that never happened.
+    for value <- [@t2, "1700000000000x299999999999999999", "Draw", "1x2 OR 1=1"] do
+      dd_pick(view, value)
+    end
+
+    Process.sleep(200)
+    html = render(view)
+    assert picked(html) == ["Draw"]
+    assert dd_selected(html) == @t4
+    assert picked_runs() == 0
+
+    # The default sent back unchanged runs nothing either.
+    dd_pick(view, @t4)
+    Process.sleep(200)
+    assert picked_runs() == 0
+  end
+
+  test "a conditional reading a Dropdown of things waits for the page's data", %{conn: conn} do
+    on()
+    static = conn |> get("/pickthing") |> html_response(200)
+    assert hidden_in?(static, "bDdEmpty")
+    assert dd_options(static) == []
+
+    # With data access off nothing loads: no choices, the dropdown empty.
+    Application.delete_env(:phx_check, PhxCheckWeb.BubbleWorkflows)
+    {:ok, view, html} = live(conn, "/pickthing")
+    assert dd_options(html) == []
+    assert picked(html) == [""]
+    refute hidden_in?(html, "bDdEmpty")
+    dd_pick(view, @t3)
+    assert picked(render(view)) == [""]
+  end
+
+  defp set_done(id, done) do
+    PhxCheck.Task
+    |> Ash.get!(id, authorize?: false)
+    |> Ash.Changeset.for_update(:update, %{done: done})
+    |> Ash.update!(authorize?: false)
+  end
+
+  test "a Dropdown of things: a default its choices leave out, a choice they drop", %{conn: conn} do
+    on()
+    # The default (Draw) is done: not among the choices, still held and
+    # shown, first.
+    set_done(@t4, true)
+    {:ok, view, html} = live(conn, "/pickthing")
+    assert [{@t4, "Draw"}, {@t1, "Bake"}, {@t3, "Clean"} | _] = dd_options(html)
+    assert dd_selected(html) == @t4
+    assert picked(html) == ["Draw"]
+
+    # Choosing another drops it from the options; choosing it back (the
+    # default the page read) is taken.
+    dd_pick(view, @t3)
+    Process.sleep(200)
+    html = render(view)
+    assert picked(html) == ["Clean"]
+    refute {@t4, "Draw"} in dd_options(html)
+    dd_pick(view, @t4)
+    Process.sleep(200)
+    assert picked(render(view)) == ["Draw"]
+
+    # A choice the choices drop (Clean done) reads as empty.
+    dd_pick(view, @t3)
+    Process.sleep(200)
+    set_done(@t3, true)
+    Process.sleep(200)
+    html = render(view)
+    assert picked(html) == [""]
+    refute hidden_in?(html, "bDdEmpty")
+  end
 end

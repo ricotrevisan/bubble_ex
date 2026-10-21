@@ -81,8 +81,10 @@ defmodule BubbleEx.PageDataTest do
       # (WTF-520); the pair page's two instances of one reusable element,
       # one of whose data source does not compile (WTF-522); the popup a
       # click shows and then displays data in (replay 2026-10-14); the
-      # shown page's ten read exactly (WTF-565).
-      assert PageData.coverage(pd)["sources"] == %{"total" => 42, "native" => 41, "residue" => 1}
+      # shown page's ten read exactly (WTF-565); the pickthing page's four
+      # (WTF-596: a Dropdown's choices and default, the group reading it, a
+      # list).
+      assert PageData.coverage(pd)["sources"] == %{"total" => 46, "native" => 45, "residue" => 1}
       assert {:ok, ^pd} = PageData.build(app(), elem(build(app()), 0))
     end
 
@@ -305,10 +307,11 @@ defmodule BubbleEx.PageDataTest do
       # which does not load (WTF-522); the popup a click shows and then
       # displays data in, which its "is opened" workflow resets (replay
       # 2026-10-14: the display wins, so it loads); the shown page's ten
-      # read exactly (WTF-565), three of which read a capped list (residue).
+      # read exactly (WTF-565), three of which read a capped list (residue);
+      # the pickthing page's four (WTF-596).
       assert FrontendWorkflows.data_coverage(spec)["sources"] == %{
-               "total" => 52,
-               "wired" => 48,
+               "total" => 56,
+               "wired" => 52,
                "residue" => 4
              }
 
@@ -408,7 +411,7 @@ defmodule BubbleEx.PageDataTest do
                ]
              } = data(spec, "bFromList")
 
-      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 46
+      assert FrontendWorkflows.data_coverage(spec)["sources"]["wired"] == 50
     end
 
     test "a repeating group in a repeating group's cell is read per outer cell; a third level is residue" do
@@ -2581,6 +2584,169 @@ defmodule BubbleEx.PageDataTest do
       component = files["lib/shop_web/components/bubble.ex"]
       assert component =~ "def input(inputs, data, scope, element, initial \\\\ nil)"
       assert files["lib/shop_web/bubble_workflows.ex"] =~ ":data -> Map.get(ctx.data, key)"
+    end
+  end
+
+  # WTF-596: a Dropdown of things (/pickthing's bDd: the tasks not done,
+  # its default the task titled Draw) keeps its value: its choices and its
+  # default are page data, and what reads it is read after them.
+  describe "a Dropdown of things" do
+    defp dd_path(rest),
+      do: ["pages", "pickthing", "elements", "bDdBox", "elements", "bDd" | rest]
+
+    defp sources(page_data, element, kind),
+      do: Enum.find(page_data.sources, &(&1.element == element and &1.kind == kind))
+
+    test "its choices and its default are sources of the dropdown" do
+      {_model, pd} = build(app())
+
+      assert %Source{kind: :choices, type: "list.custom.task", cell: nil, residue: []} =
+               choices = sources(pd, "bDd", :choices)
+
+      assert %IR{op: :sort, args: [%IR{op: :search} | _]} = choices.value.ir
+
+      assert %Source{kind: :input, type: "custom.task", residue: []} =
+               default = sources(pd, "bDd", :input)
+
+      assert %IR{op: :first} = default.value.ir
+
+      # Without a default it has only its choices.
+      {_model, pd} = build(update_in(app(), dd_path(["properties"]), &Map.delete(&1, "default")))
+      assert sources(pd, "bDd", :input) == nil
+      assert %Source{kind: :choices} = sources(pd, "bDd", :choices)
+    end
+
+    test "of an option set, of other choices than its type, or in a cell" do
+      options =
+        update_in(app(), dd_path(["properties"]), fn props ->
+          Map.merge(props, %{"dynamic_type" => "option.os_color"})
+        end)
+
+      {_model, pd} = build(options)
+      assert sources(pd, "bDd", :choices) == nil
+
+      projects =
+        put_in(app(), dd_path(["properties", "data_source"]), %{
+          "type" => "Search",
+          "properties" => %{"type_to_find" => "custom.project"}
+        })
+
+      {_model, pd} = build(projects)
+
+      assert %Source{
+               residue: [
+                 %{reason: :uncompiled_expression, detail: %{constructs: ["choices_type"]}}
+               ]
+             } =
+               sources(pd, "bDd", :choices)
+
+      dd = get_in(app(), dd_path([]))
+
+      in_cell =
+        put_in(
+          app(),
+          ["pages", "pickthing", "elements", "bDdRows", "elements", "bDdIn"],
+          %{dd | "id" => "bDdIn"}
+        )
+
+      {_model, pd} = build(in_cell)
+      assert sources(pd, "bDdIn", :choices) == nil
+    end
+
+    test "is tracked as a thing, its default the first value; what reads it follows its choices" do
+      {spec, _project, _frontend, _app, _model} = spec(app())
+      page = spec.surfaces["bDdPage"]
+
+      assert page.inputs == %{"bDd" => :thing}
+      assert page.initial == ["bDd"]
+
+      assert %{kind: :choices, read: {:query, _}, residue: [], key: %{element: "choices/bDd"}} =
+               Enum.find(Spec.data(spec, "bDdPage"), &(&1.kind == :choices))
+
+      assert %{read: {:value, _}, residue: []} = group = data(spec, "bDdGroup")
+
+      assert Enum.sort(group.reads) == [
+               {:data, %{path: [], element: "bDd"}},
+               {:data, %{path: [], element: "choices/bDd"}}
+             ]
+
+      # The workflow its change runs is wired.
+      assert %{residue: []} = Spec.workflow(spec, "bDdPage", "wDdChanged")
+    end
+
+    test "whose choices or default do not load is not tracked, nor is what reads it loaded" do
+      for unloaded <- [
+            put_in(
+              app(),
+              dd_path(["properties", "data_source", "properties", "dynamic_sort_field"]),
+              "x"
+            ),
+            put_in(
+              app(),
+              dd_path(["properties", "default", "properties", "dynamic_sort_field"]),
+              "x"
+            )
+          ] do
+        {spec, _project, _frontend, _app, _model} = spec(unloaded)
+        page = spec.surfaces["bDdPage"]
+
+        assert page.inputs == %{}
+        assert page.initial == []
+        assert Enum.find(Spec.data(spec, "bDdPage"), &(&1.kind == :choices)) == nil
+
+        assert %{
+                 read: nil,
+                 residue: [
+                   %{reason: :unavailable_input, detail: %{inputs: ["element_state:get_data"]}}
+                 ]
+               } = data(spec, "bDdGroup")
+      end
+    end
+
+    test "is printed: its choices are rendered from the page's data, each by its label" do
+      {spec, project, frontend, app, model} = spec(app())
+
+      {:ok, compiled} =
+        BubbleEx.Target.Elixir.Frontend.compile(app, model, project, frontend,
+          runtime: "Shop.Bubble.Runtime",
+          namespace: "Shop"
+        )
+
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, backend} = BubbleEx.Workflows.Backend.build(app, model, index)
+      {:ok, workflows} = BubbleEx.Target.Ash.Workflows.map(backend, project, namespace: "Shop")
+
+      {:ok, files} =
+        Phoenix.render(project,
+          name: "Shop",
+          frontend: frontend,
+          expressions: compiled,
+          workflows: workflows,
+          frontend_workflows: spec
+        )
+
+      flows = files["lib/shop_web/live/pickthing_live/workflows.ex"]
+      assert flows =~ ~s|inputs: %{"bDd" => {:thing, :data}}|
+      assert flows =~ ~s|element: "choices/bDd",|
+      assert flows =~ "# bubble:data bDd choices\n"
+
+      assert flows =~
+               ~r/element: "bDdGroup",.*?inputs: \["bDd"\],\s*reads: \["bDd", "choices\/bDd"\]/s
+
+      template = files["lib/shop_web/live/pickthing_live.html.heex"]
+
+      assert template =~
+               ~s|{choice, selected?} <- Bubble.choices(@bubble_inputs, @bubble_data, "", "bDd")|
+
+      assert template =~ ~s|{choice_label_bdd(choice)}|
+      assert template =~ ~s|Bubble.input(@bubble_inputs, @bubble_data, "", "bDd")|
+      refute template =~ "TODO(bubble:bDd"
+
+      assert files["lib/shop_web/live/pickthing_live.ex"] =~
+               ~r/defp choice_label_bdd\(this\) do\s+"Opt " <>/
+
+      assert files["lib/shop_web/bubble_workflows.ex"] =~
+               "{:choice, id} -> Bubble.chosen(ctx.data, scope, element, id)"
     end
   end
 

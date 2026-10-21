@@ -289,6 +289,7 @@ defmodule <%= @web %>.Bubble do
   def input(inputs, scope, element) when is_map(inputs) do
     case Map.get(inputs, {scope, element}) do
       :data -> nil
+      {:choice, _id} -> nil
       value -> value
     end
   end
@@ -312,12 +313,80 @@ defmodule <%= @web %>.Bubble do
           do: Map.get(data, {scope, element}),
           else: initial
 
+      {:choice, id} ->
+        chosen(data, scope, element, id)
+
       value ->
         value
     end
   end
 
   def input(_inputs, _data, _scope, _element, initial), do: initial
+
+  # --- Dropdowns of things (WTF-596) --------------------------------------------------
+
+  @doc """
+  Where the page keeps the choices of Dropdown `element` (WTF-596), in
+  `data` under its scope; its default value (its first value, `:data`) is
+  kept under the element itself.
+  """
+  def choices_key(element) when is_binary(element), do: "choices/" <> element
+
+  @doc """
+  The things Dropdown `element` in instance `scope` offers (WTF-596), each
+  with whether the dropdown holds it: its choices as the page read them
+  for the current user, and the default it still holds when that is not
+  one of them.
+  """
+  def choices(inputs, data, scope, element) do
+    list = read_choices(data, scope, element)
+
+    case choice_id(inputs, data, scope, element) do
+      nil ->
+        Enum.map(list, &{&1, false})
+
+      id ->
+        held = Enum.map(list, &{&1, &1.id == id})
+
+        if Enum.any?(held, &elem(&1, 1)),
+          do: held,
+          else: [{input(inputs, data, scope, element), true} | held]
+    end
+  end
+
+  @doc "The unique ID of the thing Dropdown `element` holds (WTF-596), or nil."
+  def choice_id(inputs, data, scope, element) do
+    case input(inputs, data, scope, element) do
+      %{id: id} when is_binary(id) -> id
+      _ -> nil
+    end
+  end
+
+  @doc """
+  The thing with unique ID `id` among Dropdown `element`'s choices, as
+  the page read them for the current user, or its default value when it
+  is that thing; else nil (WTF-596). What the browser chose is never read
+  any other way: a choice the user may not view, or that the choices no
+  longer list, reads as empty.
+  """
+  def chosen(data, scope, element, id) when is_binary(id) do
+    Enum.find(read_choices(data, scope, element), &(&1.id == id)) ||
+      case is_map(data) && Map.get(data, {scope, element}) do
+        %{id: ^id} = default -> default
+        _ -> nil
+      end
+  end
+
+  def chosen(_data, _scope, _element, _id), do: nil
+
+  defp read_choices(data, scope, element) when is_map(data) do
+    data
+    |> Map.get({scope, choices_key(element)})
+    |> List.wrap()
+    |> Enum.filter(&match?(%{id: id} when is_binary(id), &1))
+  end
+
+  defp read_choices(_data, _scope, _element), do: []
 
   @doc """
   What a text input shows (WTF-475): its value, or `shown` (its first

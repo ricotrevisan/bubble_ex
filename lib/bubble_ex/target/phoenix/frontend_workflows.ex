@@ -727,8 +727,10 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp binding({:state, k}, loads),
     do: "BubbleWorkflows.load(#{binding({:state, k}, [])}, #{loads_source(loads)}, ctx)"
 
-  defp binding({:input, k}, _loads),
-    do: "BubbleWorkflows.input(ctx, #{source(k.path)}, #{literal(k.element)})"
+  # A Dropdown of things (WTF-596) holds a record: what is read through it
+  # is loaded as for the page's data.
+  defp binding({:input, k}, loads),
+    do: page_loaded("BubbleWorkflows.input(ctx, #{source(k.path)}, #{literal(k.element)})", loads)
 
   # An input in the workflow's cell (WTF-520): that cell's value.
   defp binding({:cell_input, k}, _loads),
@@ -1037,13 +1039,17 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   # their element.
   defp data_key_element(%{kind: :instance, holder: holder}) when is_binary(holder), do: holder
   defp data_key_element(%{kind: :param, key: %{element: key}}), do: key
+  # A Dropdown's choices (WTF-596), beside its default under the element.
+  defp data_key_element(%{kind: :choices, key: %{element: key}}), do: key
   defp data_key_element(d), do: d.element
 
   defp data_fun(%{kind: :param} = d), do: "data_" <> fun_part(d.element <> " " <> d.param)
+  defp data_fun(%{kind: :choices} = d), do: "data_" <> fun_part(d.element <> " choices")
   defp data_fun(d), do: "data_" <> fun_part(d.element)
 
   # A property's value is marked with its element and property (WTF-493).
   defp data_marker(%{kind: :param, element: e, param: p}), do: marker(e) <> " " <> marker(p)
+  defp data_marker(%{kind: :choices, element: e}), do: marker(e) <> " choices"
   defp data_marker(d), do: marker(d.element)
 
   defp fun_part(id) do
@@ -1515,6 +1521,8 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   # A value a browser could send for an input of `type`.
   defp sample({:number, _}), do: ~s("1")
   defp sample({:boolean, _}), do: ~s("true")
+  # A Dropdown of things (WTF-596): no choice, which the page always takes.
+  defp sample({:thing, _}), do: ~s("")
   defp sample(_input), do: ~s("text")
 
   # --- source helpers -----------------------------------------------------------------------

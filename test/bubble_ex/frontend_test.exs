@@ -2248,6 +2248,50 @@ defmodule BubbleEx.FrontendTest do
     assert nodes["fractional-opacity"].style.resolved["opacity"] == 0.25
   end
 
+  # WTF-596: dynamic choices of a data type render natively from the
+  # page's data; the label is about each choice.
+  test "classifies a Dropdown of things as dynamic, with its choices, label and default" do
+    search = %{"type" => "Search", "properties" => %{"type_to_find" => "custom.task"}}
+    label = %{"type" => "TextExpression", "entries" => %{"0" => "Task"}}
+
+    payload =
+      page_with_elements(%{
+        "things" => %{
+          "id" => "things",
+          "type" => "Dropdown",
+          "properties" => %{
+            "choices_style" => "dynamic",
+            "dynamic_type" => "custom.task",
+            "data_source" => search,
+            "option_display_expression" => label,
+            "default" => %{"type" => "CurrentUser"}
+          }
+        },
+        "options" => %{
+          "id" => "options",
+          "type" => "Dropdown",
+          "properties" => %{
+            "choices_style" => "dynamic",
+            "dynamic_type" => "option.color",
+            "data_source" => search,
+            "option_display_expression" => label
+          }
+        }
+      })
+
+    assert {:ok, %Normalized{pages: [%{children: children}]}} = Frontend.normalize(payload)
+    nodes = Map.new(children, &{&1.source.bubble_id, &1})
+
+    assert %{kind: :dropdown, variant: :dynamic, placeholder?: false} = dd = nodes["things"]
+    assert dd.content["choices"].data_type == "custom.task"
+    assert %{kind: :expression, payload: ^search} = dd.bindings["choices"]
+    assert %{kind: :value, payload: ^label} = dd.bindings["choice_label"]
+    assert %{kind: :value} = dd.bindings["value"]
+
+    # Choices of an option set are not things: a placeholder, as before.
+    assert %{kind: :placeholder, variant: :unsupported_dropdown_variant} = nodes["options"]
+  end
+
   test "does not classify a dynamic compact choices expression as static" do
     payload =
       page_with_elements(%{

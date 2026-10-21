@@ -32,6 +32,8 @@ defmodule BubbleEx.PageData do
   | a property a reusable-element instance sets (WTF-493) | `:param` | its value, computed where the instance is (`holder`: the reusable element; `param`: `"param_<id>"`) |
   | a reusable element property's default value | `:param` | computed inside the reusable element (`element` and `holder` are the reusable element), for the instances that do not set it |
   | an Input's or Multiline Input's initial content that is an expression, outside a repeating group's cell (WTF-520) | `:input` | the input's first value, computed where the input is, the conditional states that set its content folded in Bubble's order (IR `:if`, the last state outermost) |
+  | a Dropdown's dynamic choices of a data type (a thing or the user), outside a repeating group's cell (WTF-596) | `:choices` | the list its data source gives (a search, a list field…), computed where the dropdown is; type the list of the dropdown's type |
+  | such a Dropdown's default value that is an expression (WTF-596) | `:input` | its first value, computed where the dropdown is, the conditional states that set it folded as an input's initial content's |
 
   An instance in a repeating group's cell (WTF-494) lists the properties
   it sets, like any other: their values are computed per cell (`cell`).
@@ -45,8 +47,8 @@ defmodule BubbleEx.PageData do
   `cell` is the repeating group whose cell holds the element, or the table
   whose repeated row holds it (nil outside one): its value is computed
   per cell (per row). A table's other rows (its header) are outside its
-  cells. Other elements' data sources (a dropdown's choices, a plugin's)
-  are not group data and not listed.
+  cells. Other elements' data sources (a dropdown's choices of an option
+  set or of texts, a plugin's) are not group data and not listed.
 
   A search's constraint whose value is empty matches nothing unless the
   search states `ignore_empty_constraints: true`, which drops it (Bubble's
@@ -106,6 +108,9 @@ defmodule BubbleEx.PageData do
   # form's, as `BubbleEx.Frontend.normalize/2` reads them first).
   @inputs ~w(Input MultiLineInput)
   @content_keys ~w(content %c1 %3 initial_content)
+
+  # The keys a Dropdown's default value is kept under (WTF-596).
+  @default_keys ~w(default default_value initial_value)
 
   # The keys a data source is kept under (the editor's and the compact form's).
   @source_keys ~w(data_source %ds)
@@ -394,6 +399,9 @@ defmodule BubbleEx.PageData do
   defp element_values(type, raw, id, path, %{cell: nil} = at, ctx) when type in @inputs,
     do: initial_content(raw, id, path, at, ctx)
 
+  defp element_values("Dropdown", raw, id, path, %{cell: nil} = at, ctx),
+    do: thing_dropdown(raw, id, path, at, ctx)
+
   defp element_values(_type, _raw, _id, _path, _at, _ctx), do: []
 
   defp data_source(props) do
@@ -601,6 +609,107 @@ defmodule BubbleEx.PageData do
         []
     end
   end
+
+  # --- dropdowns of things (WTF-596) -----------------------------------------------------
+
+  # A Dropdown whose choices are dynamic and of a data type (outside a
+  # repeating group's cell): its choices (`:choices`, the list its data
+  # source gives, computed where the dropdown is) and its default value
+  # (`:input`, its first value, the conditional states that set it folded
+  # as an input's initial content's). Choices of an option set, or of
+  # texts or numbers, are not things: not listed.
+  defp thing_dropdown(raw, id, path, at, ctx) do
+    props = props(raw)
+    ppath = path ++ [props_key(raw)]
+
+    with "dynamic" <- props["choices_style"],
+         type when is_binary(type) <- text(props["dynamic_type"]),
+         true <- thing_type?(type),
+         {key, choices} when is_map(choices) <- data_source(props) do
+      env = %{ctx.env | host: id}
+      symbol = Symbol.id(:element, id)
+      expr = Lowering.expr(choices, ppath ++ [key], env)
+
+      residue =
+        Lowering.expr_residue(symbol, [expr]) ++
+          choices_type(symbol, expr, type) ++ search_fields(symbol, expr, ctx.model)
+
+      choices_source = %Source{
+        id: symbol,
+        element: id,
+        surface: at.surface,
+        surface_kind: at.surface_kind,
+        kind: :choices,
+        type: Type.listed(type),
+        value: expr,
+        cell: at.cell,
+        residue: residue,
+        path: Diagnostic.pointer(ppath ++ [key])
+      }
+
+      [choices_source | dropdown_default(raw, props, id, type, path, at, ctx)]
+    else
+      _ -> []
+    end
+  end
+
+  defp thing_type?(type) do
+    match?({%Type{kind: :ref, cardinality: :one}, _}, Type.classify(type))
+  end
+
+  # Choices that are not a list of the dropdown's type cannot be shown in
+  # it.
+  defp choices_type(symbol, %Lowering.Expr{ir: %IR{type: actual}}, type)
+       when is_binary(actual) do
+    if actual == Type.listed(type),
+      do: [],
+      else: [Residue.entry(symbol, :uncompiled_expression, %{constructs: ["choices_type"]})]
+  end
+
+  defp choices_type(_symbol, _expr, _type), do: []
+
+  # A dropdown's default value that is an expression: its first value (a
+  # static one is not a thing).
+  defp dropdown_default(raw, props, id, type, path, at, ctx) do
+    ppath = path ++ [props_key(raw)]
+
+    case Enum.find(@default_keys, &is_map(props[&1])) do
+      nil ->
+        []
+
+      key ->
+        env = %{ctx.env | host: id}
+        base = Lowering.expr(props[key], ppath ++ [key], env)
+        states = conditional_states(raw, path, @default_keys, env)
+        symbol = Symbol.id(:element, id)
+        exprs = [base | Enum.flat_map(states, &Tuple.to_list/1)]
+        residue = Lowering.expr_residue(symbol, exprs) ++ branch_types(symbol, type, states)
+        value = if residue == [], do: fold(base, states), else: base
+
+        [
+          %Source{
+            id: symbol,
+            element: id,
+            surface: at.surface,
+            surface_kind: at.surface_kind,
+            kind: :input,
+            type: type,
+            value: value,
+            cell: at.cell,
+            residue:
+              residue ++
+                default_type(symbol, base, type) ++ search_fields(symbol, value, ctx.model),
+            path: Diagnostic.pointer(ppath ++ [key])
+          }
+        ]
+    end
+  end
+
+  defp default_type(symbol, %Lowering.Expr{ir: %IR{type: actual}}, type)
+       when is_binary(actual) and actual != type,
+       do: [Residue.entry(symbol, :uncompiled_expression, %{constructs: ["default_type"]})]
+
+  defp default_type(_symbol, _expr, _type), do: []
 
   # The conditional states that set one of `keys` (the content, the data
   # source), in order: `{condition, value}` as expressions. A state with
@@ -836,6 +945,7 @@ defmodule BubbleEx.PageData do
   defp kind_text(:page_thing), do: "type of content"
   defp kind_text(:param), do: "property value"
   defp kind_text(:input), do: "initial content"
+  defp kind_text(:choices), do: "choices"
   defp kind_text(_kind), do: "data source"
 
   defp text(value) when is_binary(value) and value != "", do: value

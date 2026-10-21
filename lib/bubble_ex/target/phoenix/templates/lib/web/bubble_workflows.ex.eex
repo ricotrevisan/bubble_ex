@@ -830,6 +830,7 @@ defmodule <%= @web %>.BubbleWorkflows do
            params,
          {:ok, module, type, cell} <- input_surface(socket, page, scope, element),
          {:ok, value} <- coerce(type, Map.get(params, "value")),
+         true <- chosen?(socket, scope, element, type, value),
          false <- untouched?(socket, scope, element, type, value) do
       {:ok, module, scope, element, value, cell}
     end
@@ -868,6 +869,7 @@ defmodule <%= @web %>.BubbleWorkflows do
   end
 
   defp same_value?(:number, shown, value), do: as_number(shown) == as_number(value)
+  defp same_value?(:thing, shown, value), do: identity(shown) == identity(value)
   defp same_value?(_type, shown, value), do: as_text(shown) == as_text(value)
 
   defp as_number(%Decimal{} = n), do: Decimal.to_float(n)
@@ -892,6 +894,11 @@ defmodule <%= @web %>.BubbleWorkflows do
       _ -> as_text(to_string(value))
     end
   end
+
+  # A thing a Dropdown holds (WTF-596), compared by its unique ID: the
+  # default the page read and the same thing chosen are one value.
+  defp identity(%{id: id}) when is_binary(id), do: {:choice, id}
+  defp identity(value), do: value
 
   # The input's new value; the sources reading it read again (WTF-475).
   defp put_input(socket, scope, element, value) do
@@ -920,7 +927,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     socket = assign(socket, :bubble_committed, Map.put(committed, key, value))
 
     runs =
-      case {cell, before != value} do
+      case {cell, identity(before) != identity(value)} do
         {_, false} ->
           []
 
@@ -1585,7 +1592,25 @@ defmodule <%= @web %>.BubbleWorkflows do
   end
 
   defp coerce(:number, nil), do: {:ok, nil}
+
+  # A Dropdown of things (WTF-596): the chosen thing's unique ID (the empty
+  # placeholder is none). Whether it is one of the dropdown's choices is
+  # checked against what the page read (`chosen?/4`).
+  defp coerce(:thing, value) when value in [nil, ""], do: {:ok, nil}
+
+  defp coerce(:thing, value) when is_binary(value),
+    do: if(BubbleData.bubble_id?(value), do: {:ok, {:choice, value}}, else: :error)
+
   defp coerce(_type, _value), do: :error
+
+  # A Dropdown of things takes only a thing it offers this user: one of
+  # its choices as the page read them for the current user, or the
+  # default it holds (`Bubble.chosen/4`). Any other ID the browser sends
+  # is ignored, as a change that never happened.
+  defp chosen?(socket, scope, element, :thing, {:choice, id}),
+    do: Bubble.chosen(Map.get(socket.assigns, :bubble_data), scope, element, id) != nil
+
+  defp chosen?(_socket, _scope, _element, _type, _value), do: true
 
   # --- running events --------------------------------------------------------------------
 
@@ -2328,13 +2353,19 @@ defmodule <%= @web %>.BubbleWorkflows do
   The value of input `element` (in the instance `path` below). An input
   whose first value is page data (WTF-520) holds `:data` until it changes
   (or again after a reset): its initial content as the page's data
-  computed it (`ctx.data`, read after it while loading).
+  computed it (`ctx.data`, read after it while loading). A Dropdown of
+  things (WTF-596) holds `{:choice, id}` once the user chose: that thing
+  among its choices as the page read them (`Bubble.chosen/4`), else
+  empty.
   """
   def input(ctx, path, element) do
-    key = {scope(ctx, path), element}
+    scope = scope(ctx, path)
+    key = {scope, element}
 
     case Map.get(ctx.inputs, key) do
       :data -> Map.get(ctx.data, key)
+      # A Dropdown of things (WTF-596): the chosen thing among its choices.
+      {:choice, id} -> Bubble.chosen(ctx.data, scope, element, id)
       value -> value
     end
   end
