@@ -32,7 +32,7 @@ defmodule BubbleEx.Plan do
   | `:setup_secrets` | app, when an API Connector value is private | owner | open |
   | `:auth` | app; subjects are the log-in, sign-up and credential workflows | agent | open |
   | `:styles_residue` | app, when a named style is residue | agent | open |
-  | `:decision` | plugin used by kept code with no applicable owner decision (`decision:plugin/<id>`) | owner | open |
+  | `:decision` | plugin used by kept code with no applicable owner decision (`decision:plugin/<id>`); workaround element on a kept surface whose `:workaround_element` finding is an owner question (`decision:workaround/<element id>`, WTF-586) | owner | open |
   | `:plugin` | plugin used by a kept element, action or event; subjects are the plugin symbol and its uses | agent (generator when dropped) | open (closed by a `drop` decision) |
   | `:surface` | page (mobile views excluded) or reusable | agent | auto unless it or a subtask has residue |
   | `:fragment` | top-level container of a surface with more than `fragment_threshold` elements | agent | as surface |
@@ -189,7 +189,7 @@ defmodule BubbleEx.Plan do
   nothing. `symbols` holds symbol IDs and hashes only.
   """
 
-  alias BubbleEx.{CanonicalJson, Error, Index, Model}
+  alias BubbleEx.{CanonicalJson, Error, Finding, Index, Model}
   alias BubbleEx.Decision.{Applied, Drop, Resolved}
   alias BubbleEx.Frontend.Normalized
   alias BubbleEx.Plan.{Builder, Content, Diff, Residue, Task}
@@ -252,6 +252,16 @@ defmodule BubbleEx.Plan do
       are part of the task's `decisions_sha256`
     * `:fragment_threshold` - elements under a top-level container above
       which it becomes a fragment task (default #{@fragment_threshold})
+    * `:findings` - the `BubbleEx.Finding`s the `applied` entries come
+      from: each `:workaround_element` finding that is an owner question
+      (undecided in `:resolved`) is a `decision:workaround/<element id>`
+      task for the owner, unless the element is inside a value holder
+      lowered to page state. It blocks nothing: until the owner decides,
+      the element keeps its markup. Pass `:resolved` with it: without it,
+      a finding below `:high` confidence that applies nothing counts as
+      undecided, a rejected one too. The contents of a value holder
+      lowered to page state (`BubbleEx.Workarounds.page_state/1`) are not
+      rendered, so no surface or fragment traces them
   """
   @spec build(Model.t(), Index.t(), Normalized.t() | nil, [Applied.t()], keyword()) ::
           {:ok, t()} | {:error, Error.t()}
@@ -266,6 +276,12 @@ defmodule BubbleEx.Plan do
          {:ok, extra} <- check_residue(Keyword.get(opts, :residue, [])),
          {:ok, content} <- check_content(Keyword.get(opts, :content)),
          {:ok, resolved} <- check_resolved(Keyword.get(opts, :resolved)),
+         {:ok, questions} <-
+           check_questions(
+             Keyword.get(opts, :findings, []),
+             Keyword.get(opts, :resolved),
+             applied
+           ),
          :ok <- check_threshold(threshold) do
       result =
         Builder.run(%{
@@ -277,7 +293,8 @@ defmodule BubbleEx.Plan do
           threshold: threshold,
           content: (content && content.digests) || %{},
           content_id: content_id(content),
-          resolved: resolved
+          resolved: resolved,
+          questions: questions
         })
 
       plan = %__MODULE__{
@@ -382,6 +399,35 @@ defmodule BubbleEx.Plan do
   defp check_resolved(nil), do: {:ok, []}
   defp check_resolved(%Resolved{entries: entries}), do: {:ok, entries}
   defp check_resolved(_), do: error("resolved must be a BubbleEx.Decision.Resolved")
+
+  # The workaround elements the owner is asked about (WTF-586): Bubble IDs.
+  defp check_questions(findings, resolved, applied) when is_list(findings) do
+    if Enum.all?(findings, &is_struct(&1, Finding)) do
+      asked? = asked(resolved, MapSet.new(applied, & &1.key))
+
+      {:ok,
+       for(
+         %Finding{kind: :workaround_element, subject: %{element: element}} = f <- findings,
+         asked?.(f),
+         do: element
+       )}
+    else
+      error("findings must be BubbleEx.Finding structs")
+    end
+  end
+
+  defp check_questions(_findings, _resolved, _applied),
+    do: error("findings must be a list of BubbleEx.Finding structs")
+
+  # Undecided per the resolved decisions; without them, below :high
+  # confidence and not applied.
+  defp asked(%Resolved{undecided: ids}, _applied) do
+    undecided = MapSet.new(ids)
+    &MapSet.member?(undecided, &1.id)
+  end
+
+  defp asked(_resolved, applied),
+    do: &(&1.confidence != :high and not MapSet.member?(applied, "finding:" <> &1.id))
 
   defp check_threshold(n) when is_integer(n) and n > 0, do: :ok
   defp check_threshold(_), do: error("fragment_threshold must be a positive integer")

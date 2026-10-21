@@ -62,7 +62,7 @@ defmodule BubbleEx.Target.Ash.Decisions do
 
   # Transforms that are not the schema's: the plan interprets them
   # (`BubbleEx.Plan`), so the schema generator skips them.
-  @not_schema [:replace_plugin]
+  @not_schema [:replace_plugin, :lower_workaround]
 
   # Resource name map members holding names in one attribute scope.
   @resource_scope ~w(attributes relationships privacy_rules privacy_relationships join_relationships)

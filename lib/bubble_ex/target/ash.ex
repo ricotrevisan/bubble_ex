@@ -258,7 +258,10 @@ defmodule BubbleEx.Target.Ash do
       decision: `applicable/2` never lists one)
     * a transform Target.Ash does not know (every registered finding
       transform applies since cut 3)
-    * an `automatic` entry that is not an undecided hint
+    * an `automatic` entry that is not an undecided hint (`:high`
+      confidence `:default` findings apply automatically too, but their
+      only transform, `lower_workaround`, is not the schema's: `map/3`
+      skips it)
     * a subject missing from the Model or deleted, or a proposal that no
       longer fits it (not a number field, a derivation that is not a path
       of references to the source's type, a source of another type, a
@@ -403,7 +406,9 @@ defmodule BubbleEx.Target.Ash do
   `BubbleEx.Load`.
 
   `replace_plugin` decisions (`:plugin` findings) do not concern the
-  schema: `map/3` skips them, and `BubbleEx.Plan` interprets them.
+  schema: `map/3` skips them, and `BubbleEx.Plan` interprets them. Nor do
+  `lower_workaround` ones (`:workaround_element` findings, WTF-586):
+  `BubbleEx.Target.Phoenix` and `BubbleEx.Plan` read them.
 
   **Drops (WTF-422).** An applied `:drop` (`BubbleEx.Decision.Drop`)
   removes a data type (its fields and every relationship to it), a field

@@ -5,8 +5,10 @@ defmodule BubbleEx.Decision.Resolved do
 
     * `entries` - one per record, sorted by key and revision:
       `%{decision: BubbleEx.Decision.t(), state: state(), reasons: [reason()]}`
-    * `undecided` - IDs of `:decision` findings without a current record,
-      sorted. Hint findings are never undecided: they apply by default.
+    * `undecided` - IDs of `:decision` findings, and of `:default`
+      findings below `:high` confidence (the owner's questions), without a
+      current record, sorted. Hint findings and `:high` confidence
+      `:default` findings are never undecided: they apply by default.
 
   States (computed on every snapshot, never stored):
 

@@ -22,6 +22,7 @@ defmodule BubbleEx.Findings do
   | `:search_index` | hint | per data type, the indexes (access patterns) its searches need |
   | `:number_type` | decision | an integer for a number field whose every write is integral |
   | `:plugin` | decision | per marketplace plugin: drop it, replace it with a known native equivalent, or rebuild it |
+  | `:workaround_element` | default | per tiny or never-visible element (`BubbleEx.Workarounds`): its class (value holder, keep-alive, spacer, JS bridge or unknown) and the lowering it suggests; applied by default at `:high` confidence, otherwise an owner question |
 
   A `:plugin` finding covers one plugin (installed or used) as a whole: its
   evidence lists the members used (element, action and event types, with
@@ -69,7 +70,8 @@ defmodule BubbleEx.Findings do
     Plugin,
     PrivacyAccess,
     ReverseList,
-    SearchIndex
+    SearchIndex,
+    Workaround
   }
 
   @enforce_keys [:findings, :diagnostics]
@@ -120,7 +122,8 @@ defmodule BubbleEx.Findings do
 
     link_joins(reverse ++ privacy ++ lists) ++
       Denormalized.run(ctx) ++
-      IdInText.run(ctx) ++ SearchIndex.run(ctx) ++ NumberType.run(ctx) ++ Plugin.run(ctx)
+      IdInText.run(ctx) ++
+      SearchIndex.run(ctx) ++ NumberType.run(ctx) ++ Plugin.run(ctx) ++ Workaround.run(ctx)
   end
 
   # Findings whose proposals share a join are related to each other.

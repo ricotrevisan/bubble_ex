@@ -6,6 +6,30 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Workaround elements are cataloged, the clear ones lowered, the rest
+  asked (WTF-586).** `BubbleEx.Workarounds.catalog/2` lists every tiny
+  (0x0/1x1: fixed without a min size, as `EditorGeometry` sizes it) or
+  never-visible element (hidden on load, and no conditional or step
+  shows it): who sets it (display data, custom state, reset steps), who
+  reads it and what (group or list data, custom states, `is visible`,
+  `is hovered`), its events and plugins, its contents, and a class with
+  confidence and reason: a value holder (lowered to page state), a
+  keep-alive (its plugin's or event's own lowering), a spacer (a CSS
+  gap), a JS bridge (a client hook) or unknown (keep the markup). Each
+  entry is a `:workaround_element` finding of the new `:default`
+  category: applied by default at `:high` confidence, otherwise an owner
+  question (`Decision.Resolved` `undecided`, a `decision:workaround/<id>`
+  plan task that blocks nothing, `Plan.build/5`'s `findings:`). Owners
+  answer or override in the decisions file with an ordinary finding
+  decision keyed to the element (`subject: {"element": id}`, `modify`
+  with `{"option": …}`, any lowering, or `reject` to keep the markup).
+  `Target.Phoenix.render/2`'s `workarounds:` renders a value holder
+  lowered to page state (a Group, Floating Group or Repeating Group whose
+  held candidates are all lowered too, `Workarounds.page_state/1`) as its
+  own empty element, without its contents: its value already is page
+  state. The plan does not trace those contents nor ask about them. The other lowerings are proposed only. The vertical slice writes
+  the catalog to `OUT/workarounds.json` and its counts to `slice.json`.
+
 - **An element's "is visible" in a condition is the visibility the page
   computes (WTF-578).** `BubbleEx.Target.Elixir.Frontend.ElementVisibility`
   replaces a read of another element's `is visible` / `isn't visible` on

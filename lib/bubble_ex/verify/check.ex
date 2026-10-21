@@ -91,7 +91,10 @@ defmodule BubbleEx.Verify.Check do
     search_index: {[], []},
     # A plugin decision changes what renders and runs; differences it causes
     # are excused by parity exceptions, not explained by the finding.
-    plugin: {[], []}
+    plugin: {[], []},
+    # A workaround lowering must not change what shows (render_diff checks
+    # it): it explains no difference.
+    workaround_element: {[], []}
   }
 
   for kind <- BubbleEx.Finding.Kinds.all(), not Map.has_key?(@explains, kind) do
