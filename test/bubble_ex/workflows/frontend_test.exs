@@ -385,6 +385,56 @@ defmodule BubbleEx.Workflows.FrontendTest do
     assert lowered |> workflow("wState") |> Workflow.residue() == []
   end
 
+  test "authentication actions lower their values (sign up, log in, reset)" do
+    text = &%{"type" => "TextExpression", "entries" => %{"0" => &1}}
+
+    actions = %{
+      "0" => %{
+        "id" => "aUp",
+        "type" => "SignUp",
+        "properties" => %{
+          "email" => text.("a@example.com"),
+          "password" => text.("secret"),
+          "password2" => text.("secret"),
+          "require_confirm" => true
+        }
+      },
+      "1" => %{
+        "id" => "aIn",
+        "type" => "LogIn",
+        "properties" => %{
+          "email" => text.("a@example.com"),
+          "password" => text.("secret"),
+          "stay_logged_in" => true
+        }
+      },
+      "2" => %{
+        "id" => "aMail",
+        "type" => "SendPasswordResetEmail",
+        "properties" => %{"to" => text.("a@example.com")}
+      },
+      "3" => %{
+        "id" => "aReset",
+        "type" => "ResetPassword",
+        "properties" => %{"new_password" => text.("n"), "new_password_again" => text.("n")}
+      }
+    }
+
+    lowered = app() |> edit("wResidue", &Map.put(&1, "actions", actions)) |> lower()
+    [up, in_, mail, reset] = workflow(lowered, "wResidue").steps
+
+    assert %{op: :sign_up, residue: [], args: %{changes: [], stay_logged_in: nil}} = up
+    assert %{email: %{ir: %{}}, password: %{ir: %{}}, password_confirm: %{ir: %{}}} = up.args
+    assert %{op: :log_in, residue: [], args: %{stay_logged_in: %{ir: %{}}}} = in_
+    assert %{op: :send_password_reset, residue: [], args: %{email: %{ir: %{}}}} = mail
+    assert %{op: :reset_password, residue: [], args: %{password_confirm: %{ir: %{}}}} = reset
+
+    # Without require_confirm the confirmation is not read.
+    actions = put_in(actions, ["0", "properties", "require_confirm"], false)
+    lowered = app() |> edit("wResidue", &Map.put(&1, "actions", actions)) |> lower()
+    assert [%{args: %{password_confirm: nil}} | _] = workflow(lowered, "wResidue").steps
+  end
+
   test "unresolved references, unknown options and plugin events are residue" do
     lowered =
       app()

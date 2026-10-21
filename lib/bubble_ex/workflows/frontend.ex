@@ -54,6 +54,10 @@ defmodule BubbleEx.Workflows.Frontend do
   | Set state(s) (`SetCustomState`) | `:set_state` | `element`, `states` (`%{state, value}`, state `custom.<id>`) |
   | Go to page (`ChangePage`) | `:navigate` | `page` (a page's Bubble ID, or `:current`), `params` (`%{key, value}`), `thing` (the data to send, the index page and the current page included), `untyped?` (true when `thing` goes to a page with no type of content: Bubble appends it as a path segment, a thing's unique ID or a text, WTF-466), `keep_params?`, `replace?`, `new_tab?` |
   | Open an external website (`OpenURL`) | `:open_url` | `url`, `new_tab?` |
+  | Sign the user up (`SignUp`) | `:sign_up` | `email`, `password`, `password_confirm` (nil unless a confirmation is required), `stay_logged_in`, `changes` (the new User's other fields, as `:update_current_user`'s) |
+  | Log the user in (`LogIn`) | `:log_in` | `email`, `password`, `stay_logged_in` |
+  | Send password reset email (`SendPasswordResetEmail`) | `:send_password_reset` | `email` |
+  | Reset password (`ResetPassword`, on the page a reset link opens) | `:reset_password` | `password`, `password_confirm` |
   | Send email (`SendEmail`) | `:send_email` | `to`, `subject`, `body`, `sender_name` (nil when unset), `reply_to` (nil unless a different reply-to is set) |
   | Refresh the page | `:refresh` | |
   | Log the user out | `:log_out` | |
@@ -157,6 +161,10 @@ defmodule BubbleEx.Workflows.Frontend do
     "ChangePage" => :navigate,
     "OpenURL" => :open_url,
     "SendEmail" => :send_email,
+    "SignUp" => :sign_up,
+    "LogIn" => :log_in,
+    "SendPasswordResetEmail" => :send_password_reset,
+    "ResetPassword" => :reset_password,
     "RefreshPage" => :refresh,
     "LogOut" => :log_out,
     "TriggerCustomEvent" => :call,
@@ -187,6 +195,10 @@ defmodule BubbleEx.Workflows.Frontend do
       ~w(element_id url_parameters add_parameters keep_current_page_params replace_history open_in_new_tab data_to_send),
     open_url: ~w(url open_in_new_tab),
     send_email: ~w(to subject body sender_name replyTo different_reply_to),
+    sign_up: ~w(email password password2 require_confirm stay_logged_in changes),
+    log_in: ~w(email password stay_logged_in),
+    send_password_reset: ~w(to),
+    reset_password: ~w(new_password new_password_again),
     refresh: [],
     log_out: [],
     call: ~w(custom_event arguments),
@@ -815,6 +827,41 @@ defmodule BubbleEx.Workflows.Frontend do
 
   # Values are as authored; cc, bcc, attachments and other members are
   # options residue (`unknown_members/2`).
+  # Authentication (values as authored; whether they sign anyone in is the
+  # target's). A sign-up's other fields are changes to the new User.
+  defp lower(:sign_up, props, path, id, env, ctx) do
+    value = &if(props[&1], do: Lowering.expr(props[&1], path ++ [&1], env))
+
+    {%{changes: changes}, residue} =
+      Lowering.data_args(:update_current_user, props, path, id, env, ctx)
+
+    {%{
+       email: value.("email"),
+       password: value.("password"),
+       password_confirm: if(props["require_confirm"] == true, do: value.("password2")),
+       stay_logged_in: value.("stay_logged_in"),
+       changes: changes
+     }, residue}
+  end
+
+  defp lower(:log_in, props, path, _id, env, _ctx) do
+    value = &if(props[&1], do: Lowering.expr(props[&1], path ++ [&1], env))
+
+    {%{
+       email: value.("email"),
+       password: value.("password"),
+       stay_logged_in: value.("stay_logged_in")
+     }, []}
+  end
+
+  defp lower(:send_password_reset, props, path, _id, env, _ctx),
+    do: {%{email: props["to"] && Lowering.expr(props["to"], path ++ ["to"], env)}, []}
+
+  defp lower(:reset_password, props, path, _id, env, _ctx) do
+    value = &if(props[&1], do: Lowering.expr(props[&1], path ++ [&1], env))
+    {%{password: value.("new_password"), password_confirm: value.("new_password_again")}, []}
+  end
+
   defp lower(:send_email, props, path, _id, env, _ctx) do
     value = fn key -> if props[key], do: Lowering.expr(props[key], path ++ [key], env) end
 
