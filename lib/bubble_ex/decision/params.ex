@@ -242,7 +242,7 @@ defmodule BubbleEx.Decision.Params do
       # Only groups and repeating groups lower to page state so far
       # (`BubbleEx.Workarounds.page_state/1`).
       option == :page_state and proposal[:transform] == :lower_workaround and
-          not BubbleEx.Workarounds.page_state_type?(proposal[:type]) ->
+          not BubbleEx.Workarounds.PageState.type?(proposal[:type]) ->
         error("only a Group, Floating Group or Repeating Group lowers to page state", %{
           type: proposal[:type]
         })

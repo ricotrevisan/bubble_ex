@@ -853,7 +853,7 @@ defmodule BubbleEx.Target.Phoenix do
              list,
              &match?(%Applied{transform: :lower_workaround, subject: %{element: _}}, &1)
            ),
-           do: {:ok, BubbleEx.Workarounds.page_state(list)},
+           do: {:ok, BubbleEx.Workarounds.PageState.lowered(list)},
            else:
              invalid(
                "workarounds: must be applied lower_workaround decisions (Decision.applicable/2)"

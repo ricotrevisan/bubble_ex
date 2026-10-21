@@ -180,38 +180,11 @@ defmodule BubbleEx.Workarounds do
   @spec options() :: [option()]
   def options, do: Enum.map(@classes, &option/1)
 
-  @page_state_types ~w(Group FloatingGroup RepeatingGroup)
+  @doc "See `BubbleEx.Workarounds.PageState.lowered/1`."
+  defdelegate page_state(applied), to: BubbleEx.Workarounds.PageState, as: :lowered
 
-  @doc """
-  The Bubble IDs of the elements lowered to page state by `applied`
-  (`BubbleEx.Decision.Applied` entries of `:workaround_element` findings):
-  option `:page_state`, a Group, Floating Group or Repeating Group, and
-  every candidate it holds (`proposal.holds`) lowered too. Their contents
-  are not rendered; what generates them (`BubbleEx.Target.Phoenix`) and
-  the plan (`BubbleEx.Plan`) read this one answer.
-  """
-  @spec page_state([BubbleEx.Decision.Applied.t()]) :: MapSet.t(String.t())
-  def page_state(applied) when is_list(applied) do
-    chosen =
-      for %{transform: :lower_workaround, proposal: %{option: :page_state} = p} <- applied,
-          page_state_type?(Map.get(p, :type)),
-          into: %{},
-          do: {p.element, Map.get(p, :holds, [])}
-
-    chosen
-    |> settle()
-    |> MapSet.new(fn "element:" <> id -> id end)
-  end
-
-  @doc "Whether an element of Bubble type `type` lowers to page state (`page_state/1`)."
-  @spec page_state_type?(term()) :: boolean()
-  def page_state_type?(type), do: type in @page_state_types
-
-  # Drops holders whose held candidates are not all lowered, until none.
-  defp settle(chosen) do
-    kept = Map.filter(chosen, fn {_, holds} -> Enum.all?(holds, &Map.has_key?(chosen, &1)) end)
-    if map_size(kept) == map_size(chosen), do: Map.keys(kept), else: settle(kept)
-  end
+  @doc "See `BubbleEx.Workarounds.PageState.type?/1`."
+  defdelegate page_state_type?(type), to: BubbleEx.Workarounds.PageState, as: :type?
 
   @doc "The workaround elements of decoded app JSON, with their facts and class."
   @spec catalog(map(), Index.t()) :: [entry()]

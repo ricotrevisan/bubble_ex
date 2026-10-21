@@ -221,7 +221,7 @@ defmodule BubbleEx.Plan.Builder do
   end
 
   defp lowered_contents(index, applied) do
-    for holder <- BubbleEx.Workarounds.page_state(applied),
+    for holder <- BubbleEx.Workarounds.PageState.lowered(applied),
         id <- descendants(index, Symbol.id(:element, holder), [:element]),
         into: MapSet.new(),
         do: id
