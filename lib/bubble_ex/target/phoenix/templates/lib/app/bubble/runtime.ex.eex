@@ -17,7 +17,7 @@ defmodule <%= @module %>.Bubble.Runtime do
   shows no thousands separator unless the format sets one.
   """
 
-  import Kernel, except: [abs: 1, div: 2, round: 1]
+  import Kernel, except: [abs: 1, ceil: 1, div: 2, floor: 1, round: 1]
 
   # A case-insensitive text (`Ash.CiString`: the User's email) is its text
   # wherever a value is read as text: shown, compared, sorted, or given to
@@ -192,6 +192,32 @@ defmodule <%= @module %>.Bubble.Runtime do
   def abs(x), do: x
   def round(x) when is_float(x), do: Kernel.round(x)
   def round(x), do: x
+
+  @doc """
+  `:ceiling` and `:floor`: the nearest whole number up or down (toward
+  positive or negative infinity, as JavaScript's `Math.ceil` and
+  `Math.floor`): an integer for a float, a whole Decimal for a Decimal
+  (never `-0`, which JavaScript shows as `0`). A float too large to have
+  a fraction (2^53 or more) stays as it is, so it shows as JavaScript
+  shows it. Anything else, such as an empty value, is returned as it is.
+  """
+  def ceiling(x) when is_float(x), do: whole(x, &Kernel.ceil/1)
+  def ceiling(%Decimal{} = x), do: whole_decimal(x, :ceiling)
+  def ceiling(x), do: x
+  def floor(x) when is_float(x), do: whole(x, &Kernel.floor/1)
+  def floor(%Decimal{} = x), do: whole_decimal(x, :floor)
+  def floor(x), do: x
+
+  defp whole(x, fun), do: if(Kernel.abs(x) >= 9_007_199_254_740_992.0, do: x, else: fun.(x))
+
+  defp whole_decimal(x, mode) do
+    if Decimal.inf?(x) or Decimal.nan?(x) do
+      x
+    else
+      n = Decimal.round(x, 0, mode)
+      if Decimal.eq?(n, 0), do: Decimal.new(0), else: n
+    end
+  end
   def to_text(x), do: text(x)
 
   def to_number(x) when ci?(x), do: x |> plain() |> to_number()

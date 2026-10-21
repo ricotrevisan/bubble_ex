@@ -65,6 +65,13 @@ defmodule BubbleEx.Expression.Compiler do
   (WTF-597). The operators the parser keeps raw are typed by
   `BubbleEx.Expression.Typing`, so `(date :rounded down to day) - date`
   is an interval too.
+
+  ## Numbers
+
+  A number's `:ceiling` and `:floor` (Bubble's `ceil` and `floor`) are
+  `:ceiling` and `:floor` (WTF-598); on anything but a number they are
+  not compiled. `:rounded to` (`round`, with a number of decimals) is not
+  compiled yet: how Bubble rounds a half is not pinned down.
   """
 
   alias BubbleEx.{Diagnostic, Error, Expression, Model}
@@ -132,10 +139,14 @@ defmodule BubbleEx.Expression.Compiler do
     "is_email" => :is_email,
     "absolute_value" => :abs,
     "rounded" => :round,
+    "ceil" => :ceiling,
+    "floor" => :floor,
     "as_text" => :to_text,
     "convert_to_number" => :to_number,
     "url" => :to_text
   }
+  # Operators only a number has (WTF-598).
+  @number_operators ~w(ceil floor)
   # A date interval's conversions: exact units (WTF-594).
   @interval_units %{
     "to_days" => :day,
@@ -513,7 +524,7 @@ defmodule BubbleEx.Expression.Compiler do
     {subject, spath, diags} = c(n.subject, base, ctx)
     path = spath ++ [link(n)]
 
-    case Map.fetch(@operators, name) do
+    case property_op(name, n.subject.type) do
       _ when n.subject.type == "dateinterval" and is_map_key(@interval_units, name) ->
         ir = IR.node(:interval_to, [subject, Map.fetch!(@interval_units, name)], "number")
         {combine(ir, [subject]), path, diags}
@@ -535,6 +546,11 @@ defmodule BubbleEx.Expression.Compiler do
         {:error, path, diags ++ [uncompiled(path, "the operator #{inspect(name)}", :operator)]}
     end
   end
+
+  # `:ceiling` and `:floor` are a number's (WTF-598); on anything else
+  # they are not compiled.
+  defp property_op(name, type) when name in @number_operators and type != "number", do: :error
+  defp property_op(name, _type), do: Map.fetch(@operators, name)
 
   # --- operators the parser keeps raw -----------------------------------------------
 

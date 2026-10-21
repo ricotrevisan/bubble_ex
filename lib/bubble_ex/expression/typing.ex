@@ -26,6 +26,7 @@ defmodule BubbleEx.Expression.Typing do
   | element state (`is visible`, `value`, `group's thing`, a reusable's parameter, a custom state, a plugin element's state its plugin's definition types) | from the element tree |
   | comparisons, `and`/`or`, checks, list predicates | yes/no |
   | arithmetic | the left operand's type; `date - date` is a `dateinterval` |
+  | a number's `ceil` / `floor` (`:ceiling`, `:floor`) | number |
   | a date interval's `to_days` / `to_hours` / `to_minutes` / `to_seconds`, a date range's `min` / `max` / `average` | number; date |
   | an operator the parser keeps raw that the compiler lowers (`rounded down to`, `+(days)`, `formatted as`, …) | its result's (`format_boolean_as_type`: its `data_type`, a list when `is_list`) |
   | list operators, `:filtered`, `defaulting to` | from their operands |
@@ -90,6 +91,8 @@ defmodule BubbleEx.Expression.Typing do
     "is_email" => "boolean",
     "absolute_value" => :same,
     "rounded" => :same,
+    "ceil" => "number",
+    "floor" => "number",
     "as_text" => "text",
     "convert_to_number" => "number",
     "format_date" => "text",
