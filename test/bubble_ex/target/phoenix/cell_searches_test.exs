@@ -166,6 +166,32 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
       assert %{attr: "tier", kind: :eq, enum: "Enums.Tier"} = key
     end
 
+    test "an option compared with an attribute of another set is not a key (WTF-589)" do
+      # The orders' tier holds another option set: the batch's values would
+      # not cast, so the search is not batched on it.
+      app =
+        app()
+        |> put_in(["option_sets", "rank"], %{
+          "display" => "Rank",
+          "values" => %{
+            "gold" => %{"display" => "Gold", "db_value" => "gold", "sort_factor" => 1}
+          }
+        })
+        |> put_in(["user_types", "order", "fields", "tier_option_tier", "value"], "option.rank")
+
+      %{spec: spec} = spec(app)
+
+      for element <- ~w(bTier bSameTier) do
+        refute match?(
+                 %{read: {:query, %{batch: %{keys: [_ | _] = keys}}}}
+                 when is_map_key(hd(keys), :enum),
+                 data(spec, element)
+               )
+
+        refute inspect(data(spec, element)) =~ "enum: \"Enums.Tier\""
+      end
+    end
+
     test "a reusable element rendered per cell batches its search on its thing" do
       %{spec: spec} = spec(app())
 

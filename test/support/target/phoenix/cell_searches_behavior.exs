@@ -356,20 +356,26 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
       ExUnit.CaptureLog.with_log(fn ->
         {{_view, html}, by_table} = queries(fn -> customers(sign_in(conn, users["Ada"])) end)
 
+        # Same reads every order of a tier: past the cap without privacy
+        # (seven orders), each cell on its own; the counts are the same.
         if enforced?() do
           assert shown(html, "Count") == ~w(2 0 0 1 5)
           assert shown(html, "Two") == ~w(2 0 0 1 2)
+          assert shown(html, "Same") == ~w(2 2 2 0 2)
         else
           assert shown(html, "Count") == ~w(3 1 0 1 6)
           assert shown(html, "Two") == ~w(2 1 0 1 2)
+          assert shown(html, "Same") == ~w(3 4 3 0 4)
         end
 
         by_table
       end)
 
     warnings = Regex.scan(~r/reached :max_batched/, log)
-    # One warning per count search (Count, Open, Card, Chain, and Same: all
-    # seven orders with a tier), never per round.
+    # The warning is logged once per page process and message (per
+    # resource), never per round: at least one, at most one per count
+    # search past the cap (Count, Open, Card, Chain and, without privacy,
+    # Same).
     assert length(warnings) in 1..5
 
     # Each count search: one batch, then each cell's own count; nothing read
