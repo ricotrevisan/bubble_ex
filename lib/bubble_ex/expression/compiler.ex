@@ -65,6 +65,7 @@ defmodule BubbleEx.Expression.Compiler do
   alias BubbleEx.Expression.Ast.{
     AllOptions,
     ApiData,
+    PluginData,
     ArbitraryText,
     Arithmetic,
     Check,
@@ -299,6 +300,15 @@ defmodule BubbleEx.Expression.Compiler do
          [uncompiled(base, "an API Connector call that does not resolve", :api_data)]}
     end
   end
+
+  # Bubble's ipify plugin (`ipify.GetIP`) is the visitor's public IP
+  # address as text: a context input (WTF-569). Other plugins' data calls
+  # have no stack-neutral IR.
+  defp lower(%PluginData{plugin: "ipify", call: "GetIP"}, base, _ctx),
+    do: {IR.node(:input, [:client_ip, %{"plugin" => "ipify"}], "text"), base, []}
+
+  defp lower(%PluginData{plugin: plugin, call: call}, base, _ctx),
+    do: {:error, base, [uncompiled(base, "plugin #{plugin}'s data call #{call}", :plugin_data)]}
 
   defp lower(%Raw{subject: nil} = n, base, _ctx),
     do: {:error, base, [uncompiled(base, "a raw source (#{n.reason})", :raw)]}

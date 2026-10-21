@@ -10,6 +10,7 @@ defmodule BubbleEx.Expression.Encoder do
   alias BubbleEx.Expression.Ast.{
     AllOptions,
     ApiData,
+    PluginData,
     ArbitraryText,
     Arithmetic,
     Check,
@@ -148,6 +149,13 @@ defmodule BubbleEx.Expression.Encoder do
 
     object(m, type: "GetDataFromAPI", properties: props)
   end
+
+  def encode(%PluginData{plugin: plugin, call: call, props: props, meta: m}),
+    do:
+      object(m,
+        type: "GetDataFromAPI",
+        properties: Map.put(props, "provider", "#{plugin}.#{call}")
+      )
 
   # --- chain operators: encode the subject, then append this message --------
 

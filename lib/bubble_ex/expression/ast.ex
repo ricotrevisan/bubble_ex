@@ -36,6 +36,7 @@ defmodule BubbleEx.Expression.Ast do
           | __MODULE__.ArbitraryText.t()
           | __MODULE__.Search.t()
           | __MODULE__.ApiData.t()
+          | __MODULE__.PluginData.t()
           | __MODULE__.Field.t()
           | __MODULE__.Property.t()
           | __MODULE__.Compare.t()
@@ -49,7 +50,7 @@ defmodule BubbleEx.Expression.Ast do
 
   @node_modules Enum.map(
                   ~w(Literal Empty CurrentUser ThisThing Scope OptionValue AllOptions DynamicText
-                     ArbitraryText Search ApiData Field Property Compare Logical Check Arithmetic ListOp
+                     ArbitraryText Search ApiData PluginData Field Property Compare Logical Check Arithmetic ListOp
                      Filter Fallback Raw),
                   &Module.concat(__MODULE__, &1)
                 )
@@ -202,6 +203,24 @@ defmodule BubbleEx.Expression.Ast do
             group: String.t(),
             call: String.t(),
             params: [BubbleEx.Expression.Ast.ApiParam.t()],
+            type: String.t() | nil,
+            meta: map()
+          }
+  end
+
+  defmodule PluginData do
+    @moduledoc """
+    `Get data from an external API` naming a plugin's data call rather
+    than the API Connector's (`provider` `<plugin>.<call>`, e.g. Bubble's
+    `ipify.GetIP`, WTF-569). `props` keeps its other members verbatim.
+    Typed only for calls with a known native equivalent.
+    """
+    defstruct [:plugin, :call, props: %{}, type: nil, meta: %{}]
+
+    @type t :: %__MODULE__{
+            plugin: String.t(),
+            call: String.t(),
+            props: map(),
             type: String.t() | nil,
             meta: map()
           }
