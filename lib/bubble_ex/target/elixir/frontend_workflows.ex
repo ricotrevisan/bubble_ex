@@ -34,7 +34,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   | a custom event's parameter | its argument |
   | Result of step N | the step's result |
   | an element's custom state | the page's state map, per reusable-element instance |
-  | an input's value | the page's input map, per instance: the page tracks every `Input` and `MultiLineInput` of text or number, `Checkbox` and text `Dropdown` it renders (not in a runtime container's template); in a repeating group's cell the page renders per cell (WTF-520), one with a static first value, per cell, read in that cell |
+  | an input's value | the page's input map, per instance: the page tracks every `Input` and `MultiLineInput` of text or number, `Checkbox` and text `Dropdown` it renders (not in a runtime container's template), and a `Dropdown` of things whose choices it loads (WTF-596: its value one of them, or its default); in a repeating group's cell the page renders per cell (WTF-520), one with a static first value, per cell, read in that cell |
   | a URL parameter (`Get data from page URL`) | the page's URL query, read as its type (`Spec.url/1`); a thing by its unique ID, through Ash as the current user |
   | the URL's path (`path`, `path segments`) | the page's URL path, its first segment the page's name |
 
@@ -251,8 +251,19 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       # step sets (WTF-520). One a step may set as the page loads only when
       # every workflow that may do so runs whole (`kept?/4`): the others
       # stay unloaded, loudly.
+      #
+      # A Dropdown of things (WTF-596) is tracked when its choices load,
+      # and its default value too when it has one.
+      {choices, defaults} = choice_inputs(page_data, ctx)
+
       {ctx, data, bound} =
-        bind_with_inputs(initial_inputs(page_data, ctx), lowered, page_data, ctx)
+        bind_with_inputs(
+          MapSet.union(initial_inputs(page_data, ctx), defaults),
+          choices,
+          lowered,
+          page_data,
+          ctx
+        )
 
       inputs = ctx.inputs
 
@@ -302,14 +313,18 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
        )}
 
   # Binds the page data and the workflows with the inputs `initial` (whose
-  # first value is page data, WTF-520) tracked, until the initial content
-  # of every one of them loads: an input whose initial content does not
-  # load is not tracked (as before), and its source is left out.
-  defp bind_with_inputs(initial, lowered, page_data, base) do
+  # first value is page data, WTF-520) and the Dropdowns of things
+  # `choices` (WTF-596) tracked, until the initial content of every one of
+  # them loads, and the choices of every such Dropdown (with its default,
+  # when it has one): an input whose initial content does not load, or a
+  # Dropdown whose choices do not, is not tracked (as before), and its
+  # sources are left out.
+  defp bind_with_inputs(initial, choices, lowered, page_data, base) do
     ctx =
       base
       |> Map.put(:initial, initial)
-      |> Map.put(:inputs, inputs(lowered.elements, base, initial))
+      |> Map.put(:choices, choices)
+      |> Map.put(:inputs, inputs(lowered.elements, base, initial, choices))
       |> Map.put(:cell_inputs, cell_inputs(lowered.elements, base))
 
     ctx = Map.put(ctx, :view, %Spec{elements: ctx.elements, surfaces: surfaces_view(ctx)})
@@ -318,22 +333,38 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       bind_data_and_workflows(
         displayed(lowered.workflows, page_data, ctx),
         lowered,
-        with_inputs(page_data, initial),
+        with_inputs(page_data, initial, choices),
         ctx
       )
 
-    loaded =
+    loaded = fn kind ->
       for {_surface, sources} <- data,
-          %{kind: :input, residue: []} = d <- sources,
+          %{kind: ^kind, residue: []} = d <- sources,
           into: MapSet.new(),
           do: d.element
+    end
 
-    kept = MapSet.intersection(initial, loaded)
+    kept = MapSet.intersection(initial, loaded.(:input))
+    kept_choices = MapSet.intersection(choices, loaded.(:choices))
 
-    if kept == initial,
+    # A Dropdown whose default does not load is not tracked; nor is the
+    # default of one whose choices do not.
+    kept_choices =
+      MapSet.reject(kept_choices, &(has_default?(page_data, &1) and not MapSet.member?(kept, &1)))
+
+    kept =
+      MapSet.reject(kept, &(choices?(page_data, &1) and not MapSet.member?(kept_choices, &1)))
+
+    if kept == initial and kept_choices == choices,
       do: {ctx, data, bound},
-      else: bind_with_inputs(kept, lowered, page_data, base)
+      else: bind_with_inputs(kept, kept_choices, lowered, page_data, base)
   end
+
+  defp has_default?(page_data, element),
+    do: Enum.any?(page_data.sources, &(&1.kind == :input and &1.element == element))
+
+  defp choices?(page_data, element),
+    do: Enum.any?(page_data.sources, &(&1.kind == :choices and &1.element == element))
 
   # The elements with a data source of their own, or nil without page data.
   defp own_elements(nil), do: nil
@@ -341,17 +372,57 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   defp own_elements(page_data),
     do: for(s <- page_data.sources, s.kind != :param, into: MapSet.new(), do: s.element)
 
-  # The page data with the initial contents of the inputs `initial` only.
-  defp with_inputs(nil, _initial), do: nil
+  # The page data with the initial contents of the inputs `initial` only,
+  # and the choices of the Dropdowns `choices` only.
+  defp with_inputs(nil, _initial, _choices), do: nil
 
-  defp with_inputs(page_data, initial) do
+  defp with_inputs(page_data, initial, choices) do
     sources =
       Enum.reject(page_data.sources, fn s ->
-        s.kind == :input and not MapSet.member?(initial, s.element)
+        (s.kind == :input and not MapSet.member?(initial, s.element)) or
+          (s.kind == :choices and not MapSet.member?(choices, s.element))
       end)
 
     %{page_data | sources: sources}
   end
+
+  # The Dropdowns of things a page could track (WTF-596): rendered with
+  # their choices from the page's data (`variant: :dynamic`), outside a
+  # repeating group's cell, whose choices lowered (`BubbleEx.PageData`'s
+  # `:choices` sources) and, when they have a default value, whose default
+  # lowered too (`:input`): `{dropdowns, those with a default}`.
+  defp choice_inputs(nil, _ctx), do: {MapSet.new(), MapSet.new()}
+
+  defp choice_inputs(page_data, ctx) do
+    by_kind =
+      Enum.group_by(
+        page_data.sources,
+        &{&1.kind, &1.element},
+        &(&1.residue == [])
+      )
+
+    dropdowns =
+      for %{kind: :choices, element: id, residue: [], cell: nil} <- page_data.sources,
+          %{kind: :element, type: "Dropdown", value: value, instance_of: nil} <- [
+            ctx.raw_elements[id]
+          ],
+          thing_type?(value),
+          rendered?(id, ctx),
+          match?(
+            %Normalized.Node{kind: :dropdown, variant: :dynamic, placeholder?: false},
+            ctx.nodes[id]
+          ),
+          Map.get(by_kind, {:input, id}, [true]) == [true],
+          into: MapSet.new(),
+          do: id
+
+    {dropdowns, MapSet.filter(dropdowns, &Map.has_key?(by_kind, {:input, &1}))}
+  end
+
+  defp thing_type?(type) when is_binary(type),
+    do: match?({%Type{kind: :ref, cardinality: :one}, _}, Type.classify(type))
+
+  defp thing_type?(_type), do: false
 
   # The inputs a page could track with page data as their first value: an
   # input rendered natively whose only dynamic part is its initial content,
@@ -845,20 +916,32 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # The inputs a page tracks: rendered natively (not a placeholder, not in
   # a runtime template), of a tracked value type, with a static first value
   # or (`initial`, WTF-520) one the page's data gives.
-  defp inputs(elements, ctx, initial) do
+  #
+  # A Dropdown of things whose choices the page loads (`choices`, WTF-596)
+  # is tracked as `:thing`: its value is one of its choices (or its
+  # default), which the browser names by unique ID.
+  defp inputs(elements, ctx, initial, choices) do
     for {id, %{kind: :element, type: type, value: value, instance_of: nil} = e} <- elements,
-        {values, kind} <- [Map.get(@inputs, type, {[], nil})],
-        value in values,
-        rendered?(id, ctx),
-        native_input?(ctx.nodes[id], kind) or MapSet.member?(initial, id),
+        typed = input_type(id, type, value, ctx, initial, choices),
+        typed != nil,
         reduce: %{} do
-      acc ->
-        Map.update(
-          acc,
-          bubble(e.surface),
-          %{id => String.to_existing_atom(value)},
-          &Map.put(&1, id, String.to_existing_atom(value))
-        )
+      acc -> Map.update(acc, bubble(e.surface), %{id => typed}, &Map.put(&1, id, typed))
+    end
+  end
+
+  defp input_type(id, type, value, ctx, initial, choices) do
+    {values, kind} = Map.get(@inputs, type, {[], nil})
+
+    cond do
+      MapSet.member?(choices, id) ->
+        :thing
+
+      value in values and rendered?(id, ctx) and
+          (native_input?(ctx.nodes[id], kind) or MapSet.member?(initial, id)) ->
+        String.to_existing_atom(value)
+
+      true ->
+        nil
     end
   end
 

@@ -827,6 +827,56 @@ that set the content is not lowered yet (the static value is the first
 value, as before), and neither is an input in a repeating group's cell, a
 Dropdown's or a Checkbox's.
 
+## Dropdowns of things (WTF-596)
+
+A Dropdown whose choices are dynamic and of a data type (or the user):
+"Search for Tasks", a list field, shown each by its option display
+expression. Before, the page tracked only text Dropdowns: a Dropdown of
+things rendered as a placeholder, and everything reading its value
+(`element_state:get_data`: a group's data source, a reusable instance's,
+a condition) was not loaded.
+
+Outside a repeating group's cell, such a Dropdown now has two sources:
+its choices (`:choices`, the list its data source gives, kept under
+`Spec.choices_key/1`, `"choices/<id>"`) and, when it has one, its default
+value (`:input`, its first value, its conditional states folded as an
+input's initial content's). When both load, the page tracks it as a
+`:thing` input:
+
+* it renders its placeholder and a choice per thing the page read
+  (`Bubble.choices/4`), each labelled by its option display expression
+  about that choice (`This <type>`, compiled with the choice bound; what
+  the label reads through it is loaded with the choices), the thing it
+  holds selected. A default that is not among the choices is shown too
+  while the dropdown holds it;
+* its first value is `:data` (its default, as computed) or empty; the
+  browser sends the chosen thing's unique ID, kept as `{:choice, id}`;
+* **the browser chooses only what the page offers**: an ID is taken
+  only when it is one of the choices the page read for the current user
+  (through Ash, with the policies), or the default it holds
+  (`Bubble.chosen/4`); any other text, an ID of a thing the choices
+  leave out (another user's, one the user may not view) is ignored, as a
+  change that never happened. Reads resolve `{:choice, id}` against the
+  choices at every read: a renamed choice shows its new name; a choice
+  the choices no longer list reads as empty;
+* what reads it (a group's or an instance's data source, a list's
+  constraint, a text, a condition, a workflow) is read after its choices
+  and default (`reads`), again when it changes (`inputs`), and per cell
+  where a cell reads it; a thing read through it is read again through
+  Ash as the current user (`BubbleData.records/5`);
+* a conditional reading it waits for the page's data (WTF-563): until
+  the first load, neither its choices nor its default are known;
+* "An input's value is changed" runs once per change; the default sent
+  back unchanged runs nothing. A reset puts the default back.
+
+A Dropdown whose choices or default do not load (they do not compile,
+read what the page does not load, or are choices of another type) stays
+untracked: it renders its placeholder only, marked, and what reads it is
+not loaded, as before. A choice label that does not compile leaves the
+choices unlabelled, marked. Not lowered yet: choices of an option set or
+of texts and numbers, a Dropdown of things in a repeating group's cell,
+and conditionals that change a choice label.
+
 ## The viewport's width (WTF-520)
 
 Bubble's `Current page width` is the browser's viewport width. A page
@@ -2295,6 +2345,12 @@ operators and `:filtered` of a list of things holding hidden things
 (*Lists of things and privacy*, below). Not replayed: API Connector
 redirects (no synthetic redirecting call).
 
+* **A Dropdown of things whose default is not among its choices**
+  (WTF-596, above): not replayed. The page holds the default and shows
+  it as a choice while it holds it; whether Bubble lists it, or shows
+  the placeholder over the held value, is not known. Neither is whether
+  a choice the choices stop listing (after a change) keeps Bubble's
+  value: here it reads as empty, fail closed.
 * **An empty yes/no is no in the rest of a page** (WTF-529, above):
   replayed in page searches, `:filtered`, expressions, a page
   workflow's `Only when` and the current user's fields. Inferred, not

@@ -942,7 +942,12 @@ defmodule BubbleEx.Frontend.Normalize do
 
   defp classify("MultiLineInput", raw), do: classify_multiline_input(raw)
   defp classify("Checkbox", raw), do: classify_checkbox(raw)
-  defp classify("Dropdown", raw), do: classify_static_choices(raw, :dropdown)
+
+  defp classify("Dropdown", raw) do
+    if dynamic_thing_choices?(raw),
+      do: {:native, :dropdown, :dynamic},
+      else: classify_static_choices(raw, :dropdown)
+  end
 
   defp classify(type, raw)
        when type in ["RadioButtons", "Radio Buttons", "RadioButtonGroup"],
@@ -1261,6 +1266,18 @@ defmodule BubbleEx.Frontend.Normalize do
 
       {:placeholder, reason}
     end
+  end
+
+  # A Dropdown whose choices are things (WTF-596): dynamic choices of a
+  # data type or the user, from a data source, each shown by its option
+  # display expression. The page renders them from its data.
+  defp dynamic_thing_choices?(raw) do
+    type = Payload.prop(raw, "dynamic_type")
+
+    Payload.prop(raw, "choices_style") == "dynamic" and is_binary(type) and
+      (type == "user" or String.starts_with?(type, "custom.")) and
+      is_map(Payload.prop(raw, "data_source")) and
+      is_map(Payload.prop(raw, "option_display_expression"))
   end
 
   defp static_choices?(raw) do
@@ -2108,7 +2125,13 @@ defmodule BubbleEx.Frontend.Normalize do
   defp primary_slots(:search, raw, id), do: choice_control_slots(raw, id, false)
 
   defp primary_slots(:checkbox, raw, id), do: checkbox_slots(raw, id)
-  defp primary_slots(:dropdown, raw, id), do: choice_control_slots(raw, id, false)
+
+  defp primary_slots(:dropdown, raw, id) do
+    if dynamic_thing_choices?(raw),
+      do: thing_choice_slots(raw, id),
+      else: choice_control_slots(raw, id, false)
+  end
+
   defp primary_slots(:radio_buttons, raw, id), do: choice_control_slots(raw, id, true)
   defp primary_slots(:image, raw, id), do: image_slots(raw, id)
 
@@ -2281,6 +2304,48 @@ defmodule BubbleEx.Frontend.Normalize do
       |> Map.merge(value_bindings)
       |> Map.merge(placeholder_bindings)
       |> Map.merge(label_bindings)
+
+    {slots, bindings}
+  end
+
+  # A Dropdown of things (WTF-596): its choices (the data source, read as
+  # page data, not compiled as a value), each choice's label (its option
+  # display expression, about the choice), its default value and its
+  # placeholder.
+  defp thing_choice_slots(raw, exporter_id) do
+    choices = binding(exporter_id, "choices", :expression, Payload.prop(raw, "data_source"))
+
+    label =
+      binding(
+        exporter_id,
+        "choice_label",
+        :value,
+        Payload.prop(raw, "option_display_expression")
+      )
+
+    {value_slots, value_bindings} =
+      property_slot(raw, "value", exporter_id, [
+        "value",
+        "default",
+        "default_value",
+        "initial_value"
+      ])
+
+    {placeholder_slots, placeholder_bindings} =
+      value_slot(raw, "placeholder", exporter_id, ["placeholder"])
+
+    slots =
+      %{
+        "choices" => %{binding_id: choices.id, data_type: Payload.prop(raw, "dynamic_type")},
+        "choice_label" => %{binding_id: label.id}
+      }
+      |> Map.merge(value_slots)
+      |> Map.merge(placeholder_slots)
+
+    bindings =
+      %{"choices" => choices, "choice_label" => label}
+      |> Map.merge(value_bindings)
+      |> Map.merge(placeholder_bindings)
 
     {slots, bindings}
   end

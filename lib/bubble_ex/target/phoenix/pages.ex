@@ -1088,6 +1088,36 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     |> wrap_input(node, ctx)
   end
 
+  # A Dropdown of things (WTF-596): its choices are the page's data, each
+  # shown by its label (its option display expression about the choice).
+  # The browser sends the chosen thing's unique ID, which the page takes
+  # only when it is one of the choices it read for this user (or the
+  # default it holds). Choices the page does not load leave it with its
+  # placeholder only, marked.
+  defp emit_node(%Node{kind: :dropdown, variant: :dynamic} = node, ctx, acc) do
+    {placeholder, acc} = slot(node, "placeholder", ctx, acc)
+    placeholder = static_or_empty(placeholder)
+
+    attrs =
+      node.attributes
+      |> Enum.to_list()
+      |> put_new_attr(
+        "aria-label",
+        nonblank(resolved(node, "placeholder")) || node.name || "Dropdown"
+      )
+      |> put_attr("style", Css.inline_control_font(node))
+      |> tracked_attrs(node, ctx, acc)
+
+    {options, acc} =
+      if tracked?(node, ctx, acc) and tracked_type(node, ctx) == :thing,
+        do: thing_options(node, placeholder, ctx, acc),
+        else: {dropdown_placeholder(placeholder, nil), unloaded_choices(node, ctx, acc)}
+
+    "select"
+    |> element(node, attrs, options, ctx, acc)
+    |> wrap_input(node, ctx)
+  end
+
   defp emit_node(%Node{kind: :dropdown} = node, ctx, acc) do
     {placeholder, acc} = slot(node, "placeholder", ctx, acc)
     placeholder = static_or_empty(placeholder)
@@ -3473,7 +3503,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     Enum.any?(vars, fn %{input: input} ->
       case FlowSpec.read(flows, ctx.entry.id, input, Map.get(ctx, :cell)) do
         {:data, _} -> true
-        {:input, %{path: [], element: e}} -> initial?(e, ctx)
+        {:input, %{path: [], element: e}} -> initial?(e, ctx) or thing_input?(e, ctx)
         _ -> false
       end
     end)
@@ -4288,6 +4318,55 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     end
   end
 
+  # The options of a Dropdown of things (WTF-596): its placeholder, then a
+  # choice per thing the page keeps (`Bubble.choices/4`, with whether its
+  # value holds it), the one its value holds selected.
+  defp thing_options(node, placeholder, ctx, acc) do
+    args = "@bubble_inputs, @bubble_data, #{scope_var(ctx)}, #{literal(bid(node))}"
+    selected = "Bubble.choice_id(#{args})"
+
+    {label, acc} =
+      case node.bindings["choice_label"] do
+        nil -> {{:static, ""}, acc}
+        _ -> slot(node, "choice_label", Map.put(ctx, :choice_var, "choice"), acc)
+      end
+
+    label =
+      case label do
+        {:expr, expr} -> ["{", expr, "}"]
+        other -> escape(static_or_empty(other))
+      end
+
+    placeholder =
+      if placeholder == "",
+        do: "",
+        else: [
+          ~s|<option disabled selected={is_nil(#{selected})} value="">|,
+          escape(placeholder),
+          "</option>"
+        ]
+
+    {[
+       placeholder,
+       ~s|<option :for={{choice, selected?} <- Bubble.choices(#{args})} value={choice.id} |,
+       ~s|selected={selected?}>|,
+       label,
+       "</option>"
+     ], acc}
+  end
+
+  # A Dropdown of things whose choices the page does not load (WTF-596).
+  defp unloaded_choices(node, ctx, acc) do
+    why =
+      cond do
+        acc.template -> "it is in a repeating group's cell or another runtime container"
+        is_nil(ctx.flows) -> "the page loads no data"
+        true -> "its choices or its default value are not loaded"
+      end
+
+    mark(acc, node, "choices: not migrated: #{why}")
+  end
+
   defp dropdown_placeholder("", _selected), do: ""
 
   defp dropdown_placeholder(placeholder, selected) do
@@ -4546,6 +4625,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp read_arg(%{input: :current_user}, %{viewer: true, flows: %FlowSpec{}}),
     do: "@bubble_viewer"
 
+  # The choice a Dropdown's choice label is about (WTF-596).
+  defp read_arg(%{input: {:this, :context}}, %{choice_var: var}), do: var
+
   defp read_arg(%{var: var, input: input}, ctx) do
     read = ctx.flows && FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell))
 
@@ -4631,8 +4713,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # An input's value; one whose first value is page data (WTF-520) reads it
   # until it changes.
+  # A Dropdown of things (WTF-596) holds one of its choices (or its
+  # default), kept with the page's data: read with it.
   defp input_source({:input, k}, ctx) do
-    if k.path == [] and initial?(k.element, ctx),
+    if k.path == [] and (initial?(k.element, ctx) or thing_input?(k.element, ctx)),
       do: "Bubble.input(@bubble_inputs, @bubble_data, #{scope_var(ctx)}, #{literal(k.element)})",
       else: "Bubble.input(@bubble_inputs, #{key_scope(k.path, ctx)}, #{literal(k.element)})"
   end
@@ -4640,6 +4724,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # An input whose first value is page data (WTF-520): until it changes, it
   # holds its initial content as the page's data computed it.
   defp initial?(element, ctx), do: MapSet.member?(Map.get(ctx, :initial, MapSet.new()), element)
+
+  # A Dropdown of things the page tracks (WTF-596).
+  defp thing_input?(element, ctx), do: Map.get(Map.get(ctx, :tracked, %{}), element) == :thing
 
   # What the page keeps of its URL (`FlowSpec.url/1`).
   defp url_source({:url, name}), do: "Map.get(@bubble_url, #{literal(name)})"
@@ -4966,13 +5053,21 @@ defmodule BubbleEx.Target.Phoenix.Pages do
             %{var: var, input: input} <- vars,
             loads = Map.get(Map.get(compiled, :loads, %{}), var, []),
             loads != [],
-            key = load_key(FlowSpec.read(base.flows, surface, input, cell)),
+            key =
+              load_key(FlowSpec.read(base.flows, surface, input, cell)) || choice_key(node, input),
             key != nil,
             do: {key, loads}
 
       own ++ inner_loads(node, surface, cell, base)
     end)
   end
+
+  # What a Dropdown's choice label reads through the choice (WTF-596) is
+  # loaded with its choices.
+  defp choice_key(%Node{kind: :dropdown, variant: :dynamic} = node, {:this, :context}),
+    do: FlowSpec.choices_key(bid(node))
+
+  defp choice_key(_node, _input), do: nil
 
   # A table's repeated row reads per row when the page loads its list; its
   # other rows (all of a static table's) read like the page's elements.
@@ -5228,6 +5323,9 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     do: Enum.flat_map(children, &[&1 | descendants(&1)])
 
   defp first_value(node, :boolean), do: resolved(node, "checked") == true
+
+  # A Dropdown of things (WTF-596) with no default value starts empty.
+  defp first_value(_node, :thing), do: nil
 
   defp first_value(node, :number) do
     case resolved(node, "value") do

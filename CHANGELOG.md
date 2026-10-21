@@ -6,6 +6,29 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **A Dropdown of things keeps its value (WTF-596).** A Dropdown whose
+  choices are dynamic and of a data type (or the user), outside a
+  repeating group's cell, is now rendered natively: `BubbleEx.PageData`
+  lists its choices (`:choices`, the list its data source gives) and its
+  default value (`:input`, its first value, as an input's initial
+  content), and the page tracks it as a `:thing` input when both load.
+  The page renders a choice per thing it read (`Bubble.choices/4`), each
+  labelled by its option display expression about that choice, the one
+  it holds selected. The browser sends the chosen thing's unique ID; the
+  page takes it only when it is one of the choices it read for the
+  current user, or the default it holds (`Bubble.chosen/4`), and ignores
+  anything else as a change that never happened. Reads of the value
+  (data sources, conditions, texts, workflows) resolve it against the
+  choices at every read, so a renamed choice shows its new name and a
+  choice the user may no longer view reads as empty. What reads it is
+  read after its choices and default, again when it changes, and per
+  cell where a cell reads it; a conditional reading it waits for the
+  page's data (WTF-563); "An input's value is changed" runs once per
+  real change (the default sent back is none); a reset puts the default
+  back. A Dropdown whose choices or default do not load stays untracked,
+  its choices marked. Choices of an option set, of texts, and dropdowns
+  in a cell are not lowered yet.
+
 - **Workaround elements are cataloged, the clear ones lowered, the rest
   asked (WTF-586).** `BubbleEx.Workarounds.catalog/2` lists every tiny
   (0x0/1x1: fixed without a min size, as `EditorGeometry` sizes it) or

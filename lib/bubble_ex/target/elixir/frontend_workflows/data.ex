@@ -165,7 +165,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   def index(%PageData{sources: sources}, displayed) do
     elements =
       for s <- sources,
-          s.kind != :param,
+          s.kind not in [:param, :choices],
           Source.native?(s),
           into: %{},
           do: {s.element, %{kind: s.kind, surface: s.surface, cell: s.cell, holder: s.holder}}
@@ -178,7 +178,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # The elements with a data source of their own (a property's value is
   # not the instance's thing: "Display data" may still set that).
   defp own_elements(sources),
-    do: for(s <- sources, s.kind != :param, into: MapSet.new(), do: s.element)
+    do: for(s <- sources, s.kind not in [:param, :choices], into: MapSet.new(), do: s.element)
 
   # The reusable element properties (WTF-493): `params`, the property's
   # key (`Spec.param_key/2`) => whether every value of it (each
@@ -896,7 +896,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp nested_cell(b, _s, _ctx), do: b
 
   # A list's value, or a property holding a list.
-  defp list?(%Source{kind: :list}), do: true
+  defp list?(%Source{kind: kind}) when kind in [:list, :choices], do: true
 
   defp list?(%Source{kind: :param, type: type}),
     do: match?(%Type{cardinality: :many}, classify(type))
@@ -941,6 +941,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   defp key(%Source{kind: :param, element: e, holder: h, param: p}),
     do: %{path: [e], element: Spec.param_key(h, p)}
+
+  # A Dropdown's choices (WTF-596), beside its default value.
+  defp key(%Source{kind: :choices, element: e}), do: %{path: [], element: Spec.choices_key(e)}
 
   defp key(%Source{element: e}), do: %{path: [], element: e}
 
@@ -2295,14 +2298,26 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   # The page data a compiled value reads: an input whose first value is
   # page data (WTF-520, `ctx.initial`) is read after its initial content.
+  #
+  # A Dropdown of things (WTF-596, `ctx.choices`) is read after its choices
+  # too: a choice the user picked is the record of them with its ID.
   defp data_reads(bindings, ctx) do
     initial = Map.get(ctx, :initial, MapSet.new())
+    choices = Map.get(ctx, :choices, MapSet.new())
 
     for %{bind: bind} <- bindings,
-        read <- data_read(bind, initial),
+        read <- data_read(bind, initial) ++ choices_read(bind, choices),
         uniq: true,
         do: read
   end
+
+  defp choices_read({:input, %{path: [], element: e}}, choices) do
+    if MapSet.member?(choices, e),
+      do: [{:data, %{path: [], element: Spec.choices_key(e)}}],
+      else: []
+  end
+
+  defp choices_read(_bind, _choices), do: []
 
   defp data_read({kind, _} = bind, _initial)
        when kind in [
@@ -2370,6 +2385,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   # A source's identity: its element, and a property's name (an instance
   # has a source per property it sets, besides its own data source).
   defp id(%{kind: :param, element: e, key: %{element: k}}), do: {e, k}
+  defp id(%{kind: :choices, key: %{element: k}}), do: k
   defp id(%{element: e}), do: e
 
   # This Reusable's property: every value of it (WTF-493).

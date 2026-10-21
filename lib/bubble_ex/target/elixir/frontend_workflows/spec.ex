@@ -10,8 +10,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
       below; `states` are the custom states of the surface's elements
       (`%{element, state, default}`, `default` a literal or nil); `inputs`
       the inputs whose value the page tracks (element => `:text`,
-      `:number` or `:boolean`); `initial` those of them whose first value
-      is page data (their initial content's source, WTF-520), sorted;
+      `:number`, `:boolean` or `:thing`, a Dropdown of things whose
+      choices the page loads, WTF-596); `initial` those of them whose
+      first value is page data (their initial content's or default's
+      source, WTF-520), sorted;
       `cell_inputs` the inputs in a repeating group's cell whose value
       the page keeps per cell (WTF-520): element => `%{type, cell}`
     * `elements` - by Bubble ID: `%{surface, instance_of, root?}` for every
@@ -720,6 +722,15 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   """
   @spec param_key(String.t(), String.t()) :: String.t()
   def param_key(reusable, param), do: param <> "/" <> reusable
+
+  @doc """
+  Where the page keeps the choices of Dropdown `element` (WTF-596): its
+  default value, its first value, is kept under the element itself. No
+  Bubble ID has a slash, and the runtime spells the key the same way
+  (`<Web>.Bubble.choices_key/1`).
+  """
+  @spec choices_key(String.t()) :: String.t()
+  def choices_key(element), do: "choices/" <> element
 
   @doc """
   Whether the page renders reusable instance `id` once per cell of the

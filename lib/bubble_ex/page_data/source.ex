@@ -7,8 +7,10 @@ defmodule BubbleEx.PageData.Source do
     * `element` - the Bubble ID of the page or element whose data it is
     * `surface` - the Bubble ID of its page or reusable element;
       `surface_kind` `:page` or `:reusable`
-    * `kind` - `:page_thing`, `:group`, `:list`, `:instance`, `:param` or
-      `:input` (an input's initial content, its first value, WTF-520)
+    * `kind` - `:page_thing`, `:group`, `:list`, `:instance`, `:param`,
+      `:input` (an input's initial content, or a Dropdown's default value:
+      its first value, WTF-520, WTF-596) or `:choices` (a Dropdown's
+      dynamic choices of a data type, WTF-596)
     * `holder` - for `:instance`, the reusable element whose thing it sets;
       for `:param`, the reusable element whose property it sets
     * `param` - for `:param`, the property (`"param_<id>"`, the element
@@ -45,7 +47,7 @@ defmodule BubbleEx.PageData.Source do
           element: String.t(),
           surface: String.t(),
           surface_kind: :page | :reusable,
-          kind: :page_thing | :group | :list | :instance | :param | :input,
+          kind: :page_thing | :group | :list | :instance | :param | :input | :choices,
           holder: String.t() | nil,
           param: String.t() | nil,
           type: String.t() | nil,
