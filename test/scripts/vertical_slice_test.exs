@@ -5,9 +5,10 @@ defmodule BubbleEx.Scripts.VerticalSliceTest do
 
   Code.require_file("../../scripts/vertical_slice/pipeline.exs", __DIR__)
   Code.require_file("../../scripts/vertical_slice/seed.exs", __DIR__)
+  Code.require_file("../../scripts/vertical_slice/captured.exs", __DIR__)
 
   alias BubbleEx.Verify.Interpreter.Dataset
-  alias VerticalSlice.{Pipeline, Synthetic}
+  alias VerticalSlice.{Captured, Pipeline, Synthetic}
 
   @enforced_app "test/support/target/phoenix/enforced.json"
 
@@ -374,6 +375,179 @@ defmodule BubbleEx.Scripts.VerticalSliceTest do
         assert_raise ArgumentError, ~r/SLICE_PERSONA/, fn -> Synthetic.persona(bad, 3) end
       end
     end
+  end
+
+  describe "Captured (WTF-584)" do
+    setup do
+      %{model: Pipeline.build(Pipeline.load_app(@enforced_app), [], module: "Slice").model}
+    end
+
+    test "turns captured records into loader rows by type, saying what it left out", %{
+      model: model
+    } do
+      records = [
+        {"p1", %{"type" => "custom.project", "raw" => %{"_id" => "p1", "name_text" => "Alpha"}}},
+        # No _id on the client: filled from the key. References lose the cache prefix.
+        {"t1",
+         %{
+           "type" => "custom.task",
+           "raw" => %{
+             "title_text" => "Write",
+             "project_custom_project" => "1348__LOOKUP__p1",
+             "watchers_list_user" => ["9__LOOKUP__u1", "u2"],
+             "Created Date" => 1_700_000_000_000,
+             "not_a_field_text" => "dropped"
+           }
+         }},
+        {"u1",
+         %{
+           "type" => "user",
+           "raw" => %{
+             "_id" => "u1",
+             "name_text" => "Ann",
+             "user_signed_up" => true,
+             "authentication" => %{
+               "email" => %{"email" => "ann@example.test", "temp_password" => "x"},
+               "google" => %{"id" => "g1"}
+             }
+           }
+         }},
+        {"u2",
+         %{
+           "type" => "user",
+           "raw" => %{"_id" => "u2", "authentication" => %{"email" => "b@example.test"}}
+         }},
+        {"g1", %{"type" => "custom.ghost", "raw" => %{"_id" => "g1"}}},
+        {"x1", %{"type" => nil, "raw" => nil}}
+      ]
+
+      {rows, report} = Captured.rows(model, records)
+
+      assert rows["project"] == [%{"_id" => "p1", "name_text" => "Alpha"}]
+
+      assert [task] = rows["task"]
+      assert task["_id"] == "t1"
+      assert task["project_custom_project"] == "p1"
+      assert task["watchers_list_user"] == ["u1", "u2"]
+      assert task["Created Date"] == 1_700_000_000_000
+      refute Map.has_key?(task, "not_a_field_text")
+
+      [ann, b] = rows["user"]
+
+      assert ann["authentication"] == %{
+               "email" => %{"email" => "ann@example.test"},
+               "google" => %{}
+             }
+
+      assert ann["user_signed_up"] == true
+      assert b["authentication"] == %{"email" => %{"email" => "b@example.test"}}
+
+      assert report == %{
+               records: 6,
+               skipped: 1,
+               ids_filled: 1,
+               unknown_types: %{"ghost" => 1},
+               dropped_fields: %{"task" => ["not_a_field_text"]}
+             }
+    end
+
+    @tag :tmp_dir
+    test "the rows make a loader export the dry run accepts, its dangling references named",
+         %{tmp_dir: dir} do
+      built = Pipeline.build(Pipeline.load_app(@enforced_app), [], module: "Slice")
+
+      {rows, _} =
+        Captured.rows(built.model, [
+          {"p1", %{"type" => "custom.project", "raw" => %{"name_text" => "Alpha"}}},
+          {"t1",
+           %{
+             "type" => "custom.task",
+             "raw" => %{
+               "_id" => "t1",
+               "title_text" => "Write",
+               "project_custom_project" => "1__LOOKUP__p2"
+             }
+           }},
+          {"u1",
+           %{
+             "type" => "user",
+             "raw" => %{
+               "_id" => "u1",
+               "authentication" => %{"email" => %{"email" => "u1@example.test"}}
+             }
+           }}
+        ])
+
+      {:ok, export} =
+        BubbleEx.Load.Export.write(Path.join(dir, "export"), %{
+          app: "slice",
+          model_sha256: BubbleEx.Model.sha256(built.model),
+          source: %{"kind" => "page_capture", "base_url" => "https://capture.example.test"},
+          created_at: "2026-01-01T00:00:00Z",
+          types: for({t, list} <- Enum.sort(rows), do: %{type: t, path: t, rows: list}),
+          files: []
+        })
+
+      target = BubbleEx.Test.LoadMemoryTarget.start(built.project)
+
+      assert {:ok, dry} = BubbleEx.Load.dry_run(export, built.model, target, [])
+      assert dry.blocked == []
+      assert Captured.dangling(dry.diagnostics) == %{"task.project_custom_project" => 1}
+    end
+
+    @tag :tmp_dir
+    test "reads and merges capture files, first copy wins", %{tmp_dir: dir} do
+      a = Path.join(dir, "a.json")
+      b = Path.join(dir, "b.json")
+
+      File.write!(
+        a,
+        Jason.encode!(%{"records" => %{"r1" => %{"type" => "user", "raw" => %{"n" => 1}}}})
+      )
+
+      File.write!(
+        b,
+        Jason.encode!(%{
+          "records" => %{
+            "r1" => %{"type" => "user", "raw" => %{"n" => 2}},
+            "r2" => %{"type" => "user", "raw" => %{}}
+          }
+        })
+      )
+
+      assert [{"r1", %{"raw" => %{"n" => 1}}}, {"r2", _}] = Captured.read!([a, b])
+
+      File.write!(b, Jason.encode!(%{"elements" => []}))
+      assert_raise RuntimeError, ~r/not a record capture/, fn -> Captured.read!([b]) end
+    end
+
+    test "dangling references by type and field" do
+      diagnostics = [
+        %{
+          code: :load_dangling_reference,
+          subject: %{type: "task", field: "project_custom_project"},
+          details: %{count: 2}
+        },
+        %{
+          code: :load_dangling_reference,
+          subject: %{type: "task", field: "project_custom_project"},
+          details: %{count: 1}
+        },
+        %{code: :load_unknown_option, subject: %{type: "task"}, details: %{count: 5}}
+      ]
+
+      assert Captured.dangling(diagnostics) == %{"task.project_custom_project" => 3}
+    end
+  end
+
+  test "the records capture keeps types and raw fields, and no secrets" do
+    {output, status} =
+      System.cmd("node", ["--test", "scripts/vertical_slice/render_records.test.mjs"],
+        stderr_to_stdout: true
+      )
+
+    assert status == 0, output
+    assert output =~ ~r/# pass 3|ℹ pass 3/
   end
 
   # The drive's expected blocked requests (WTF-465): exact linked image

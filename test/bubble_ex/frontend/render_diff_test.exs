@@ -185,10 +185,45 @@ defmodule BubbleEx.Frontend.RenderDiffTest do
           known: %{"bGroup" => "stricter privacy"}
         )
 
-      assert %{category: :known, reasons: ["owner: stricter privacy" | _]} =
+      assert %{
+               category: :known,
+               known_class: "other",
+               reasons: ["owner (other): stricter privacy" | _]
+             } =
                find(report, "bGroup", :only_bubble)
 
-      assert %{category: :export_drift} = find(report, "bExtra", :only_ours)
+      assert %{category: :export_drift, known_class: nil} = find(report, "bExtra", :only_ours)
+    end
+
+    test "a known entry covers only its kinds, and unmatched entries are listed", %{index: index} do
+      {:ok, known} =
+        RenderDiff.parse_known(%{
+          "$comment" => "skipped",
+          "bCell" => %{
+            "reason" => "the rows are counted on the server",
+            "class" => "server_data",
+            "kinds" => ["count_differs"]
+          },
+          "bLabel" => %{"reason" => "not a text difference", "kinds" => ["only_ours"]},
+          "bGone" => %{"reason" => "on another page", "class" => "privacy"}
+        })
+
+      report = RenderDiff.diff(bubble(), ours(), index, known: known)
+
+      assert %{category: :known, known_class: "server_data"} =
+               cell = find(report, "bCell", :count_differs)
+
+      assert "owner (server_data): the rows are counted on the server" in cell.reasons
+      assert cell in report.known
+      # bLabel's entry covers only_ours, not its text difference.
+      assert find(report, "bLabel", :text_differs) in report.unexplained
+      # bGone is not on this page: its entry is for another one.
+      assert report.known_unused == ["bLabel"]
+
+      text = RenderDiff.summary(report, 5)
+      assert text =~ "Known: owner-listed (1)"
+      assert text =~ "count_differs bCell Text \"Cell\" [known/server_data]"
+      assert text =~ "Owner-listed but no difference here (fixed or stale): bLabel"
     end
 
     test "ranks by visible content and counts the matches", %{report: report} do
@@ -303,8 +338,44 @@ defmodule BubbleEx.Frontend.RenderDiffTest do
     test "the summary lists both groups", %{report: report} do
       text = RenderDiff.summary(report, 5)
       assert text =~ "Unexplained (candidate bugs)"
-      assert text =~ "Known (drift, owner-listed, marked)"
+      assert text =~ "Known: owner-listed (0)"
+      assert text =~ "Known: export drift (0)"
+      assert text =~ "Known: marked as not migrated in ours (1)"
+      refute text =~ "no difference here"
       assert text =~ "only_bubble bGroup Group"
+    end
+  end
+
+  describe "parse_known/1" do
+    test "takes reasons and entries, with a default class and all kinds" do
+      assert {:ok,
+              %{
+                "bA" => %{reason: "r", class: "other", kinds: :all},
+                "bB" => %{reason: "s", class: "drift", kinds: [:only_bubble, :box_off]}
+              }} =
+               RenderDiff.parse_known(%{
+                 "bA" => "r",
+                 "bB" => %{
+                   "reason" => "s",
+                   "class" => "drift",
+                   "kinds" => ["only_bubble", "box_off"]
+                 }
+               })
+    end
+
+    test "refuses what it cannot read, naming the entry" do
+      for {bad, message} <- [
+            {[], ~r/JSON object/},
+            {%{"bA" => 1}, ~r/^bA: every value/},
+            {%{"bA" => %{"class" => "privacy"}}, ~r/^bA: every value/},
+            {%{"bA" => %{"reason" => "r", "class" => "bug"}}, ~r/^bA: class must be one of/},
+            {%{"bA" => %{"reason" => "r", "kinds" => ["moved"]}}, ~r/^bA: kinds must be/},
+            {%{"bA" => %{"reason" => "r", "kinds" => []}}, ~r/^bA: kinds must be/},
+            {%{"bA" => %{"reason" => "r", "why" => "x"}}, ~r/^bA: unknown keys/}
+          ] do
+        assert {:error, why} = RenderDiff.parse_known(bad)
+        assert why =~ message
+      end
     end
   end
 
@@ -348,14 +419,37 @@ defmodule BubbleEx.Frontend.RenderDiffTest do
       File.write!(b, Jason.encode!(bubble()))
       File.write!(o, Jason.encode!(ours()))
 
-      ExUnit.CaptureIO.capture_io(fn ->
-        Mix.Tasks.Bubble.RenderDiff.run([b, o, "--export", export, "--out", out])
-      end)
+      known = Path.join(dir, "known.json")
 
+      File.write!(
+        known,
+        Jason.encode!(%{"bExtra" => %{"reason" => "a capture gap", "class" => "capture_gap"}})
+      )
+
+      printed =
+        ExUnit.CaptureIO.capture_io(fn ->
+          Mix.Tasks.Bubble.RenderDiff.run([
+            b,
+            o,
+            "--export",
+            export,
+            "--known",
+            known,
+            "--out",
+            out
+          ])
+        end)
+
+      assert printed =~ "[known/capture_gap]"
       assert File.stat!(out).mode |> Bitwise.band(0o777) == 0o600
       report = out |> File.read!() |> Jason.decode!()
       assert report["counts"]["only_bubble"] >= 2
       assert Enum.any?(report["unexplained"], &(&1["id"] == "bGroup"))
+
+      assert [%{"known_class" => "capture_gap"}] =
+               Enum.filter(report["known"], &(&1["id"] == "bExtra"))
+
+      assert report["known_unused"] == []
     end
 
     @tag :tmp_dir

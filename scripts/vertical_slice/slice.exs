@@ -4,6 +4,7 @@
 #     mix run scripts/vertical_slice/slice.exs pages  EXPORT [DECISIONS]
 #     mix run scripts/vertical_slice/slice.exs render EXPORT DECISIONS OUT [PAGE]
 #     mix run scripts/vertical_slice/slice.exs seed   EXPORT DECISIONS OUT [N]
+#     mix run scripts/vertical_slice/slice.exs records EXPORT DECISIONS OUT RECORDS.json...
 #
 # SLICE_PRIVACY is `omit` (the default) or `enforced` (WTF-423): the Ash
 # target's privacy mode for every command. SLICE_PERSONA (default 1) is
@@ -24,9 +25,24 @@
 # seed.exs), then OUT/seed.json: the sign-in email, the record IDs by type,
 # the page's thing (a record of its type the persona may view,
 # Synthetic.target/5) and the loader's counts. N is 1 to 500. Nothing leaves OUT; nothing calls Bubble.
+#
+# `records` (WTF-584) loads, instead of synthetic worlds, the records a
+# Bubble page held in browser memory: the files
+# scripts/vertical_slice/render_records.js wrote from the Bubble pages
+# render_diff compares (scripts/vertical_slice/captured.exs turns them into
+# loader rows), into SLICE_DB's `slice_dev` under their Bubble IDs, so the
+# generated pages show the same records. Load them into a fresh database
+# (no `seed` first), and run it from the bubble_ex commit the project was
+# rendered with, with the same EXPORT, DECISIONS and SLICE_PRIVACY, so the
+# loader's model matches the generated schema. It writes the loader export
+# under OUT/data/captured and OUT/records.json (0600): the counts, what was
+# left out, and the dangling references (records the page pointed at but
+# never held; values that read them differ from Bubble's). The captures
+# hold app data: keep them, OUT and the report private.
 Code.require_file("pipeline.exs", __DIR__)
 Code.require_file("pages.exs", __DIR__)
 Code.require_file("seed.exs", __DIR__)
+Code.require_file("captured.exs", __DIR__)
 Code.require_file("../check_db.exs", __DIR__)
 
 alias BubbleEx.Target.Elixir.FrontendWorkflows.Spec
@@ -135,6 +151,29 @@ defmodule VerticalSlice.Cli do
         )
 
     clients |> Map.values() |> Enum.sort()
+  end
+
+  # A Postgrex pool on SLICE_DB's `slice_dev`.
+  def dev_pool do
+    {host, port, user, password} = db_credentials()
+
+    {:ok, pool} =
+      Postgrex.start_link(
+        hostname: host,
+        port: port,
+        username: user,
+        password: password,
+        database: CheckDb.database!("slice_dev"),
+        pool_size: 2
+      )
+
+    pool
+  end
+
+  def write_private!(path, data) do
+    File.write!(path, "")
+    File.chmod!(path, 0o600)
+    File.write!(path, Jason.encode!(data, pretty: true))
   end
 
   def decisions("-"), do: nil
@@ -297,18 +336,7 @@ case System.argv() do
     decisions = decisions_path |> Cli.decisions() |> Pipeline.load_decisions()
     built = Pipeline.build(app, decisions, module: "Slice", privacy: privacy)
 
-    {host, port, user, password} = Cli.db_credentials()
-
-    {:ok, pool} =
-      Postgrex.start_link(
-        hostname: host,
-        port: port,
-        username: user,
-        password: password,
-        database: CheckDb.database!("slice_dev"),
-        pool_size: 2
-      )
-
+    pool = Cli.dev_pool()
     data_dir = Cli.private_dir!(Path.join(out, "data"))
 
     report =
@@ -359,6 +387,66 @@ case System.argv() do
 
     IO.inspect(seed["load"]["diagnostics"], label: "loader diagnostics")
 
+  ["records", export, decisions_path, out | captures] when captures != [] ->
+    out = Cli.private_dir!(Path.expand(out))
+    app = Pipeline.load_app(export)
+    decisions = decisions_path |> Cli.decisions() |> Pipeline.load_decisions()
+    built = Pipeline.build(app, decisions, module: "Slice", privacy: privacy)
+
+    {rows, left_out} =
+      VerticalSlice.Captured.rows(built.model, VerticalSlice.Captured.read!(captures))
+
+    data_dir = Cli.private_dir!(Path.join([Cli.private_dir!(Path.join(out, "data")), "captured"]))
+
+    source = %{"kind" => "page_capture", "base_url" => "https://capture.example.test"}
+
+    report =
+      case VerticalSlice.Seed.load(built, Cli.dev_pool(), data_dir, rows, source) do
+        {:ok, report} ->
+          report
+
+        {:blocked, report} ->
+          raise "the captured records' load is blocked: #{inspect(report.blocked)}"
+
+        {:error, error} ->
+          raise "the captured records' load failed: #{inspect(error)}"
+      end
+
+    counts = fn key ->
+      report.types |> Map.values() |> Enum.map(&Map.get(&1, key, 0)) |> Enum.sum()
+    end
+
+    dangling = VerticalSlice.Captured.dangling(report.diagnostics)
+
+    summary = %{
+      "privacy" => privacy,
+      "captures" => length(captures),
+      "records" => left_out.records,
+      "rows" => Map.new(rows, fn {type, list} -> {type, length(list)} end),
+      "left_out" => left_out,
+      "load" => %{
+        "types" => map_size(report.types),
+        "inserted" => counts.(:inserted),
+        "updated" => counts.(:updated),
+        "diagnostics" => Enum.frequencies_by(report.diagnostics, &to_string(&1.code))
+      },
+      "dangling_references" => dangling
+    }
+
+    Cli.write_private!(Path.join(out, "records.json"), summary)
+
+    IO.puts(
+      "loaded #{counts.(:inserted)} of #{left_out.records} captured records into " <>
+        "#{map_size(rows)} types; skipped #{left_out.skipped}, of unknown types " <>
+        "#{left_out.unknown_types |> Map.values() |> Enum.sum()}, IDs filled from the key " <>
+        "#{left_out.ids_filled}, types with dropped members #{map_size(left_out.dropped_fields)}"
+    )
+
+    IO.puts(
+      "dangling references: #{dangling |> Map.values() |> Enum.sum()} in #{map_size(dangling)} fields " <>
+        "(records the page never held; see #{Path.join(out, "records.json")})"
+    )
+
   # What the browser drive visits: `<path> <thing id or -> <email> <page ID>`;
   # the thing is the one `seed` chose (Synthetic.target/5).
   ["target", out] ->
@@ -370,7 +458,8 @@ case System.argv() do
   _ ->
     IO.puts(
       :stderr,
-      "usage: slice.exs pages EXPORT [DECISIONS] | render EXPORT DECISIONS OUT [PAGE] | seed EXPORT DECISIONS OUT [N]"
+      "usage: slice.exs pages EXPORT [DECISIONS] | render EXPORT DECISIONS OUT [PAGE] | " <>
+        "seed EXPORT DECISIONS OUT [N] | records EXPORT DECISIONS OUT RECORDS.json..."
     )
 
     System.halt(2)

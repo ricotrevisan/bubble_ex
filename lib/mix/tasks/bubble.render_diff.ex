@@ -17,12 +17,31 @@ defmodule Mix.Tasks.Bubble.RenderDiff do
       is another one: elements missing from it are reported as drift
     * `--project` - the generated project, for its `TODO(bubble:ID)` notes
       and dev-marker texts
-    * `--known` - a JSON object `{"<element id>": "<reason>"}` of
-      differences the owner accepts (e.g. stricter privacy)
+    * `--known` - the known-differences file: a JSON object keyed by
+      element ID of the differences the owner accepts, each a reason or
+      `{"reason": ..., "class": ..., "kinds": [...]}` (classes `privacy`,
+      `server_data`, `drift`, `capture_gap`, `other`); see
+      `BubbleEx.Frontend.RenderDiff.parse_known/1`. They are reported
+      apart from the candidate bugs, and listed elements on the page that
+      no longer differ are named (fixed, or a stale entry). One file can
+      cover several pages. Keep it with the captures (it names the app's
+      elements)
     * `--no-text` - leave the pages' texts out of the printed summary
 
   Capture the generated app with its dev markers on (the default in dev),
-  so the capture holds each marker's reason.
+  so the capture holds each marker's reason. The steps, all under
+  `scripts/vertical_slice/`:
+
+    1. On the Bubble page, evaluate `render_capture.js` (the elements) and
+       `render_records.js` (the records the page holds in browser memory)
+       at each width.
+    2. Load those records into the slice under their Bubble IDs:
+       `slice.exs records EXPORT DECISIONS OUT RECORDS.json...` (a fresh
+       database; see its header). Its dangling references are records the
+       page pointed at but never held: values that read them differ.
+    3. Serve the slice and capture it as the same user, at the same widths:
+       `capture_ours.mjs` (127.0.0.1 only, magic-link sign-in).
+    4. Compare each pair with this task.
 
   Prints a summary; `--out` writes the full report as JSON. The captures
   hold the page's data: keep them, and the report, private.
@@ -93,17 +112,9 @@ defmodule Mix.Tasks.Bubble.RenderDiff do
   end
 
   defp read_known!(path) do
-    known = read_json!(path)
-
-    cond do
-      not is_map(known) ->
-        Mix.raise(~s(--known: expected a JSON object {"<element id>": "<reason>"}))
-
-      not Enum.all?(known, fn {k, v} -> is_binary(k) and is_binary(v) end) ->
-        Mix.raise("--known: every value must be a reason (a string)")
-
-      true ->
-        known
+    case path |> read_json!() |> RenderDiff.parse_known() do
+      {:ok, known} -> known
+      {:error, why} -> Mix.raise("--known #{path}: #{why}")
     end
   end
 
