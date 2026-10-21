@@ -217,6 +217,12 @@ defmodule BubbleEx.WorkaroundsTest do
       assert %{automatic: false, proposal: %{option: :keep}} = applied["eGap"]
       refute holder.id in resolved.undecided
 
+      # Page state is for groups only so far.
+      tip = Enum.find(findings, &(&1.subject == %{element: "eTip"}))
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               Decision.for_finding(tip, :modify, %{"option" => "page_state"})
+
       # Only lowerings, never a plugin option.
       assert {:error, %Error{kind: :invalid_input}} =
                Decision.for_finding(holder, :modify, %{"option" => "rebuild"})
@@ -284,6 +290,15 @@ defmodule BubbleEx.WorkaroundsTest do
       assert "element:eVars" in elements
       refute "element:eList" in elements
       assert "element:eInside" in elements
+
+      acceptance =
+        Enum.find(plan.tasks, &(&1.kind == :acceptance and &1.subjects == ["page:pHome"]))
+
+      [%{args: %{elements: accepted}}] =
+        Enum.filter(acceptance.criteria, &(&1.check == :traceability))
+
+      refute "element:eList" in accepted
+      assert "element:eVars" in accepted
     end
 
     test "findings: must be findings" do

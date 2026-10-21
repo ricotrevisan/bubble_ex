@@ -1475,7 +1475,7 @@ defmodule BubbleEx.Plan.Builder do
   end
 
   defp facts(ctx, %Task{kind: :acceptance, subjects: [s]}, _tasks) do
-    elements = Map.get(ctx.surface_elements, s, [])
+    elements = rendered(ctx, Map.get(ctx.surface_elements, s, []))
     %{elements: [s | elements], surface: surface_task(ctx, s)}
   end
 

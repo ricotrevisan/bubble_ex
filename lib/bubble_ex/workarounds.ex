@@ -61,7 +61,11 @@ defmodule BubbleEx.Workarounds do
   contents' class. `held` lists the candidates inside an element: one
   lowered to page state renders without its contents only when every one
   of them is lowered to page state too (`page_state/1`), so an owner's
-  `keep` on a content is never overridden by its wrapper's default.
+  `keep` on a content is never overridden by its wrapper's default. A
+  held candidate that cannot lower to page state (a hidden Text or Input)
+  keeps its holder's markup, though the holder's finding still applies
+  `page_state`. The holder's type and `held` are part of its proposal: a
+  candidate added inside it makes a decision about it stale.
 
   `confidence` is `:high` when every signal agrees (e.g. a tiny element
   with a data source that other elements read for its data, with no
@@ -190,7 +194,7 @@ defmodule BubbleEx.Workarounds do
   def page_state(applied) when is_list(applied) do
     chosen =
       for %{transform: :lower_workaround, proposal: %{option: :page_state} = p} <- applied,
-          Map.get(p, :type) in @page_state_types,
+          page_state_type?(Map.get(p, :type)),
           into: %{},
           do: {p.element, Map.get(p, :holds, [])}
 
@@ -198,6 +202,10 @@ defmodule BubbleEx.Workarounds do
     |> settle()
     |> MapSet.new(fn "element:" <> id -> id end)
   end
+
+  @doc "Whether an element of Bubble type `type` lowers to page state (`page_state/1`)."
+  @spec page_state_type?(term()) :: boolean()
+  def page_state_type?(type), do: type in @page_state_types
 
   # Drops holders whose held candidates are not all lowered, until none.
   defp settle(chosen) do
