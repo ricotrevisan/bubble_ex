@@ -6,6 +6,26 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **An element's "is visible" in a condition is the visibility the page
+  computes (WTF-578).** `BubbleEx.Target.Elixir.Frontend.ElementVisibility`
+  replaces a read of another element's `is visible` / `isn't visible` on
+  the same page or reusable element with that element's own visibility
+  folded from its conditionals (an `:if` the Elixir target now compiles as
+  a yes/no in a condition), and its ancestors' up to the one the reader
+  shares: inside a hidden group an element is not visible, as the Bubble
+  runtime reports. An element holding the reader is visible. A read stays
+  marked when the browser may change what decides it: a workflow step
+  shows, hides, toggles or animates the element or an ancestor on the way,
+  an overlay or a runtime container (a repeating group's cell, a table) is
+  on the way, a breakpoint sets its display, a conditional does not
+  compile, or it reads itself back (a group reading its own contents
+  too). States a read decides when compiling are settled: a no never
+  applies, the last yes sets the value the earlier ones and the page-load
+  value would, and an element whose states are all decided renders that
+  visibility (or "isn't clickable") statically.
+  The inlined conditions' own inputs then decide, so a read whose element
+  reads data the page does not load is marked for that instead.
+
 - **`mix bubble.render_diff`: compare a page as Bubble rendered it with
   the generated app's.** `scripts/vertical_slice/render_capture.js` captures
   a page's elements (export element ID, type, box, visible, own text,

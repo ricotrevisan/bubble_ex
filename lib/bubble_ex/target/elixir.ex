@@ -790,6 +790,14 @@ defmodule BubbleEx.Target.Elixir do
     {all_ok({"(#{part} == true)", "(#{part} != true)", []}, [part]), st}
   end
 
+  # A yes/no folded from conditional states (an element's visibility read
+  # by another, WTF-578; an input's initial content): a yes/no value, an
+  # empty one reading as no, as a stored one.
+  defp atom_(%IR{op: :if, type: "boolean"} = ir, st) do
+    {part, st} = value(ir, st)
+    {all_ok({"(#{part} == true)", "(#{part} != true)", []}, [part]), st}
+  end
+
   defp atom_(%IR{op: op}, st), do: unsupported(st, {"#{op}", nil})
 
   # A list of texts and its item compare as `is` does (`unhidden/1`): a

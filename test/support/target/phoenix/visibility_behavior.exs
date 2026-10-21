@@ -535,4 +535,21 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     {:ok, view, _html} = live(conn, "/task/#{@t2}")
     assert shown_text(view, "bProjectText") == "No project"
   end
+
+  # WTF-578: an element's "is visible" is its visibility as the page
+  # computes it; inside a hidden group, not visible.
+  test "a condition reading another element's visibility follows it", %{conn: conn, user: user} do
+    {:ok, view, _html} = live(conn, "/")
+    assert hidden?(view, "bVisG")
+    assert hidden?(view, "bVisOf")
+    # Hidden while bVisG isn't visible.
+    assert hidden?(view, "bNotVisOf")
+    assert hidden?(view, "bVisChild")
+
+    {:ok, view, _html} = live(sign_in(conn, user), "/")
+    refute hidden?(view, "bVisG")
+    refute hidden?(view, "bVisOf")
+    refute hidden?(view, "bNotVisOf")
+    refute hidden?(view, "bVisChild")
+  end
 end

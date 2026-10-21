@@ -1967,6 +1967,223 @@
               "type": "State"
             }
           }
+        },
+        "bVisG": {
+          "elements": {
+            "bVisGT": {
+              "id": "bVisGT",
+              "properties": {
+                "height": 40,
+                "min_height_css": "40px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Members"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bVisG",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "min_height_css": "40px",
+            "order": 47,
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "logged_in",
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Group"
+        },
+        "bVisOf": {
+          "id": "bVisOf",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 48,
+            "text": {
+              "entries": {
+                "0": "The group shows"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "type": "Text",
+          "states": {
+            "0": {
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bVisG"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "is_visible"
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bNotVisOf": {
+          "id": "bNotVisOf",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 49,
+            "text": {
+              "entries": {
+                "0": "The group is hidden"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text",
+          "states": {
+            "0": {
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bVisG"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "isnt_visible"
+                }
+              },
+              "properties": {
+                "is_visible": false
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bVisChild": {
+          "id": "bVisChild",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 50,
+            "text": {
+              "entries": {
+                "0": "Its text shows"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "type": "Text",
+          "states": {
+            "0": {
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bVisGT"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "is_visible"
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bVisWf": {
+          "id": "bVisWf",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 51,
+            "text": {
+              "entries": {
+                "0": "A step showed it"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "type": "Text",
+          "states": {
+            "0": {
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bWf"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "is_visible"
+                }
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bVisSelf": {
+          "id": "bVisSelf",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 52,
+            "text": {
+              "entries": {
+                "0": "Reads itself"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Text",
+          "states": {
+            "0": {
+              "condition": {
+                "type": "GetElement",
+                "properties": {
+                  "element_id": "bVisSelf"
+                },
+                "next": {
+                  "type": "Message",
+                  "name": "isnt_visible"
+                }
+              },
+              "properties": {
+                "is_visible": false
+              },
+              "type": "State"
+            }
+          }
         }
       },
       "id": "bVis",
