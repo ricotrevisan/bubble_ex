@@ -8,6 +8,7 @@ defmodule BubbleEx.Expression.Text do
   alias BubbleEx.Expression.Ast.{
     AllOptions,
     ApiData,
+    PluginData,
     ArbitraryText,
     Arithmetic,
     Check,
@@ -64,6 +65,8 @@ defmodule BubbleEx.Expression.Text do
 
   def render(%Search{data_type: type, constraints: cs}),
     do: "Search for #{type}" <> constraints(cs)
+
+  def render(%PluginData{plugin: plugin, call: call}), do: "Get data from #{plugin}.#{call}"
 
   def render(%ApiData{group: group, call: call, params: params}) do
     args = Enum.map_join(params, ", ", &"#{&1.key}: #{operand(&1.value)}")

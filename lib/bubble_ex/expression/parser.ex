@@ -13,6 +13,7 @@ defmodule BubbleEx.Expression.Parser do
   alias BubbleEx.Expression.Ast.{
     AllOptions,
     ApiData,
+    PluginData,
     ApiParam,
     ArbitraryText,
     Arithmetic,
@@ -135,7 +136,7 @@ defmodule BubbleEx.Expression.Parser do
       node = %ApiData{group: group, call: call, params: params, meta: meta}
       {node, extra_diags(extra, path) ++ extra_diags(other, path ++ [pkey]) ++ diags}
     else
-      _ -> shape(raw, path, "GetDataFromAPI needs a provider apiconnector2.<group>.<call>")
+      _ -> plugin_data(raw, path)
     end
   end
 
@@ -179,6 +180,33 @@ defmodule BubbleEx.Expression.Parser do
          )
 
   defp scope_type(_kind, _ref), do: nil
+
+  # A plugin's data call (`<plugin>.<call>`, WTF-569); its members are
+  # kept verbatim.
+  defp plugin_data(raw, path) do
+    {used, extra} = Keys.split(raw, [:type, :properties])
+
+    with {_pkey, props} when is_map(props) <- Keys.get(raw, :properties),
+         provider when is_binary(provider) <- props["provider"],
+         false <- String.starts_with?(provider, "apiconnector2."),
+         [plugin, call] when plugin != "" and call != "" <- String.split(provider, ".", parts: 2) do
+      node = %PluginData{
+        plugin: plugin,
+        call: call,
+        props: Map.delete(props, "provider"),
+        meta: %{keys: used, extra: extra}
+      }
+
+      {node, extra_diags(extra, path)}
+    else
+      _ ->
+        shape(
+          raw,
+          path,
+          "GetDataFromAPI needs a provider apiconnector2.<group>.<call> or <plugin>.<call>"
+        )
+    end
+  end
 
   defp simple(node, raw, path) do
     {used, extra} = Keys.split(raw, [:type])

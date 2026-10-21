@@ -693,6 +693,28 @@ defmodule BubbleEx.Expression.CompilerTest do
     assert diag.subject == %{option_set: "status"}
   end
 
+  test "a plugin's data call: ipify's IP is a context input, others do not compile (WTF-569)" do
+    ip = %{"type" => "GetDataFromAPI", "properties" => %{"provider" => "ipify.GetIP"}}
+    text = %{"type" => "TextExpression", "entries" => %{"0" => ip}}
+
+    assert ir(ip) == n(:input, [:client_ip, %{"plugin" => "ipify"}], "text")
+
+    assert ir(text) ==
+             n(:concat, [n(:input, [:client_ip, %{"plugin" => "ipify"}], "text")], "text")
+
+    other = %{"type" => "GetDataFromAPI", "properties" => %{"provider" => "zapier.Hook"}}
+
+    assert %{
+             ir: nil,
+             diagnostics: [%{code: :expr_uncompiled, details: %{construct: :plugin_data}}]
+           } =
+             compile(other)
+
+    # Source re-emission keeps the plugin's provider.
+    env = env([])
+    assert ip |> parse!(env) |> BubbleEx.Expression.Encoder.encode() == ip
+  end
+
   test "IR is deterministic and JSON-encodable" do
     raw = text(["Hi ", chain(src("ElementParent"), [msg("title_text")])])
     a = ir(raw, host: "bT1")

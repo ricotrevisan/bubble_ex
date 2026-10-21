@@ -45,6 +45,7 @@ defmodule BubbleEx.Expression.Typing do
   alias BubbleEx.Expression.Ast.{
     AllOptions,
     ApiData,
+    PluginData,
     ArbitraryText,
     Arithmetic,
     Check,
@@ -590,6 +591,13 @@ defmodule BubbleEx.Expression.Typing do
 
     {%{n | params: params, type: type}, base, diags}
   end
+
+  # A plugin's data call (WTF-569): typed only when it has a native
+  # equivalent (`Compiler`'s `:client_ip`).
+  defp t(%PluginData{plugin: "ipify", call: "GetIP"} = n, base, _ctx),
+    do: {%{n | type: "text"}, base, []}
+
+  defp t(%PluginData{} = n, base, _ctx), do: {n, base, []}
 
   defp t(%Raw{subject: nil} = n, base, _ctx), do: {n, base, []}
 
