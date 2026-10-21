@@ -2211,21 +2211,6 @@
           },
           "type": "Popup"
         },
-        "bOvOpen": {
-          "id": "bOvOpen",
-          "properties": {
-            "height": 40,
-            "order": 54,
-            "text": {
-              "entries": {
-                "0": "Open"
-              },
-              "type": "TextExpression"
-            },
-            "width": 300
-          },
-          "type": "Button"
-        },
         "bOvPopRead": {
           "id": "bOvPopRead",
           "properties": {
@@ -2510,22 +2495,6 @@
           "id": "wShowColl",
           "properties": {
             "element_id": "bShowColl"
-          },
-          "type": "ButtonClicked"
-        },
-        "wOvOpen": {
-          "actions": {
-            "0": {
-              "id": "aOvOpen1",
-              "properties": {
-                "element_id": "bOvPop"
-              },
-              "type": "ShowElement"
-            }
-          },
-          "id": "wOvOpen",
-          "properties": {
-            "element_id": "bOvOpen"
           },
           "type": "ButtonClicked"
         }

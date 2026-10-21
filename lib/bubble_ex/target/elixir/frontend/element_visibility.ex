@@ -69,6 +69,7 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
   @type t :: %{
           nodes: %{String.t() => %{node: Node.t(), ancestors: [String.t()], root: String.t()}},
           touched: MapSet.t(),
+          definitions: %{String.t() => String.t()},
           env: Expression.Env.t()
         }
 
@@ -88,7 +89,18 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
           into: %{},
           do: {id, entry}
 
-    %{nodes: nodes, touched: touched(app), env: env}
+    # A reusable element's own steps name its root by the definition's ID,
+    # not its instances' (`decided_floating?/2`).
+    definitions =
+      for root <- frontend.reusables,
+          id = bid(root),
+          is_binary(id),
+          ref <- [root.map_key, id],
+          is_binary(ref),
+          into: %{},
+          do: {ref, id}
+
+    %{nodes: nodes, touched: touched(app), definitions: definitions, env: env}
   end
 
   defp walk(%Node{} = node, ancestors, root) do
@@ -216,7 +228,7 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
 
       # A Floating Group no step shows or hides (WTF-587) is a group whose
       # conditionals the page decides; `decided_floating?/2`.
-      floating?(node) and decided_floating?(node, index.touched) ->
+      floating?(node) and decided_floating?(node, index) ->
         fold(node, id, MapSet.put(seen, id), index)
 
       MapSet.member?(index.touched, id) ->
@@ -288,15 +300,21 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
 
   @doc """
   Whether `node` is a Floating Group whose visibility its conditionals
-  decide on the server: no workflow step (of `app`, as `index/3` finds
-  them) shows, hides, toggles or animates it, a breakpoint does not set
-  its display and no hover conditional shows or hides it (WTF-587).
-  `touched` is `index/3`'s set of the elements steps name.
+  decide on the server (WTF-587): no workflow step (of the app, as
+  `index/3` finds them) shows, hides, toggles or animates it (an instance
+  of a Floating Group reusable element: nor its reusable element's root,
+  which that element's own steps name), a breakpoint does not set its
+  display and no hover conditional shows or hides it. `index` is
+  `index/3`'s.
   """
-  @spec decided_floating?(Node.t(), MapSet.t()) :: boolean()
-  def decided_floating?(%Node{} = node, touched) do
-    floating?(node) and not MapSet.member?(touched, bid(node)) and
-      not breakpoint_display?(node) and not Hover.visibility?(node)
+  @spec decided_floating?(Node.t(), t()) :: boolean()
+  def decided_floating?(%Node{} = node, %{touched: touched} = index) do
+    stepped =
+      [bid(node), Map.get(Map.get(index, :definitions, %{}), node.definition_ref)]
+      |> Enum.any?(&(is_binary(&1) and MapSet.member?(touched, &1)))
+
+    floating?(node) and not stepped and not breakpoint_display?(node) and
+      not Hover.visibility?(node)
   end
 
   defp floating?(%Node{runtime: %{"boundary" => "overlay", "overlay" => "floating_group"}}),

@@ -29,8 +29,7 @@ All notable changes to this project are documented here.
   Other overlays' reads stay marked. A Floating Group floating behind the
   page (`float_zindex: "back"`) is drawn below the elements of its
   stacking context and never takes the pointer: its value holders and
-  plugin placeholders covered what users clicked (on the private app's
-  `/meeting` the breadcrumb). The generated runtime logs at debug level a
+  plugin placeholders covered what users clicked (on a private app's page). The generated runtime logs at debug level a
   click that starts no workflow and a workflow whose condition is not yes.
 
 - **"is hovered" lowered to the browser's hover (WTF-590).** A

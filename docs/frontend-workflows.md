@@ -651,7 +651,7 @@ conditional), is whether the page keeps it open (WTF-587,
 is visible while it is open and its own conditionals show it). The
 read follows the browser one round trip behind: true once the page
 rendered the contents, false once the hook reported it closed.
-`:bubble_overlays_rendered` does not open it. Any other overlay's open
+`:bubble_overlays_rendered` does not open it, so a static snapshot (the HEEx fidelity candidate) renders what reads it as if it were closed. Any other overlay's open
 state only the browser knows: a read of it stays marked, as before.
 Workflow conditions are not lowered this way.
 

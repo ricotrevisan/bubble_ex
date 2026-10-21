@@ -1517,5 +1517,178 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
                "TODO(bubble:bVisOf) visibility: 1 conditional not lowered (it reads a value " <>
                  "the page does not keep: element_state:is_visible)"
     end
+
+    test "isn't visible of a lazy Popup is that the page does not keep it open", %{} do
+      app =
+        put_in(
+          popup_app(),
+          ["pages", "index", "elements", "bNotVisOf", "states", "0", "condition"],
+          read_of("bPop", "isnt_visible")
+        )
+
+      %{files: files} = build(app)
+      template = files["lib/shop_web/live/index_live.html.heex"]
+
+      # The page passes the open state; the helper negates it.
+      assert tag(template, "bNotVisOf") =~
+               ~s|visible_bnotvisof(Bubble.overlay_open?(@bubble_open, "", "bPop"))|
+
+      [helper] =
+        Regex.run(
+          ~r/defp visible_bnotvisof\(.*?\n  end\n/s,
+          files["lib/shop_web/live/index_live.ex"]
+        )
+
+      assert helper =~ ~r/!=\s+true|not /
+    end
+
+    test "in a reusable element, the open state is read in the instance's scope", %{} do
+      app =
+        app()
+        |> update_in(["element_definitions", "card", "elements"], fn els ->
+          Map.merge(els, %{
+            "bCardPop" => %{
+              "id" => "bCardPop",
+              "type" => "Popup",
+              "properties" => %{"height" => 200, "width" => 300, "order" => 20},
+              "elements" => %{"bCardPopT" => text("bCardPopT", 1)}
+            },
+            "bCardOpen" => %{
+              "id" => "bCardOpen",
+              "type" => "Button",
+              "properties" => %{
+                "height" => 40,
+                "width" => 300,
+                "order" => 21,
+                "text" => %{"type" => "TextExpression", "entries" => %{"0" => "Open"}}
+              }
+            },
+            "bCardPopRead" =>
+              text("bCardPopRead", 22, %{
+                "states" => %{
+                  "0" => %{
+                    "type" => "State",
+                    "condition" => read_of("bCardPop", "is_visible"),
+                    "properties" => %{"is_visible" => false}
+                  }
+                }
+              })
+          })
+        end)
+        |> put_in(["element_definitions", "card", "workflows"], %{
+          "wCardOpen" => %{
+            "id" => "wCardOpen",
+            "type" => "ButtonClicked",
+            "properties" => %{"element_id" => "bCardOpen"},
+            "actions" => %{
+              "0" => %{
+                "id" => "aCardOpen1",
+                "type" => "ShowElement",
+                "properties" => %{"element_id" => "bCardPop"}
+              }
+            }
+          }
+        })
+
+      %{files: files} = build(app)
+
+      {_path, template} =
+        Enum.find(files, fn {path, body} ->
+          String.ends_with?(path, ".heex") and body =~ ~s(data-bubble-id="bCardPopRead")
+        end)
+
+      # The popup's tag holds `<>` in its id: read its attributes as text.
+      assert template =~ ~s|data-bubble-loaded={Bubble.open?(@bubble_open, @scope, "bCardPop")}|
+
+      assert tag(template, "bCardPopRead") =~
+               ~s|Bubble.overlay_open?(@bubble_open, @scope, "bCardPop")|
+    end
+
+    defp floater_app(stepped?) do
+      definition = %{
+        "id" => "bFloater",
+        "type" => "CustomDefinition",
+        "name" => "Floater",
+        "properties" => %{"element_type" => "FloatingGroup", "height" => 50, "width" => 300},
+        "elements" => %{
+          "bFloaterT" => text("bFloaterT", 1),
+          "bFloaterShow" => %{
+            "id" => "bFloaterShow",
+            "type" => "Button",
+            "properties" => %{
+              "height" => 40,
+              "width" => 300,
+              "order" => 2,
+              "text" => %{"type" => "TextExpression", "entries" => %{"0" => "Show"}}
+            }
+          }
+        }
+      }
+
+      definition =
+        if stepped?,
+          do:
+            Map.put(definition, "workflows", %{
+              "wFloaterShow" => %{
+                "id" => "wFloaterShow",
+                "type" => "ButtonClicked",
+                "properties" => %{"element_id" => "bFloaterShow"},
+                "actions" => %{
+                  "0" => %{
+                    "id" => "aFloaterShow1",
+                    "type" => "ShowElement",
+                    "properties" => %{"element_id" => "bFloater"}
+                  }
+                }
+              }
+            }),
+          else: definition
+
+      app()
+      |> put_in(["element_definitions", "floater"], definition)
+      |> put_in(["pages", "index", "elements", "bFloaterI"], %{
+        "id" => "bFloaterI",
+        "type" => "CustomElement",
+        "properties" => %{
+          "custom_id" => "bFloater",
+          "height" => 50,
+          "width" => 300,
+          "order" => 62,
+          "is_visible" => false
+        },
+        "states" => %{
+          "0" => %{
+            "type" => "State",
+            "condition" => %{
+              "type" => "CurrentUser",
+              "next" => %{"type" => "Message", "name" => "logged_in"}
+            },
+            "properties" => %{"is_visible" => true}
+          }
+        }
+      })
+    end
+
+    test "a Floating Group reusable's instance is decided unless its own steps show its root",
+         %{} do
+      template = build(floater_app(false)).files["lib/shop_web/live/index_live.html.heex"]
+      assert tag(template, "bFloaterI") =~ "hidden={!visible_bfloateri(@bubble_viewer)}"
+      refute template =~ "TODO(bubble:bFloaterI)"
+
+      template = build(floater_app(true)).files["lib/shop_web/live/index_live.html.heex"]
+      refute template =~ "visible_bfloateri"
+
+      assert template =~
+               "TODO(bubble:bFloaterI) visibility: 1 conditional not lowered (an overlay: " <>
+                 "workflows show and hide it)"
+    end
+
+    test "a back-plane Floating Group is below its stacking context, off the pointer", %{
+      files: files
+    } do
+      back = tag(files["lib/shop_web/live/index_live.html.heex"], "bOvBack")
+      assert back =~ "pointer-events"
+      assert back =~ "z-[-1]"
+    end
   end
 end

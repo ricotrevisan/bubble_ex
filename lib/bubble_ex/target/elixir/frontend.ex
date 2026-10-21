@@ -86,7 +86,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   conditions' inputs become the reader's. A Popup's or Group Focus's is
   a read of whether it is open (WTF-587), which the page supplies for the
   ones it renders only while open; a Floating Group no step shows or
-  hides is decided like a group.
+  hides (nor a breakpoint or a hover rule) is decided like a group.
 
   A repeating group's `is loading` compiles to a constant no (replayed
   2026-10-19): in Bubble it stays no while a search waits for its
@@ -304,7 +304,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   defp decided_floating?(node, opts) do
     case Keyword.get(opts, :element_visibility) do
-      %{touched: touched} -> ElementVisibility.decided_floating?(node, touched)
+      %{touched: _} = index -> ElementVisibility.decided_floating?(node, index)
       _ -> false
     end
   end
