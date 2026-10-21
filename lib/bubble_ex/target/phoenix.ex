@@ -250,9 +250,11 @@ defmodule BubbleEx.Target.Phoenix do
     * `:workarounds` - the applied `lower_workaround` decisions
       (`BubbleEx.Decision.applicable/2` entries of `:workaround_element`
       findings, WTF-586). A value holder lowered as `:page_state` (a Group,
-      Floating Group or Repeating Group) renders as its own empty element:
-      its value stays page state (`@bubble_data`), its contents are not
-      rendered. Other options keep the markup for now; none by default
+      Floating Group or Repeating Group, with every candidate it holds
+      lowered too: `BubbleEx.Workarounds.page_state/1`) renders as its own
+      empty element: its value stays page state (`@bubble_data`,
+      `@bubble_states`), its contents are not rendered. Other options keep
+      the markup for now; none by default
   """
 
   alias BubbleEx.{CanonicalJson, Error}
@@ -851,13 +853,7 @@ defmodule BubbleEx.Target.Phoenix do
              list,
              &match?(%Applied{transform: :lower_workaround, subject: %{element: _}}, &1)
            ),
-           do:
-             {:ok,
-              for(
-                %{proposal: %{option: :page_state}, subject: %{element: e}} <- list,
-                into: MapSet.new(),
-                do: e
-              )},
+           do: {:ok, BubbleEx.Workarounds.page_state(list)},
            else:
              invalid(
                "workarounds: must be applied lower_workaround decisions (Decision.applicable/2)"

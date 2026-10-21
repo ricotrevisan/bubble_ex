@@ -82,7 +82,8 @@ defmodule BubbleEx.Finding.Kinds do
     * `:lower_workaround` - lower a workaround element
       (`BubbleEx.Workarounds`) as `proposal.option`, one of
       `proposal.options`: `:page_state` (a value holder: its value is page
-      state and the element renders nothing), `:plugin_event` (a
+      state and the element renders as its own empty element,
+      `BubbleEx.Workarounds.page_state/1`), `:plugin_event` (a
       keep-alive: its plugin's or event's own lowering), `:css_gap` (a
       spacer), `:hook` (a JS bridge: a client hook) or `:keep` (keep the
       markup as Bubble has it)

@@ -69,6 +69,9 @@ defmodule BubbleEx.Target.Phoenix.WorkaroundsTest do
 
     assert tag(page, "eVars") =~ ~s(data-bubble-workaround="page_state")
     refute page =~ ~s(data-bubble-id="eList")
+    # Its reader still reads the list from the page's data.
+    assert page =~ ~s(data-bubble-id="eCount")
+    refute page =~ ~r/TODO\(bubble:eCount\)[^\n]*not keep/
     # …and eState, a hidden group holding a custom state.
     assert tag(page, "eState") =~ ~s(data-bubble-workaround="page_state")
     assert report["workaround_page_state"] == 2
@@ -102,6 +105,18 @@ defmodule BubbleEx.Target.Phoenix.WorkaroundsTest do
     refute tag(page, "eVars") =~ "data-bubble-workaround"
     # eList, its contents, is a sure holder of its own: lowered, but empty anyway.
     assert tag(page, "eList") =~ ~s(data-bubble-workaround="page_state")
+  end
+
+  test "an owner's keep on a held element keeps its wrapper's markup too" do
+    keep = fn findings ->
+      f = Enum.find(findings, &(&1.subject == %{element: "eList"}))
+      {:ok, d} = Decision.for_finding(f, :modify, %{"option" => "keep"})
+      [d]
+    end
+
+    {page, _report} = render(keep)
+    refute tag(page, "eVars") =~ "data-bubble-workaround"
+    refute tag(page, "eList") =~ "data-bubble-workaround"
   end
 
   test "other lowerings keep the markup for now" do

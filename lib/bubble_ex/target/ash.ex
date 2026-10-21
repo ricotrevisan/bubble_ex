@@ -258,7 +258,10 @@ defmodule BubbleEx.Target.Ash do
       decision: `applicable/2` never lists one)
     * a transform Target.Ash does not know (every registered finding
       transform applies since cut 3)
-    * an `automatic` entry that is not an undecided hint
+    * an `automatic` entry that is not an undecided hint (`:high`
+      confidence `:default` findings apply automatically too, but their
+      only transform, `lower_workaround`, is not the schema's: `map/3`
+      skips it)
     * a subject missing from the Model or deleted, or a proposal that no
       longer fits it (not a number field, a derivation that is not a path
       of references to the source's type, a source of another type, a

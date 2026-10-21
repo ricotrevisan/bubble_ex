@@ -67,8 +67,13 @@ defmodule BubbleEx.WorkaroundsTest do
                readers: [%{from: "element:eStateText", reads: ["custom.count_"], inside: false}],
                custom_states: ["count_"],
                option: :page_state,
-               options: [:page_state, :keep]
+               options: [:page_state, :plugin_event, :css_gap, :hook, :keep]
              } = entries["eState"]
+
+      # An unclear one suggests keeping the markup, and offers every lowering.
+      assert [:keep, :page_state, :plugin_event, :css_gap, :hook] = entries["eDead"].options
+      assert entries["eVars"].held == ["element:eList"]
+      refute entries["eVars"].contents.used
 
       assert %{signals: [:tiny], tiny: :fixed, inside: "element:eVars", data_source: true} =
                entries["eList"]
@@ -81,6 +86,56 @@ defmodule BubbleEx.WorkaroundsTest do
       assert entries["eGrow"].reason =~ "min_width_css"
       assert entries["eTip"].plugins == ["plugin:" <> @tooltip]
       assert entries["eScript"].script
+    end
+
+    test "a holder whose contents something outside uses is not sure" do
+      app =
+        update_in(app(), ["pages", "index", "elements"], fn els ->
+          els
+          |> put_in(["eVars", "elements", "eInput"], %{
+            "id" => "eInput",
+            "type" => "Input",
+            "properties" => %{"order" => 2, "width" => 100, "height" => 20}
+          })
+          |> Map.put("eInputText", %{
+            "id" => "eInputText",
+            "type" => "Text",
+            "properties" => %{
+              "order" => 30,
+              "text" => %{
+                "type" => "TextExpression",
+                "entries" => %{
+                  "0" => %{
+                    "type" => "GetElement",
+                    "properties" => %{"element_id" => "eInput"},
+                    "next" => %{"type" => "Message", "name" => "value"}
+                  }
+                }
+              }
+            }
+          })
+        end)
+
+      {:ok, index} = Index.build(app)
+      entries = app |> Workarounds.catalog(index) |> Map.new(&{&1.element, &1})
+
+      assert entries["eVars"].contents.used
+      # No longer a pure wrapper: it holds an input read from outside.
+      refute entries["eVars"].class == :value_holder and entries["eVars"].confidence == :high
+    end
+
+    test "page_state/1 lowers a holder only with every candidate it holds" do
+      %{index: index, findings: findings} = findings()
+      list = Enum.find(findings, &(&1.subject == %{element: "eList"}))
+      {:ok, resolved} = Decision.resolve([], findings, index: index, now: @now)
+      assert "eVars" in Workarounds.page_state(Decision.applicable(resolved, findings))
+
+      {:ok, keep} = Decision.for_finding(list, :modify, %{"option" => "keep"})
+      {:ok, resolved} = Decision.resolve([keep], findings, index: index, now: @now)
+      lowered = Workarounds.page_state(Decision.applicable(resolved, findings))
+      refute "eVars" in lowered
+      refute "eList" in lowered
+      assert "eState" in lowered
     end
 
     test "a fixed axis in a Fixed container is tiny only at a tiny canvas size" do
@@ -109,7 +164,8 @@ defmodule BubbleEx.WorkaroundsTest do
                  element: "element:eHolder",
                  class: :value_holder,
                  option: :page_state,
-                 options: [:page_state, :keep]
+                 type: "Group",
+                 holds: []
                }
              } = f
 
@@ -161,9 +217,9 @@ defmodule BubbleEx.WorkaroundsTest do
       assert %{automatic: false, proposal: %{option: :keep}} = applied["eGap"]
       refute holder.id in resolved.undecided
 
-      # Only the finding's own options.
+      # Only lowerings, never a plugin option.
       assert {:error, %Error{kind: :invalid_input}} =
-               Decision.for_finding(holder, :modify, %{"option" => "hook"})
+               Decision.for_finding(holder, :modify, %{"option" => "rebuild"})
     end
 
     test "a rejected default applies nothing: the markup stays" do
@@ -214,6 +270,20 @@ defmodule BubbleEx.WorkaroundsTest do
       applied = Decision.applicable(resolved, findings)
       {:ok, plan} = Plan.build(model, index, nil, applied, resolved: resolved, findings: findings)
       refute Enum.any?(plan.tasks, &(&1.id == "decision:workaround/eHolder"))
+    end
+
+    test "the contents of a lowered holder are not traced, nor asked about" do
+      %{index: index, model: model, findings: findings} = findings()
+      {:ok, resolved} = Decision.resolve([], findings, index: index, now: @now)
+      applied = Decision.applicable(resolved, findings)
+      {:ok, plan} = Plan.build(model, index, nil, applied, resolved: resolved, findings: findings)
+
+      page = Enum.find(plan.tasks, &(&1.kind == :surface and &1.subjects == ["page:pHome"]))
+      [%{args: %{elements: elements}}] = Enum.filter(page.criteria, &(&1.check == :traceability))
+
+      assert "element:eVars" in elements
+      refute "element:eList" in elements
+      assert "element:eInside" in elements
     end
 
     test "findings: must be findings" do

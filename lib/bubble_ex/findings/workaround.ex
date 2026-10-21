@@ -50,6 +50,8 @@ defmodule BubbleEx.Findings.Workaround do
       proposal: %{
         transform: :lower_workaround,
         element: entry.symbol,
+        type: entry.type,
+        holds: entry.held,
         class: entry.class,
         option: entry.option,
         options: entry.options

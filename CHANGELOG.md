@@ -22,11 +22,12 @@ All notable changes to this project are documented here.
   plan task that blocks nothing, `Plan.build/5`'s `findings:`). Owners
   answer or override in the decisions file with an ordinary finding
   decision keyed to the element (`subject: {"element": id}`, `modify`
-  with `{"option": …}`, or `reject` to keep the markup).
+  with `{"option": …}`, any lowering, or `reject` to keep the markup).
   `Target.Phoenix.render/2`'s `workarounds:` renders a value holder
-  lowered to page state (a Group, Floating Group or Repeating Group) as
-  its own empty element, without its contents: its value already is page
-  state. The other lowerings are proposed only. The vertical slice writes
+  lowered to page state (a Group, Floating Group or Repeating Group whose
+  held candidates are all lowered too, `Workarounds.page_state/1`) as its
+  own empty element, without its contents: its value already is page
+  state. The plan does not trace those contents nor ask about them. The other lowerings are proposed only. The vertical slice writes
   the catalog to `OUT/workarounds.json` and its counts to `slice.json`.
 
 - **An element's "is visible" in a condition is the visibility the page

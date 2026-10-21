@@ -48,15 +48,20 @@ defmodule BubbleEx.Workarounds do
 
   | `class` | means | lowering (`option`) |
   |---------|-------|---------------------|
-  | `:value_holder` | holds a value (its data source, a "Display data" step or custom states) that other elements read | `:page_state`: the value becomes page state, the element renders nothing |
+  | `:value_holder` | holds a value (its data source, a "Display data" step or custom states) that other elements read | `:page_state`: the value is page state, the element renders as its own empty element (`page_state/1`) |
   | `:keep_alive` | kept on the page only so its plugin or its events run | `:plugin_event`: the plugin's or event's own lowering |
   | `:spacer` | an empty, unreferenced tiny element that only adds its container's gap | `:css_gap` |
   | `:js_bridge` | runs the app author's code: a code plugin (Toolbox, `BubbleEx.Plugins.Catalog` `:hand_written_code`) or an HTML element with a script or style tag | `:hook`: a client hook |
   | `:unknown` | none of the above, or signals that disagree | `:keep`: keep the markup as Bubble has it |
 
-  Every entry also offers `:keep`. A pure wrapper (it holds nothing, sets
-  and reads nothing, and only contains candidates of one class) takes its
-  contents' class.
+  Every entry offers every lowering (`options`), its class's first, so an
+  owner may also reclassify it; `:unknown` suggests `:keep`. A pure
+  wrapper (it holds nothing, sets and reads nothing, nothing outside uses
+  its contents, and it only contains candidates of one class) takes its
+  contents' class. `held` lists the candidates inside an element: one
+  lowered to page state renders without its contents only when every one
+  of them is lowered to page state too (`page_state/1`), so an owner's
+  `keep` on a content is never overridden by its wrapper's default.
 
   `confidence` is `:high` when every signal agrees (e.g. a tiny element
   with a data source that other elements read for its data, with no
@@ -145,7 +150,12 @@ defmodule BubbleEx.Workarounds do
           data_source: boolean(),
           custom_states: [String.t()],
           conditionals: [String.t()],
-          contents: %{elements: non_neg_integer(), candidates: non_neg_integer()},
+          contents: %{
+            elements: non_neg_integer(),
+            candidates: non_neg_integer(),
+            used: boolean()
+          },
+          held: [Symbol.id()],
           script: boolean(),
           class: class(),
           confidence: :high | :medium | :low,
@@ -162,9 +172,38 @@ defmodule BubbleEx.Workarounds do
   @spec option(class()) :: option()
   def option(class), do: Map.fetch!(@options, class)
 
-  @doc "Every lowering an entry may name (`:keep` last)."
+  @doc "Every lowering an entry may name, in class order (`:keep` last)."
   @spec options() :: [option()]
   def options, do: Enum.map(@classes, &option/1)
+
+  @page_state_types ~w(Group FloatingGroup RepeatingGroup)
+
+  @doc """
+  The Bubble IDs of the elements lowered to page state by `applied`
+  (`BubbleEx.Decision.Applied` entries of `:workaround_element` findings):
+  option `:page_state`, a Group, Floating Group or Repeating Group, and
+  every candidate it holds (`proposal.holds`) lowered too. Their contents
+  are not rendered; what generates them (`BubbleEx.Target.Phoenix`) and
+  the plan (`BubbleEx.Plan`) read this one answer.
+  """
+  @spec page_state([BubbleEx.Decision.Applied.t()]) :: MapSet.t(String.t())
+  def page_state(applied) when is_list(applied) do
+    chosen =
+      for %{transform: :lower_workaround, proposal: %{option: :page_state} = p} <- applied,
+          Map.get(p, :type) in @page_state_types,
+          into: %{},
+          do: {p.element, Map.get(p, :holds, [])}
+
+    chosen
+    |> settle()
+    |> MapSet.new(fn "element:" <> id -> id end)
+  end
+
+  # Drops holders whose held candidates are not all lowered, until none.
+  defp settle(chosen) do
+    kept = Map.filter(chosen, fn {_, holds} -> Enum.all?(holds, &Map.has_key?(chosen, &1)) end)
+    if map_size(kept) == map_size(chosen), do: Map.keys(kept), else: settle(kept)
+  end
 
   @doc "The workaround elements of decoded app JSON, with their facts and class."
   @spec catalog(map(), Index.t()) :: [entry()]
@@ -232,9 +271,13 @@ defmodule BubbleEx.Workarounds do
   # default min, 0px; a plugin element keeps its canvas size), bounded by a
   # tiny max, or placed at a tiny canvas size in a Fixed container.
   defp axis(props, ax, flow?, plugin?) do
+    # As EditorGeometry: an element keeping an aspect ratio keeps its
+    # canvas size on a fixed axis.
+    zero? = flow? and not plugin? and not aspect_ratio?(props)
+
     size =
       if props["single_#{ax}"] == true,
-        do: min_size(props, ax) || if(flow? and not plugin?, do: 0, else: canvas(props, ax)),
+        do: min_size(props, ax) || if(zero?, do: 0, else: canvas(props, ax)),
         else: free_size(props, ax, flow?)
 
     if is_number(size) and size <= 1, do: :tiny
@@ -250,12 +293,18 @@ defmodule BubbleEx.Workarounds do
     end
   end
 
+  defp aspect_ratio?(props) do
+    props["use_aspect_ratio"] == true and is_number(props["aspect_ratio_width"]) and
+      is_number(props["aspect_ratio_height"]) and props["aspect_ratio_width"] > 0 and
+      props["aspect_ratio_height"] > 0
+  end
+
   defp min_size(props, ax), do: px(props["min_#{ax}_css"]) || px(props["min_#{ax}_px"])
   defp canvas(props, ax), do: px(props[ax]) || px(props["%" <> String.first(ax)])
 
   # A min size the developer set at most 1px.
   defp tiny_min?(props, ax) do
-    case px(props["min_#{ax}_css"]) do
+    case min_size(props, ax) do
       n when is_number(n) -> n <= 1
       _ -> false
     end
@@ -385,11 +434,39 @@ defmodule BubbleEx.Workarounds do
       conditionals: signals.conditionals,
       contents: %{
         elements: length(descendants),
-        candidates: Enum.count(descendants, &Map.has_key?(candidates, &1))
+        candidates: Enum.count(descendants, &Map.has_key?(candidates, &1)),
+        used:
+          used_from_outside?(
+            index,
+            Enum.reject(descendants, &Map.has_key?(candidates, &1)),
+            within
+          )
       },
+      held: descendants |> Enum.filter(&Map.has_key?(candidates, &1)) |> Enum.sort(),
       script: Enum.any?([s.id | descendants], &script?(raws[&1])),
       child_ids: Map.get(children, s.id, [])
     }
+  end
+
+  # Whether something outside the element reads, sets or listens to one of
+  # its contents that is no candidate itself (a candidate has its own class,
+  # and `page_state/1` lowers a holder only with all it holds): they must
+  # stay where they are.
+  defp used_from_outside?(index, descendants, within) do
+    Enum.any?(descendants, fn d ->
+      index
+      |> Index.references_to(d, [:reads_element, :targets_element, :listens_to])
+      |> Enum.any?(&(not MapSet.member?(within, outside_host(index, &1.from))))
+    end)
+  end
+
+  # The element an action's or workflow's reference comes from is not
+  # inside; an element host is itself.
+  defp outside_host(index, from) do
+    case Index.symbol(index, from) do
+      %Symbol{kind: :element} -> from
+      _ -> nil
+    end
   end
 
   defp children_map(elements) do
@@ -453,7 +530,15 @@ defmodule BubbleEx.Workarounds do
 
   # What a host's expressions read of `element` (`GetElement`): the name of
   # the step after it. A host's children and actions are hosts of their own.
-  defp reads(json, element), do: json |> reads_in(element, []) |> Enum.uniq() |> Enum.sort()
+  defp reads(%{} = json, element) do
+    json
+    |> Map.drop(["elements", "%el", "workflows", "actions"])
+    |> reads_in(element, [])
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp reads(_json, _element), do: []
 
   defp reads_in(%{} = node, element, acc) do
     acc =
@@ -466,7 +551,6 @@ defmodule BubbleEx.Workarounds do
       end
 
     node
-    |> Map.drop(["elements", "%el", "workflows", "actions"])
     |> Map.values()
     |> Enum.reduce(acc, &reads_in(&1, element, &2))
   end
@@ -505,7 +589,7 @@ defmodule BubbleEx.Workarounds do
       confidence: confidence,
       reason: reason,
       option: option(class),
-      options: Enum.uniq([option(class), :keep])
+      options: [option(class) | List.delete(options(), option(class))]
     })
   end
 
@@ -638,6 +722,7 @@ defmodule BubbleEx.Workarounds do
        "it is a reusable element instance (its contents and workflows run inside it)"},
       {f.contents.elements > f.contents.candidates and :never_visible not in f.signals,
        "it has contents that may show"},
+      {f.contents.used, "other elements use its contents"},
       {f.events != [], "its events trigger workflows"},
       {f.plugins != [], "it holds plugin elements"},
       {f.script, "it holds a script"},
@@ -685,6 +770,7 @@ defmodule BubbleEx.Workarounds do
 
   defp wrapper?(f) do
     f.child_ids != [] and f.readers == [] and f.events == [] and not f.data_source and
+      not f.contents.used and
       f.custom_states == [] and f.type != "CustomElement" and
       Enum.all?(f.setters, &(&1.type in @wrapper_steps))
   end
@@ -734,6 +820,13 @@ defmodule BubbleEx.Workarounds do
 
   # --- JSON ---------------------------------------------------------------
 
+  defp list_at(list, key) do
+    case Integer.parse(key) do
+      {i, ""} when i >= 0 -> Enum.at(list, i)
+      _ -> nil
+    end
+  end
+
   defp pointer(app, "" <> path) do
     path
     |> String.split("/", trim: true)
@@ -741,7 +834,7 @@ defmodule BubbleEx.Workarounds do
     |> Enum.reduce_while(app, fn key, acc ->
       case acc do
         %{^key => v} -> {:cont, v}
-        list when is_list(list) -> {:cont, Enum.at(list, String.to_integer(key))}
+        list when is_list(list) -> {:cont, list_at(list, key)}
         _ -> {:halt, nil}
       end
     end)

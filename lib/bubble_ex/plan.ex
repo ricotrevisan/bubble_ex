@@ -254,10 +254,14 @@ defmodule BubbleEx.Plan do
       which it becomes a fragment task (default #{@fragment_threshold})
     * `:findings` - the `BubbleEx.Finding`s the `applied` entries come
       from: each `:workaround_element` finding that is an owner question
-      (undecided in `:resolved`; without it, below `:high` confidence and
-      not applied) is a `decision:workaround/<element id>` task for the
-      owner. It blocks nothing: until the owner decides, the element keeps
-      its markup (`proposal.options` `:keep`)
+      (undecided in `:resolved`) is a `decision:workaround/<element id>`
+      task for the owner, unless the element is inside a value holder
+      lowered to page state. It blocks nothing: until the owner decides,
+      the element keeps its markup. Pass `:resolved` with it: without it,
+      a finding below `:high` confidence that applies nothing counts as
+      undecided, a rejected one too. The contents of a value holder
+      lowered to page state (`BubbleEx.Workarounds.page_state/1`) are not
+      rendered, so no surface or fragment traces them
   """
   @spec build(Model.t(), Index.t(), Normalized.t() | nil, [Applied.t()], keyword()) ::
           {:ok, t()} | {:error, Error.t()}

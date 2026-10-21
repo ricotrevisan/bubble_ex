@@ -206,7 +206,10 @@ defmodule BubbleEx.Plan.Builder do
           into: MapSet.new(),
           do: a.id
 
+    # The contents of value holders lowered to page state are not rendered
+    # (WTF-586): no traceability, no question about them.
     Map.merge(ctx, %{
+      lowered_contents: lowered_contents(index, applied),
       touched: touched,
       plugin_uses: plugin_uses,
       plugin_decisions: plugins,
@@ -215,6 +218,13 @@ defmodule BubbleEx.Plan.Builder do
       deleted_workflows: deleted,
       removed_actions: removed_actions
     })
+  end
+
+  defp lowered_contents(index, applied) do
+    for holder <- BubbleEx.Workarounds.page_state(applied),
+        id <- descendants(index, Symbol.id(:element, holder), [:element]),
+        into: MapSet.new(),
+        do: id
   end
 
   # Plugin symbol ID -> the symbols using it (its elements, actions, the
@@ -640,6 +650,11 @@ defmodule BubbleEx.Plan.Builder do
     fragments ++ surfaces ++ acceptance
   end
 
+  # The elements the pages render: not the contents of a value holder
+  # lowered to page state.
+  defp rendered(ctx, elements),
+    do: Enum.reject(elements, &MapSet.member?(ctx.lowered_contents, &1))
+
   # Elements of `surfaces` outside their fragments.
   defp owned_elements(ctx, surfaces) do
     for %{id: id} <- surfaces,
@@ -833,7 +848,8 @@ defmodule BubbleEx.Plan.Builder do
   defp workaround_tasks(ctx) do
     for element <- Map.get(ctx, :questions, []),
         id = Symbol.id(:element, element),
-        Map.has_key?(ctx.element_surface, id) do
+        Map.has_key?(ctx.element_surface, id),
+        not MapSet.member?(ctx.lowered_contents, id) do
       %Task{
         id: "decision:workaround/" <> element,
         kind: :decision,
@@ -1431,7 +1447,7 @@ defmodule BubbleEx.Plan.Builder do
 
   defp facts(ctx, %Task{kind: :surface, subjects: subjects} = t, children),
     do: %{
-      elements: subjects ++ Enum.sort(owned_elements(ctx, symbols(ctx, subjects))),
+      elements: subjects ++ Enum.sort(rendered(ctx, owned_elements(ctx, symbols(ctx, subjects)))),
       children: Map.get(children, t.id, [])
     }
 
@@ -1441,12 +1457,13 @@ defmodule BubbleEx.Plan.Builder do
          children
        ),
        do: %{
-         elements: subjects ++ Enum.sort(owned_elements(ctx, symbols(ctx, subjects))),
+         elements:
+           subjects ++ Enum.sort(rendered(ctx, owned_elements(ctx, symbols(ctx, subjects)))),
          children: Map.get(children, t.id, [])
        }
 
   defp facts(ctx, %Task{kind: :fragment, subjects: [frag]}, _tasks),
-    do: %{elements: Enum.sort(ctx.fragments[frag].elements)}
+    do: %{elements: Enum.sort(rendered(ctx, ctx.fragments[frag].elements))}
 
   defp facts(ctx, %Task{kind: :workflow, subjects: [w]}, _tasks) do
     symbol = Index.symbol(ctx.index, w)
