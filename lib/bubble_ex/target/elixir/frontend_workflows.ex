@@ -1393,6 +1393,20 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       {%{},
        [Residue.entry(id, :unsupported_action, %{type: "AnimateElement", target: "phoenix"})]}
 
+  # The page's own sign-in forms are not wired: users sign in through
+  # AshAuthentication's (magic link). Still auth residue here.
+  @auth_types %{
+    sign_up: "SignUp",
+    log_in: "LogIn",
+    send_password_reset: "SendPasswordResetEmail",
+    reset_password: "ResetPassword"
+  }
+
+  defp args(op, _args, id, _ctx) when is_map_key(@auth_types, op),
+    do:
+      {%{},
+       [Residue.entry(id, :auth_action, %{type: Map.fetch!(@auth_types, op), target: "phoenix"})]}
+
   defp args(:send_email, _args, id, _ctx),
     do: {%{}, [Residue.entry(id, :unsupported_action, %{type: "SendEmail", target: "phoenix"})]}
 
