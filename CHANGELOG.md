@@ -511,6 +511,21 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **A fixed width or height without a min size is 0px, as in Bubble
+  (WTF-583).** Read from an editor export (a Buildprint v5 workspace, a
+  `.bubble` file), an element in a Column, Row or Align-to-parent
+  container that is fixed on an axis but has no min size there was drawn
+  at the canvas size the editor keeps (a Floating Group's 320x250, a
+  Repeating Group's 280x350). Bubble's responsive engine sizes a fixed axis
+  at its min size, `0px` by default, and never reads the canvas size. So
+  groups that only hold values (a Floating Group of variables, its
+  Repeating Group, a reusable used as a data holder) were empty
+  80,000 px² boxes over the page, taking pointer space; they now take no
+  space. A private app's capture measured every such shown element at 0 on
+  that axis. Plugins, children of Fixed containers, a Shape without a
+  height flag and, not yet calibrated, Popups, Group Focuses and elements
+  keeping an aspect ratio keep their canvas size; a runtime payload is
+  read as before.
 - **Elements hidden on page load that collapse when hidden show again.**
   Since #255 (a68a734) such an element also had a static `hidden` class
   (`display: none`) besides its `hidden` attribute. Its conditionals and
