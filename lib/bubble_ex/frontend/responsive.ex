@@ -132,6 +132,21 @@ defmodule BubbleEx.Frontend.Responsive do
     end)
   end
 
+  @doc """
+  Whether a breakpoint rule of a normalized element (its `responsive`
+  rules) shows or hides it at a width: its paint sets `display` or
+  `visibility` (`hidden_paint/2`).
+  """
+  @spec visibility_rule?([map()]) :: boolean()
+  def visibility_rule?(rules) when is_list(rules) do
+    Enum.any?(rules, fn rule ->
+      paint = (is_map(rule) && (rule["paint"] || rule[:paint])) || %{}
+      is_map(paint) and (Map.has_key?(paint, "display") or Map.has_key?(paint, "visibility"))
+    end)
+  end
+
+  def visibility_rule?(_rules), do: false
+
   @spec hidden_paint(map(), map()) :: map()
   def hidden_paint(raw, overrides) do
     case Payload.prop(%{"properties" => overrides}, "is_visible") do

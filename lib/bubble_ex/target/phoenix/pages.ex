@@ -3197,6 +3197,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
          false <- is_map(node.box) and node.box[:hidden?] == true and breakpoint_display?(node),
          %{bindings: vars} = compiled <- ctx.expressions[id],
          false <- match?(%{visibility: %{constant?: true}}, compiled),
+         false <- match?(%{visibility: %{fixed: fixed}} when is_boolean(fixed), compiled),
          nil <- Enum.find(vars, &(not kept_input?(&1, ctx) and not settled_input?(&1, ctx))) do
       match?({_unset = [], _some}, unset_reads(vars, ctx))
     else
@@ -3254,6 +3255,22 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   defp conditional_visibility(node, nil, states, static, _ctx, acc),
     do: {static, mark_visibility(acc, node, states, "it does not compile")}
+
+  # Conditionals decided when compiling (WTF-578, e.g. reading the
+  # visibility of an element that holds this one): the visibility they
+  # always set.
+  defp conditional_visibility(
+         _node,
+         %{visibility: %{fixed: fixed}},
+         states,
+         _static,
+         _ctx,
+         acc
+       )
+       when is_boolean(fixed),
+       do:
+         {if(fixed, do: [], else: [{"hidden", true}]),
+          count(acc, "visibility_conditions_compiled", states)}
 
   # Conditionals that only ever set the visibility on page load.
   defp conditional_visibility(
@@ -3688,6 +3705,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
       %{property: %{constant?: true}} ->
         {static, acc}
+
+      # Decided when compiling (WTF-578).
+      %{property: %{fixed: fixed}} when is_boolean(fixed) ->
+        {if(fixed, do: [{"disabled", true}], else: []), acc}
 
       %{bindings: vars} = compiled ->
         cond do

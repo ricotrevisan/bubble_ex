@@ -790,10 +790,12 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     # bLoading's read a repeating group's "is loading", a constant). The
     # panel's two "isn't clickable" states are other properties. Of the
     # conditional texts (WTF-582), only those reading the current user
-    # compile (bRoleText's, bBold's).
+    # compile (bRoleText's, bBold's). bVisG's and the three that read its
+    # visibility (WTF-578) compile; bVisWf's (a step shows what it reads)
+    # and bVisSelf's (it reads itself) are marked.
     assert %{
-             "visibility_conditions_compiled" => 12,
-             "visibility_conditions_marked" => 25,
+             "visibility_conditions_compiled" => 16,
+             "visibility_conditions_marked" => 27,
              "text_conditions_compiled" => 2,
              "text_conditions_marked" => 8,
              "conditions_other_properties" => 4
@@ -1079,6 +1081,138 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
             do: r.subject
 
       assert texts == ["element:bTextBad"]
+    end
+  end
+
+  describe "an element's is visible (WTF-578)" do
+    test "is its visibility folded from its conditionals, negated for isn't visible", %{
+      files: files
+    } do
+      template = files["lib/shop_web/live/index_live.html.heex"]
+      live = files["lib/shop_web/live/index_live.ex"]
+
+      assert tag(template, "bVisOf") =~ "hidden={!visible_bvisof(@bubble_viewer)}"
+      assert tag(template, "bNotVisOf") =~ "hidden={!visible_bnotvisof(@bubble_viewer)}"
+
+      # bVisG is hidden on page load and shown when logged in: reading it
+      # reads that.
+      assert live =~ """
+               defp visible_bvisof(current_user) do
+                 cond do
+                   if(not is_nil(current_user), do: true, else: false) == true -> true
+                   true -> false
+                 end
+               end
+             """
+
+      assert squash(live) =~
+               squash(
+                 "defp visible_bnotvisof(current_user) do cond do " <>
+                   "if(not is_nil(current_user), do: true, else: false) != true"
+               )
+    end
+
+    test "inside a hidden group is not visible: the read folds the group's too", %{
+      files: files
+    } do
+      template = files["lib/shop_web/live/index_live.html.heex"]
+      live = files["lib/shop_web/live/index_live.ex"]
+
+      # bVisGT has no conditional of its own; bVisG holds it.
+      assert tag(template, "bVisChild") =~ "hidden={!visible_bvischild(@bubble_viewer)}"
+
+      assert squash(live) =~
+               squash(
+                 "defp visible_bvischild(current_user) do cond do " <>
+                   "if(not is_nil(current_user), do: true, else: false) == true -> true"
+               )
+    end
+
+    test "is not decided where a step shows it, or where it reads itself", %{files: files} do
+      template = files["lib/shop_web/live/index_live.html.heex"]
+
+      assert template =~
+               "TODO(bubble:bVisWf) visibility: 1 conditional not lowered (it reads a value " <>
+                 "the page does not keep: element_state:is_visible); shown as on page load"
+
+      assert template =~
+               "TODO(bubble:bVisSelf) visibility: 1 conditional not lowered (it reads a value " <>
+                 "the page does not keep: element_state:isnt_visible); shown as on page load"
+    end
+
+    test "of an element holding the reader is yes; an overlay's and a cell's stay", %{} do
+      reads = fn element, state ->
+        %{
+          "type" => "GetElement",
+          "properties" => %{"element_id" => element},
+          "next" => %{"type" => "Message", "name" => state}
+        }
+      end
+
+      app =
+        app()
+        # Inside bVisG, reading bVisG: shown only while bVisG is.
+        |> put_in(["pages", "index", "elements", "bVisG", "elements", "bVisGT", "states"], %{
+          "0" => %{
+            "type" => "State",
+            "condition" => reads.("bVisG", "isnt_visible"),
+            "properties" => %{"is_visible" => false}
+          }
+        })
+        # Hidden on page load, shown when bVisG is: always shown while
+        # bVisG is, so shown.
+        |> put_in(["pages", "index", "elements", "bVisG", "elements", "bVisGT2"], %{
+          "id" => "bVisGT2",
+          "type" => "Text",
+          "properties" => %{
+            "height" => 40,
+            "width" => 300,
+            "order" => 2,
+            "is_visible" => false,
+            "text" => %{"type" => "TextExpression", "entries" => %{"0" => "Also"}}
+          },
+          "states" => %{
+            "0" => %{
+              "type" => "State",
+              "condition" => reads.("bVisG", "is_visible"),
+              "properties" => %{"is_visible" => true}
+            }
+          }
+        })
+        |> put_in(["pages", "index", "elements", "bPop"], %{
+          "id" => "bPop",
+          "type" => "Popup",
+          "properties" => %{"height" => 200, "width" => 300, "order" => 60}
+        })
+        |> put_in(
+          ["pages", "index", "elements", "bVisOf", "states", "0", "condition"],
+          reads.("bPop", "is_visible")
+        )
+        # Outside the repeating group, reading an element of its cells.
+        |> put_in(
+          ["pages", "index", "elements", "bNotVisOf", "states", "0", "condition"],
+          reads.("bCellTitle", "isnt_visible")
+        )
+
+      %{files: files} = build(app)
+      template = files["lib/shop_web/live/index_live.html.heex"]
+
+      # bVisGT never hides itself while shown: its conditional never
+      # applies, so it is the visibility on page load, with no helper.
+      refute template =~ "TODO(bubble:bVisGT)"
+      refute files["lib/shop_web/live/index_live.ex"] =~ "defp visible_bvisgt"
+      refute tag(template, "bVisGT") =~ ~r/\shidden[\s>=]/
+      refute template =~ "TODO(bubble:bVisGT2)"
+      refute files["lib/shop_web/live/index_live.ex"] =~ "defp visible_bvisgt2"
+      refute tag(template, "bVisGT2") =~ ~r/\shidden[\s>=]/
+
+      assert template =~
+               "TODO(bubble:bVisOf) visibility: 1 conditional not lowered (it reads a value " <>
+                 "the page does not keep: element_state:is_visible)"
+
+      assert template =~
+               "TODO(bubble:bNotVisOf) visibility: 1 conditional not lowered (it reads a value " <>
+                 "the page does not keep: element_state:isnt_visible)"
     end
   end
 end

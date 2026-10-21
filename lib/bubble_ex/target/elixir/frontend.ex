@@ -75,6 +75,13 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   itself the editor refuses it, so the page does not keep it there and
   says why.
 
+  Another element's `is visible` (and `isn't visible`) on the same page
+  or reusable element compiles to that element's visibility, folded from
+  its conditionals and its ancestors' up to the one the reader shares, when
+  only the server decides it (WTF-578, `ElementVisibility`): no workflow
+  step shows or hides it, no overlay or cell is on the way. Its
+  conditions' inputs become the reader's.
+
   A repeating group's `is loading` compiles to a constant no (replayed
   2026-10-19): in Bubble it stays no while a search waits for its
   response, the old rows still shown, and is yes only for a few
@@ -103,6 +110,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   alias BubbleEx.Plan.Residue
   alias BubbleEx.Target.Ash.Project
   alias BubbleEx.Target.Elixir, as: ElixirTarget
+  alias BubbleEx.Target.Elixir.Frontend.ElementVisibility
 
   @type compiled :: %{
           required(:source) => String.t(),
@@ -116,7 +124,8 @@ defmodule BubbleEx.Target.Elixir.Frontend do
           optional(:visibility) => %{
             states: pos_integer(),
             initial: boolean(),
-            constant?: boolean()
+            constant?: boolean(),
+            fixed: boolean() | nil
           }
         }
 
@@ -127,6 +136,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   def compile(app, %Model{} = model, %Project{} = project, %Normalized{} = frontend, opts)
       when is_map(app) and not is_struct(app) and is_list(opts) do
     env = Env.new(model, tree: Tree.build(app), searches: :page, loading_status: :constant)
+    opts = Keyword.put(opts, :element_visibility, ElementVisibility.index(app, frontend, env))
 
     nodes = Enum.flat_map(frontend.pages ++ frontend.reusables, &nodes/1)
 
@@ -258,28 +268,20 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   defp compile_visibility(payload, %Node{source: source} = node, env, project, opts) do
     env = %{env | host: source && source.bubble_id}
 
+    # A condition reading the element's own visibility back is not
+    # decided (`ElementVisibility`).
+    own_opts = Keyword.put(opts, :visibility_of, env.host)
+
     with [_ | _] = states <- Conditions.visibility(payload),
-         {:ok, parts} <- compile_states(states, env, project, opts),
+         {:ok, parts} <- compile_states(states, env, project, own_opts),
+         initial = node.box[:hidden?] != true,
+         {parts, default} = settle(parts, initial),
          {:ok, bindings} <- merge_bindings(parts),
          true <- Enum.all?(bindings, &page_input?(&1.input)) do
-      initial = node.box[:hidden?] != true
-
-      clauses =
-        parts
-        |> Enum.reverse()
-        |> Enum.map_join("\n", fn {source, visible?, _result} ->
-          "#{truth(source)} -> #{visible?}"
-        end)
-
-      source =
-        "cond do\n#{width_guard(bindings, initial)}#{clauses}\ntrue -> #{initial}\nend"
-        |> Code.format_string!()
-        |> IO.iodata_to_binary()
-
       results = Enum.map(parts, &elem(&1, 2))
 
       %{
-        source: source,
+        source: fold_source(parts, bindings, initial, default),
         bindings: bindings,
         runtime: results |> Enum.flat_map(& &1.runtime) |> Enum.uniq() |> Enum.sort(),
         loads: merge_loads(results),
@@ -290,9 +292,14 @@ defmodule BubbleEx.Target.Elixir.Frontend do
         visibility: %{
           states: length(states),
           initial: initial,
-          # Every state sets the visibility it has on page load: whatever
-          # holds, nothing changes.
-          constant?: Enum.all?(states, fn {_condition, visible?} -> visible? == initial end)
+          # Every state left sets the visibility it has on page load:
+          # whatever holds, nothing changes.
+          constant?:
+            default == initial and
+              Enum.all?(parts, fn {_source, visible?, _} -> visible? == initial end),
+          # Every condition decided when compiling (settle/2): the
+          # value it always has, else nil.
+          fixed: if(parts == [], do: default)
         }
       }
     else
@@ -311,12 +318,13 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
     with [_ | _] = states <- Conditions.disabled_states(payload, initial),
          {:ok, parts} <- compile_states(states, env, project, opts),
+         {parts, default} = settle(parts, initial),
          {:ok, bindings} <- merge_bindings(parts),
          true <- Enum.all?(bindings, &page_input?(&1.input)) do
       results = Enum.map(parts, &elem(&1, 2))
 
       %{
-        source: fold_source(parts, bindings, initial),
+        source: fold_source(parts, bindings, initial, default),
         bindings: bindings,
         runtime: results |> Enum.flat_map(& &1.runtime) |> Enum.uniq() |> Enum.sort(),
         loads: merge_loads(results),
@@ -328,7 +336,10 @@ defmodule BubbleEx.Target.Elixir.Frontend do
           name: "disabled",
           states: length(states),
           initial: initial,
-          constant?: Enum.all?(states, fn {_condition, value} -> value == initial end)
+          constant?:
+            default == initial and
+              Enum.all?(parts, fn {_source, value, _} -> value == initial end),
+          fixed: if(parts == [], do: default)
         }
       }
     else
@@ -346,6 +357,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
     with [_ | _] = states <- Conditions.property(payload, "text"),
          {:ok, base} <- text_value(base_text(node), node, env, project, opts),
          {:ok, branches} <- text_branches(states, node, env, project, opts),
+         {base, branches} = settle_texts(base, branches),
          results = [base | Enum.flat_map(branches, fn {c, v} -> [c, v] end)],
          {:ok, bindings} <- merge_bindings(Enum.map(results, &{nil, nil, &1})),
          true <- Enum.all?(bindings, &page_input?(&1.input)) do
@@ -447,16 +459,49 @@ defmodule BubbleEx.Target.Elixir.Frontend do
     do: %{source: inspect(text), bindings: [], runtime: [], loads: %{}, literal?: true}
 
   # The states in Bubble's order as one `cond`: the last true one decides,
-  # else the value on page load.
-  defp fold_source(parts, bindings, initial) do
+  # else `default` (the value on page load, see settle/2); until the page
+  # has a width, the value on page load.
+  defp fold_source(parts, bindings, initial, default) do
     clauses =
       parts
       |> Enum.reverse()
       |> Enum.map_join("\n", fn {source, value, _result} -> "#{truth(source)} -> #{value}" end)
 
-    "cond do\n#{width_guard(bindings, initial)}#{clauses}\ntrue -> #{initial}\nend"
+    "cond do\n#{width_guard(bindings, initial)}#{clauses}\ntrue -> #{default}\nend"
     |> Code.format_string!()
     |> IO.iodata_to_binary()
+  end
+
+  # States whose condition is decided when compiling (a literal: an
+  # element's visibility read from inside it, WTF-578) as Bubble applies
+  # them: a no never applies, and the last yes sets the value every
+  # earlier state and the page-load value would. `{parts, default}`.
+  defp settle(parts, initial) do
+    last_yes =
+      parts
+      |> Enum.with_index()
+      |> Enum.filter(fn {{source, _value, _result}, _i} -> literal?(source, true) end)
+      |> List.last()
+
+    {parts, default} =
+      case last_yes do
+        nil -> {parts, initial}
+        {{_source, value, _result}, i} -> {Enum.drop(parts, i + 1), value}
+      end
+
+    {Enum.reject(parts, fn {source, _value, _result} -> literal?(source, false) end), default}
+  end
+
+  defp literal?(source, value), do: Code.string_to_quoted(source) == {:ok, value}
+
+  # settle/2 for a text's states: `{base, branches}`.
+  defp settle_texts(base, branches) do
+    {parts, base} =
+      branches
+      |> Enum.map(fn {condition, value} -> {condition.source, value, condition} end)
+      |> settle(base)
+
+    {base, Enum.map(parts, fn {_source, value, condition} -> {condition, value} end)}
   end
 
   # Bubble always knows the page's width; the page does not before its
@@ -514,6 +559,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   defp compile_condition(condition, env, project, opts) when is_map(condition) do
     with {:ok, %{ast: ast}} <- Expression.parse(condition, schema: env.schema),
          {:ok, %{ir: %IR{type: "boolean"} = ir}} <- Compiler.compile(ast, env),
+         ir = element_visibility(ir, env, opts),
          {:ok, %{source: code} = result} when is_binary(code) <-
            ElixirTarget.compile(ir, project, Keyword.delete(target_opts(opts), :display)) do
       {:ok, result}
@@ -523,6 +569,18 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   end
 
   defp compile_condition(_condition, _env, _project, _opts), do: :error
+
+  # An element's `is visible` the page decides (WTF-578): its visibility,
+  # inlined (`ElementVisibility.inline/4`).
+  defp element_visibility(ir, env, opts) do
+    seen =
+      case Keyword.get(opts, :visibility_of) do
+        id when is_binary(id) -> MapSet.new([id])
+        _ -> MapSet.new()
+      end
+
+    ElementVisibility.inline(ir, env.host, seen, Keyword.get(opts, :element_visibility))
+  end
 
   # One variable per input across the states (variables are named from
   # their input, so a name naming two inputs cannot be shared).
@@ -575,6 +633,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
     with {:ok, %{ast: ast}} <- Expression.parse(payload, schema: env.schema),
          {:ok, %{ir: ir}} when not is_nil(ir) <- Compiler.compile(ast, env),
+         ir = element_visibility(ir, env, opts),
          {:ok, %{source: code} = result} when is_binary(code) <-
            ElixirTarget.compile(ir, project, target_opts(opts)) do
       result
