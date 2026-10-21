@@ -740,16 +740,18 @@ defmodule BubbleEx.Workarounds do
   end
 
   defp holder_sources(f) do
-    [
-      f.data_source && "its data source",
-      Enum.any?(f.setters, &(&1.type in ~w(DisplayGroupData DisplayListData))) &&
-        "a display data step",
-      (f.custom_states != [] or Enum.any?(f.setters, &(&1.type == "SetCustomState"))) &&
-        "custom states",
-      (f.type == "CustomElement" and f.properties != []) && "its reusable properties"
+    displayed? = Enum.any?(f.setters, &(&1.type in ~w(DisplayGroupData DisplayListData)))
+    states? = f.custom_states != [] or Enum.any?(f.setters, &(&1.type == "SetCustomState"))
+    properties? = f.type == "CustomElement" and f.properties != []
+
+    sources = [
+      {f.data_source, "its data source"},
+      {displayed?, "a display data step"},
+      {states?, "custom states"},
+      {properties?, "its reusable properties"}
     ]
-    |> Enum.filter(& &1)
-    |> Enum.join(", ")
+
+    Enum.join(for({true, text} <- sources, do: text), ", ")
   end
 
   defp js_bridge(f) do
