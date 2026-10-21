@@ -39,12 +39,14 @@ defmodule BubbleEx.Frontend.RenderDiff do
 
     * `:export_drift` - the element is not in the export the app was
       generated from (`:generated_from`), so the difference is the branch's
-    * `:known` - listed by the owner in `:known` (e.g. stricter privacy)
+    * `:known` - listed by the owner in `:known` (see `parse_known/1`:
+      stricter privacy, server-side counts, branch drift...)
     * `:marked` - ours marks the element or an ancestor as not migrated
     * `:unexplained` - none of the above: a candidate bug
 
-  The first three are grouped as known differences. Nothing here reads
-  Bubble or the network; the captures are files the caller made.
+  The first three are grouped as known differences, apart from the
+  candidate bugs. Nothing here reads Bubble or the network; the captures
+  are files the caller made.
   """
 
   alias BubbleEx.Expression
@@ -52,6 +54,10 @@ defmodule BubbleEx.Frontend.RenderDiff do
   @kinds [:only_bubble, :only_ours, :count_differs, :text_differs, :box_off]
   @fold_kinds [:only_bubble, :only_ours]
   @known_categories [:export_drift, :known, :marked]
+  @known_classes ~w(privacy server_data drift capture_gap other)
+
+  @typedoc "An owner-listed difference: why, its class, and the kinds it covers."
+  @type known_entry :: %{reason: String.t(), class: String.t(), kinds: :all | [atom()]}
 
   @type capture :: map()
   @type element_info :: map()
@@ -184,6 +190,74 @@ defmodule BubbleEx.Frontend.RenderDiff do
   end
 
   @doc """
+  Reads a known-differences file's JSON (decoded): an object keyed by
+  export element ID, each value a reason, or an entry:
+
+      {
+        "bA1": "stricter privacy: ours shows the comments to their author only",
+        "bB2": {"reason": "the tally counts records Bubble counts on the server",
+                "class": "server_data", "kinds": ["count_differs"]}
+      }
+
+    * `reason` - required, shown with the difference
+    * `class` - one of #{Enum.map_join(@known_classes, ", ", &"`#{&1}`")}
+      (default `other`): `privacy` (ours is stricter on purpose),
+      `server_data` (a count or list Bubble computes on the server and never
+      sends to the browser, so a capture cannot seed it), `drift` (the
+      branch Bubble served differs from the export the app was generated
+      from), `capture_gap` (the captured records miss what the element
+      reads, e.g. a reference to a record the page never held)
+    * `kinds` - the difference kinds it covers (default all):
+      #{Enum.map_join(@kinds, ", ", &"`#{&1}`")}
+
+  Keys starting with `$` are comments and skipped. Returns
+  `%{id => known_entry}`.
+  """
+  @spec parse_known(term()) :: {:ok, %{String.t() => known_entry()}} | {:error, String.t()}
+  def parse_known(json) when is_map(json) do
+    json
+    |> Enum.reject(fn {id, _} -> is_binary(id) and String.starts_with?(id, "$") end)
+    |> Enum.reduce_while({:ok, %{}}, fn {id, value}, {:ok, acc} ->
+      case known_entry(value) do
+        {:ok, entry} -> {:cont, {:ok, Map.put(acc, id, entry)}}
+        {:error, why} -> {:halt, {:error, "#{id}: #{why}"}}
+      end
+    end)
+  end
+
+  def parse_known(_json),
+    do: {:error, ~s(expected a JSON object {"<element id>": "<reason>" or {"reason": ...}})}
+
+  defp known_entry(reason) when is_binary(reason),
+    do: {:ok, %{reason: reason, class: "other", kinds: :all}}
+
+  defp known_entry(%{"reason" => reason} = entry) when is_binary(reason) do
+    class = Map.get(entry, "class", "other")
+    kinds = Map.get(entry, "kinds", :all)
+    names = Enum.map(@kinds, &Atom.to_string/1)
+    extra = Map.keys(entry) -- ["reason", "class", "kinds"]
+
+    cond do
+      extra != [] ->
+        {:error, "unknown keys #{inspect(Enum.sort(extra))}"}
+
+      class not in @known_classes ->
+        {:error, "class must be one of #{Enum.join(@known_classes, ", ")}"}
+
+      kinds == :all ->
+        {:ok, %{reason: reason, class: class, kinds: :all}}
+
+      is_list(kinds) and kinds != [] and Enum.all?(kinds, &(&1 in names)) ->
+        {:ok, %{reason: reason, class: class, kinds: Enum.map(kinds, &String.to_existing_atom/1)}}
+
+      true ->
+        {:error, "kinds must be a non-empty list of #{Enum.join(names, ", ")}"}
+    end
+  end
+
+  defp known_entry(_value), do: {:error, "every value must be a reason or an entry with a reason"}
+
+  @doc """
   Compares a Bubble capture with ours for the same page and width.
 
   Options:
@@ -191,13 +265,15 @@ defmodule BubbleEx.Frontend.RenderDiff do
     * `:box_tolerance` - pixels (default 32)
     * `:generated_from` - the index (`index/2`) of the export the app was
       generated from, when it differs from the one Bubble served
-    * `:known` - `%{id => reason}` the owner accepts as intended
+    * `:known` - the differences the owner accepts as intended:
+      `parse_known/1`'s `%{id => entry}`, or `%{id => reason}`
     * `:notes` - `%{id => [note]}` from the generated code
       (`project_notes/1`)
   """
   @spec diff(capture(), capture(), %{String.t() => element_info()}, keyword()) :: map()
   def diff(bubble, ours, index, opts \\ []) when is_map(bubble) and is_map(ours) do
     tolerance = Keyword.get(opts, :box_tolerance, 32)
+    opts = Keyword.put(opts, :known, opts |> Keyword.get(:known, %{}) |> normalize_known())
     b = bubble |> normalize_ids(index) |> aggregate()
     o = ours |> normalize_ids(index) |> aggregate()
 
@@ -222,6 +298,16 @@ defmodule BubbleEx.Frontend.RenderDiff do
       |> Enum.sort_by(&{-&1.chars, -&1.area, &1.id})
 
     {known, unexplained} = Enum.split_with(roots, &(&1.category in @known_categories))
+    listed = Keyword.fetch!(opts, :known)
+    # Every difference an entry covers, folded or not: an entry on an
+    # element folded into an ancestor's difference still matches, but only
+    # the root is categorized, so the owner should list the root.
+    used = for d <- raw, known_for(listed, d), into: MapSet.new(), do: d.id
+
+    folded =
+      for(d <- nested, known_for(listed, d), do: {d.id, root[{d.id, d.kind}]})
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+      |> Map.new(fn {id, roots} -> {id, roots |> Enum.uniq() |> Enum.sort()} end)
 
     %{
       path: bubble["path"],
@@ -244,7 +330,19 @@ defmodule BubbleEx.Frontend.RenderDiff do
       visible_chars: %{bubble: b.visible_chars, ours: o.visible_chars},
       counts: Map.new(@kinds, fn k -> {k, Enum.count(roots, &(&1.kind == k))} end),
       known: known,
-      unexplained: unexplained
+      unexplained: unexplained,
+      # Owner-listed elements on this page that no difference matched: fixed,
+      # or the entry is stale (entries for elements not captured here are
+      # for other pages).
+      known_unused:
+        listed
+        |> Map.keys()
+        |> Enum.filter(&(Map.has_key?(b.by_id, &1) or Map.has_key?(o.by_id, &1)))
+        |> Enum.reject(&MapSet.member?(used, &1))
+        |> Enum.sort(),
+      # Owner-listed elements whose difference folds into an ancestor's
+      # (`%{id => [root id]}`): the root's category is what counts.
+      known_folded: folded
     }
   end
 
@@ -446,20 +544,20 @@ defmodule BubbleEx.Frontend.RenderDiff do
 
   defp explain(d, b, o, index, opts) do
     info = Map.get(index, d.id)
-    known = Keyword.get(opts, :known, %{})
+    entry = opts |> Keyword.get(:known, %{}) |> known_for(d)
     # An ancestor's marker can explain why an element is not shown, not
     # why its own text or box differs.
     chain =
       if d.kind in [:only_bubble, :only_ours, :count_differs], do: ancestors(d.id, b, o), else: []
 
     {own, inherited} = ours_reasons(d.id, chain, o, Keyword.get(opts, :notes, %{}))
-    category = category(d.id, index, Keyword.get(opts, :generated_from), known, own)
+    category = category(d.id, index, Keyword.get(opts, :generated_from), entry, own)
 
     reasons =
       [
         if(info == nil, do: "not in the export"),
         if(category == :export_drift, do: drift_reason(info)),
-        if(category == :known, do: "owner: #{known[d.id]}"),
+        if(category == :known, do: "owner (#{entry.class}): #{entry.reason}"),
         export_reasons(info, d.kind),
         visibility_reason(d),
         own,
@@ -470,15 +568,40 @@ defmodule BubbleEx.Frontend.RenderDiff do
 
     d
     |> Map.merge(%{reasons: reasons, category: category})
+    |> Map.put(:known_class, if(category == :known, do: entry.class))
     |> Map.put(:element, info && Map.take(info, [:type, :name, :owner]))
   end
 
-  defp category(id, index, generated, known, own) do
+  # `%{id => reason}` (the older form) or parsed entries.
+  defp normalize_known(known) do
+    Map.new(known, fn
+      {id, reason} when is_binary(reason) ->
+        {id, %{reason: reason, class: "other", kinds: :all}}
+
+      {id, %{reason: r} = entry} when is_binary(r) ->
+        {id, Map.merge(%{class: "other", kinds: :all}, entry)}
+
+      {id, other} ->
+        raise ArgumentError,
+              "known entry #{inspect(id)}: expected a reason or an entry from parse_known/1, " <>
+                "got #{inspect(other)}"
+    end)
+  end
+
+  defp known_for(listed, d) do
+    case Map.get(listed, d.id) do
+      %{kinds: :all} = entry -> entry
+      %{kinds: kinds} = entry -> if d.kind in kinds, do: entry
+      nil -> nil
+    end
+  end
+
+  defp category(id, index, generated, entry, own) do
     cond do
       is_map(generated) and Map.has_key?(generated, id) != Map.has_key?(index, id) ->
         :export_drift
 
-      Map.has_key?(known, id) ->
+      entry != nil ->
         :known
 
       own != [] ->
@@ -638,9 +761,32 @@ defmodule BubbleEx.Frontend.RenderDiff do
       ["", "#{title} (#{length(list)})" | list |> Enum.take(n) |> Enum.map(&line(&1, text?))]
     end
 
+    known = fn category -> Enum.filter(report.known, &(&1.category == category)) end
+    unused = Map.get(report, :known_unused, [])
+    folded = Map.get(report, :known_folded, %{})
+
     (header ++
        group.("Unexplained (candidate bugs)", report.unexplained) ++
-       group.("Known (drift, owner-listed, marked)", report.known))
+       group.("Known: owner-listed", known.(:known)) ++
+       group.("Known: export drift", known.(:export_drift)) ++
+       group.("Known: marked as not migrated in ours", known.(:marked)) ++
+       if(unused == [],
+         do: [],
+         else: [
+           "",
+           "Owner-listed but no difference here (fixed or stale): " <> Enum.join(unused, ", ")
+         ]
+       ) ++
+       if(folded == %{},
+         do: [],
+         else: [
+           "",
+           "Owner-listed but folded into another difference (list that one): " <>
+             (folded
+              |> Enum.sort()
+              |> Enum.map_join(", ", fn {id, roots} -> "#{id} in #{Enum.join(roots, "/")}" end))
+         ]
+       ))
     |> Enum.join("\n")
   end
 
@@ -655,11 +801,16 @@ defmodule BubbleEx.Frontend.RenderDiff do
         _ -> if shown.text != "", do: " text=#{inspect(truncate(shown.text, 80))}", else: ""
       end
 
-    "- #{d.kind} #{d.id} #{el[:type]} #{inspect(el[:name])} [#{d.category}] chars=#{d.chars} area=#{d.area}" <>
+    "- #{d.kind} #{d.id} #{el[:type]} #{inspect(el[:name])} [#{category_label(d)}] chars=#{d.chars} area=#{d.area}" <>
       if(d.nested > 0, do: " nested=#{d.nested}", else: "") <>
       texts <>
       Enum.map_join(d.reasons, "", &"\n    #{&1}")
   end
+
+  defp category_label(%{known_class: class} = d) when is_binary(class),
+    do: "#{d.category}/#{class}"
+
+  defp category_label(d), do: to_string(d.category)
 
   defp norm(text) when is_binary(text), do: text |> String.replace(~r/\s+/u, " ") |> String.trim()
   defp norm(_), do: ""

@@ -362,6 +362,18 @@ defmodule VerticalSlice.Seed do
   file storage under `dir`. Returns the loader's report.
   """
   def run(built, pool, dir, n) do
+    load(built, pool, dir, Synthetic.rows(built.model, n), %{
+      "kind" => "synthetic",
+      "base_url" => "https://slice.example.test"
+    })
+  end
+
+  @doc """
+  Writes `rows` (`%{type => [row]}`) as a loader export under
+  `dir/export` (replacing it), with `source` as its source, and loads it
+  as `run/4` does.
+  """
+  def load(built, pool, dir, rows, source) do
     export_dir = Path.join(dir, "export")
     File.rm_rf!(export_dir)
 
@@ -369,13 +381,9 @@ defmodule VerticalSlice.Seed do
       Export.write(export_dir, %{
         app: built.model.bubble_id || "slice",
         model_sha256: BubbleEx.Model.sha256(built.model),
-        source: %{"kind" => "synthetic", "base_url" => "https://slice.example.test"},
+        source: source,
         created_at: DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
-        types:
-          for(
-            {type, rows} <- Enum.sort(Synthetic.rows(built.model, n)),
-            do: %{type: type, path: type, rows: rows}
-          ),
+        types: for({type, list} <- Enum.sort(rows), do: %{type: type, path: type, rows: list}),
         files: []
       })
 
