@@ -77,10 +77,28 @@ defmodule BubbleEx.Target.Elixir.NumbersTest do
         assert rt.floor(x) === floor
       end
 
-      assert rt.ceiling(Decimal.new("1.2")) == Decimal.new("2")
-      assert rt.floor(Decimal.new("-1.2")) == Decimal.new("-2")
-      assert rt.ceiling(nil) == nil
-      assert rt.floor(nil) == nil
+      for {x, ceiling, floor} <- [
+            {"1.2", "2", "1"},
+            {"-1.2", "-1", "-2"},
+            {"3", "3", "3"},
+            {"0.2", "1", "0"}
+          ] do
+        assert Decimal.equal?(rt.ceiling(Decimal.new(x)), Decimal.new(ceiling))
+        assert Decimal.equal?(rt.floor(Decimal.new(x)), Decimal.new(floor))
+      end
+
+      # Never "-0": JavaScript shows Math.ceil(-0.2) as 0.
+      assert rt.text(rt.ceiling(Decimal.new("-0.2"))) == "0"
+      assert rt.text(rt.ceiling(-0.2)) == "0"
+
+      # A float too large to have a fraction shows as JavaScript shows it.
+      assert rt.floor(1.0e300) === 1.0e300
+      assert rt.text(rt.floor(1.0e300)) == "1e+300"
+
+      for empty <- [nil, "", "text"] do
+        assert rt.ceiling(empty) == empty
+        assert rt.floor(empty) == empty
+      end
     end
 
     test "a page thing's number, empty when the number is" do
@@ -113,6 +131,9 @@ defmodule BubbleEx.Target.Elixir.NumbersTest do
   end
 
   test ":rounded to is not compiled yet" do
-    assert {:ok, %{ir: nil}} = compile(chain(estimate(), [msg("round", 1)]))
+    assert {:ok, %{ir: nil, diagnostics: diagnostics}} =
+             compile(chain(estimate(), [msg("round", 1)]))
+
+    assert Enum.any?(diagnostics, &(&1.message =~ ~s("round")))
   end
 end
