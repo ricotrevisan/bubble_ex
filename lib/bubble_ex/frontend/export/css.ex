@@ -723,12 +723,25 @@ defmodule BubbleEx.Frontend.Export.Css do
     |> put_floating_axis(attributes["data-floating-vertical"], :vertical)
     |> put_floating_horizontal(attributes["data-floating-horizontal"], width)
     |> then(&if width == :fit, do: Map.put(&1, "width", "fit-content"), else: &1)
+    |> put_back_plane(node)
   end
 
   defp floating_css(%Node{kind: :reusable_definition, variant: :floating_group} = node),
     do: floating_css(%{node | kind: :floating_group})
 
   defp floating_css(_node), do: %{}
+
+  # A Floating Group floating behind the page's elements (its "back" plane,
+  # Bubble's "Float z-index: behind page content", WTF-574): the page,
+  # which fills the viewport, is drawn over it, so nothing it holds is
+  # clicked, nor seen through an opaque page. Below the elements of its
+  # stacking context, and never the target of the pointer: apps keep value
+  # holders, JavaScript bridges and plugin elements there, whose
+  # placeholders would otherwise cover what the user clicks.
+  defp put_back_plane(css, %Node{runtime: %{"plane" => "back"}}),
+    do: Map.merge(css, %{"z-index" => "-1", "pointer-events" => "none"})
+
+  defp put_back_plane(css, _node), do: css
 
   # A shown Popup is fixed to the viewport, horizontally centered, either
   # vertically centered or at its runtime top offset. A Group Focus is out of

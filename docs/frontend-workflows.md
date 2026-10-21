@@ -644,6 +644,17 @@ closed or not (`<Web>.Bubble.open?/3`): the HEEx fidelity candidate
 (`scripts/heex_fidelity/candidate.exs`) sets it, since it opens the
 static page's overlays without the page.
 
+A lazy overlay's "is visible" (`isn't visible`), read by a condition of
+an element of its own surface (a visibility, "isn't clickable" or text
+conditional), is whether the page keeps it open (WTF-587,
+`<Web>.Bubble.overlay_open?/3`, from `@bubble_open`; an element inside it
+is visible while it is open and its own conditionals show it). The
+read follows the browser one round trip behind: true once the page
+rendered the contents, false once the hook reported it closed.
+`:bubble_overlays_rendered` does not open it. Any other overlay's open
+state only the browser knows: a read of it stays marked, as before.
+Workflow conditions are not lowered this way.
+
 ### Elements hidden by their conditions (WTF-559)
 
 A group (or a repeating group laid out statically) whose visibility

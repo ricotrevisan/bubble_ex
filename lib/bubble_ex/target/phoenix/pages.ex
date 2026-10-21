@@ -1749,7 +1749,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
     {own, acc} =
       node.attributes
       |> Enum.to_list()
-      |> Kernel.++(overlay_attrs(node))
+      |> Kernel.++(overlay_attrs(node, ctx))
       |> Kernel.++(visibility)
       |> Kernel.++(if acc.template, do: [], else: click_attrs(bid(node), "div", ctx))
       |> put_authored_id(node, ctx, acc)
@@ -2181,7 +2181,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     {rest, acc} =
       attrs
-      |> Kernel.++(overlay_attrs(node))
+      |> Kernel.++(overlay_attrs(node, ctx))
       |> Kernel.++(lazy_attrs(node, ctx, acc))
       |> Kernel.++(popups)
       |> Kernel.++(visibility)
@@ -2305,18 +2305,24 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
   # --- overlays (the normalized runtime model, WTF-407) -----------------------------
 
+  # A Floating Group whose conditionals the page decides (WTF-587) takes
+  # its `hidden` from them (visibility_attrs/3).
   defp overlay_attrs(
-         %Node{runtime: %{"boundary" => "overlay", "overlay" => overlay} = runtime} = node
+         %Node{runtime: %{"boundary" => "overlay", "overlay" => overlay} = runtime} = node,
+         ctx
        ) do
     [{"data-overlay", overlay}] ++
-      if(runtime["initial"] == "hidden", do: [{"hidden", true}], else: []) ++
+      if(runtime["initial"] == "hidden" and not conditional_floating?(node, ctx),
+        do: [{"hidden", true}],
+        else: []
+      ) ++
       if(runtime["modal"] == true,
         do: [{"role", "dialog"}, {"aria-modal", "true"}, {"aria-label", dialog_label(node)}],
         else: []
       )
   end
 
-  defp overlay_attrs(_node), do: []
+  defp overlay_attrs(_node, _ctx), do: []
 
   # An overlay rendered only while open (WTF-559, `Overlays`): its shell
   # always, its contents while the page keeps it open (`@bubble_open`).
@@ -3290,7 +3296,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp lowered_properties(_node), do: []
 
   # The `hidden` attribute of an element: from its compiled visibility
-  # conditionals, else as on page load. An overlay's is overlay_attrs/1's.
+  # conditionals, else as on page load. An overlay's is overlay_attrs/2's.
   defp visibility_attrs(%Node{} = node, ctx, acc) do
     payload =
       case node.bindings["condition"] do
@@ -3312,6 +3318,16 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       states == 0 ->
         {static, acc}
 
+      conditional_floating?(node, ctx) ->
+        conditional_visibility(
+          node,
+          ctx.expressions[node.bindings["condition"].id],
+          states,
+          static,
+          ctx,
+          acc
+        )
+
       match?(%{"boundary" => "overlay"}, node.runtime) ->
         {[], mark_visibility(acc, node, states, "an overlay: workflows show and hide it")}
 
@@ -3331,6 +3347,19 @@ defmodule BubbleEx.Target.Phoenix.Pages do
         )
     end
   end
+
+  # A Floating Group no workflow step shows or hides, whose conditionals
+  # compiled (WTF-587, `BubbleEx.Target.Elixir.Frontend`): they decide its
+  # visibility, as a group's. Any other overlay's are marked.
+  defp conditional_floating?(
+         %Node{runtime: %{"overlay" => "floating_group"}, bindings: %{"condition" => condition}},
+         ctx
+       ) do
+    match?(%{kind: :condition, id: _}, condition) and
+      Map.has_key?(Map.get(ctx, :expressions) || %{}, condition.id)
+  end
+
+  defp conditional_floating?(_node, _ctx), do: false
 
   defp conditional_visibility(node, nil, states, static, _ctx, acc),
     do: {static, mark_visibility(acc, node, states, "it does not compile")}
@@ -3612,8 +3641,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp kept_input?(%{input: :current_user}, _ctx), do: true
   defp kept_input?(_var, %{flows: nil}), do: false
 
-  defp kept_input?(%{input: input}, ctx),
-    do: FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell)) != nil
+  defp kept_input?(%{input: input} = binding, ctx),
+    do:
+      FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell)) != nil or
+        open_read(binding, ctx) != nil
 
   defp unkept(%{input: {kind, ref} = input} = var, ctx) do
     what = if kind == :element_state, do: "element_state:" <> to_string(ref["state"]), else: kind
@@ -4649,8 +4680,10 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   # The choice a Dropdown's choice label is about (WTF-596).
   defp read_arg(%{input: {:this, :context}}, %{choice_var: var}), do: var
 
-  defp read_arg(%{var: var, input: input}, ctx) do
-    read = ctx.flows && FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell))
+  defp read_arg(%{var: var, input: input} = binding, ctx) do
+    read =
+      (ctx.flows && FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell))) ||
+        open_read(binding, ctx)
 
     # `own_default_visibility/7`: the instance's own default.
     read =
@@ -4701,9 +4734,31 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       {kind, _} when kind in [:page_width, :now, :page_name] ->
         page_value_source(kind)
 
+      {:open, k} ->
+        open_source(k, ctx)
+
       _ ->
         "@" <> var
     end
+  end
+
+  # A Popup's or Group Focus's "is visible" (WTF-587): whether the page
+  # keeps it open, for one it renders only while open (WTF-559,
+  # `@bubble_open`, `lazy_overlays/2`) on the same surface. The hook tells
+  # the page when it opens one and when it closes it (a step, Escape, an
+  # outside click), so the read follows a round trip behind the browser.
+  # Any other overlay's open state only the browser knows: nil.
+  defp open_read(%{input: {:element_state, %{"element" => e, "state" => s}}}, ctx)
+       when s in ["is_visible", "isnt_visible"] and is_binary(e) do
+    if MapSet.member?(Map.get(ctx, :lazy_overlays, MapSet.new()), e),
+      do: {:open, %{element: e, state: s}}
+  end
+
+  defp open_read(_binding, _ctx), do: nil
+
+  defp open_source(%{element: e, state: s}, ctx) do
+    open = "Bubble.overlay_open?(@bubble_open, #{scope_var(ctx)}, #{literal(e)})"
+    if s == "is_visible", do: open, else: "not " <> open
   end
 
   # The viewport's width the runtime keeps (WTF-520); the current date and

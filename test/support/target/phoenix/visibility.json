@@ -2184,6 +2184,185 @@
               "type": "State"
             }
           }
+        },
+        "bOvPop": {
+          "elements": {
+            "bOvPopT": {
+              "id": "bOvPopT",
+              "properties": {
+                "height": 40,
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "bOvPopT"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bOvPop",
+          "properties": {
+            "height": 200,
+            "order": 53,
+            "width": 300
+          },
+          "type": "Popup"
+        },
+        "bOvOpen": {
+          "id": "bOvOpen",
+          "properties": {
+            "height": 40,
+            "order": 54,
+            "text": {
+              "entries": {
+                "0": "Open"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bOvPopRead": {
+          "id": "bOvPopRead",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "order": 55,
+            "text": {
+              "entries": {
+                "0": "Popup open"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "is_visible",
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bOvPop"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bOvFloat": {
+          "elements": {
+            "bOvFloatT": {
+              "id": "bOvFloatT",
+              "properties": {
+                "height": 40,
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "bOvFloatT"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bOvFloat",
+          "properties": {
+            "height": 50,
+            "is_visible": false,
+            "order": 56,
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "logged_in",
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "FloatingGroup"
+        },
+        "bOvFloatRead": {
+          "id": "bOvFloatRead",
+          "properties": {
+            "height": 40,
+            "is_visible": false,
+            "order": 57,
+            "text": {
+              "entries": {
+                "0": "Float shown"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "is_visible",
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bOvFloatT"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          },
+          "type": "Text"
+        },
+        "bOvBack": {
+          "elements": {
+            "bOvBackT": {
+              "id": "bOvBackT",
+              "properties": {
+                "height": 40,
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "bOvBackT"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 300
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bOvBack",
+          "properties": {
+            "float_zindex": "back",
+            "height": 50,
+            "order": 58,
+            "width": 300,
+            "zindex": 40
+          },
+          "type": "FloatingGroup"
         }
       },
       "id": "bVis",
@@ -2331,6 +2510,22 @@
           "id": "wShowColl",
           "properties": {
             "element_id": "bShowColl"
+          },
+          "type": "ButtonClicked"
+        },
+        "wOvOpen": {
+          "actions": {
+            "0": {
+              "id": "aOvOpen1",
+              "properties": {
+                "element_id": "bOvPop"
+              },
+              "type": "ShowElement"
+            }
+          },
+          "id": "wOvOpen",
+          "properties": {
+            "element_id": "bOvOpen"
           },
           "type": "ButtonClicked"
         }

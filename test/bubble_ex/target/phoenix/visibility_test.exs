@@ -792,10 +792,13 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     # conditional texts (WTF-582), only those reading the current user
     # compile (bRoleText's, bBold's). bVisG's and the three that read its
     # visibility (WTF-578) compile; bVisWf's (a step shows what it reads)
-    # and bVisSelf's (it reads itself) are marked.
+    # and bVisSelf's (it reads itself) are marked. The Floating Group
+    # bOvFloat's and bOvFloatRead's, which reads inside it, compile
+    # (WTF-587); bOvPopRead's reads bOvPop's open state, which a page
+    # without workflows does not keep: marked.
     assert %{
-             "visibility_conditions_compiled" => 16,
-             "visibility_conditions_marked" => 27,
+             "visibility_conditions_compiled" => 18,
+             "visibility_conditions_marked" => 28,
              "text_conditions_compiled" => 2,
              "text_conditions_marked" => 8,
              "conditions_other_properties" => 4
@@ -1140,7 +1143,7 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
                  "the page does not keep: element_state:isnt_visible); shown as on page load"
     end
 
-    test "of an element holding the reader is yes; an overlay's and a cell's stay", %{} do
+    test "of an element holding the reader is yes; a cell's stays", %{} do
       reads = fn element, state ->
         %{
           "type" => "GetElement",
@@ -1179,15 +1182,6 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
             }
           }
         })
-        |> put_in(["pages", "index", "elements", "bPop"], %{
-          "id" => "bPop",
-          "type" => "Popup",
-          "properties" => %{"height" => 200, "width" => 300, "order" => 60}
-        })
-        |> put_in(
-          ["pages", "index", "elements", "bVisOf", "states", "0", "condition"],
-          reads.("bPop", "is_visible")
-        )
         # Outside the repeating group, reading an element of its cells.
         |> put_in(
           ["pages", "index", "elements", "bNotVisOf", "states", "0", "condition"],
@@ -1205,10 +1199,6 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
       refute template =~ "TODO(bubble:bVisGT2)"
       refute files["lib/shop_web/live/index_live.ex"] =~ "defp visible_bvisgt2"
       refute tag(template, "bVisGT2") =~ ~r/\shidden[\s>=]/
-
-      assert template =~
-               "TODO(bubble:bVisOf) visibility: 1 conditional not lowered (it reads a value " <>
-                 "the page does not keep: element_state:is_visible)"
 
       assert template =~
                "TODO(bubble:bNotVisOf) visibility: 1 conditional not lowered (it reads a value " <>
@@ -1343,6 +1333,189 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
                    true -> true
                  end
                """)
+    end
+  end
+
+  describe "an overlay's is visible (WTF-587)" do
+    defp read_of(element, state) do
+      %{
+        "type" => "GetElement",
+        "properties" => %{"element_id" => element},
+        "next" => %{"type" => "Message", "name" => state}
+      }
+    end
+
+    defp text(id, order, extra \\ %{}) do
+      Map.merge(
+        %{
+          "id" => id,
+          "type" => "Text",
+          "properties" => %{
+            "height" => 40,
+            "width" => 300,
+            "order" => order,
+            "text" => %{"type" => "TextExpression", "entries" => %{"0" => id}}
+          }
+        },
+        extra
+      )
+    end
+
+    defp popup_app(type \\ "Popup") do
+      app()
+      |> put_in(["pages", "index", "elements", "bPop"], %{
+        "id" => "bPop",
+        "type" => type,
+        "properties" => %{"height" => 200, "width" => 300, "order" => 60},
+        "elements" => %{
+          "bPopT" =>
+            text("bPopT", 1, %{
+              "states" => %{
+                "0" => %{
+                  "type" => "State",
+                  "condition" => %{
+                    "type" => "CurrentUser",
+                    "next" => %{"type" => "Message", "name" => "logged_in"}
+                  },
+                  "properties" => %{"is_visible" => false}
+                }
+              }
+            })
+        }
+      })
+      |> put_in(
+        ["pages", "index", "elements", "bVisOf", "states", "0", "condition"],
+        read_of("bPop", "is_visible")
+      )
+      |> put_in(
+        ["pages", "index", "elements", "bNotVisOf", "states", "0", "condition"],
+        read_of("bPopT", "isnt_visible")
+      )
+    end
+
+    test "of a Popup the page renders only while open is whether the page keeps it open", %{} do
+      %{files: files} = build(popup_app())
+      template = files["lib/shop_web/live/index_live.html.heex"]
+      live = files["lib/shop_web/live/index_live.ex"]
+
+      assert tag(template, "bPop") =~ "data-bubble-lazy"
+      refute template =~ "TODO(bubble:bVisOf)"
+      refute template =~ "TODO(bubble:bNotVisOf)"
+
+      assert tag(template, "bVisOf") =~
+               ~s|hidden={!visible_bvisof(Bubble.overlay_open?(@bubble_open, "", "bPop"))}|
+
+      # Inside it: shown while it is open and its own conditionals show it.
+      [helper] = Regex.run(~r/defp visible_bnotvisof\(.*?\n  end\n/s, live)
+      assert helper =~ "current_user"
+      assert tag(template, "bNotVisOf") =~ ~s|Bubble.overlay_open?(@bubble_open, "", "bPop")|
+
+      # The open state is the page's alone: the static snapshot option
+      # renders contents, it does not open the overlay.
+      bubble = files["lib/shop_web/components/bubble.ex"]
+      assert bubble =~ "def overlay_open?(open, scope, id) when is_map(open)"
+    end
+
+    test "of a Group Focus too", %{} do
+      %{files: files} = build(popup_app("GroupFocus"))
+      template = files["lib/shop_web/live/index_live.html.heex"]
+
+      refute template =~ "TODO(bubble:bVisOf)"
+      assert tag(template, "bVisOf") =~ ~s|Bubble.overlay_open?(@bubble_open, "", "bPop")|
+    end
+
+    test "of an overlay the page does not render only while open stays marked", %{} do
+      # A step hides an element inside it: its contents are always rendered,
+      # and only the browser knows whether it is open.
+      app =
+        popup_app()
+        |> put_in(
+          ["pages", "index", "workflows", "wHide", "actions", "0", "properties", "element_id"],
+          "bPopT"
+        )
+
+      %{files: files} = build(app)
+      template = files["lib/shop_web/live/index_live.html.heex"]
+
+      refute tag(template, "bPop") =~ "data-bubble-lazy"
+
+      assert template =~
+               "TODO(bubble:bVisOf) visibility: 1 conditional not lowered (it reads a value " <>
+                 "the page does not keep: element_state:is_visible)"
+
+      refute tag(template, "bVisOf") =~ "overlay_open?"
+      refute tag(template, "bNotVisOf") =~ "overlay_open?"
+    end
+
+    defp floating_app do
+      app()
+      |> put_in(["pages", "index", "elements", "bFloat"], %{
+        "id" => "bFloat",
+        "type" => "FloatingGroup",
+        "properties" => %{
+          "height" => 50,
+          "width" => 300,
+          "order" => 61,
+          "is_visible" => false,
+          "float_vertical" => "top"
+        },
+        "states" => %{
+          "0" => %{
+            "type" => "State",
+            "condition" => %{
+              "type" => "CurrentUser",
+              "next" => %{"type" => "Message", "name" => "logged_in"}
+            },
+            "properties" => %{"is_visible" => true}
+          }
+        },
+        "elements" => %{"bFloatT" => text("bFloatT", 1)}
+      })
+      |> put_in(
+        ["pages", "index", "elements", "bVisOf", "states", "0", "condition"],
+        read_of("bFloatT", "is_visible")
+      )
+    end
+
+    test "a Floating Group no step shows or hides is decided by its conditionals", %{} do
+      %{files: files} = build(floating_app())
+      template = files["lib/shop_web/live/index_live.html.heex"]
+      live = files["lib/shop_web/live/index_live.ex"]
+
+      float = tag(template, "bFloat")
+      assert float =~ ~s|data-overlay="floating_group"|
+      assert float =~ "hidden={!visible_bfloat(@bubble_viewer)}"
+      # One `hidden`: the conditionals', not the overlay's static one.
+      assert length(Regex.scan(~r/\shidden[\s>=]/, float)) == 1
+      refute template =~ "TODO(bubble:bFloat)"
+      assert live =~ "defp visible_bfloat(current_user)"
+
+      # Reading what is inside it folds its visibility.
+      refute template =~ "TODO(bubble:bVisOf)"
+      assert tag(template, "bVisOf") =~ "hidden={!visible_bvisof(@bubble_viewer)}"
+    end
+
+    test "a Floating Group a step shows keeps its workflow model; reads of it stay", %{} do
+      app =
+        floating_app()
+        |> put_in(
+          ["pages", "index", "workflows", "wShow", "actions", "0", "properties", "element_id"],
+          "bFloat"
+        )
+
+      %{files: files} = build(app)
+      template = files["lib/shop_web/live/index_live.html.heex"]
+
+      assert tag(template, "bFloat") =~ ~r/\shidden[\s>]/
+      refute template =~ "visible_bfloat"
+
+      assert template =~
+               "TODO(bubble:bFloat) visibility: 1 conditional not lowered (an overlay: " <>
+                 "workflows show and hide it)"
+
+      assert template =~
+               "TODO(bubble:bVisOf) visibility: 1 conditional not lowered (it reads a value " <>
+                 "the page does not keep: element_state:is_visible)"
     end
   end
 end

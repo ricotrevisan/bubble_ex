@@ -83,7 +83,10 @@ defmodule BubbleEx.Target.Elixir.Frontend do
   only the server decides it (WTF-578, `ElementVisibility`): no workflow
   step shows, hides, toggles or animates it, no overlay or runtime
   container (a repeating group's cell, a table) is on the way. Its
-  conditions' inputs become the reader's.
+  conditions' inputs become the reader's. A Popup's or Group Focus's is
+  a read of whether it is open (WTF-587), which the page supplies for the
+  ones it renders only while open; a Floating Group no step shows or
+  hides is decided like a group.
 
   A repeating group's `is loading` compiles to a constant no (replayed
   2026-10-19): in Bubble it stays no while a search waits for its
@@ -92,7 +95,9 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   A visibility conditional that does not compile (a condition with no IR
   or no Elixir, a non-literal visibility, an overlay's: a Popup, Group
-  Focus or Floating Group is shown and hidden by workflows) is absent too;
+  Focus or Floating Group is shown and hidden by workflows, except a
+  Floating Group no step shows, hides, toggles or animates, WTF-587) is
+  absent too;
   `residue/2` lists it as `:element_condition` residue for the plan.
 
   ## Options
@@ -279,11 +284,32 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   defp compile_kind(_kind, _payload, _node, _env, _project, _opts), do: nil
 
-  # An overlay is shown and hidden by workflows (its `runtime` model).
-  defp compile_visibility(_payload, %Node{runtime: %{"boundary" => "overlay"}}, _, _, _),
-    do: nil
+  # An overlay is shown and hidden by workflows (its `runtime` model),
+  # except a Floating Group none shows or hides (WTF-587): its
+  # conditionals decide, as a group's.
+  defp compile_visibility(
+         payload,
+         %Node{runtime: %{"boundary" => "overlay"}} = node,
+         env,
+         p,
+         opts
+       ) do
+    if decided_floating?(node, opts),
+      do: compile_conditional_visibility(payload, node, env, p, opts),
+      else: nil
+  end
 
-  defp compile_visibility(payload, %Node{source: source} = node, env, project, opts) do
+  defp compile_visibility(payload, node, env, project, opts),
+    do: compile_conditional_visibility(payload, node, env, project, opts)
+
+  defp decided_floating?(node, opts) do
+    case Keyword.get(opts, :element_visibility) do
+      %{touched: touched} -> ElementVisibility.decided_floating?(node, touched)
+      _ -> false
+    end
+  end
+
+  defp compile_conditional_visibility(payload, %Node{source: source} = node, env, project, opts) do
     env = %{env | host: source && source.bubble_id}
 
     # A condition reading the element's own visibility back is not
