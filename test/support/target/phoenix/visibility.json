@@ -421,6 +421,213 @@
         "width": 300
       },
       "type": "CustomDefinition"
+    },
+    "spot": {
+      "custom_states": {
+        "clicked_": {
+          "default_val": false,
+          "display": "Clicked",
+          "value": "boolean"
+        },
+        "seen_": {
+          "default_val": false,
+          "display": "Seen",
+          "value": "boolean"
+        }
+      },
+      "elements": {
+        "bSpotT": {
+          "id": "bSpotT",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 1,
+            "text": {
+              "entries": {
+                "0": "Spot member"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "type": "Text",
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "logged_in",
+                  "type": "Message"
+                },
+                "type": "CurrentUser"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bSpotSeen": {
+          "id": "bSpotSeen",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 2,
+            "text": {
+              "entries": {
+                "0": "Spot seen"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "type": "Text",
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "custom.seen_",
+                  "next": {
+                    "name": "is_true",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bSpot"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bSpotClicked": {
+          "id": "bSpotClicked",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 3,
+            "text": {
+              "entries": {
+                "0": "Spot clicked"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "type": "Text",
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "custom.clicked_",
+                  "next": {
+                    "name": "is_true",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bSpot"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bSpotBtn": {
+          "id": "bSpotBtn",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 4,
+            "text": {
+              "entries": {
+                "0": "Spot click"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        }
+      },
+      "id": "bSpot",
+      "name": "Spot",
+      "properties": {
+        "height": 160,
+        "width": 300
+      },
+      "type": "CustomDefinition",
+      "workflows": {
+        "wSpotDo": {
+          "actions": {
+            "0": {
+              "id": "aSpotDo1",
+              "properties": {
+                "custom_state": "custom.seen_",
+                "element_id": "bSpot",
+                "value": true
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wSpotDo",
+          "properties": {
+            "condition": {
+              "next": {
+                "name": "is_visible",
+                "type": "Message"
+              },
+              "properties": {
+                "element_id": "bSpot"
+              },
+              "type": "GetElement"
+            },
+            "run_when": "every_time"
+          },
+          "type": "ConditionTrue"
+        },
+        "wSpotClick": {
+          "actions": {
+            "0": {
+              "id": "aSpotClick1",
+              "properties": {
+                "custom_state": "custom.clicked_",
+                "element_id": "bSpot",
+                "value": true
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wSpotClick",
+          "properties": {
+            "condition": {
+              "next": {
+                "name": "is_visible",
+                "type": "Message"
+              },
+              "properties": {
+                "element_id": "bSpotT"
+              },
+              "type": "GetElement"
+            },
+            "element_id": "bSpotBtn"
+          },
+          "type": "ButtonClicked"
+        }
+      }
     }
   },
   "pages": {
@@ -2484,6 +2691,51 @@
             "zindex": 40
           },
           "type": "FloatingGroup"
+        },
+        "bSpotA": {
+          "id": "bSpotA",
+          "properties": {
+            "custom_id": "bSpot",
+            "height": 160,
+            "min_height_css": "160px",
+            "order": 66,
+            "width": 300,
+            "is_visible": false
+          },
+          "type": "CustomElement",
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "custom.flag_",
+                  "next": {
+                    "name": "is_true",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bVis"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bSpotB": {
+          "id": "bSpotB",
+          "properties": {
+            "custom_id": "bSpot",
+            "height": 160,
+            "min_height_css": "160px",
+            "order": 67,
+            "width": 300
+          },
+          "type": "CustomElement"
         }
       },
       "id": "bVis",

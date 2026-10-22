@@ -6,6 +6,24 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Reusable-element workflows read their instance's visibility on the
+  page (WTF-605).** A reusable element's workflow or step "Only when",
+  and "Do when" condition, read "This reusable element is visible" (and
+  an element of it) through the instance the workflow runs in: the page
+  computes each instance's visibility on the server
+  (`__bubble_visible__/2` of the page's `Workflows` module, by scope;
+  `BubbleWorkflows.instance_visible/1`), from the instance's conditionals
+  and its ancestors' in its host's scope, up to the page through every
+  reusable element holding it. Never from the browser, which only names
+  the instance. Only when every instance of the reusable element decides
+  on the server: a step showing or hiding an instance, an ancestor or
+  the reusable element, an overlay, a cell, a breakpoint or a hover rule
+  on the way keep the reads `:unavailable_input`. New in
+  `FrontendWorkflows.Spec`: `visible` (the instances' compiled
+  visibility on their hosts) and the `{:instance_visible, %{data?}}`
+  binding. New cases in the `phoenix_visibility` compile-check fixture
+  and its behavior tests.
+
 - **Workflow conditions read an element's "is visible" (WTF-588).** With
   the new `:element_visibility` option of `FrontendWorkflows.map/3`
   (`Frontend.visibility_index/3`, which the slice pipeline and the

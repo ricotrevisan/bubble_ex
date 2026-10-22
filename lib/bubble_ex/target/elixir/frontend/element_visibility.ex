@@ -59,7 +59,10 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
 
   Workflow conditions read it too (WTF-588,
   `BubbleEx.Target.Elixir.FrontendWorkflows`): a page's "Only when" or
-  "Do when" condition is inlined with the page as its reader.
+  "Do when" condition is inlined with the page as its reader, a reusable
+  element's with the reusable element as its reader and its instance's
+  visibility on the page added (WTF-605, `inline_instance/3`,
+  `instance/2`).
   """
 
   alias BubbleEx.Expression
@@ -175,6 +178,129 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
     do: Enum.map(list, &rewrite_arg(&1, host, seen, index))
 
   defp rewrite_arg(other, _host, _seen, _index), do: other
+
+  @doc """
+  `ir`, a condition of a workflow of the reusable element `root`, with
+  each `is visible` / `isn't visible` read of an element of `root` it
+  can decide replaced by that element's visibility in its instance
+  (WTF-605): folded from its conditionals and its ancestors' below the
+  reusable element (as `inline/4` with the reusable element as reader),
+  and the instance's own, which only the instance's host page knows: a
+  read of `root`'s `is visible` marked `"instance" => true` (`instance_read/1`),
+  left for the caller to bind per instance. A read of `root` itself
+  becomes that read. The caller makes
+  sure every instance's visibility decides (`instance/2`) and that no
+  step shows or hides the reusable element itself.
+  """
+  @spec inline_instance(IR.t(), String.t(), t() | nil) :: IR.t()
+  def inline_instance(ir, _root, nil), do: ir
+  def inline_instance(%IR{} = ir, root, index), do: rewrite_instance(ir, root, index)
+
+  defp rewrite_instance(
+         %IR{op: :input, args: [:element_state, %{"state" => state} = ref]} = ir,
+         root,
+         index
+       )
+       when state in @states do
+    case instance_visible(ref["element"], root, index) do
+      {:ok, visible} -> if state == "is_visible", do: visible, else: negate(visible)
+      :error -> ir
+    end
+  end
+
+  defp rewrite_instance(%IR{args: args} = ir, root, index),
+    do: %{ir | args: Enum.map(args, &rewrite_instance_arg(&1, root, index))}
+
+  defp rewrite_instance_arg(%IR{} = ir, root, index), do: rewrite_instance(ir, root, index)
+
+  defp rewrite_instance_arg(list, root, index) when is_list(list),
+    do: Enum.map(list, &rewrite_instance_arg(&1, root, index))
+
+  defp rewrite_instance_arg(other, _root, _index), do: other
+
+  defp instance_visible(root, root, _index), do: {:ok, instance_read(root)}
+
+  defp instance_visible(id, root, index) when is_binary(id) do
+    case index.nodes[id] do
+      %{root: ^root} ->
+        case visible(id, root, MapSet.new(), index) do
+          {:ok, visible} -> {:ok, all([visible, instance_read(root)])}
+          :error -> :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp instance_visible(_id, _root, _index), do: :error
+
+  @doc """
+  The read `inline_instance/3` leaves for the visibility of the instance
+  of the reusable element `root` a workflow runs in: `root`'s `is
+  visible`, marked `"instance" => true`. Only that function makes it: an
+  expression of the app never carries the mark.
+  """
+  @spec instance_read(String.t()) :: IR.t()
+  def instance_read(root),
+    do:
+      IR.node(
+        :input,
+        [:element_state, %{"element" => root, "state" => "is_visible", "instance" => true}],
+        "boolean"
+      )
+
+  @doc """
+  The visibility of the reusable-element instance `id` on its host (the
+  page or reusable element it is placed on, WTF-605), as `inline/4`
+  decides an element's read from the host itself: folded from the
+  instance's conditionals and its ancestors' up to the host, or `:error`
+  when the browser may change it (a step shows or hides it or an
+  ancestor, an overlay or a repeating group's cell on the way, a
+  breakpoint, a hover rule, a conditional that does not compile). Its
+  inputs are the host's. Not whether the host is shown: for a host that
+  is a reusable element, that is its own instance's.
+  """
+  @spec instance(String.t(), t() | nil) :: {:ok, IR.t()} | :error
+  def instance(_id, nil), do: :error
+
+  def instance(id, index) when is_binary(id) do
+    case index.nodes[id] do
+      %{root: root, node: %Node{kind: :reusable_instance}} when root != id ->
+        visible(id, root, MapSet.new(), index)
+
+      _ ->
+        :error
+    end
+  end
+
+  @doc """
+  Whether the reusable element `root` (its definition) may be shown or
+  hidden apart from its instances' visibility: a step of the app names
+  it, or it has visibility conditionals, a breakpoint or a hover rule of
+  its own, which the generated pages do not apply to the instance
+  (WTF-605). The instance's own are `instance/2`'s.
+  """
+  @spec own_visibility?(String.t(), t()) :: boolean()
+  def own_visibility?(root, index) do
+    case index.nodes[root] do
+      %{node: %Node{} = node} ->
+        MapSet.member?(index.touched, root) or
+          (is_binary(node.map_key) and MapSet.member?(index.touched, node.map_key)) or
+          node.box[:hidden?] == true or Conditions.visibility(condition_payload(node)) != [] or
+          breakpoint_display?(node) or Hover.visibility?(node)
+
+      nil ->
+        true
+    end
+  end
+
+  defp condition_payload(%Node{} = node) do
+    case node.bindings["condition"] do
+      %{kind: :condition, payload: payload} -> payload
+      _ -> nil
+    end
+  end
 
   # Element `id`'s visibility read from `host`: `{:ok, ir}` or `:error`.
   defp visible(id, host, seen, index) when is_binary(id) do

@@ -248,7 +248,8 @@ defmodule <%= @web %>.BubbleWorkflows do
   defmodule Ctx do
     @moduledoc """
     The state a workflow runs with: the surface module and instance
-    `scope`, the actor, the start time, its arguments and step results, the
+    `scope`, the page's module (`page`, which computes its instances'
+    visibility, WTF-605), the actor, the start time, its arguments and step results, the
     page's custom states, input values (and their `first` values) and URL
     (`url`, its query as Bubble reads it, and `segments`, its path's),
     what it asks of the page (element steps `js`, `navigate`, delayed
@@ -278,6 +279,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     """
     defstruct [
       :module,
+      :page,
       :workflow,
       :actor,
       :now,
@@ -389,6 +391,7 @@ defmodule <%= @web %>.BubbleWorkflows do
     |> assign(:bubble_reads_width, reads_width?(page))<%= if @enforced? do %>
     |> then(&if(BubbleData.data_access?(), do: refresh_actor(&1), else: &1))<% end %>
     |> refresh_viewer()
+    |> assign(:bubble_page, page)
     |> assign(:bubble_mounted, true)
     |> attach_data_hook(page)
   end
@@ -1835,6 +1838,7 @@ defmodule <%= @web %>.BubbleWorkflows do
 
     %Ctx{
       module: module,
+      page: Map.get(socket.assigns, :bubble_page),
       scope: scope,
       actor: actor,
       backend: backend,
@@ -2356,6 +2360,49 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   @doc "The scope of the instance `path` (Bubble IDs) below the workflow's."
   def scope(ctx, path), do: Enum.reduce(path, ctx.scope, &Bubble.nest(&2, &1))
+
+  @doc """
+  Whether the reusable instance the workflow runs in is shown on the page
+  (WTF-605): its own visibility on its host and its hosts' up to the
+  page, as the page computes them (`__bubble_visible__/2` of the page's
+  module) from what it keeps on the server: never from the browser,
+  which only names the instance its event comes from. A workflow reads it
+  for "This reusable element is visible" (and an element of it), only
+  where the generator found every instance's visibility decided on the
+  server; a scope the page does not compute (a page module scaffolded
+  before) is logged and read as not shown.
+  """
+  def instance_visible(%Ctx{scope: ""}), do: true
+
+  def instance_visible(%Ctx{page: page, scope: scope} = ctx) when is_atom(page) and not is_nil(page) do
+    case visible_scope(page, scope, ctx) do
+      visible when is_boolean(visible) ->
+        visible
+
+      _ ->
+        Logger.error("bubble: the page does not compute the visibility of instance scope #{inspect(scope)}")
+        false
+    end
+  end
+
+  def instance_visible(%Ctx{scope: scope}) do
+    Logger.error("bubble: no page to compute the visibility of instance scope #{inspect(scope)}")
+    false
+  end
+
+  defp visible_scope(page, scope, ctx) do
+    if Code.ensure_loaded?(page) and function_exported?(page, :__bubble_visible__, 2),
+      do: page.__bubble_visible__(scope, ctx),
+      else: nil
+  end
+
+  @doc """
+  `ctx` read in the host `scope` (WTF-605): the page's (`""`) or an
+  instance's, outside any repeating group's cell, for a value of the
+  host's own (an instance's visibility there).
+  """
+  def host_ctx(%Ctx{} = ctx, scope),
+    do: %{ctx | scope: scope, cell: nil, cell_index: nil, outer: nil, cell_scope: nil, cell_key: nil}
 
   @doc "Custom state `state` of `element` (in the instance `path` below)."
   def state(ctx, path, element, state), do: Map.get(ctx.states, {scope(ctx, path), element, state})

@@ -598,6 +598,61 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     assert workflows["wVisOnly"].blocked == []
   end
 
+  # WTF-605: in a reusable element's workflow, "This reusable element is
+  # visible" (and an element of it) is its instance's visibility on the
+  # page, computed by the page per instance. bSpotA shows once the page's
+  # flag is set, bSpotB always; bSpotT, inside, shows for a signed-in
+  # user.
+  defp spot_state(view, scope, state),
+    do: Map.get(:sys.get_state(view.pid).socket.assigns.bubble_states, {scope, "bSpot", state})
+
+  defp spot_click(view, scope),
+    do: render_click(view, "bubble:click", %{"scope" => scope, "element" => "bSpotBtn"})
+
+  test "a reusable element's Do when reads its instance's visibility on the page",
+       %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/")
+    # "Do when this reusable element is visible" ran in the shown instance
+    # only.
+    assert spot_state(view, "bSpotB", "custom.seen_") == true
+    refute spot_state(view, "bSpotA", "custom.seen_")
+    refute hidden?(view, "bSpotSeen", "bSpotB")
+
+    # The flag shows bSpotA: its Do when runs there now.
+    click(view, "bSetFlag")
+    assert spot_state(view, "bSpotA", "custom.seen_") == true
+    refute hidden?(view, "bSpotSeen", "bSpotA")
+  end
+
+  test "a click in a reusable element reads its element's and its instance's visibility",
+       %{conn: conn, user: user} do
+    data_access_on()
+    # Signed out, bSpotT is hidden: "Only when bSpotT is visible" stops it.
+    {:ok, view, _html} = live(conn, "/")
+    spot_click(view, "bSpotB")
+    refute spot_state(view, "bSpotB", "custom.clicked_")
+
+    {:ok, view, _html} = live(sign_in(conn, user), "/")
+    spot_click(view, "bSpotB")
+    assert spot_state(view, "bSpotB", "custom.clicked_") == true
+
+    # A click naming the hidden instance (stale or forged) runs nothing:
+    # the page decides that bSpotA is not shown, whatever the browser says.
+    spot_click(view, "bSpotA")
+    refute spot_state(view, "bSpotA", "custom.clicked_")
+
+    click(view, "bSetFlag")
+    spot_click(view, "bSpotA")
+    assert spot_state(view, "bSpotA", "custom.clicked_") == true
+  end
+
+  test "the reusable element's workflows reading their instance's visibility are not refused" do
+    workflows = PhxCheckWeb.Reusables.Spot.Workflows.__bubble__(:workflows)
+    assert workflows["wSpotDo"].blocked == []
+    assert workflows["wSpotClick"].blocked == []
+    assert IndexWorkflows.__bubble_visible__("nowhere", %PhxCheckWeb.BubbleWorkflows.Ctx{}) == nil
+  end
+
   test "a floating group's conditionals decide it and what reads it", %{conn: conn, user: user} do
     {:ok, view, _html} = live(conn, "/")
     assert hidden?(view, "bOvFloat")
