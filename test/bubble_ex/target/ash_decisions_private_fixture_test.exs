@@ -97,22 +97,31 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
     }
   end
 
-  test "only the active decisions apply", %{resolved: resolved, applied: applied} do
+  test "only the active decisions apply",
+       %{resolved: resolved, applied: applied, findings: findings} do
     blocking = Resolved.blocking(resolved)
     active = MapSet.new(Resolved.in_state(resolved, :active), & &1.decision.key)
     decided = MapSet.new(resolved.entries, & &1.decision.key)
+    by_id = Map.new(findings, &{&1.id, &1})
 
-    # an owner change comes from an active decision; an automatic one is a
-    # hint or a sure workaround lowering no record decides (one added to
-    # the app since the decisions)
+    # an owner change comes from an active decision; an automatic one no
+    # record decides (one added to the app since the decisions) is a hint
+    # or a workaround lowering the analyzer is sure of
     for a <- applied do
-      if a.automatic,
-        do:
-          assert(
-            a.transform in [:add_indexes, :lower_workaround] and
-              not MapSet.member?(decided, a.key)
-          ),
-        else: assert(MapSet.member?(active, a.key))
+      if a.automatic do
+        refute MapSet.member?(decided, a.key)
+        finding = Map.fetch!(by_id, a.finding_id)
+
+        case a.transform do
+          :add_indexes ->
+            assert finding.category == :hint
+
+          :lower_workaround ->
+            assert {finding.kind, finding.confidence} == {:workaround_element, :high}
+        end
+      else
+        assert MapSet.member?(active, a.key)
+      end
     end
 
     # the recorded accept derives its field while it is current
