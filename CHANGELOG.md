@@ -16,6 +16,24 @@ All notable changes to this project are documented here.
   not pinned down. The private compile-count snapshot is re-recorded
   against the current private export (WTF-600).
 
+- **"is visible" of overlays (WTF-587), back-plane Floating Groups and
+  why a click ran nothing (WTF-574).** A condition reading the "is
+  visible" of a Popup or Group Focus the page renders only while open
+  (WTF-559) reads whether the page keeps it open
+  (`<Web>.Bubble.overlay_open?/3`, `@bubble_open`), and an element
+  inside one is visible while it is open and its own conditionals show
+  it. A Floating Group that no workflow step shows, hides, toggles or
+  animates (and no breakpoint or hover rule shows) has its visibility
+  conditionals compiled like a group's, renders `hidden` from them, and
+  reads of it or of what it holds fold them
+  (`ElementVisibility.decided_floating?/2`). Other overlays' reads stay
+  marked. A Floating Group floating behind the page (`float_zindex:
+  "back"`) is drawn below the elements of its stacking context and never
+  takes the pointer: its value holders and plugin placeholders covered
+  what users clicked (on a private app's page). The generated runtime
+  logs at debug level a click that starts no workflow and a workflow
+  whose condition is not yes.
+
 - **"is hovered" lowered to the browser's hover (WTF-590).** A
   conditional whose condition is only "This element is hovered", another
   element's "is hovered", or an "or" of them no longer waits for the

@@ -253,4 +253,25 @@ defmodule BubbleEx.Frontend.Export.FloatingCssTest do
       assert css["width"] == "fit-content"
     end
   end
+
+  describe "a Floating Group's plane (WTF-574)" do
+    test "behind the page: below its stacking context, never the pointer's target" do
+      css = floating(Map.merge(@fixed, %{"float_zindex" => "back", "zindex" => 40}))
+
+      assert css["z-index"] == "-1"
+      assert css["pointer-events"] == "none"
+
+      {classes, []} = Tailwind.utilities(Enum.to_list(css))
+      assert Enum.any?(classes, &(&1 =~ "pointer-events"))
+      assert Enum.any?(classes, &(&1 =~ "z-"))
+    end
+
+    test "in front of the page, or unset: its own z-index and the pointer's" do
+      for plane <- [%{"float_zindex" => "front"}, %{}] do
+        css = floating(Map.merge(@fixed, Map.put(plane, "zindex", 40)))
+        assert css["z-index"] == 40
+        refute Map.has_key?(css, "pointer-events")
+      end
+    end
+  end
 end

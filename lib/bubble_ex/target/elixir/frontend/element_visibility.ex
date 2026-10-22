@@ -26,10 +26,10 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
       animated by a workflow step (`ShowElement`, `HideElement`,
       `ToggleElement`, `AnimateElement`), whose effect only the browser
       knows
-    * it is an overlay (a Popup, Group Focus or Floating Group: workflows
-      show and hide it) or an ancestor on the way is one, or is a runtime
-      container (the element is in a repeating group's cell, a table or a
-      plugin container the reader is not in)
+    * it is a Floating Group a step shows or hides, or an ancestor on the
+      way is one, or is a runtime container (the element is in a
+      repeating group's cell, a table or a plugin container the reader is
+      not in)
     * a breakpoint sets its display, or an ancestor's on the way
     * a hover conditional shows or hides it, or an ancestor on the way
       (WTF-590, `BubbleEx.Frontend.Hover`): the browser applies it
@@ -39,6 +39,14 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
     * it reads itself back (the element's own visibility, directly, by
       a group reading its own contents, or through others), which Bubble
       settles at runtime
+
+  A Popup or Group Focus (WTF-587) on the way, the element read
+  included, is visible while it is open: the read becomes one of its
+  `is visible`, which the page supplies from the open state it keeps for
+  an overlay it renders only while open (`@bubble_open`) and marks for
+  any other. A Floating Group no step shows or hides (nor a breakpoint
+  or a hover rule, `decided_floating?/2`) is folded from its
+  conditionals like a group: the page compiles them too.
 
   An element holding the reader is visible only while the reader is
   shown: the read is for what the reader shows (its visibility, text,
@@ -61,6 +69,7 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
   @type t :: %{
           nodes: %{String.t() => %{node: Node.t(), ancestors: [String.t()], root: String.t()}},
           touched: MapSet.t(),
+          definitions: %{String.t() => String.t()},
           env: Expression.Env.t()
         }
 
@@ -80,7 +89,18 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
           into: %{},
           do: {id, entry}
 
-    %{nodes: nodes, touched: touched(app), env: env}
+    # A reusable element's own steps name its root by the definition's ID,
+    # not its instances' (`decided_floating?/2`).
+    definitions =
+      for root <- frontend.reusables,
+          id = bid(root),
+          is_binary(id),
+          ref <- [root.map_key, id],
+          is_binary(ref),
+          into: %{},
+          do: {ref, id}
+
+    %{nodes: nodes, touched: touched(app), definitions: definitions, env: env}
   end
 
   defp walk(%Node{} = node, ancestors, root) do
@@ -197,14 +217,35 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
     %{node: node} = index.nodes[id]
 
     cond do
-      MapSet.member?(seen, id) -> :error
-      MapSet.member?(index.touched, id) -> :error
-      match?(%{"boundary" => "overlay"}, node.runtime) -> :error
-      not target? and match?(%{"boundary" => _}, node.runtime) -> :error
-      breakpoint_display?(node) -> :error
-      Hover.visibility?(node) -> :error
-      true -> fold(node, id, MapSet.put(seen, id), index)
+      MapSet.member?(seen, id) ->
+        :error
+
+      # A Popup or Group Focus is visible while it is open: the read is of
+      # its open state, which the page keeps when it renders it only while
+      # open (WTF-587); the page marks the read where it does not.
+      opens?(node) ->
+        {:ok, open_read(id)}
+
+      # A Floating Group no step shows or hides (WTF-587) is a group whose
+      # conditionals the page decides; `decided_floating?/2`.
+      floating?(node) and decided_floating?(node, index) ->
+        fold(node, id, MapSet.put(seen, id), index)
+
+      browser_decides?(node, id, target?, index) ->
+        :error
+
+      true ->
+        fold(node, id, MapSet.put(seen, id), index)
     end
+  end
+
+  # Whether the browser may change the element's visibility: a step names
+  # it, it is an overlay, a runtime container on the way, a breakpoint or a
+  # hover rule sets it.
+  defp browser_decides?(node, id, target?, index) do
+    MapSet.member?(index.touched, id) or match?(%{"boundary" => "overlay"}, node.runtime) or
+      (not target? and match?(%{"boundary" => _}, node.runtime)) or
+      breakpoint_display?(node) or Hover.visibility?(node)
   end
 
   defp fold(%Node{} = node, id, seen, index) do
@@ -242,6 +283,45 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
   end
 
   defp condition(_condition, _id, _seen, _index), do: :error
+
+  @doc """
+  Whether `node` is a Popup or a Group Focus: shown and hidden by
+  workflows, the page's hook and the user (outside click, Escape), so
+  its visibility is whether it is open.
+  """
+  @spec opens?(Node.t()) :: boolean()
+  def opens?(%Node{runtime: %{"boundary" => "overlay", "overlay" => overlay}}),
+    do: overlay in ["popup", "group_focus"]
+
+  def opens?(_node), do: false
+
+  @doc """
+  Whether `node` is a Floating Group whose visibility its conditionals
+  decide on the server (WTF-587): no workflow step (of the app, as
+  `index/3` finds them) shows, hides, toggles or animates it (an instance
+  of a Floating Group reusable element: nor its reusable element's root,
+  which that element's own steps name), a breakpoint does not set its
+  display and no hover conditional shows or hides it. `index` is
+  `index/3`'s.
+  """
+  @spec decided_floating?(Node.t(), t()) :: boolean()
+  def decided_floating?(%Node{} = node, %{touched: touched} = index) do
+    stepped =
+      [bid(node), Map.get(Map.get(index, :definitions, %{}), node.definition_ref)]
+      |> Enum.any?(&(is_binary(&1) and MapSet.member?(touched, &1)))
+
+    floating?(node) and not stepped and not breakpoint_display?(node) and
+      not Hover.visibility?(node)
+  end
+
+  defp floating?(%Node{runtime: %{"boundary" => "overlay", "overlay" => "floating_group"}}),
+    do: true
+
+  defp floating?(_node), do: false
+
+  # The open state of overlay `id`, as the read the page supplies.
+  defp open_read(id),
+    do: IR.node(:input, [:element_state, %{"element" => id, "state" => "is_visible"}], "boolean")
 
   # A breakpoint shows or hides the element at a width.
   defp breakpoint_display?(%Node{responsive: rules}), do: Responsive.visibility_rule?(rules)

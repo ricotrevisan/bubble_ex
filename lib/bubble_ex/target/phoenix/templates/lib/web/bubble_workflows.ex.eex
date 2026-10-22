@@ -633,7 +633,14 @@ defmodule <%= @web %>.BubbleWorkflows do
       socket = assign(socket, :bubble_refused, false)
       {:noreply, socket |> event(page, [run]) |> notice()}
     else
-      _ -> {:noreply, socket}
+      _ ->
+        # Why a click ran nothing (WTF-574): no workflow of the page, in a
+        # scope it renders, starts with it.
+        Logger.debug(
+          "bubble: a click on #{inspect(element)} (scope #{inspect(scope)}) starts no workflow here; ignored"
+        )
+
+        {:noreply, socket}
     end
   end
 
@@ -2187,9 +2194,13 @@ defmodule <%= @web %>.BubbleWorkflows do
     do: run_steps(%{ctx | resume: nil}, Enum.drop(steps, n - 1), n)
 
   def steps(ctx, condition, steps) do
-    if condition == nil or condition.(ctx) == true,
-      do: run_steps(ctx, steps, 1),
-      else: {:not_run, ctx}
+    if condition == nil or condition.(ctx) == true do
+      run_steps(ctx, steps, 1)
+    else
+      # Why a click (or any event) ran nothing (WTF-574).
+      Logger.debug("bubble workflow #{inspect(ctx.workflow)}: its condition is not yes; no step ran")
+      {:not_run, ctx}
+    end
   end
 
   defp run_steps(ctx, steps, first) do

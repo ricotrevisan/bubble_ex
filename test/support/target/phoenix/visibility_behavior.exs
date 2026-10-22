@@ -552,4 +552,27 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
     refute hidden?(view, "bNotVisOf")
     refute hidden?(view, "bVisChild")
   end
+
+  # WTF-587: a lazy Popup's "is visible" is whether the page keeps it
+  # open; a Floating Group no step shows is decided by its conditionals.
+  test "a condition reading a popup's visibility follows the page's open state", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/")
+    assert hidden?(view, "bOvPopRead")
+
+    render_hook(view, "bubble:overlay", %{"scope" => "", "element" => "bOvPop", "open" => true})
+    refute hidden?(view, "bOvPopRead")
+
+    render_hook(view, "bubble:overlay", %{"scope" => "", "element" => "bOvPop", "open" => false})
+    assert hidden?(view, "bOvPopRead")
+  end
+
+  test "a floating group's conditionals decide it and what reads it", %{conn: conn, user: user} do
+    {:ok, view, _html} = live(conn, "/")
+    assert hidden?(view, "bOvFloat")
+    assert hidden?(view, "bOvFloatRead")
+
+    {:ok, view, _html} = live(sign_in(conn, user), "/")
+    refute hidden?(view, "bOvFloat")
+    refute hidden?(view, "bOvFloatRead")
+  end
 end

@@ -225,6 +225,15 @@ defmodule <%= @web %>.Bubble do
 
   def open?(_open, _scope, _id), do: overlays_rendered?()
 
+  @doc """
+  Whether overlay `id` of instance `scope` is open (WTF-587): a Popup or
+  Group Focus rendered only while open that the page keeps open
+  (`@bubble_open`), for an "is visible" read of it. Unlike `open?/3`,
+  `:bubble_overlays_rendered` does not open it.
+  """
+  def overlay_open?(open, scope, id) when is_map(open), do: Map.has_key?(open, {scope, id})
+  def overlay_open?(_open, _scope, _id), do: false
+
   defp overlays_rendered?,
     do: Application.get_env(:<%= @app %>, :bubble_overlays_rendered, false) == true
 
