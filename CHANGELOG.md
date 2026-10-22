@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Security
+
+- **Mix dependencies bumped (2026-10-22 advisories).** Req 0.5.15 → 0.7.5
+  (EEF-CVE-2026-49755), Mint 1.11.0, HPAX 1.1.0, Plug 1.20.3, Decimal
+  3.2.0 (test-only, via Postgrex) and usage_rules 1.2.8 (dev-only).
+  `BubbleEx.HTTP` sets `compressed: true` on unbounded requests, since
+  Req 0.6.1 made decompression opt-in, and no longer forwards
+  `:pool_timeout` to Req (deprecated in Req 0.7; the owned transport never
+  read it). LiveView stays at the Formatter pin (1.2.12).
+
 ### Added
 
 - **Workflow conditions read an element's "is visible" (WTF-588).** With
