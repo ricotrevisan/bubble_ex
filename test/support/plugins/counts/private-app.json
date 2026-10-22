@@ -5,22 +5,22 @@
       "low": 2,
       "medium": 26
     },
-    "offering_replace_native": 14,
+    "offering_replace_native": 13,
     "suggested": {
       "drop": 3,
-      "rebuild": 14,
-      "replace_native": 14
+      "rebuild": 15,
+      "replace_native": 13
     },
     "total": 31,
     "workflows_event_only": 5,
-    "workflows_to_rewire_on_drop": 245
+    "workflows_to_rewire_on_drop": 247
   },
   "inventory": {
-    "features_used": 141,
+    "features_used": 134,
     "in_catalog": 15,
     "installed": 30,
     "installed_unused": 3,
-    "members_used": 125,
+    "members_used": 118,
     "plugins": 31,
     "surfaces_per_plugin": {
       "0": 7,
@@ -29,24 +29,24 @@
     },
     "used_not_installed": 1,
     "uses": {
-      "actions": 633,
+      "actions": 596,
       "data_types": 3,
-      "elements": 710,
-      "events": 250,
-      "state_reads": 461,
-      "step_reads": 46
+      "elements": 690,
+      "events": 252,
+      "state_reads": 434,
+      "step_reads": 45
     },
     "uses_per_plugin": {
       "0": 3,
       "1-9": 13,
-      "10-99": 11,
-      "100+": 4
+      "10-99": 10,
+      "100+": 5
     }
   },
   "plan": {
     "all_dropped": {
-      "actions_removed": 633,
-      "decision_edges": 1066,
+      "actions_removed": 596,
+      "decision_edges": 1033,
       "plugin_edges": 0,
       "plugins": {
         "dropped": 28,
@@ -54,58 +54,58 @@
         "undecided": 0
       },
       "residue": {
-        "reads_dropped_plugin": 364,
-        "trigger_dropped": 223
+        "reads_dropped_plugin": 341,
+        "trigger_dropped": 228
       },
       "top_level": {
-        "auto": 122,
+        "auto": 123,
         "closed": 28,
-        "open": 291,
-        "total": 441
+        "open": 292,
+        "total": 443
       },
-      "workflows_removed": 27
+      "workflows_removed": 24
     },
     "suggestions_accepted": {
       "actions_removed": 0,
       "decision_edges": 0,
-      "plugin_edges": 1051,
+      "plugin_edges": 1008,
       "plugins": {
         "dropped": 0,
         "tasks": 28,
         "undecided": 0
       },
       "residue": {
-        "plugin_action": 633,
-        "plugin_element": 710,
-        "plugin_event": 250
+        "plugin_action": 596,
+        "plugin_element": 690,
+        "plugin_event": 252
       },
       "top_level": {
         "auto": 93,
         "closed": 0,
-        "open": 348,
-        "total": 441
+        "open": 350,
+        "total": 443
       },
       "workflows_removed": 0
     },
     "undecided": {
       "actions_removed": 0,
       "decision_edges": 28,
-      "plugin_edges": 1051,
+      "plugin_edges": 1008,
       "plugins": {
         "dropped": 0,
         "tasks": 28,
         "undecided": 28
       },
       "residue": {
-        "plugin_action": 633,
-        "plugin_element": 710,
-        "plugin_event": 250
+        "plugin_action": 596,
+        "plugin_element": 690,
+        "plugin_event": 252
       },
       "top_level": {
         "auto": 93,
         "closed": 0,
-        "open": 376,
-        "total": 469
+        "open": 378,
+        "total": 471
       },
       "workflows_removed": 0
     }

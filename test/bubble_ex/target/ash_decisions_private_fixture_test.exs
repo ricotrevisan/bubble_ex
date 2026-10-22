@@ -46,6 +46,12 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
   end
 
   @default_snapshot "test/support/target/ash/counts/private-app.decided.json"
+
+  # Transforms `Ash.map/3` leaves to others (`Target.Ash.Decisions`'
+  # `@not_schema`): `replace_plugin` (`BubbleEx.Plan`) and, since WTF-586,
+  # `lower_workaround` (`Target.Phoenix`; `:workaround_element` findings at
+  # `:high` confidence apply by default, so they are `automatic` too).
+  @not_schema [:replace_plugin, :lower_workaround]
   @now ~U[2026-09-26 00:00:00Z]
 
   setup_all do
@@ -91,17 +97,31 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
     }
   end
 
-  test "only the active decisions apply", %{resolved: resolved, applied: applied} do
+  test "only the active decisions apply",
+       %{resolved: resolved, applied: applied, findings: findings} do
     blocking = Resolved.blocking(resolved)
     active = MapSet.new(Resolved.in_state(resolved, :active), & &1.decision.key)
     decided = MapSet.new(resolved.entries, & &1.decision.key)
+    by_id = Map.new(findings, &{&1.id, &1})
 
-    # an owner change comes from an active decision; an automatic one is a
-    # hint no record decides (one added to the app since the decisions)
+    # an owner change comes from an active decision; an automatic one no
+    # record decides (one added to the app since the decisions) is a hint
+    # or a workaround lowering the analyzer is sure of
     for a <- applied do
-      if a.automatic,
-        do: assert(a.transform == :add_indexes and not MapSet.member?(decided, a.key)),
-        else: assert(MapSet.member?(active, a.key))
+      if a.automatic do
+        refute MapSet.member?(decided, a.key)
+        finding = Map.fetch!(by_id, a.finding_id)
+
+        case a.transform do
+          :add_indexes ->
+            assert finding.category == :hint
+
+          :lower_workaround ->
+            assert {finding.kind, finding.confidence} == {:workaround_element, :high}
+        end
+      else
+        assert MapSet.member?(active, a.key)
+      end
     end
 
     # the recorded accept derives its field while it is current
@@ -114,7 +134,7 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
     decided = Enum.reject(records, &MapSet.member?(hint_ids, &1.basis.finding_id))
     {:ok, resolved} = Decision.resolve(decided, findings, index: index, now: @now)
     applied = Decision.applicable(resolved, findings)
-    automatic = Enum.filter(applied, & &1.automatic)
+    automatic = applied |> schema() |> Enum.filter(& &1.automatic)
     assert automatic != [] and Enum.all?(automatic, &(&1.transform == :add_indexes))
     assert length(automatic) == MapSet.size(hint_ids)
 
@@ -139,7 +159,7 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
     {decided, applied, sha} = BubbleEx.Test.DecidedFixture.accept_cut2(findings, records, index)
     {:ok, resolved} = Decision.resolve(decided, findings, index: index, now: @now)
     assert new_blocking(resolved, recorded_blocking) == []
-    automatic = Enum.filter(applied, & &1.automatic)
+    automatic = applied |> schema() |> Enum.filter(& &1.automatic)
 
     untyped =
       Enum.count(findings, &(&1.kind == :id_in_text and &1.proposal.target_type == nil))
@@ -150,7 +170,7 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
 
       # every owner decision applies
       keys = MapSet.new(project.applied, & &1.key)
-      assert Enum.all?(applied, &(&1.automatic or MapSet.member?(keys, &1.key)))
+      assert Enum.all?(schema(applied), &(&1.automatic or MapSet.member?(keys, &1.key)))
       {:ok, _source} = Source.render(project)
 
       report(
@@ -174,7 +194,7 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
     {decided, applied, sha} = BubbleEx.Test.DecidedFixture.accept_cut3(findings, records, index)
     {:ok, resolved} = Decision.resolve(decided, findings, index: index, now: @now)
     assert new_blocking(resolved, recorded_blocking) == []
-    automatic = Enum.filter(applied, & &1.automatic)
+    automatic = applied |> schema() |> Enum.filter(& &1.automatic)
     joins = Enum.count(applied, &(&1.transform in [:normalize_list_to_join, :membership_policy]))
     assert joins > 0
 
@@ -183,7 +203,7 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
         Ash.map(model, applied, index: index, privacy: privacy, decisions_sha256: sha)
 
       keys = MapSet.new(project.applied, & &1.key)
-      assert Enum.all?(applied, &(&1.automatic or MapSet.member?(keys, &1.key)))
+      assert Enum.all?(schema(applied), &(&1.automatic or MapSet.member?(keys, &1.key)))
       {:ok, _source} = Source.render(project)
 
       # a rule testing a list now normalized still compiles (through the
@@ -203,6 +223,9 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
       )
     end
   end
+
+  # The applied decisions `Ash.map/3` acts on.
+  defp schema(applied), do: Enum.reject(applied, &(&1.transform in @not_schema))
 
   # Blocking entries other than the recorded decisions' own.
   defp new_blocking(resolved, recorded_blocking),
@@ -251,7 +274,7 @@ defmodule BubbleEx.Target.AshDecisionsPrivateFixtureTest do
       assert length(path) == length(a.proposal.derivation.via)
     end
 
-    assert Enum.map(project.applied, & &1.key) == Enum.map(applied, & &1.key)
+    assert Enum.map(project.applied, & &1.key) == Enum.map(schema(applied), & &1.key)
     {:ok, _source} = Source.render(project)
   end
 

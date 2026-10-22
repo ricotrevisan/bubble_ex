@@ -1,40 +1,41 @@
 {
-  "applied_sha256": "4d1c55be950a0f8dbb738c39e7f1deacae26a7688d7642addd90d1b77a5e0d2f",
+  "applied_sha256": "4acddc71484572488fef4b906164a75479447246b921856515e78291d10cb95b",
   "counts": {
     "applied": {
-      "add_indexes": 1
+      "add_indexes": 2
     },
-    "attributes": 1629,
+    "attributes": 1645,
     "attributes_by_type": {
       "array enum": 19,
-      "array string": 110,
+      "array string": 111,
       "array typed_struct": 4,
       "boolean": 159,
       "enum": 109,
       "float": 62,
-      "string": 892,
-      "typed_struct": 12,
-      "utc_datetime_usec": 262
+      "string": 903,
+      "typed_struct": 13,
+      "utc_datetime_usec": 265
     },
     "db_references": {
-      "ignore": 375
+      "ignore": 379
     },
     "deferred": {},
     "derived_aggregates": 0,
     "derived_calculations": 0,
     "diagnostics": {
-      "ash_decision_applied": 1,
-      "ash_deleted_omitted": 59,
+      "ash_decision_applied": 2,
+      "ash_deleted_kept": 2,
+      "ash_deleted_omitted": 57,
       "ash_expr_unmapped_reference": 3,
       "ash_policies_unverified": 1,
-      "ash_policy_aggregates_unguarded": 41,
+      "ash_policy_aggregates_unguarded": 42,
       "ash_policy_attachments_unenforced": 5,
-      "ash_policy_bypass_required": 262,
+      "ash_policy_bypass_required": 270,
       "ash_policy_data_api_unmapped": 6,
       "ash_policy_default_rule_negated": 3,
       "ash_policy_field_unmapped": 12,
       "ash_policy_search_fields_restricted": 1,
-      "ash_policy_stricter_than_bubble": 86,
+      "ash_policy_stricter_than_bubble": 87,
       "ash_unresolved_reference": 5,
       "call_metadata_inconsistent": 11,
       "model_option_key_missing": 9,
@@ -45,40 +46,40 @@
     "enums": 139,
     "extensions": [],
     "indexes": {
-      "btree": 2
+      "btree": 8
     },
     "join_sides": 0,
     "joins": 0,
     "privacy": {
       "actor_loads": 2,
-      "authorization_bypasses": 262,
+      "authorization_bypasses": 270,
       "auto_bind_actions": 23,
-      "calculations": 89,
+      "calculations": 91,
       "checks": {
         "authorize_if always": 137,
-        "authorize_if calculation": 518,
-        "authorize_if keyed": 84,
-        "authorize_if search_fields": 168,
-        "forbid_if always": 7
+        "authorize_if calculation": 525,
+        "authorize_if keyed": 85,
+        "authorize_if search_fields": 170,
+        "forbid_if always": 8
       },
-      "field_policies": 94,
-      "gated_relationships": 244,
-      "policies": 623,
-      "private_twins": 244,
+      "field_policies": 97,
+      "gated_relationships": 248,
+      "policies": 628,
+      "private_twins": 248,
       "resources": {
         "public_default": 37,
-        "rules": 47
+        "rules": 48
       },
       "rules": {
-        "compiled": 87,
+        "compiled": 89,
         "denied": 0
       },
       "search_fields": 3
     },
     "relationships": {
-      "belongs_to": 375
+      "belongs_to": 379
     },
-    "resources": 84,
+    "resources": 85,
     "synthesized_resources": 0,
     "typed_structs": {
       "external": 17,
@@ -86,16 +87,16 @@
     }
   },
   "decisions_sha256": "314c4c62d790e0b11fb3f14b2c30e9bd085cab1beb265c5a36cd6de0389dc94f",
-  "project_sha256": "ba1ff2ce88dce4daa96ecb1d66989247aed32167d300e6406dc76b4ae012848b",
+  "project_sha256": "0a5ca10704374dee9c356b12777f8cc90bb652780536a1a664b42386e6cf93f3",
   "resolved": {
     "acknowledged": 0,
-    "active": 27,
+    "active": 26,
     "blocking": 1,
     "expired": 0,
     "orphaned": 7,
-    "stale": 22,
+    "stale": 23,
     "superseded": 0,
-    "undecided": 137,
+    "undecided": 395,
     "withdrawn": 0
   },
   "schema_version": 7

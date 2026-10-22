@@ -24,12 +24,12 @@
     "changed": [],
     "dependent_checks": {
       "actor_empty_denies": 82,
-      "builtin_fields_hidden_unless_listed": 91,
+      "builtin_fields_hidden_unless_listed": 101,
       "empty_equals_empty": 82,
       "empty_yes_no_is_no": 12,
       "everyone_exclusive": 15,
       "logged_out_user_is_empty": 15,
-      "no_visible_field_unreadable": 699,
+      "no_visible_field_unreadable": 708,
       "non_filterable_constraint_excludes": 9,
       "search_independent_of_view": 49
     },
@@ -69,7 +69,7 @@
       "compared_condition_guards_record_values"
     ]
   },
-  "checks": 1542,
+  "checks": 1560,
   "defaults": {
     "explicit_empties": 9,
     "fields": 192,
@@ -97,33 +97,33 @@
     "unintended": 0
   },
   "governed_fields": {
-    "held": 2507,
-    "slots": 3907,
-    "unchecked": 1400,
+    "held": 2518,
+    "slots": 3922,
+    "unchecked": 1404,
     "unchecked_by_reason": {
       "condition_reads": 204,
       "explicitly_empty": 11,
-      "no_synthetic_value": 1093,
+      "no_synthetic_value": 1097,
       "persona": 92
     }
   },
-  "observations": 2562,
+  "observations": 2592,
   "oracle_scope": "model: expectations from the interpreter over the shared expression compiler's IR; agreement with the Ash policies covers IR-to-Ash lowering and the policy generator, not the compiler (typing, lowering to IR); never Bubble-verified",
   "personas": 6,
-  "records": 170,
+  "records": 172,
   "rules": {
-    "conditional": 87,
-    "everyone": 47,
+    "conditional": 89,
+    "everyone": 48,
     "false_branch_only_via_actor_guard": 0,
-    "observable": 85,
-    "observable_percent": 63.4,
-    "solved": 125,
-    "solved_percent": 93.3,
-    "total": 134,
+    "observable": 87,
+    "observable_percent": 63.5,
+    "solved": 128,
+    "solved_percent": 93.4,
+    "total": 137,
     "true_branch_only_via_empty_actor": 0,
     "unsolved": 9
   },
-  "scenarios": 504,
+  "scenarios": 510,
   "seed_values_from_condition_literals": 0,
   "skipped": {
     "gets": 0,
@@ -132,12 +132,12 @@
   "types": {
     "deleted": 9,
     "public": 37,
-    "total": 93,
+    "total": 94,
     "unavailable": 0,
-    "with_rules": 47
+    "with_rules": 48
   },
   "unobservable_by_reason": {
-    "grants_nothing": 36,
+    "grants_nothing": 37,
     "masked": 4,
     "unsolved": 14
   },

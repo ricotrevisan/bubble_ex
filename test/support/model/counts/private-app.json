@@ -14,7 +14,7 @@
     "api_parameters_named": 658,
     "api_parameters_private": 66,
     "cycle_cuts": 0,
-    "data_types": 93,
+    "data_types": 94,
     "deleted_data_types": 9,
     "deleted_fields": 28,
     "deleted_option_sets": 9,
@@ -29,7 +29,7 @@
     "external_types": {
       "resolved": 307
     },
-    "fields": 1299,
+    "fields": 1308,
     "fields_by_kind": {
       "external": 10,
       "file_ref": 11,
@@ -38,8 +38,8 @@
       "list ref": 113,
       "list scalar": 9,
       "option": 116,
-      "ref": 311,
-      "scalar": 702,
+      "ref": 314,
+      "scalar": 708,
       "structured": 4
     },
     "malformed_data_types": 0,
@@ -53,14 +53,14 @@
     },
     "option_sets": 148,
     "option_values": 1162,
-    "privacy_rules": 139,
+    "privacy_rules": 142,
     "relationships": {
       "many": 107,
-      "one": 300,
+      "one": 303,
       "unresolved": 4
     },
     "synthesized_data_types": 0,
-    "system_fields": 466
+    "system_fields": 471
   },
   "schema_version": 4
 }

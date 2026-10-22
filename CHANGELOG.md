@@ -639,6 +639,18 @@ All notable changes to this project are documented here.
 
 ### Fixed
 
+- **The private-fixture tests pass again against the current export
+  (WTF-602).** 15 of them failed on main against the current private
+  export: the snapshots (counts and generic reason codes only) were
+  recorded against an older export, and changes since then had not been
+  re-recorded (WTF-566's kept deleted fields, WTF-586's workaround
+  findings, WTF-594's uncompiled date intervals, more lowered workflow
+  steps). All are re-recorded. `Target.AshDecisionsPrivateFixtureTest`
+  now ignores the decisions `Ash.map/3` leaves to others
+  (`replace_plugin`, `lower_workaround`): since WTF-586 a sure
+  workaround finding applies by default, so not every automatic decision
+  is an index hint.
+
 - **A fixed width or height without a min size is 0px, as in Bubble
   (WTF-583).** Read from an editor export (a Buildprint v5 workspace, a
   `.bubble` file), an element in a Column, Row or Align-to-parent
