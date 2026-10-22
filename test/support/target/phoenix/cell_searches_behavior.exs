@@ -19,7 +19,12 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
   # and two searches keyed on an option (WTF-589): the customer's orders of
   # its own tier, and every order of its tier (Dune has no tier: nothing).
   # Each of those searches is read for every cell together: one query per
-  # round of cells, never one per cell.
+  # round of cells, never one per cell. The orders page (WTF-593) lists
+  # every order; each cell searches its customer's orders whose unique ID
+  # is not its own: their count, the first of them (the cell's own may be
+  # its customer's first), the second of them and the count of the first
+  # one, read for every cell together and each cell's own order left out
+  # after it.
   use PhxCheckWeb.ConnCase, async: false
 
   # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
@@ -445,6 +450,119 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
       assert shown(bo, "Pair") == ~w(0 1 0 0 1)
     else
       assert shown(bo, "Count") == ~w(3 1 0 1 3)
+    end
+  end
+
+  defp orders(conn) do
+    {:ok, view, _html} = live(conn, "/orders")
+    {view, render(view)}
+  end
+
+  # The orders page's reads of orders, whatever the number of cells: its
+  # list, the cells' orders' customers loaded once for every cell (with
+  # policies, two reads: the orders, then their customers joined), and the
+  # cells' four searches (Sib, Next, Peer, Second).
+  defp sibling_queries, do: if(enforced?(), do: 7, else: 6)
+
+  test "each order's cell leaves its own order out of its customer's (WTF-593)", %{
+    conn: conn,
+    users: users
+  } do
+    {{_view, html}, by_table} = queries(fn -> orders(sign_in(conn, users["Ada"])) end)
+    IO.puts("cell searches: /orders made #{inspect(by_table)}")
+
+    if enforced?() do
+      # Ada's orders only: Acme's Anvil and Axe, Dune's Drum, Echo's Ear and Emu.
+      assert shown(html, "Order") == ~w(Anvil Axe Drum Ear Emu)
+      assert shown(html, "Sib") == ~w(1 1 0 1 1)
+      # Anvil is Acme's first: its cell's first other order is Axe.
+      assert shown(html, "Next") == ["Axe", "Anvil", "", "Emu", "Ear"]
+      assert shown(html, "Peer") == ~w(1 1 0 1 1)
+      assert shown(html, "Second") == ["", "", "", "", ""]
+    else
+      assert shown(html, "Order") == ~w(Anvil Arrow Axe Bell Drum Ear Elk Emu)
+      assert shown(html, "Sib") == ~w(2 2 2 0 0 2 2 2)
+      assert shown(html, "Next") == ["Arrow", "Anvil", "Anvil", "", "", "Elk", "Ear", "Ear"]
+      assert shown(html, "Peer") == ~w(1 1 1 0 0 1 1 1)
+      assert shown(html, "Second") == ["Axe", "Axe", "Arrow", "", "", "Emu", "Emu", "Elk"]
+    end
+
+    orders = Map.get(by_table, "order", 0)
+
+    assert orders > 0 and orders <= sibling_queries(),
+           "/orders read orders #{orders} times, more than #{sibling_queries()}: #{inspect(by_table)}"
+
+    # What the cells' searches pin through each cell's order (its customer)
+    # is loaded for every cell at once, not once per cell.
+    assert Map.get(by_table, "customer", 0) <= 1
+
+    {_view, bo} = orders(sign_in(build_conn(), users["Bo"]))
+
+    if enforced?() do
+      # Bo's orders are each the only one of theirs of their customer.
+      assert shown(bo, "Order") == ~w(Arrow Bell Elk)
+      assert shown(bo, "Sib") == ~w(0 0 0)
+      assert shown(bo, "Next") == ["", "", ""]
+    else
+      assert shown(bo, "Sib") == ~w(2 2 2 0 0 2 2 2)
+    end
+  end
+
+  test "leaving each cell's own order out, the queries do not grow with the cells (WTF-593)",
+       %{conn: conn, users: users} do
+    {_, before} = queries(fn -> orders(sign_in(conn, users["Ada"])) end)
+
+    # Nine more of Acme's (Ada's), sorted before every other order: each of
+    # Acme's cells' first other order is now one of them, Aa1's is Aa2.
+    for n <- 1..9 do
+      Ash.Seed.seed!(PhxCheck.Order, %{
+        id: "1700000000000x80000000000000000#{n}",
+        title: "Aa#{n}",
+        open: true,
+        customer_id: "1700000000000x200000000000000001",
+        owner_id: @ada
+      })
+    end
+
+    {{_view, html}, now} = queries(fn -> orders(sign_in(build_conn(), users["Ada"])) end)
+
+    acme = if enforced?(), do: 11, else: 12
+    assert Enum.take(shown(html, "Order"), 2) == ~w(Aa1 Aa2)
+    assert Enum.take(shown(html, "Next"), 3) == ~w(Aa2 Aa1 Aa1)
+    assert Enum.take(shown(html, "Second"), 3) == ~w(Aa3 Aa3 Aa2)
+    assert Enum.take(shown(html, "Sib"), acme) == List.duplicate("#{acme - 1}", acme)
+    assert Enum.take(shown(html, "Peer"), acme) == List.duplicate("1", acme)
+    assert Map.get(now, "order", 0) == Map.get(before, "order", 0)
+  end
+
+  test "past :max_batched, cells leaving out their own order read the same (WTF-593)", %{
+    conn: conn,
+    users: users
+  } do
+    # Three key combinations at most per query, three records at most per
+    # read: the cells are read in chunks, a chunk's page rounds fill and
+    # its short cells are read again, a count past the cap reads each cell
+    # on its own. Each cell's own order is still left out.
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleData, max_batched: 3)
+
+    {html, log} =
+      ExUnit.CaptureLog.with_log(fn ->
+        {_view, html} = orders(sign_in(conn, users["Ada"]))
+        html
+      end)
+
+    assert log =~ "past :max_batched (3)"
+
+    if enforced?() do
+      assert shown(html, "Sib") == ~w(1 1 0 1 1)
+      assert shown(html, "Next") == ["Axe", "Anvil", "", "Emu", "Ear"]
+      assert shown(html, "Peer") == ~w(1 1 0 1 1)
+      assert shown(html, "Second") == ["", "", "", "", ""]
+    else
+      assert shown(html, "Sib") == ~w(2 2 2 0 0 2 2 2)
+      assert shown(html, "Next") == ["Arrow", "Anvil", "Anvil", "", "", "Elk", "Ear", "Ear"]
+      assert shown(html, "Peer") == ~w(1 1 1 0 0 1 1 1)
+      assert shown(html, "Second") == ["Axe", "Axe", "Arrow", "", "", "Emu", "Emu", "Elk"]
     end
   end
 

@@ -1029,10 +1029,14 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp data_instance(%{kind: :param, element: e, holder: h}) when e != h, do: literal(e)
   defp data_instance(_), do: "nil"
 
-  defp cell_loads({:value, %{bindings: bindings}}),
-    do: for(%{bind: {:cell, _}, loads: paths} <- bindings, path <- paths, do: path) |> Enum.uniq()
-
-  defp cell_loads(_), do: []
+  # The relationships a cell's source reads through the cell's thing (its
+  # value's, its searches' pins' and its calls' parameters': WTF-593, a
+  # search read for every cell together pins what each cell's thing
+  # holds), loaded for every cell at once.
+  defp cell_loads(read) do
+    for(%{bind: {:cell, _}, loads: paths} <- read_bindings(read), path <- paths, do: path)
+    |> Enum.uniq()
+  end
 
   # In a nested repeating group's cell (WTF-520): the relationships read
   # through the outer cell's thing, loaded for every outer cell at once.
@@ -1226,14 +1230,40 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
           "{:#{k.var}, #{atom(k.attr)}, #{key_kind(k, ctx)}, #{if k.unless, do: ":" <> k.unless, else: "nil"}}"
         end) <> "]"
 
+    # Each cell's own record left out after the batch (WTF-593).
+    excludes =
+      "[" <>
+        Enum.map_join(Map.get(batch, :excludes, []), ", ", fn x ->
+          "{:#{x.var}, #{atom(x.attr)}, #{inspect(x.kind)}, #{if x.unless, do: ":" <> x.unless, else: "nil"}}"
+        end) <> "]"
+
+    # The batch reads no exclusion: its pins (and their empty guards) only
+    # the cell's own query reads are not bound there.
+    used = MapSet.new(filter_pins(batch.filter.expr) ++ List.wrap(Map.get(q, :listed)))
+
+    batch_pins =
+      "%{" <>
+        Enum.map_join(vars, ", ", fn v ->
+          if MapSet.member?(used, v), do: "#{v}: #{v}", else: "#{v}: _#{v}"
+        end) <> "}"
+
     sort =
       "[" <>
         Enum.map_join(q.sort, ", ", fn {a, _dir} -> atom(a) end) <> "]"
 
-    # The whole search: two that differ only in their sort, take or list
-    # are never one.
+    # The whole search: two that differ only in their sort, take, list or
+    # exclusions (WTF-593: not in the batched filter) are never one.
+    whole =
+      case Map.get(batch, :excludes, []) do
+        [] ->
+          {q.resource, batch.filter, q.sort, q.take, Map.get(q, :listed), page_size, loads}
+
+        excludes ->
+          {q.resource, q.filter, excludes, q.sort, q.take, Map.get(q, :listed), page_size, loads}
+      end
+
     ref =
-      {q.resource, batch.filter, q.sort, q.take, Map.get(q, :listed), page_size, loads}
+      whole
       |> :erlang.term_to_binary()
       |> then(&:crypto.hash(:sha256, &1))
       |> Base.encode16(case: :lower)
@@ -1245,6 +1275,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
         ref: {__MODULE__, #{literal(binary_part(ref, 0, 12))}},
         pins: #{pins},
         keys: #{keys},
+        excludes: #{excludes},
         void: [#{Enum.map_join(Map.get(batch, :void, []), ", ", fn {v, w} -> "{:#{v}, :#{w}}" end)}],
         sort: #{sort},
         take: #{take(q.take)},
@@ -1254,7 +1285,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       fn ->
         #{query_pipeline(q, ctx)}
       end,
-      fn #{pins} ->
+      fn #{batch_pins} ->
         #{query_pipeline(%{q | filter: batch.filter}, ctx, :batch)}
       end
     )
@@ -1271,6 +1302,12 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       l -> "BubbleData.load_value(#{read}, #{loads_source(l)}, ctx)"
     end
   end
+
+  # The pins a filter reads.
+  defp filter_pins({:pin, var}), do: [var]
+  defp filter_pins(node) when is_tuple(node), do: node |> Tuple.to_list() |> filter_pins()
+  defp filter_pins(nodes) when is_list(nodes), do: Enum.flat_map(nodes, &filter_pins/1)
+  defp filter_pins(_node), do: []
 
   # An option's key (WTF-589) names its option set's enum: a cell whose
   # value is not one of the set's reads its own query.
