@@ -1,7 +1,8 @@
 defmodule BubbleEx.Target.Elixir.FrontendWorkflowsVisibilityTest do
   # An element's "is visible" in a page's workflow or step "Only when", or
   # "Do when" condition (WTF-588): the visibility the page computes for it
-  # (`ElementVisibility`, WTF-578), folded up to the page. test/support/target/phoenix/visibility.json, whose
+  # (`ElementVisibility`, WTF-578), folded up to the page.
+  # test/support/target/phoenix/visibility.json, whose
   # visibility_behavior.exs runs the same workflows in a generated project.
   use ExUnit.Case, async: true
 
