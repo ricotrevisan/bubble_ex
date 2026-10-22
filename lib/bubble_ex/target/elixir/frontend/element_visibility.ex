@@ -231,24 +231,21 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
       floating?(node) and decided_floating?(node, index) ->
         fold(node, id, MapSet.put(seen, id), index)
 
-      MapSet.member?(index.touched, id) ->
-        :error
-
-      match?(%{"boundary" => "overlay"}, node.runtime) ->
-        :error
-
-      not target? and match?(%{"boundary" => _}, node.runtime) ->
-        :error
-
-      breakpoint_display?(node) ->
-        :error
-
-      Hover.visibility?(node) ->
+      browser_decides?(node, id, target?, index) ->
         :error
 
       true ->
         fold(node, id, MapSet.put(seen, id), index)
     end
+  end
+
+  # Whether the browser may change the element's visibility: a step names
+  # it, it is an overlay, a runtime container on the way, a breakpoint or a
+  # hover rule sets it.
+  defp browser_decides?(node, id, target?, index) do
+    MapSet.member?(index.touched, id) or match?(%{"boundary" => "overlay"}, node.runtime) or
+      (not target? and match?(%{"boundary" => _}, node.runtime)) or
+      breakpoint_display?(node) or Hover.visibility?(node)
   end
 
   defp fold(%Node{} = node, id, seen, index) do

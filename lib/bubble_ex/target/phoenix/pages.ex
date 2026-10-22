@@ -3318,17 +3318,7 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       states == 0 ->
         {static, acc}
 
-      conditional_floating?(node, ctx) ->
-        conditional_visibility(
-          node,
-          ctx.expressions[node.bindings["condition"].id],
-          states,
-          static,
-          ctx,
-          acc
-        )
-
-      match?(%{"boundary" => "overlay"}, node.runtime) ->
+      marked_overlay?(node, ctx) ->
         {[], mark_visibility(acc, node, states, "an overlay: workflows show and hide it")}
 
       # Not visible on page load and shown by a breakpoint: its `hidden`
@@ -3360,6 +3350,11 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   end
 
   defp conditional_floating?(_node, _ctx), do: false
+
+  # An overlay whose visibility workflows decide: its conditionals are
+  # marked.
+  defp marked_overlay?(node, ctx),
+    do: match?(%{"boundary" => "overlay"}, node.runtime) and not conditional_floating?(node, ctx)
 
   defp conditional_visibility(node, nil, states, static, _ctx, acc),
     do: {static, mark_visibility(acc, node, states, "it does not compile")}
@@ -4681,9 +4676,16 @@ defmodule BubbleEx.Target.Phoenix.Pages do
   defp read_arg(%{input: {:this, :context}}, %{choice_var: var}), do: var
 
   defp read_arg(%{var: var, input: input} = binding, ctx) do
-    read =
-      (ctx.flows && FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell))) ||
-        open_read(binding, ctx)
+    case open_read(binding, ctx) do
+      {:open, k} -> open_source(k, ctx)
+      nil -> kept_arg(var, input, ctx)
+    end
+  end
+
+  defp read_arg(%{var: var}, _ctx), do: "@" <> var
+
+  defp kept_arg(var, input, ctx) do
+    read = ctx.flows && FlowSpec.read(ctx.flows, ctx.entry.id, input, Map.get(ctx, :cell))
 
     # `own_default_visibility/7`: the instance's own default.
     read =
@@ -4697,8 +4699,6 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
     read_source(read, var, ctx)
   end
-
-  defp read_arg(%{var: var}, _ctx), do: "@" <> var
 
   # How a helper's argument reads what the page keeps (`FlowSpec.read/4`).
   defp read_source(read, var, ctx) do
@@ -4733,9 +4733,6 @@ defmodule BubbleEx.Target.Phoenix.Pages do
 
       {kind, _} when kind in [:page_width, :now, :page_name] ->
         page_value_source(kind)
-
-      {:open, k} ->
-        open_source(k, ctx)
 
       _ ->
         "@" <> var
