@@ -45,7 +45,7 @@ defmodule BubbleEx.Workflows.Frontend do
   | Bubble action | `Step.op` | `Step.args` |
   |---------------|-----------|-------------|
   | Show / Hide / Toggle an element | `:show` / `:hide` / `:toggle` | `element` |
-  | Animate an element | `:animate` | `element`, `animation`, `duration`, `visibility` (`:show` for a known entrance), `motion` (`from`, `to`, `duration` in ms, `easing`; nil when unknown) |
+  | Animate an element | `:animate` | `element`, `animation`, `duration` (the action's own), `visibility` (`:show` for an entrance, `:hide` for an exit, nil for a callout or an unknown effect), `motion` (`frames`: opacity and translate in px, tweened in equal parts; `duration` in ms, the action's when "customize duration" is checked, else the effect's default; `easing`, per part; nil when unknown) |
   | Set focus to an element, Scroll to an element | `:focus`, `:scroll_to` | `element` |
   | Reset relevant inputs (`ResetInputs`) | `:reset_inputs` | `within` (the triggering element's container, nil for the surface) |
   | Reset a group / popup (`ResetGroup`) | `:reset_group` | `element` |
@@ -181,7 +181,7 @@ defmodule BubbleEx.Workflows.Frontend do
   # (a debugger breakpoint, the editor's display name) are ignored.
   @members %{
     show: ~w(element_id),
-    animate: ~w(element_id animation duration),
+    animate: ~w(element_id animation customize_duration duration),
     hide: ~w(element_id),
     toggle: ~w(element_id),
     focus: ~w(element_id),
@@ -683,19 +683,50 @@ defmodule BubbleEx.Workflows.Frontend do
   end
 
   # Bubble's animations are Velocity.js UI-pack effects (velocity-animate
-  # 1.5.2, `velocity.ui.js`). The entrances ("In") show the element; each
-  # tweens `from` to `to` (opacity, translate in px) with easing "ease"
-  # over the action's duration, else the effect's default (ms).
-  @entrances %{
-    "transition.fadeIn" => {500, %{opacity: 0}},
-    "transition.slideUpIn" => {900, %{opacity: 0, translate_y: 20}},
-    "transition.slideDownIn" => {900, %{opacity: 0, translate_y: -20}},
-    "transition.slideLeftIn" => {1000, %{opacity: 0, translate_x: -20}},
-    "transition.slideRightIn" => {1000, %{opacity: 0, translate_x: 20}},
-    "transition.slideUpBigIn" => {850, %{opacity: 0, translate_y: 75}},
-    "transition.slideDownBigIn" => {850, %{opacity: 0, translate_y: -75}},
-    "transition.slideLeftBigIn" => {800, %{opacity: 0, translate_x: -75}},
-    "transition.slideRightBigIn" => {800, %{opacity: 0, translate_x: 75}}
+  # 1.5.2, `velocity.ui.js`). Only the transitions show or hide the
+  # element: an entrance ("In") shows it as it starts, an exit ("Out")
+  # hides it (`display: none`) once it ends; a callout leaves its
+  # visibility alone. Each tweens its frames (opacity, translate in px)
+  # in equal parts of the duration, easing "ease" each. The duration is
+  # the action's when "customize duration" is checked (Bubble's editor
+  # applies the field only then), else the effect's default (ms).
+  @animations %{
+    "transition.fadeIn" => {:show, 500, [%{opacity: 0}, %{opacity: 1}]},
+    "transition.fadeOut" => {:hide, 500, [%{opacity: 1}, %{opacity: 0}]},
+    "transition.slideUpIn" =>
+      {:show, 900, [%{opacity: 0, translate_y: 20}, %{opacity: 1, translate_y: 0}]},
+    "transition.slideUpOut" =>
+      {:hide, 900, [%{opacity: 1, translate_y: 0}, %{opacity: 0, translate_y: -20}]},
+    "transition.slideDownIn" =>
+      {:show, 900, [%{opacity: 0, translate_y: -20}, %{opacity: 1, translate_y: 0}]},
+    "transition.slideDownOut" =>
+      {:hide, 900, [%{opacity: 1, translate_y: 0}, %{opacity: 0, translate_y: 20}]},
+    "transition.slideLeftIn" =>
+      {:show, 1000, [%{opacity: 0, translate_x: -20}, %{opacity: 1, translate_x: 0}]},
+    "transition.slideLeftOut" =>
+      {:hide, 1050, [%{opacity: 1, translate_x: 0}, %{opacity: 0, translate_x: -20}]},
+    "transition.slideRightIn" =>
+      {:show, 1000, [%{opacity: 0, translate_x: 20}, %{opacity: 1, translate_x: 0}]},
+    "transition.slideRightOut" =>
+      {:hide, 1050, [%{opacity: 1, translate_x: 0}, %{opacity: 0, translate_x: 20}]},
+    "transition.slideUpBigIn" =>
+      {:show, 850, [%{opacity: 0, translate_y: 75}, %{opacity: 1, translate_y: 0}]},
+    "transition.slideUpBigOut" =>
+      {:hide, 800, [%{opacity: 1, translate_y: 0}, %{opacity: 0, translate_y: -75}]},
+    "transition.slideDownBigIn" =>
+      {:show, 850, [%{opacity: 0, translate_y: -75}, %{opacity: 1, translate_y: 0}]},
+    "transition.slideDownBigOut" =>
+      {:hide, 800, [%{opacity: 1, translate_y: 0}, %{opacity: 0, translate_y: 75}]},
+    "transition.slideLeftBigIn" =>
+      {:show, 800, [%{opacity: 0, translate_x: -75}, %{opacity: 1, translate_x: 0}]},
+    "transition.slideLeftBigOut" =>
+      {:hide, 750, [%{opacity: 1, translate_x: 0}, %{opacity: 0, translate_x: -75}]},
+    "transition.slideRightBigIn" =>
+      {:show, 800, [%{opacity: 0, translate_x: 75}, %{opacity: 1, translate_x: 0}]},
+    "transition.slideRightBigOut" =>
+      {:hide, 750, [%{opacity: 1, translate_x: 0}, %{opacity: 0, translate_x: 75}]},
+    "callout.shake" =>
+      {nil, 800, Enum.map([0, -11, 11, -11, 11, -11, 11, -11, 0], &%{translate_x: &1})}
   }
 
   defp lower(:animate, props, _path, id, _env, ctx) do
@@ -703,17 +734,20 @@ defmodule BubbleEx.Workflows.Frontend do
     animation = text(props["animation"])
     residue = element_ref(id, element, ctx)
 
-    case Map.fetch(@entrances, animation) do
-      {:ok, {default, from}} ->
-        duration = if is_number(props["duration"]), do: props["duration"], else: default
-        to = Map.new(from, fn {key, _} -> {key, if(key == :opacity, do: 1, else: 0)} end)
+    case Map.fetch(@animations, animation) do
+      {:ok, {visibility, default, frames}} ->
+        duration =
+          if props["customize_duration"] == true and is_number(props["duration"]) and
+               props["duration"] >= 0,
+             do: props["duration"],
+             else: default
 
         {%{
            element: element,
            animation: animation,
            duration: props["duration"],
-           visibility: :show,
-           motion: %{from: from, to: to, duration: duration, easing: "ease"}
+           visibility: visibility,
+           motion: %{frames: frames, duration: duration, easing: "ease"}
          }, residue}
 
       :error ->

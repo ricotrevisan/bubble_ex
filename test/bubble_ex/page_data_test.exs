@@ -1588,6 +1588,45 @@ defmodule BubbleEx.PageDataTest do
              )
     end
 
+    test "a known animation opens or closes a popup as a show or hide step does (WTF-603)" do
+      app = popup_app()
+
+      animate = fn id, animation ->
+        %{
+          "id" => id,
+          "type" => "AnimateElement",
+          "properties" => %{"element_id" => "bPop2", "animation" => animation}
+        }
+      end
+
+      focus = %{
+        "id" => "aF",
+        "type" => "SetFocusToElement",
+        "properties" => %{"element_id" => "bPop2"}
+      }
+
+      # An entrance opens it, an exit closes it, a callout does neither:
+      # the decisions of a show, a hide and a step that leaves it alone.
+      for {animation, like} <- [
+            {"transition.fadeIn", toggle("aL", "ShowElement")},
+            {"transition.slideRightOut", toggle("aL", "HideElement")},
+            {"callout.shake", focus}
+          ],
+          own <- [&opened/2, &closed/2],
+          steps <- [[show_detail("aD")], [show_detail("aD"), mail("aDm")]],
+          trigger <- [&clicked/2, &loaded/2] do
+        animated = [own.("wD", steps), trigger.("wL", [animate.("aL", animation)])]
+        stepped = [own.("wD", steps), trigger.("wL", [like])]
+        assert kept?(animated, app) == kept?(stepped, app), animation
+      end
+
+      # As the page loads, an entrance opens it (its "is opened" workflow
+      # must run whole there too); an exit never does.
+      opened = opened("wD", [show_detail("aD"), mail("aDm")])
+      refute kept?([opened, loaded("wL", [animate.("aL", "transition.fadeIn")])], app)
+      assert kept?([opened, loaded("wL", [animate.("aL", "transition.fadeOut")])], app)
+    end
+
     test "what the opener shows and the popup's own workflow resets or shows is unloaded (WTF-520)" do
       opener = clicked("wC", [show_detail("aC"), toggle("aCs", "ShowElement")])
 

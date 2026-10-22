@@ -57,70 +57,117 @@ defmodule BubbleEx.Workflows.FrontendTest do
     assert [%{id: "rWord", name: "Result"}] = evt.returns
   end
 
-  test "captured entrance animations retain their final visibility and motion" do
+  defp animation(props) do
     source =
       edit(app(), "wLoad", fn workflow ->
         Map.put(workflow, "actions", %{
           "0" => %{
             "id" => "anim",
             "type" => "AnimateElement",
-            "properties" => %{
-              "element_id" => "bFocus",
-              "animation" => "transition.slideUpIn",
-              "duration" => 900
-            }
+            "properties" => Map.put(props, "element_id", "bFocus")
           }
         })
       end)
 
     [step] = source |> lower() |> workflow("wLoad") |> Map.fetch!(:steps)
+    step
+  end
+
+  test "captured entrance animations retain their final visibility and motion" do
+    step =
+      animation(%{
+        "animation" => "transition.slideUpIn",
+        "customize_duration" => true,
+        "duration" => 400
+      })
+
     assert step.op == :animate
 
     assert step.args == %{
              element: "bFocus",
              animation: "transition.slideUpIn",
-             duration: 900,
+             duration: 400,
              visibility: :show,
              motion: %{
-               from: %{opacity: 0, translate_y: 20},
-               to: %{opacity: 1, translate_y: 0},
-               duration: 900,
+               frames: [%{opacity: 0, translate_y: 20}, %{opacity: 1, translate_y: 0}],
+               duration: 400,
                easing: "ease"
              }
            }
 
     assert step.residue == []
 
-    unknown =
-      edit(
-        source,
-        "wLoad",
-        &put_in(&1, ["actions", "0", "properties", "animation"], "unknown.motion")
-      )
-
-    [step] = unknown |> lower() |> workflow("wLoad") |> Map.fetch!(:steps)
+    step = animation(%{"animation" => "unknown.motion"})
     assert step.args.visibility == nil and step.args.motion == nil
     assert Enum.any?(step.residue, &(&1.reason == :unsupported_option))
   end
 
-  test "an entrance without a duration takes Velocity's default" do
-    source =
-      edit(app(), "wLoad", fn workflow ->
-        Map.put(workflow, "actions", %{
-          "0" => %{
-            "id" => "anim",
-            "type" => "AnimateElement",
-            "properties" => %{
-              "element_id" => "bFocus",
-              "animation" => "transition.slideLeftBigIn"
-            }
-          }
-        })
-      end)
+  test "an exit hides the element; a callout leaves its visibility alone" do
+    step =
+      animation(%{
+        "animation" => "transition.slideRightOut",
+        "customize_duration" => true,
+        "duration" => 300
+      })
 
-    [step] = source |> lower() |> workflow("wLoad") |> Map.fetch!(:steps)
-    assert %{visibility: :show, motion: %{duration: 800, from: %{translate_x: -75}}} = step.args
+    assert %{
+             visibility: :hide,
+             motion: %{
+               frames: [%{opacity: 1, translate_x: 0}, %{opacity: 0, translate_x: 20}],
+               duration: 300
+             }
+           } = step.args
+
     assert step.residue == []
+
+    assert %{visibility: :hide, motion: %{frames: [%{opacity: 1}, %{opacity: 0}], duration: 500}} =
+             animation(%{"animation" => "transition.fadeOut"}).args
+
+    shake =
+      animation(%{
+        "animation" => "callout.shake",
+        "customize_duration" => true,
+        "duration" => 600
+      })
+
+    assert %{visibility: nil, motion: %{duration: 600, frames: frames}} = shake.args
+    assert Enum.map(frames, & &1.translate_x) == [0, -11, 11, -11, 11, -11, 11, -11, 0]
+    assert shake.residue == []
+
+    # No effect set: not guessed.
+    step = animation(%{"customize_duration" => false})
+    assert step.args.motion == nil
+    assert Enum.any?(step.residue, &(&1.reason == :unsupported_option))
+  end
+
+  test "an animation's duration is the step's only when customized, else Velocity's default" do
+    assert %{visibility: :show, motion: %{duration: 800, frames: [%{translate_x: -75} | _]}} =
+             animation(%{"animation" => "transition.slideLeftBigIn"}).args
+
+    # Bubble's editor applies the duration only with "customize duration".
+    assert %{motion: %{duration: 500}} =
+             animation(%{
+               "animation" => "transition.fadeIn",
+               "customize_duration" => false,
+               "duration" => 90
+             }).args
+
+    assert %{motion: %{duration: 1050}} =
+             animation(%{"animation" => "transition.slideLeftOut", "duration" => 90}).args
+
+    assert %{motion: %{duration: 90}} =
+             animation(%{
+               "animation" => "transition.slideLeftOut",
+               "customize_duration" => true,
+               "duration" => 90
+             }).args
+
+    assert animation(%{
+             "animation" => "transition.fadeIn",
+             "customize_duration" => true,
+             "duration" => 90
+           }).residue ==
+             []
   end
 
   test "steps lower to the shared vocabulary", %{lowered: lowered} do

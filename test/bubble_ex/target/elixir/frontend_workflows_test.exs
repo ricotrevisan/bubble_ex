@@ -70,7 +70,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsTest do
     assert %{element: "bCard", state: "custom.count_", default: "0"} in spec.surfaces["bCard"].states
   end
 
-  test "source entrance animations become explicit Phoenix target residue" do
+  test "entrance animations lower for the Phoenix target" do
     mapped =
       app()
       |> edit("wLoad", fn workflow ->
@@ -92,10 +92,17 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsTest do
     [step] = workflow.steps
     assert step.op == :animate
 
-    assert [%{reason: :unsupported_action, detail: %{type: "AnimateElement", target: "phoenix"}}] =
-             step.residue
+    # Lowered (WTF-603): the browser runs the entrance as a show, with its
+    # motion.
+    assert step.residue == []
 
-    refute Spec.native?(workflow)
+    assert %{
+             target: %{path: [], element: "bFocus"},
+             visibility: :show,
+             motion: %{frames: [%{opacity: 0, translate_y: 20}, %{opacity: 1}], duration: 900}
+           } = step.args
+
+    assert Spec.native?(workflow)
   end
 
   test "the page tracks its native inputs with a static first value", %{spec: spec} do

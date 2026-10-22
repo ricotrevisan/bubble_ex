@@ -14,7 +14,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       (`__bubble__(:instances)`); then one function per workflow, marked
       `# bubble:workflow <id>` with one `# bubble:step N <type>` per
       Bubble action (the plan's `step_order`). A workflow whose steps only
-      show, hide, toggle, focus or scroll to elements, clicked, with no
+      show, hide, toggle, animate, focus or scroll to elements, clicked, with no
       condition, is a function returning `Phoenix.LiveView.JS` commands the
       element's `phx-click` calls; every other workflow is a function of
       the runtime's context, its steps private functions. A step bubble_ex
@@ -341,7 +341,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       Enum.map_join(w.steps, "", fn step ->
         "  # bubble:step #{step.index} #{marker(step.type)}\n" <>
           "  |> Bubble.#{client_op(step.op)}(#{scope_source(step.args.target.path, "scope")}, " <>
-          "#{element_source(step.args.target.element)})\n"
+          "#{element_source(step.args.target.element)}#{animation_args(step)})\n"
       end)
 
     """
@@ -463,6 +463,13 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     do:
       "BubbleWorkflows.element(ctx, #{literal(client_name(op))}, " <>
         "#{source(args.target.path)}, #{element_source(args.target.element)})"
+
+  # An animation (WTF-603): the element's transition and motion, run by
+  # the page's hook.
+  defp op(:animate, args, _id, _env),
+    do:
+      "BubbleWorkflows.animate(ctx, #{source(args.target.path)}, " <>
+        "#{element_source(args.target.element)}#{animation_args(%{op: :animate, args: args})})"
 
   defp op(:reset_group, args, _id, env),
     do: reset_source(args.target, env.surface, env.spec, env.ctx, Map.get(args, :clears, []))
@@ -624,6 +631,13 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
   defp client_op(:scroll_to), do: "scroll_to"
   defp client_op(op), do: Atom.to_string(op)
+
+  # An animation's transition (`:show`, `:hide` or nil: a callout) and
+  # motion, after its element.
+  defp animation_args(%{op: :animate, args: %{visibility: visibility, motion: motion}}),
+    do: ", #{source(visibility)}, #{source(motion)}"
+
+  defp animation_args(_step), do: ""
 
   defp client_name(:scroll_to), do: "scroll"
   defp client_name(op), do: Atom.to_string(op)

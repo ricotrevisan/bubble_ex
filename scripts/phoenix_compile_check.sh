@@ -72,7 +72,11 @@
 #     hover: hover-shown elements rendered hidden with their contents,
 #     nothing sent to the server, the rules in the stylesheet (WTF-590,
 #     test/support/target/phoenix/hover_behavior.exs; the hovering itself
-#     is scripts/hover_browser_check.sh, in Chrome)
+#     is scripts/hover_browser_check.sh, in Chrome); for phoenix_animate,
+#     Bubble's "Animate an element": transitions as show and hide steps
+#     with their motion, in the browser or pushed after a server-side
+#     workflow's steps, and an entrance opening a lazy popup (WTF-603,
+#     test/support/target/phoenix/animate_behavior.exs)
 #   * the same checks with privacy: :enforced (WTF-423) on the fixtures
 #     with privacy rules, pages and workflows (among them
 #     phoenix_deleted_kept, rendered with the app's index: deleted fields a
@@ -286,6 +290,15 @@ for fixture in $fixtures; do
         test/hover_behavior_test.exs
       mix test test/hover_behavior_test.exs
       rm test/hover_behavior_test.exs
+    fi
+
+    # "Animate an element" (WTF-603): JS commands and the steps pushed to
+    # the page's hook.
+    if [[ "$fixture" == phoenix_animate ]]; then
+      cp "$root/test/support/target/phoenix/animate_behavior.exs" \
+        test/animate_behavior_test.exs
+      mix test test/animate_behavior_test.exs
+      rm test/animate_behavior_test.exs
     fi
 
     # Visibility conditionals (WTF-477): the hidden attribute per user and

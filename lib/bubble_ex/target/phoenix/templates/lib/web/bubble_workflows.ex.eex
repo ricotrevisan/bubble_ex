@@ -2541,6 +2541,29 @@ defmodule <%= @web %>.BubbleWorkflows do
     {:cont, %{ctx | messages: expected_popups(ctx, op, path, scope, element) ++ ctx.messages}}
   end
 
+  @doc """
+  Animates an element (WTF-603): `visibility` is what its transition does
+  (`:show` as an entrance starts, `:hide` once an exit ends; nil, a
+  callout, leaves it as it is), `motion` the frames, duration and easing
+  the page's hook runs. A transition opens and closes an overlay as a show
+  or hide step does.
+  """
+  def animate(ctx, path, element, visibility, motion) do
+    scope = scope(ctx, path)
+    op = if visibility, do: Atom.to_string(visibility)
+
+    js = %{
+      op: "animate",
+      to: Bubble.selector(scope, element),
+      visibility: op,
+      motion: motion
+    }
+
+    ctx = %{ctx | js: [js | ctx.js]}
+    ctx = %{ctx | opened: opened(ctx, op, path, scope, element) ++ ctx.opened}
+    {:cont, %{ctx | messages: expected_popups(ctx, op, path, scope, element) ++ ctx.messages}}
+  end
+
   # A show of an overlay rendered only while open (WTF-559): the page
   # renders its contents with the event's other changes (a "Display data"
   # in it included), so the hook opens it without asking.

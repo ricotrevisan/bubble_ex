@@ -6,6 +6,23 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **"Animate an element" lowered for Phoenix (WTF-603).** Velocity UI's
+  fade and slide transitions and `callout.shake` run in the page's hook
+  (`<Web>.Bubble.animate/5`, a `bubble:exec` `animate` operation from a
+  server-side workflow): an entrance shows the element as it starts, an
+  exit hides it once it ends, as show and hide steps do, with the motion
+  as a Web Animation; a callout only moves it. The duration is the
+  step's when "customize duration" is checked (that member is no longer
+  `:unsupported_option`), else the effect's default. A workflow whose
+  only other blocker was an animation now runs; one that only animates
+  and shows or hides, clicked, runs in the browser. For popups and the
+  overlays rendered only while open, an entrance counts as a show and an
+  exit as a hide (their "is opened" / "is closed" workflows, lazy
+  contents); an animated element's "is visible" stays the browser's.
+  Other effects (or none set) stay residue. New compile-check fixture
+  `phoenix_animate` with its behavior tests, and a hook test in Chrome
+  (`test/support/fidelity/animate-hook.mjs`).
+
 - **A number's `:ceiling` and `:floor` compile (WTF-598).** Bubble's
   `ceil` and `floor` on a number are `:ceiling` and `:floor` in the IR
   and the runtime's `ceiling/1` and `floor/1`: the nearest whole number

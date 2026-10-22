@@ -1,0 +1,343 @@
+{
+  "_comment": "Bubble's \"Animate an element\" lowered for Phoenix (WTF-603): an exit on a group run in the browser (wFade, its customized duration), a callout that only moves its element (wShake, Velocity's default duration), an entrance in a server-side workflow (wSlide: sets a state, then the hook shows bDrawer with its motion), an entrance that opens a popup the page renders only while open (wPop: its contents render with the event), and an effect bubble_ex does not lower (wFlip: refused). All data invented. test/support/target/phoenix/animate_behavior.exs runs it.",
+  "_id": "animate-fixture",
+  "pages": {
+    "index": {
+      "custom_states": {
+        "count_": {
+          "default_val": 0,
+          "display": "Count",
+          "value": "number"
+        }
+      },
+      "elements": {
+        "bBtnFade": {
+          "id": "bBtnFade",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 4,
+            "text": {
+              "entries": {
+                "0": "Fade out"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnFlip": {
+          "id": "bBtnFlip",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 8,
+            "text": {
+              "entries": {
+                "0": "Flip"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnPop": {
+          "id": "bBtnPop",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 7,
+            "text": {
+              "entries": {
+                "0": "Open"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnShake": {
+          "id": "bBtnShake",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 5,
+            "text": {
+              "entries": {
+                "0": "Shake"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bBtnSlide": {
+          "id": "bBtnSlide",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 6,
+            "text": {
+              "entries": {
+                "0": "Slide in"
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Button"
+        },
+        "bCount": {
+          "id": "bCount",
+          "properties": {
+            "height": 30,
+            "min_height_css": "30px",
+            "order": 9,
+            "text": {
+              "entries": {
+                "0": "Count: ",
+                "1": {
+                  "next": {
+                    "name": "custom.count_",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bHome"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "TextExpression"
+            },
+            "width": 200
+          },
+          "type": "Text"
+        },
+        "bDrawer": {
+          "elements": {
+            "bDrawerText": {
+              "id": "bDrawerText",
+              "properties": {
+                "font_color": "rgba(20, 20, 20, 1)",
+                "height": 30,
+                "min_height_css": "30px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Drawer"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 200
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bDrawer",
+          "properties": {
+            "container_layout": "column",
+            "height": 60,
+            "is_visible": false,
+            "min_height_css": "60px",
+            "order": 2,
+            "width": 300
+          },
+          "type": "Group"
+        },
+        "bPanel": {
+          "elements": {
+            "bPanelText": {
+              "id": "bPanelText",
+              "properties": {
+                "font_color": "rgba(20, 20, 20, 1)",
+                "height": 30,
+                "min_height_css": "30px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Panel"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 200
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bPanel",
+          "properties": {
+            "container_layout": "column",
+            "height": 60,
+            "min_height_css": "60px",
+            "order": 1,
+            "width": 300
+          },
+          "type": "Group"
+        },
+        "bPop": {
+          "elements": {
+            "bPopText": {
+              "id": "bPopText",
+              "properties": {
+                "font_color": "rgba(20, 20, 20, 1)",
+                "height": 30,
+                "min_height_css": "30px",
+                "order": 1,
+                "text": {
+                  "entries": {
+                    "0": "Dialog"
+                  },
+                  "type": "TextExpression"
+                },
+                "width": 200
+              },
+              "type": "Text"
+            }
+          },
+          "id": "bPop",
+          "properties": {
+            "height": 60,
+            "min_height_css": "60px",
+            "order": 3,
+            "width": 300
+          },
+          "type": "Popup"
+        }
+      },
+      "id": "bHome",
+      "name": "index",
+      "properties": {
+        "title": "Home"
+      },
+      "type": "Page",
+      "workflows": {
+        "wFade": {
+          "actions": {
+            "0": {
+              "id": "aFade1",
+              "properties": {
+                "animation": "transition.fadeOut",
+                "customize_duration": true,
+                "duration": 300,
+                "element_id": "bPanel"
+              },
+              "type": "AnimateElement"
+            }
+          },
+          "id": "wFade",
+          "properties": {
+            "element_id": "bBtnFade"
+          },
+          "type": "ButtonClicked"
+        },
+        "wFlip": {
+          "actions": {
+            "0": {
+              "id": "aFlip1",
+              "properties": {
+                "animation": "transition.flipXIn",
+                "customize_duration": true,
+                "duration": 400,
+                "element_id": "bPanel"
+              },
+              "type": "AnimateElement"
+            }
+          },
+          "id": "wFlip",
+          "properties": {
+            "element_id": "bBtnFlip"
+          },
+          "type": "ButtonClicked"
+        },
+        "wPop": {
+          "actions": {
+            "0": {
+              "id": "aPop1",
+              "properties": {
+                "custom_state": "custom.count_",
+                "element_id": "bHome",
+                "value": 2
+              },
+              "type": "SetCustomState"
+            },
+            "1": {
+              "id": "aPop2",
+              "properties": {
+                "animation": "transition.fadeIn",
+                "customize_duration": false,
+                "element_id": "bPop"
+              },
+              "type": "AnimateElement"
+            }
+          },
+          "id": "wPop",
+          "properties": {
+            "element_id": "bBtnPop"
+          },
+          "type": "ButtonClicked"
+        },
+        "wShake": {
+          "actions": {
+            "0": {
+              "id": "aShake1",
+              "properties": {
+                "animation": "callout.shake",
+                "customize_duration": false,
+                "element_id": "bBtnShake"
+              },
+              "type": "AnimateElement"
+            }
+          },
+          "id": "wShake",
+          "properties": {
+            "element_id": "bBtnShake"
+          },
+          "type": "ButtonClicked"
+        },
+        "wSlide": {
+          "actions": {
+            "0": {
+              "id": "aSlide1",
+              "properties": {
+                "custom_state": "custom.count_",
+                "element_id": "bHome",
+                "value": 1
+              },
+              "type": "SetCustomState"
+            },
+            "1": {
+              "id": "aSlide2",
+              "properties": {
+                "animation": "transition.slideRightIn",
+                "customize_duration": true,
+                "duration": 400,
+                "element_id": "bDrawer"
+              },
+              "type": "AnimateElement"
+            }
+          },
+          "id": "wSlide",
+          "properties": {
+            "element_id": "bBtnSlide"
+          },
+          "type": "ButtonClicked"
+        }
+      }
+    }
+  },
+  "user_types": {
+    "user": {
+      "display": "User",
+      "fields": {
+        "email": {
+          "display": "email",
+          "value": "text"
+        }
+      }
+    }
+  }
+}

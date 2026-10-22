@@ -94,7 +94,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   alias BubbleEx.Workflows.Frontend.{Step, Workflow}
   alias BubbleEx.Workflows.Lowering.{Change, Expr}
 
-  @client_ops [:show, :hide, :toggle, :focus, :scroll_to]
+  @client_ops [:show, :hide, :toggle, :animate, :focus, :scroll_to]
   # Steps that read or write stored data (a schedule inserts a job).
   @data_ops [
     :create,
@@ -1484,10 +1484,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     end
   end
 
-  defp args(:animate, _args, id, _ctx),
-    do:
-      {%{},
-       [Residue.entry(id, :unsupported_action, %{type: "AnimateElement", target: "phoenix"})]}
+  # An animation (WTF-603) runs in the browser, as the element steps do:
+  # a transition shows or hides the element as a show or hide step does,
+  # with its motion. Only a known effect reaches here (an unknown one is
+  # residue in the lowering).
+  defp args(:animate, %{element: element, visibility: visibility, motion: motion}, id, ctx) do
+    case target(element, ctx) do
+      {:ok, target} -> {%{target: target, visibility: visibility, motion: motion}, []}
+      {:error, entry} -> {%{}, [entry.(id)]}
+    end
+  end
 
   # The page's own sign-in forms are not wired: users sign in through
   # AshAuthentication's (magic link). Still auth residue here.
@@ -1769,9 +1775,20 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   end
 
   defp opens?(w, popup),
-    do: Enum.any?(w.steps, &(&1.op in [:show, :toggle] and match?(%{element: ^popup}, &1.args)))
+    do:
+      Enum.any?(
+        w.steps,
+        &(visibility_op(&1) in [:show, :toggle] and match?(%{element: ^popup}, &1.args))
+      )
 
-  @client_steps [:show, :hide, :toggle, :focus, :scroll_to]
+  @client_steps [:show, :hide, :toggle, :animate, :focus, :scroll_to]
+
+  # What a step does to its element's visibility: a show, hide or toggle,
+  # or an animation's transition (an entrance shows, an exit hides,
+  # WTF-603); nil for anything else (a callout included).
+  defp visibility_op(%Step{op: op}) when op in [:show, :hide, :toggle], do: op
+  defp visibility_op(%Step{op: :animate, args: %{visibility: visibility}}), do: visibility
+  defp visibility_op(_step), do: nil
 
   # Whether a workflow that opens `popup` displays data in it after its
   # last opening step, with only client steps between (no data step, no
@@ -1782,7 +1799,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       w.steps
       |> Enum.reverse()
       |> Enum.take_while(
-        &(not (&1.op in [:show, :toggle] and match?(%{element: ^popup}, &1.args)))
+        &(not (visibility_op(&1) in [:show, :toggle] and match?(%{element: ^popup}, &1.args)))
       )
       |> Enum.reverse()
 
@@ -1791,8 +1808,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   end
 
   # Steps this target does not run: an action that does not lower, or an
-  # animation (lowered, but residue here: `args(:animate, ...)`).
-  @unlowered_ops [nil, :animate]
+  # animation of an effect it does not know (WTF-603: which may show or
+  # hide the element).
+  defp unlowered?(%Step{op: nil}), do: true
+  defp unlowered?(%Step{op: :animate, args: %{motion: nil}}), do: true
+  defp unlowered?(_step), do: false
 
   # An action this target does not lower naming the popup (or an element
   # in it): it may open the popup, or change it, at any time.
@@ -1800,7 +1820,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     do:
       Enum.any?(
         w.steps,
-        &(&1.op in @unlowered_ops and is_binary(&1.element) and within?(&1.element, popup, ctx))
+        &(unlowered?(&1) and is_binary(&1.element) and within?(&1.element, popup, ctx))
       )
 
   # Whether anything outside `popup` names the popup or an element inside
@@ -1992,7 +2012,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
     opened =
       Enum.find_value(steps, fn {step, i} ->
-        if step.op in [:show, :toggle] and match?(%{element: ^popup}, step.args), do: i
+        if visibility_op(step) in [:show, :toggle] and match?(%{element: ^popup}, step.args),
+          do: i
       end)
 
     displayed =
@@ -2015,7 +2036,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
     direct =
       for w <- active,
-          Enum.any?(w.steps, &(&1.op in ops and match?(%{element: ^popup}, &1.args))),
+          Enum.any?(w.steps, &(visibility_op(&1) in ops and match?(%{element: ^popup}, &1.args))),
           do: w.bubble_id
 
     direct
@@ -2182,22 +2203,23 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     toggles =
       for w <- workflows,
           not w.disabled?,
-          %Step{op: op, args: %{element: element}} <- w.steps,
-          op in [:show, :hide, :toggle],
+          %Step{args: %{element: element}} = step <- w.steps,
+          op = visibility_op(step),
+          op != nil,
           is_binary(element),
           kind <- toggled(op),
           reduce: %{} do
         acc -> Map.update(acc, {kind, element}, [w.bubble_id], &[w.bubble_id | &1])
       end
 
-    # An action this target does not lower (an animation, a plugin's
-    # action, ...) naming a popup may open or close it, at any time:
-    # what the popup's workflows set is never kept.
+    # An action this target does not lower (an unknown animation, a
+    # plugin's action, ...) naming a popup may open or close it, at any
+    # time: what the popup's workflows set is never kept.
     unknown =
       for w <- workflows,
           not w.disabled?,
-          %Step{op: op, element: element} <- w.steps,
-          op in @unlowered_ops,
+          %Step{element: element} = step <- w.steps,
+          unlowered?(step),
           is_binary(element),
           into: MapSet.new(),
           do: element

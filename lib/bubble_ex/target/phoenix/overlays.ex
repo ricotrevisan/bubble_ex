@@ -20,10 +20,10 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
       or of a reusable element with a Workflows module whose component
       takes a `scope` (`scoped`); not inside a runtime container (a
       repeating group's cell template), where it is rendered as before
-    * no element step (show, hide, toggle, set focus, scroll to) of its
-      surface targets an element inside it (the overlay itself may be
-      targeted): a hidden element, or a focus, would be lost on closing,
-      and a step right after opening would find nothing
+    * no element step (show, hide, toggle, animate, set focus, scroll
+      to) of its surface targets an element inside it (the overlay itself
+      may be targeted): a hidden element, or a focus, would be lost on
+      closing, and a step right after opening would find nothing
     * every control inside it is a text or multiline input the page
       tracks (`inputs` and `cell_inputs` of the surface), whose value the
       page renders from what it keeps, so it comes back as the user left
@@ -95,7 +95,7 @@ defmodule BubbleEx.Target.Phoenix.Overlays do
   alias BubbleEx.Target.Elixir.FrontendWorkflows.Spec
   alias BubbleEx.Target.Phoenix.FrontendWorkflows
 
-  @element_ops [:show, :hide, :toggle, :focus, :scroll_to]
+  @element_ops [:show, :hide, :toggle, :animate, :focus, :scroll_to]
 
   # Steps naming an element that act on the server only: the page renders
   # what they set, whether the element is rendered then or later.
