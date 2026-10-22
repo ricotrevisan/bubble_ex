@@ -143,6 +143,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
           do: "{#{cells_key(rg)}, [#{Enum.join(listed, ", ")}]}"
 
     functions = Enum.map_join(workflows, "\n", &workflow_source(&1, s, spec, ctx))
+    visible = visible_source(surface, s, spec)
 
     data = Map.get(surface, :data, [])
     data_functions = Enum.map_join(data, "\n", &data_source(&1, s, ctx))
@@ -183,9 +184,98 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       def __bubble__(:data), do: @data
 
     #{functions}
-    #{data_functions}
+    #{data_functions}#{visible}
     end
     """
+  end
+
+  # The visibility on the page of the reusable instances it renders whose
+  # reusable element's workflows read it (WTF-605, `Spec`'s `visible`):
+  # `__bubble_visible__(scope, ctx)`, by the instance's scope (listed in
+  # `@instances`, from the page down), each level read in its host's
+  # scope (the page's, or the instance holding it), the instance's own
+  # visibility there and its host's. Nil for any other scope.
+  defp visible_source(%{kind: :page}, s, spec) do
+    chains =
+      for {scope, _definition} <- Map.get(s, :instances, []),
+          chain = scope_chain(scope),
+          Enum.all?(chain, fn {_host, id} -> Map.has_key?(spec.visible, id) end),
+          do: {scope, chain}
+
+    if chains == [] do
+      ""
+    else
+      levels =
+        chains
+        |> Enum.flat_map(fn {_scope, chain} -> chain end)
+        |> Enum.uniq()
+        |> Enum.with_index(1)
+
+      names = Map.new(levels, fn {level, n} -> {level, "__visible_#{n}__"} end)
+
+      clauses = Enum.map_join(chains, "\n", &visible_clause(&1, names))
+
+      functions =
+        Enum.map_join(levels, "\n", fn {{_host, id} = level, _n} ->
+          visible_level(names[level], id, spec.visible[id].visible)
+        end)
+
+      """
+
+        @doc \"\"\"
+        Whether the reusable instance of `scope` is shown on the page
+        (WTF-605): its own visibility and its hosts' up to the page,
+        computed on the server, never taken from the browser. Nil for a
+        scope the page does not compute.
+        \"\"\"
+        def __bubble_visible__(scope, ctx)
+      #{clauses}
+        def __bubble_visible__(_scope, _ctx), do: nil
+
+      #{functions}
+      """
+    end
+  end
+
+  defp visible_source(_surface, _s, _spec), do: ""
+
+  # A scope's clause: every level, in its host's scope.
+  defp visible_clause({scope, chain}, names) do
+    body =
+      Enum.map_join(chain, " and\n      ", fn {host, _id} = level ->
+        "#{names[level]}(BubbleWorkflows.host_ctx(ctx, #{literal(host)}))"
+      end)
+
+    "  def __bubble_visible__(#{literal(scope)}, ctx),\n    do:\n      #{body}\n"
+  end
+
+  # Instance `id`'s visibility on its host, a function of the host's
+  # context.
+  defp visible_level(name, id, value) do
+    test =
+      if value.source in ["true", "false"],
+        do: value.source,
+        else: "(#{value.source}) == true"
+
+    """
+      # The visibility of instance #{id} on its host
+      defp #{name}(#{ctx_arg([value])}) do
+      #{prelude([value])}  #{test}
+      end
+    """
+  end
+
+  # The instances of a scope from the page down (`Bubble.nest/2`'s
+  # segments, `-` and `~` escaped), each with its host's scope.
+  defp scope_chain(scope) do
+    segments = String.split(scope, "-")
+
+    segments
+    |> Enum.with_index()
+    |> Enum.map(fn {segment, i} ->
+      host = segments |> Enum.take(i) |> Enum.join("-")
+      {host, segment |> String.replace("~1", "-") |> String.replace("~0", "~")}
+    end)
   end
 
   # What the page lets a browser trigger, and its first states and inputs.
@@ -711,6 +801,10 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     do: if(Enum.flat_map(exprs, & &1.bindings) == [], do: "_ctx", else: "ctx")
 
   defp binding(:actor, loads), do: "BubbleWorkflows.actor(ctx, #{loads_source(loads)})"
+
+  # The instance's visibility on the page (WTF-605), which the page
+  # computes (`__bubble_visible__/2`).
+  defp binding({:instance_visible, _}, _loads), do: "BubbleWorkflows.instance_visible(ctx)"
   defp binding(:now, _loads), do: "ctx.now"
   defp binding(:page_width, _loads), do: "ctx.page_width"
 

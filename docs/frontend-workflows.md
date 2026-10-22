@@ -407,9 +407,30 @@ kept only for the page's own conditionals), a repeating group's cell, a
 breakpoint or a hover rule is on the way, or a conditional on the way
 does not compile for a workflow (one reading a repeating group's `is
 loading`, a constant no on the page, may be tested in the moment Bubble
-says yes). In a reusable element's workflow it stays residue: the
-instance's own visibility is its host page's. Values (a step's value,
-say) still do not read it.
+says yes). Values (a step's value, say) still do not read it.
+
+In a reusable element's workflow (WTF-605), "This reusable element is
+visible" is the visibility of the instance the workflow runs in, on its
+host page, and an element of the reusable element is visible when its
+own visibility below the reusable element (folded as above) and the
+instance's both are. The page computes the instance's on the server
+(`__bubble_visible__/2` of the page's `Workflows` module, by the
+instance's scope, `BubbleWorkflows.instance_visible/1`): the instance's
+conditionals and its ancestors' up to its host, read in the host's
+scope, and, for an instance placed in another reusable element, that
+instance's in turn, up to the page. The browser only names the instance
+its event comes from (a scope the page renders): a click naming a hidden
+instance, stale or forged, runs nothing its condition stops. The reads
+lower only when every instance of the reusable element decides on the
+server that way; otherwise they stay `:unavailable_input` residue, as
+before: a step shows, hides, toggles or animates an instance, an
+ancestor of one or the reusable element itself; an overlay, a repeating
+group's cell (a table's included), a breakpoint or a hover rule is on
+the way; a conditional on the way does not bind for a workflow; the
+reusable element is hidden on page load or has visibility
+conditionals, a breakpoint or a hover rule of its own, or no instance.
+A Popup reusable element's instance reads its open state, which a
+workflow does not: residue too.
 
 ## Refusing to run, never a partial run
 

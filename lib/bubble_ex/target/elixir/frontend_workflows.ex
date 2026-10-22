@@ -60,8 +60,16 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   on the way, in the browser or from the server; a breakpoint, a hover
   rule, an overlay, a repeating group's cell on the way), when a
   conditional on the way does not compile for a workflow (a repeating
-  group's `is loading`, say), and in a reusable element's workflow: the
-  instance's own visibility is its host page's.
+  group's `is loading`, say).
+
+  In a reusable element's workflow (WTF-605), the reusable element's own
+  `is visible` is its instance's on the page (`{:instance_visible, _}`,
+  which the page computes per instance from `Spec`'s `visible`), and an
+  element of it is visible when its visibility below the reusable
+  element and the instance's both are. Only when every instance's
+  visibility decides on the server, on a page or in a reusable element
+  whose instances all decide in turn, and no step shows or hides the
+  reusable element itself; otherwise the reads stay `:unavailable_input`.
 
   ## Residue added here
 
@@ -178,7 +186,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       elements' visibility
       (`BubbleEx.Target.Elixir.Frontend.visibility_index/3`, WTF-588): an
       "Only when" or "Do when" condition reads an element's `is visible`
-      as the page computes it (see Values); without it, that read is
+      as the page computes it, in a reusable element through its
+      instance's (WTF-605, see Values); without it, that read is
       `:unavailable_input` residue
     * `:api_clients` - the `BubbleEx.Target.ApiClients.Spec` the app
       renders (WTF-533): an API Connector step calls its generated client
@@ -322,7 +331,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         elements: elements,
         diagnostics: diagnostics,
         data_index: ctx.data,
-        cells: Data.cell_instances(in_cells, data, ctx.data, nested)
+        cells: Data.cell_instances(in_cells, data, ctx.data, nested),
+        visible: visible_instances(ctx, surfaces)
       }
 
       {:ok, Spec.with_unset_sources(spec, page_data)}
@@ -483,9 +493,13 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # Binds the page data and the workflows with the elements `displayed`
   # holds, until the page keeps every one of them faithfully (`kept?/4`).
   defp bind_data_and_workflows(displayed, lowered, page_data, ctx) do
-    ctx = Map.put(ctx, :displayed, displayed)
+    ctx = ctx |> Map.put(:displayed, displayed) |> Map.delete(:instance_visibility)
 
     {ctx, data} = bind_page_data(page_data, displayed, ctx)
+
+    # What the page's data binds decides the instances' visibility
+    # (WTF-605), which the workflows read.
+    ctx = Map.put(ctx, :instance_visibility, instance_visibility(ctx))
 
     bound =
       lowered.workflows
@@ -1153,18 +1167,170 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # Not the clicked or changed element and what holds it: the server never
   # checks that the element of a browser's event is shown (a stale or
   # forged click, an input committed later), so its own condition must
-  # decide that too. A reusable element's condition is held by its
-  # instance, whose own visibility is its host page's: its reads stay.
+  # decide that too.
+  #
+  # A reusable element's condition (WTF-605) reads an element of its own
+  # through the instance it runs in: the element's visibility below the
+  # reusable element, and the instance's on the host page, which the
+  # page computes per instance (`instance_visibility/1`). Only when every
+  # instance's decides on the server; else its reads stay.
   defp visibility(%Expr{ir: %IR{} = ir} = expr, ctx) do
-    with %{} = index <- Map.get(ctx, :element_visibility),
-         %{kind: :page} <- ctx.raw_elements[ctx.surface] do
-      %{expr | ir: ElementVisibility.inline(ir, ctx.surface, MapSet.new(), index)}
-    else
-      _ -> expr
+    index = Map.get(ctx, :element_visibility)
+
+    case ctx.raw_elements[ctx.surface] do
+      %{kind: :page} when is_map(index) ->
+        %{expr | ir: ElementVisibility.inline(ir, ctx.surface, MapSet.new(), index)}
+
+      %{kind: :reusable} when is_map(index) ->
+        if decided_reusable?(ctx.surface, ctx),
+          do: %{expr | ir: ElementVisibility.inline_instance(ir, ctx.surface, index)},
+          else: expr
+
+      _ ->
+        expr
     end
   end
 
   defp visibility(expr, _ctx), do: expr
+
+  defp decided_reusable?(id, ctx),
+    do: match?(%{reusables: %{^id => {:ok, _}}}, Map.get(ctx, :instance_visibility))
+
+  # The visibility of each reusable-element instance on its host
+  # (WTF-605): `instances` by Bubble ID (`%{definition, host, visible}`,
+  # `visible` its compiled visibility there, bound like a condition of
+  # the host's, or nil when it does not decide on the server), and
+  # `reusables`, by reusable element: `{:ok, data?}` when every instance
+  # of it decides, on a page or in a reusable element whose instances all
+  # decide in turn, and nothing shows or hides the reusable element apart
+  # from its instances (`ElementVisibility.own_visibility?/2`); `data?`
+  # when deciding one reads the page's data. A reusable element with no
+  # instance runs nowhere and is not decided.
+  defp instance_visibility(ctx) do
+    case Map.get(ctx, :element_visibility) do
+      %{} = index ->
+        instances =
+          for {id, %{kind: :element, instance_of: definition}} <- ctx.raw_elements,
+              is_binary(definition),
+              %{surface: host} <- [ctx.elements[id]],
+              into: %{},
+              do:
+                {id,
+                 %{
+                   definition: definition,
+                   host: host,
+                   visible: instance_value(id, host, index, ctx)
+                 }}
+
+        by_definition = Enum.group_by(Map.values(instances), & &1.definition)
+
+        reusables = decide(by_definition, index, ctx)
+
+        %{instances: instances, reusables: reusables}
+
+      _ ->
+        %{instances: %{}, reusables: %{}}
+    end
+  end
+
+  # The instances whose visibility a workflow reads (`Spec`'s `visible`):
+  # of the reusable elements whose workflows bind it, and of the reusable
+  # elements holding those, up to the pages.
+  defp visible_instances(ctx, surfaces) do
+    case Map.get(ctx, :instance_visibility) do
+      %{instances: instances} ->
+        read =
+          for {id, %{workflows: workflows}} <- surfaces,
+              Enum.any?(workflows, &reads_instance?/1),
+              into: MapSet.new(),
+              do: id
+
+        needed = hosts_up(read, Map.values(instances), MapSet.new())
+
+        for {id, %{definition: definition, visible: %{} = visible} = i} <- instances,
+            MapSet.member?(needed, definition),
+            into: %{},
+            do: {id, %{host: i.host, visible: visible}}
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp hosts_up(new, instances, acc) do
+    acc = MapSet.union(acc, new)
+
+    hosts =
+      for %{definition: d, host: host} <- instances,
+          MapSet.member?(new, d),
+          not MapSet.member?(acc, host),
+          into: MapSet.new(),
+          do: host
+
+    if MapSet.size(hosts) == 0, do: acc, else: hosts_up(hosts, instances, acc)
+  end
+
+  defp reads_instance?(w),
+    do:
+      [w.condition | Enum.map(w.steps, & &1.condition)]
+      |> Enum.any?(fn
+        %{bindings: bindings} -> Enum.any?(bindings, &match?({:instance_visible, _}, &1.bind))
+        _ -> false
+      end)
+
+  defp instance_value(id, host, index, ctx) do
+    hctx =
+      Map.merge(ctx, %{surface: host, cell: nil, workflow: %{bubble_id: nil, parameters: []}})
+
+    with {:ok, ir} <- ElementVisibility.instance(id, index),
+         {%{} = value, []} <- compile(%Expr{path: "", ir: ir}, id, hctx) do
+      value
+    else
+      _ -> nil
+    end
+  end
+
+  # The decided reusable elements, a least fixpoint: one is decided once
+  # every instance of it decides and is on a page or in a reusable element
+  # already decided (a cycle never is). Each round is linear in the
+  # instances.
+  defp decide(by_definition, index, ctx) do
+    candidates =
+      for {id, %{kind: :reusable}} <- ctx.raw_elements,
+          instances = Map.get(by_definition, id, []),
+          instances != [],
+          Enum.all?(instances, &is_map(&1.visible)),
+          not ElementVisibility.own_visibility?(id, index),
+          into: %{},
+          do: {id, instances}
+
+    decide_round(candidates, %{}, ctx)
+  end
+
+  defp decide_round(candidates, decided, ctx) do
+    new =
+      for {id, instances} <- candidates,
+          not Map.has_key?(decided, id),
+          hosts = Enum.map(instances, &host_decided(&1.host, decided, ctx)),
+          Enum.all?(hosts, &match?({:ok, _}, &1)),
+          into: %{} do
+        data? =
+          Enum.any?(hosts, &(&1 == {:ok, true})) or
+            Enum.any?(instances, &(loads?(&1.visible) or reads_data?(&1.visible)))
+
+        {id, {:ok, data?}}
+      end
+
+    if new == %{}, do: decided, else: decide_round(candidates, Map.merge(decided, new), ctx)
+  end
+
+  defp host_decided(host, decided, ctx) do
+    case ctx.raw_elements[host] do
+      %{kind: :page} -> {:ok, false}
+      %{kind: :reusable} -> Map.get(decided, host, :error)
+      _ -> :error
+    end
+  end
 
   defp queries?(%{queries: [_ | _]}), do: true
   defp queries?(_compiled), do: false
@@ -1483,7 +1649,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
           {kind, _} when kind in [:data, :cell, :cell_data, :outer_cell, :outer_cell_data],
           &1.bind
         )
-      ) or Enum.any?(bindings, &match?({:step_return, %{resource: r}} when r != nil, &1.bind))
+      ) or Enum.any?(bindings, &match?({:step_return, %{resource: r}} when r != nil, &1.bind)) or
+        Enum.any?(bindings, &match?({:instance_visible, %{data?: true}}, &1.bind))
 
   defp args(op, %{element: element}, id, ctx)
        when op in [:show, :hide, :toggle, :focus, :scroll_to] do
@@ -2717,6 +2884,19 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp bind({kind, _ref} = input, ctx) when kind in [:page_thing, :cell_thing, :cell_index],
     do: Data.read(ctx.data, ctx.surface, Map.get(ctx, :cell), input)
+
+  # A reusable element's own `is visible` as a condition of its workflow
+  # reads it (WTF-605, `visibility/2`, `ElementVisibility.instance_read/1`):
+  # its instance's, which the host page computes.
+  defp bind(
+         {:element_state, %{"element" => e, "state" => "is_visible", "instance" => true}},
+         %{surface: e} = ctx
+       ) do
+    case Map.get(ctx, :instance_visibility) do
+      %{reusables: %{^e => {:ok, data?}}} -> {:ok, {:instance_visible, %{data?: data?}}}
+      _ -> {:error, "element_state:is_visible"}
+    end
+  end
 
   defp bind({:element_state, %{"element" => e, "state" => s}} = input, ctx)
        when is_binary(e) and is_binary(s) do

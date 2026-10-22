@@ -180,39 +180,295 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsVisibilityTest do
     end
   end
 
-  test "in a reusable element, the reads stay residue" do
+  defp card_workflows(app) do
     card = ["element_definitions", "card"]
 
-    spec =
-      app()
-      |> update_in(card ++ ["elements"], fn elements ->
-        Map.put(elements, "bCardBtn", %{
-          "id" => "bCardBtn",
-          "type" => "Button",
-          "properties" => %{"height" => 40, "width" => 300, "order" => 4}
+    app
+    |> update_in(card ++ ["elements"], fn elements ->
+      Map.put(elements, "bCardBtn", %{
+        "id" => "bCardBtn",
+        "type" => "Button",
+        "properties" => %{"height" => 40, "width" => 300, "order" => 4}
+      })
+    end)
+    |> update_in(card, &Map.put(&1, "custom_states", %{"seen_" => %{"value" => "boolean"}}))
+    |> put_workflow(card, "wCardClick", %{
+      "type" => "ButtonClicked",
+      "properties" => %{"element_id" => "bCardBtn", "condition" => vis("bCardT", "is_visible")},
+      "actions" => %{"0" => set_seen("aCardClick1", "bCard", vis("bCardT", "is_visible"))}
+    })
+    |> put_workflow(card, "wCardDo", %{
+      "type" => "ConditionTrue",
+      "properties" => %{"condition" => vis("bCardT", "is_visible"), "run_when" => "every_time"},
+      "actions" => %{"0" => set_seen("aCardDo1", "bCard")}
+    })
+  end
+
+  defp residue_inputs(w), do: w |> residue() |> Enum.flat_map(& &1.detail.inputs) |> Enum.uniq()
+
+  describe "in a reusable element (WTF-605)" do
+    test "a read goes through the instance's visibility, which the page computes", %{spec: spec} do
+      # bSpotA shows once the page's flag is set, bSpotB always.
+      w = workflow(spec, "wSpotDo")
+      assert residue(w) == []
+      assert binds(w.condition) == [{:instance_visible, %{data?: false}}]
+      assert Spec.native?(w)
+
+      assert %{host: "bVis", visible: %{bindings: [%{bind: {:state, key}}]}} =
+               spec.visible["bSpotA"]
+
+      assert key == %{path: [], element: "bVis", state: "custom.flag_"}
+      assert %{host: "bVis", visible: %{source: "true", bindings: []}} = spec.visible["bSpotB"]
+    end
+
+    test "an element of it reads its own conditionals and the instance's", %{spec: spec} do
+      w = workflow(spec, "wSpotClick")
+      assert residue(w) == []
+      assert binds(w.condition) == [:actor, {:instance_visible, %{data?: false}}]
+    end
+
+    test "the clicked element's instance is not taken as shown: the condition decides it" do
+      # A click on bCardBtn names its instance; the condition still reads
+      # the instance's visibility from the page, and bCardT's own.
+      spec = app() |> card_workflows() |> spec()
+
+      for id <- ~w(wCardClick wCardDo) do
+        w = workflow(spec, id)
+        assert residue(w) == []
+        assert binds(w.condition) == [:actor, {:instance_visible, %{data?: false}}]
+      end
+
+      [step] = workflow(spec, "wCardClick").steps
+      assert binds(step.condition) == [:actor, {:instance_visible, %{data?: false}}]
+    end
+
+    test "a reusable element two levels down reads its hosts' visibility too" do
+      badge = ["element_definitions", "badge"]
+
+      spec =
+        app()
+        |> update_in(badge, &Map.put(&1, "custom_states", %{"seen_" => %{"value" => "boolean"}}))
+        |> put_workflow(badge, "wBadgeDo", %{
+          "type" => "ConditionTrue",
+          "properties" => %{
+            "condition" => vis("bBadge", "is_visible"),
+            "run_when" => "every_time"
+          },
+          "actions" => %{"0" => set_seen("aBadgeDo1", "bBadge")}
         })
-      end)
-      |> update_in(card, &Map.put(&1, "custom_states", %{"seen_" => %{"value" => "boolean"}}))
-      |> put_workflow(card, "wCardClick", %{
-        "type" => "ButtonClicked",
-        "properties" => %{"element_id" => "bCardBtn", "condition" => vis("bCardT", "is_visible")},
-        "actions" => %{"0" => set_seen("aCardClick1", "bCard", vis("bCardT", "is_visible"))}
-      })
-      |> put_workflow(card, "wCardDo", %{
-        "type" => "ConditionTrue",
-        "properties" => %{"condition" => vis("bCardT", "is_visible"), "run_when" => "every_time"},
-        "actions" => %{"0" => set_seen("aCardDo1", "bCard")}
-      })
-      |> spec()
+        |> spec()
 
-    # The instance holds bCardT: its own visibility is its host page's.
-    click = workflow(spec, "wCardClick")
-    assert click.condition == nil
+      w = workflow(spec, "wBadgeDo")
+      assert residue(w) == []
+      assert binds(w.condition) == [{:instance_visible, %{data?: false}}]
+      # bCardBadge in the card, the card's instance on the page.
+      assert %{host: "bCard"} = spec.visible["bCardBadge"]
+      assert %{host: "bVis"} = spec.visible["bMember"]
+    end
 
-    assert [%{reason: :unavailable_input}, %{reason: :unavailable_input}] = residue(click)
+    test "an instance a step shows or hides keeps the reads residue" do
+      spec =
+        app()
+        |> put_workflow(["pages", "index"], "wSpotHide", %{
+          "type" => "ButtonClicked",
+          "properties" => %{"element_id" => "bVisOnly"},
+          "actions" => %{
+            "0" => %{
+              "id" => "aSpotHide1",
+              "type" => "HideElement",
+              "properties" => %{"element_id" => "bSpotB"}
+            }
+          }
+        })
+        |> spec()
 
-    assert [%{reason: :unavailable_input, detail: %{inputs: ["element_state:is_visible"]}}] =
-             spec |> workflow("wCardDo") |> residue()
+      for id <- ~w(wSpotDo wSpotClick) do
+        w = workflow(spec, id)
+        assert w.condition == nil
+        assert residue_inputs(w) == ["element_state:is_visible"]
+      end
+
+      refute Map.has_key?(spec.visible, "bSpotA")
+    end
+
+    test "a reusable element its own steps show or hide keeps the reads residue" do
+      spot = ["element_definitions", "spot"]
+
+      spec =
+        app()
+        |> put_workflow(spot, "wSpotHideSelf", %{
+          "type" => "ButtonClicked",
+          "properties" => %{"element_id" => "bSpotBtn"},
+          "actions" => %{
+            "0" => %{
+              "id" => "aSpotHideSelf1",
+              "type" => "HideElement",
+              "properties" => %{"element_id" => "bSpot"}
+            }
+          }
+        })
+        |> spec()
+
+      w = workflow(spec, "wSpotDo")
+      assert w.condition == nil
+      assert residue_inputs(w) == ["element_state:is_visible"]
+    end
+
+    test "an instance in a repeating group's cell keeps the reads residue" do
+      spec =
+        app()
+        |> update_in(["pages", "index", "elements", "bTasks", "elements"], fn elements ->
+          Map.put(elements, "bSpotC", %{
+            "id" => "bSpotC",
+            "type" => "CustomElement",
+            "properties" => %{
+              "custom_id" => "bSpot",
+              "height" => 160,
+              "width" => 300,
+              "order" => 9
+            }
+          })
+        end)
+        |> spec()
+
+      w = workflow(spec, "wSpotDo")
+      assert w.condition == nil
+      assert residue_inputs(w) == ["element_state:is_visible"]
+    end
+
+    test "an instance whose conditional does not bind for a workflow keeps the reads residue" do
+      # "is hovered" is a state the page does not keep.
+      hovered = %{
+        "next" => %{"name" => "is_hovered", "type" => "Message"},
+        "properties" => %{"element_id" => "bVisOnly"},
+        "type" => "GetElement"
+      }
+
+      spec =
+        app()
+        |> put_in(["pages", "index", "elements", "bSpotB", "states"], %{
+          "0" => %{
+            "condition" => hovered,
+            "properties" => %{"is_visible" => false},
+            "type" => "State"
+          }
+        })
+        |> spec()
+
+      w = workflow(spec, "wSpotDo")
+      assert w.condition == nil
+      assert residue_inputs(w) == ["element_state:is_visible"]
+    end
+
+    test "a Popup reusable element's instance reads its open state: the reads stay residue" do
+      spec =
+        app()
+        |> put_in(["element_definitions", "spot", "properties", "element_type"], "Popup")
+        |> spec()
+
+      w = workflow(spec, "wSpotDo")
+      assert w.condition == nil
+      assert residue_inputs(w) == ["element_state:is_visible"]
+    end
+
+    test "a Floating Group reusable element no step shows reads its instances' conditionals" do
+      floating =
+        put_in(
+          app(),
+          ["element_definitions", "spot", "properties", "element_type"],
+          "FloatingGroup"
+        )
+
+      spec = spec(floating)
+      w = workflow(spec, "wSpotDo")
+      assert residue(w) == []
+      assert binds(w.condition) == [{:instance_visible, %{data?: false}}]
+
+      # Shown by a step: the browser's.
+      spec =
+        floating
+        |> put_workflow(["pages", "index"], "wSpotShow", %{
+          "type" => "ButtonClicked",
+          "properties" => %{"element_id" => "bVisOnly"},
+          "actions" => %{
+            "0" => %{
+              "id" => "aSpotShow1",
+              "type" => "ShowElement",
+              "properties" => %{"element_id" => "bSpotA"}
+            }
+          }
+        })
+        |> spec()
+
+      assert spec |> workflow("wSpotDo") |> residue_inputs() == ["element_state:is_visible"]
+    end
+
+    test "a reusable element with visibility of its own keeps the reads residue" do
+      spot = ["element_definitions", "spot"]
+
+      own_conditional =
+        put_in(app(), spot ++ ["states"], %{
+          "0" => %{
+            "condition" => %{
+              "next" => %{"name" => "logged_in", "type" => "Message"},
+              "type" => "CurrentUser"
+            },
+            "properties" => %{"is_visible" => false},
+            "type" => "State"
+          }
+        })
+
+      hidden_on_load = put_in(app(), spot ++ ["properties", "is_visible"], false)
+
+      for app <- [own_conditional, hidden_on_load] do
+        w = app |> spec() |> workflow("wSpotDo")
+        assert w.condition == nil
+        assert residue_inputs(w) == ["element_state:is_visible"]
+      end
+    end
+
+    test "a state that sets the visibility an instance already has is left out" do
+      # Generated code compiles with warnings as errors: an always-false
+      # `if(c, do: false, else: false) == true` would not.
+      spec =
+        app()
+        |> put_in(["pages", "index", "elements", "bSpotB", "properties", "is_visible"], false)
+        |> put_in(["pages", "index", "elements", "bSpotB", "states"], %{
+          "0" => %{
+            "condition" => %{
+              "next" => %{"name" => "logged_in", "type" => "Message"},
+              "type" => "CurrentUser"
+            },
+            "properties" => %{"is_visible" => false},
+            "type" => "State"
+          }
+        })
+        |> spec()
+
+      assert %{visible: %{source: "false", bindings: []}} = spec.visible["bSpotB"]
+    end
+
+    test "a reusable element with no instance keeps the reads residue" do
+      spec =
+        app()
+        |> update_in(["pages", "index", "elements"], &Map.drop(&1, ["bSpotA", "bSpotB"]))
+        |> spec()
+
+      w = workflow(spec, "wSpotDo")
+      assert w.condition == nil
+      assert residue_inputs(w) == ["element_state:is_visible"]
+      assert spec.visible == %{}
+    end
+
+    test "without the visibility index, the reads are residue as before" do
+      spec = spec(app(), false)
+
+      for id <- ~w(wSpotDo wSpotClick) do
+        assert spec |> workflow(id) |> residue_inputs() == ["element_state:is_visible"]
+      end
+
+      assert spec.visible == %{}
+    end
   end
 
   test "deterministic", %{spec: spec} do

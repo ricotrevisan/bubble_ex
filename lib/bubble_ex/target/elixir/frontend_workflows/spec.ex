@@ -24,6 +24,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
       is rendered per outer cell, WTF-520, else nil); the page renders one
       per cell, in a scope of its own, when `residue` is empty (see
       `BubbleEx.Target.Elixir.FrontendWorkflows.Data`)
+    * `visible` - the reusable-element instances whose visibility the
+      page computes on the server for their reusable element's workflows
+      (WTF-605), by Bubble ID: `%{host, visible}`, `visible` a compiled
+      value (below) of the host's (`host`, the page or reusable element
+      the instance is placed on), read in the host's scope. Every
+      instance of a reusable element whose workflows read its own
+      visibility (`{:instance_visible, _}`) is listed, and so is every
+      instance of a reusable element holding one
     * `diagnostics` - the lowering's and this binding's
 
   A workflow: `%{workflow, symbol, name, surface, kind, element, cell,
@@ -51,7 +59,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   the custom event step `step` triggered returned; a thing is read as a
   record of `resource`, through Ash as the current user), `{:url, name}`, `{:url_value, url}` (see `url/1`), `{:url_thing,
   url}` (`url/1`'s, with the thing's `resource`), `{:state, key}` (key `%{path, element,
-  state}`), `{:input, key}` (key `%{path, element}`) or `{:cell_input,
+  state}`), `{:input, key}` (key `%{path, element}`), `{:instance_visible,
+  %{data?}}` (WTF-605: whether the instance the workflow runs in is shown
+  on the page, its own visibility and its hosts' up to the page, from
+  `visible`; `data?` when that reads the page's data) or `{:cell_input,
   %{element, cell}}` (an input in the cell of repeating group `cell`, read
   in that cell: each cell keeps its own value, WTF-520). A key's `path` is
   the reusable-element instances between the workflow's surface and the
@@ -81,7 +92,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
               option_lists: MapSet.new(),
               unset_sources: MapSet.new()
             },
-            cells: %{}
+            cells: %{},
+            visible: %{}
 
   @type t :: %__MODULE__{}
 

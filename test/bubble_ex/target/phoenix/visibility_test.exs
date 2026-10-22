@@ -13,7 +13,7 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
 
   defp app, do: @fixture |> File.read!() |> Jason.decode!()
 
-  defp build(app) do
+  defp build(app, workflow_opts \\ []) do
     {:ok, model} = Model.build(app)
     {:ok, index} = Index.build(app, model: model)
     {:ok, project} = BubbleEx.Target.Ash.map(model, [], privacy: :omit)
@@ -34,11 +34,15 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     {:ok, page_data} = BubbleEx.PageData.build(app, model)
 
     {:ok, spec} =
-      FrontendWorkflows.map(lowered, project,
-        namespace: "Shop",
-        frontend: frontend,
-        backend: backend,
-        page_data: page_data
+      FrontendWorkflows.map(
+        lowered,
+        project,
+        [
+          namespace: "Shop",
+          frontend: frontend,
+          backend: backend,
+          page_data: page_data
+        ] ++ workflow_opts
       )
 
     opts = [
@@ -73,6 +77,81 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
   defp tag(template, id) do
     [tag] = Regex.run(~r/<[.a-z_]+\s[^>]*data-bubble-id="#{id}"[^>]*>/s, template)
     tag
+  end
+
+  test "a reusable element's workflow reads its instance's visibility, which the page computes (WTF-605)" do
+    app = app()
+    {:ok, model} = Model.build(app)
+    {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+    index = Frontend.visibility_index(app, model, frontend)
+    %{files: files} = build(app, element_visibility: index)
+
+    spot = files["lib/shop_web/components/reusables/spot/workflows.ex"]
+    assert spot =~ "BubbleWorkflows.instance_visible(ctx)"
+
+    page = files["lib/shop_web/live/index_live/workflows.ex"]
+    # One clause per instance the reusable element's workflows read, each
+    # level read in its host's scope; nil for any other scope.
+    assert squash(page) =~
+             squash(
+               ~s|def __bubble_visible__("bSpotA", ctx), do: __visible_1__(BubbleWorkflows.host_ctx(ctx, ""))|
+             )
+
+    assert squash(page) =~
+             squash(
+               ~s|def __bubble_visible__("bSpotB", ctx), do: __visible_2__(BubbleWorkflows.host_ctx(ctx, ""))|
+             )
+
+    assert squash(page) =~ squash("def __bubble_visible__(_scope, _ctx), do: nil")
+    assert page =~ ~s|BubbleWorkflows.state(ctx, [], "bVis", "custom.flag_")|
+    refute page =~ ~s|__bubble_visible__("bMember"|
+
+    # Without the reusable element's reads, the page computes none.
+    refute build(app)[:files]["lib/shop_web/live/index_live/workflows.ex"] =~ "__bubble_visible__"
+  end
+
+  test "a reusable element two levels down: each level in its host's scope (WTF-605)" do
+    badge = ["element_definitions", "badge"]
+
+    app =
+      app()
+      |> update_in(badge, &Map.put(&1, "custom_states", %{"seen_" => %{"value" => "boolean"}}))
+      |> update_in(badge ++ ["workflows"], fn workflows ->
+        Map.put(workflows || %{}, "wBadgeDo", %{
+          "id" => "wBadgeDo",
+          "type" => "ConditionTrue",
+          "properties" => %{
+            "condition" => %{
+              "type" => "GetElement",
+              "properties" => %{"element_id" => "bBadge"},
+              "next" => %{"type" => "Message", "name" => "is_visible"}
+            },
+            "run_when" => "every_time"
+          },
+          "actions" => %{
+            "0" => %{
+              "id" => "aBadgeDo1",
+              "type" => "SetCustomState",
+              "properties" => %{
+                "custom_state" => "custom.seen_",
+                "element_id" => "bBadge",
+                "value" => true
+              }
+            }
+          }
+        })
+      end)
+
+    {:ok, model} = Model.build(app)
+    {:ok, frontend} = BubbleEx.Frontend.normalize(app)
+
+    %{files: files} =
+      build(app, element_visibility: Frontend.visibility_index(app, model, frontend))
+
+    page = squash(files["lib/shop_web/live/index_live/workflows.ex"])
+
+    assert page =~
+             ~r/def__bubble_visible__\("bMember-bCardBadge",ctx\),do:__visible_\d+__\(BubbleWorkflows.host_ctx\(ctx,""\)\)and__visible_\d+__\(BubbleWorkflows.host_ctx\(ctx,"bMember"\)\)/
   end
 
   test "a conditional sets the hidden attribute from a helper, last true state winning", %{
@@ -781,7 +860,8 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
 
     # Without the workflows the page keeps no custom state, input value or
     # URL and loads no data: bFlagged's, bFlagOff's, bVisSeen's,
-    # bVisMet's, bOpen's, bCellNoProject's, bHasProject's, bTabOpen's,
+    # bVisMet's, bSpotA's, bSpotSeen's, bSpotClicked's (WTF-605), bOpen's,
+    # bCellNoProject's, bHasProject's, bTabOpen's,
     # bCardTab's, bBadgeTab's and the width's (bWidth, bNarrowTab, bBadgeNarrow and
     # the cells page's five, and its three breakpoint tests), the page
     # name's (bHostIs, bHostInIs, bPageName) and the date/time's (bNow,
@@ -790,15 +870,16 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     # bLoading's read a repeating group's "is loading", a constant). The
     # panel's two "isn't clickable" states are other properties. Of the
     # conditional texts (WTF-582), only those reading the current user
-    # compile (bRoleText's, bBold's). bVisG's and the three that read its
-    # visibility (WTF-578) compile; bVisWf's (a step shows what it reads)
+    # compile (bRoleText's, bBold's). bSpotT's reads the current user:
+    # compiled. bVisG's and the three that read its visibility (WTF-578)
+    # compile; bVisWf's (a step shows what it reads)
     # and bVisSelf's (it reads itself) are marked. The Floating Group
     # bOvFloat's and bOvFloatRead's, which reads inside it, compile
     # (WTF-587); bOvPopRead's reads bOvPop's open state, which a page
     # without workflows does not keep: marked.
     assert %{
-             "visibility_conditions_compiled" => 18,
-             "visibility_conditions_marked" => 30,
+             "visibility_conditions_compiled" => 19,
+             "visibility_conditions_marked" => 33,
              "text_conditions_compiled" => 2,
              "text_conditions_marked" => 8,
              "conditions_other_properties" => 4
