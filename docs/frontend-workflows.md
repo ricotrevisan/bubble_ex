@@ -427,9 +427,10 @@ before: a step shows, hides, toggles or animates an instance, an
 ancestor of one or the reusable element itself; an overlay, a repeating
 group's cell (a table's included), a breakpoint or a hover rule is on
 the way; a conditional on the way does not bind for a workflow; the
-reusable element has visibility conditionals, a breakpoint or a hover
-rule of its own, or no instance. A Popup reusable element's instance
-reads its open state, which a workflow does not: residue too.
+reusable element is hidden on page load or has visibility
+conditionals, a breakpoint or a hover rule of its own, or no instance.
+A Popup reusable element's instance reads its open state, which a
+workflow does not: residue too.
 
 ## Refusing to run, never a partial run
 

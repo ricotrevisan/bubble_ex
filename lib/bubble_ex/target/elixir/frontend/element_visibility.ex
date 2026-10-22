@@ -77,6 +77,7 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
           nodes: %{String.t() => %{node: Node.t(), ancestors: [String.t()], root: String.t()}},
           touched: MapSet.t(),
           definitions: %{String.t() => String.t()},
+          conditional_definitions: MapSet.t(),
           env: Expression.Env.t()
         }
 
@@ -107,8 +108,30 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
           into: %{},
           do: {ref, id}
 
-    %{nodes: nodes, touched: touched(app), definitions: definitions, env: env}
+    %{
+      nodes: nodes,
+      touched: touched(app),
+      definitions: definitions,
+      conditional_definitions: conditional_definitions(app),
+      env: env
+    }
   end
+
+  # The reusable elements whose definition has visibility conditionals of
+  # its own (WTF-605): the normalized frontend does not keep them (nor do
+  # the pages apply them), so they are read from the app.
+  defp conditional_definitions(%{"element_definitions" => definitions})
+       when is_map(definitions) do
+    for {key, definition} <- definitions,
+        is_map(definition),
+        Conditions.visibility(definition["states"] || definition["%s"]) != [],
+        ref <- [key, definition["id"]],
+        is_binary(ref),
+        into: MapSet.new(),
+        do: ref
+  end
+
+  defp conditional_definitions(_app), do: MapSet.new()
 
   defp walk(%Node{} = node, ancestors, root) do
     own =
@@ -277,16 +300,21 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
   @doc """
   Whether the reusable element `root` (its definition) may be shown or
   hidden apart from its instances' visibility: a step of the app names
-  it, or it has visibility conditionals, a breakpoint or a hover rule of
-  its own, which the generated pages do not apply to the instance
+  it, or it is hidden on page load or has visibility conditionals (in
+  the app's definition), a breakpoint or a hover rule of its own, which
+  the generated pages do not apply to the instance
   (WTF-605). The instance's own are `instance/2`'s.
   """
   @spec own_visibility?(String.t(), t()) :: boolean()
   def own_visibility?(root, index) do
     case index.nodes[root] do
       %{node: %Node{} = node} ->
-        MapSet.member?(index.touched, root) or
-          (is_binary(node.map_key) and MapSet.member?(index.touched, node.map_key)) or
+        conditional = Map.get(index, :conditional_definitions, MapSet.new())
+
+        Enum.any?([root, node.map_key], fn ref ->
+          is_binary(ref) and
+            (MapSet.member?(index.touched, ref) or MapSet.member?(conditional, ref))
+        end) or
           node.box[:hidden?] == true or Conditions.visibility(condition_payload(node)) != [] or
           breakpoint_display?(node) or Hover.visibility?(node)
 
@@ -395,11 +423,17 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
 
       {condition, visible?}, {:ok, acc} ->
         case condition(condition, id, seen, index) do
-          {:ok, c} -> {:cont, {:ok, IR.node(:if, [c, literal(visible?), acc], "boolean")}}
+          {:ok, c} -> {:cont, {:ok, state_if(c, literal(visible?), acc)}}
           :error -> {:halt, :error}
         end
     end)
   end
+
+  # A state that sets the visibility it already has changes nothing: left
+  # out, so no always-false comparison is generated (Elixir's type checker
+  # warns on one, and generated code compiles with warnings as errors).
+  defp state_if(_condition, same, same), do: same
+  defp state_if(condition, then, other), do: IR.node(:if, [condition, then, other], "boolean")
 
   defp condition(condition, id, seen, index) when is_map(condition) do
     env = %{index.env | host: id}

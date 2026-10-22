@@ -1224,10 +1224,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
         by_definition = Enum.group_by(Map.values(instances), & &1.definition)
 
-        reusables =
-          for {id, %{kind: :reusable}} <- ctx.raw_elements,
-              into: %{},
-              do: {id, decide(id, by_definition, index, ctx, MapSet.new())}
+        reusables = decide(by_definition, index, ctx)
 
         %{instances: instances, reusables: reusables}
 
@@ -1282,7 +1279,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       end)
 
   defp instance_value(id, host, index, ctx) do
-    hctx = Map.merge(ctx, %{surface: host, cell: nil, workflow: %{bubble_id: nil}})
+    hctx =
+      Map.merge(ctx, %{surface: host, cell: nil, workflow: %{bubble_id: nil, parameters: []}})
 
     with {:ok, ir} <- ElementVisibility.instance(id, index),
          {%{} = value, []} <- compile(%Expr{path: "", ir: ir}, id, hctx) do
@@ -1292,33 +1290,46 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     end
   end
 
-  defp decide(id, by_definition, index, ctx, seen) do
-    instances = Map.get(by_definition, id, [])
+  # The decided reusable elements, a least fixpoint: one is decided once
+  # every instance of it decides and is on a page or in a reusable element
+  # already decided (a cycle never is). Each round is linear in the
+  # instances.
+  defp decide(by_definition, index, ctx) do
+    candidates =
+      for {id, %{kind: :reusable}} <- ctx.raw_elements,
+          instances = Map.get(by_definition, id, []),
+          instances != [],
+          Enum.all?(instances, &is_map(&1.visible)),
+          not ElementVisibility.own_visibility?(id, index),
+          into: %{},
+          do: {id, instances}
 
-    cond do
-      MapSet.member?(seen, id) or instances == [] -> :error
-      ElementVisibility.own_visibility?(id, index) -> :error
-      true -> decide_instances(instances, by_definition, index, ctx, MapSet.put(seen, id))
-    end
+    decide_round(candidates, %{}, ctx)
   end
 
-  defp decide_instances(instances, by_definition, index, ctx, seen) do
-    Enum.reduce_while(instances, {:ok, false}, fn i, {:ok, data?} ->
-      host =
-        case ctx.raw_elements[i.host] do
-          %{kind: :page} -> {:ok, false}
-          %{kind: :reusable} -> decide(i.host, by_definition, index, ctx, seen)
-          _ -> :error
-        end
+  defp decide_round(candidates, decided, ctx) do
+    new =
+      for {id, instances} <- candidates,
+          not Map.has_key?(decided, id),
+          hosts = Enum.map(instances, &host_decided(&1.host, decided, ctx)),
+          Enum.all?(hosts, &match?({:ok, _}, &1)),
+          into: %{} do
+        data? =
+          Enum.any?(hosts, &(&1 == {:ok, true})) or
+            Enum.any?(instances, &(loads?(&1.visible) or reads_data?(&1.visible)))
 
-      case {i.visible, host} do
-        {%{} = value, {:ok, host_data?}} ->
-          {:cont, {:ok, data? or host_data? or loads?(value) or reads_data?(value)}}
-
-        _ ->
-          {:halt, :error}
+        {id, {:ok, data?}}
       end
-    end)
+
+    if new == %{}, do: decided, else: decide_round(candidates, Map.merge(decided, new), ctx)
+  end
+
+  defp host_decided(host, decided, ctx) do
+    case ctx.raw_elements[host] do
+      %{kind: :page} -> {:ok, false}
+      %{kind: :reusable} -> Map.get(decided, host, :error)
+      _ -> :error
+    end
   end
 
   defp queries?(%{queries: [_ | _]}), do: true

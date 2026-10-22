@@ -18,7 +18,9 @@ All notable changes to this project are documented here.
   the instance. Only when every instance of the reusable element decides
   on the server: a step showing or hiding an instance, an ancestor or
   the reusable element, an overlay, a cell, a breakpoint or a hover rule
-  on the way keep the reads `:unavailable_input`. New in
+  on the way, or a reusable element hidden on page load or with
+  visibility conditionals of its own, keep the reads
+  `:unavailable_input`. New in
   `FrontendWorkflows.Spec`: `visible` (the instances' compiled
   visibility on their hosts) and the `{:instance_visible, %{data?}}`
   binding. New cases in the `phoenix_visibility` compile-check fixture

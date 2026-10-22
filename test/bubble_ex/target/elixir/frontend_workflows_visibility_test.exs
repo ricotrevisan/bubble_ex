@@ -360,6 +360,94 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsVisibilityTest do
       assert residue_inputs(w) == ["element_state:is_visible"]
     end
 
+    test "a Popup reusable element's instance reads its open state: the reads stay residue" do
+      spec =
+        app()
+        |> put_in(["element_definitions", "spot", "properties", "element_type"], "Popup")
+        |> spec()
+
+      w = workflow(spec, "wSpotDo")
+      assert w.condition == nil
+      assert residue_inputs(w) == ["element_state:is_visible"]
+    end
+
+    test "a Floating Group reusable element no step shows reads its instances' conditionals" do
+      floating =
+        put_in(
+          app(),
+          ["element_definitions", "spot", "properties", "element_type"],
+          "FloatingGroup"
+        )
+
+      spec = spec(floating)
+      w = workflow(spec, "wSpotDo")
+      assert residue(w) == []
+      assert binds(w.condition) == [{:instance_visible, %{data?: false}}]
+
+      # Shown by a step: the browser's.
+      spec =
+        floating
+        |> put_workflow(["pages", "index"], "wSpotShow", %{
+          "type" => "ButtonClicked",
+          "properties" => %{"element_id" => "bVisOnly"},
+          "actions" => %{
+            "0" => %{
+              "id" => "aSpotShow1",
+              "type" => "ShowElement",
+              "properties" => %{"element_id" => "bSpotA"}
+            }
+          }
+        })
+        |> spec()
+
+      assert spec |> workflow("wSpotDo") |> residue_inputs() == ["element_state:is_visible"]
+    end
+
+    test "a reusable element with visibility of its own keeps the reads residue" do
+      spot = ["element_definitions", "spot"]
+
+      own_conditional =
+        put_in(app(), spot ++ ["states"], %{
+          "0" => %{
+            "condition" => %{
+              "next" => %{"name" => "logged_in", "type" => "Message"},
+              "type" => "CurrentUser"
+            },
+            "properties" => %{"is_visible" => false},
+            "type" => "State"
+          }
+        })
+
+      hidden_on_load = put_in(app(), spot ++ ["properties", "is_visible"], false)
+
+      for app <- [own_conditional, hidden_on_load] do
+        w = app |> spec() |> workflow("wSpotDo")
+        assert w.condition == nil
+        assert residue_inputs(w) == ["element_state:is_visible"]
+      end
+    end
+
+    test "a state that sets the visibility an instance already has is left out" do
+      # Generated code compiles with warnings as errors: an always-false
+      # `if(c, do: false, else: false) == true` would not.
+      spec =
+        app()
+        |> put_in(["pages", "index", "elements", "bSpotB", "properties", "is_visible"], false)
+        |> put_in(["pages", "index", "elements", "bSpotB", "states"], %{
+          "0" => %{
+            "condition" => %{
+              "next" => %{"name" => "logged_in", "type" => "Message"},
+              "type" => "CurrentUser"
+            },
+            "properties" => %{"is_visible" => false},
+            "type" => "State"
+          }
+        })
+        |> spec()
+
+      assert %{visible: %{source: "false", bindings: []}} = spec.visible["bSpotB"]
+    end
+
     test "a reusable element with no instance keeps the reads residue" do
       spec =
         app()

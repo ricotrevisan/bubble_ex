@@ -2372,8 +2372,6 @@ defmodule <%= @web %>.BubbleWorkflows do
   server; a scope the page does not compute (a page module scaffolded
   before) is logged and read as not shown.
   """
-  def instance_visible(%Ctx{scope: ""}), do: true
-
   def instance_visible(%Ctx{page: page, scope: scope} = ctx) when is_atom(page) and not is_nil(page) do
     case visible_scope(page, scope, ctx) do
       visible when is_boolean(visible) ->
