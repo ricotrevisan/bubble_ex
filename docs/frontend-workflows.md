@@ -384,9 +384,31 @@ over the empty one when it has none (`docs/page-data.md`, WTF-521).
 Anything the generated page does not keep is `:unavailable_input` residue,
 never a silent empty value: data the page does not load, a cell's thing
 outside the cell's own clicks and input changes, a reusable element's
-property some instance's value of which is not loaded, an element's built-in states (`is visible`, `is hovered`),
-other page data, the value of an input the page does not track (a
-placeholder, a date input, one whose first value is dynamic).
+property some instance's value of which is not loaded, an element's built-in states (`is hovered`, a size; `is visible`
+except as below), other page data, the value of an input the page does
+not track (a placeholder, a date input, one whose first value is
+dynamic).
+
+An element's `is visible` (`isn't visible`) in a workflow's or a step's
+"Only when", or a "Do when" condition, is the visibility the page
+computes for it (WTF-588), as an element's own conditionals read it
+(WTF-578, `ElementVisibility`): folded from its visibility conditionals
+and its ancestors' up to one that is shown whenever the condition is
+tested; their inputs are bound like the condition's own. A click's or an
+input change's own condition is tested as the user acts on the element,
+so the element and what holds it are shown then. Any other condition on
+a page is held by the page only: another event's, or a step's, since an
+earlier step may have hidden the element acted on. The read stays
+`:unavailable_input` residue when the browser may change the answer: a
+step shows, hides, toggles or animates the element or an ancestor on the
+way (in the browser or sent by the server, so a "Do when" reading an
+animated element still waits, WTF-604), an overlay (its open state is
+kept only for the page's own conditionals), a repeating group's cell, a
+breakpoint or a hover rule is on the way, or a conditional on the way
+does not compile. In a reusable element's workflow only a click's or an
+input change's own condition reads it: anything else is held by the
+instance, whose own visibility is its host page's. Values (a step's
+value, say) still do not read it.
 
 ## Refusing to run, never a partial run
 
@@ -657,7 +679,9 @@ rendered the contents, false once the hook reported it closed.
 `:bubble_overlays_rendered` does not open it, so a static snapshot (the
 HEEx fidelity candidate) renders what reads it as if it were closed. Any
 other overlay's open state only the browser knows: a read of it stays
-marked, as before. Workflow conditions are not lowered this way.
+marked, as before. Workflow conditions do not read an overlay's open
+state (WTF-588 lowers their other `is visible` reads): it stays
+`:unavailable_input` there.
 
 ### Elements hidden by their conditions (WTF-559)
 

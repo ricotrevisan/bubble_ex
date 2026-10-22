@@ -143,7 +143,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   def compile(app, %Model{} = model, %Project{} = project, %Normalized{} = frontend, opts)
       when is_map(app) and not is_struct(app) and is_list(opts) do
-    env = Env.new(model, tree: Tree.build(app), searches: :page, loading_status: :constant)
+    env = env(app, model)
     opts = Keyword.put(opts, :element_visibility, ElementVisibility.index(app, frontend, env))
 
     nodes = Enum.flat_map(frontend.pages ++ frontend.reusables, &nodes/1)
@@ -177,6 +177,16 @@ defmodule BubbleEx.Target.Elixir.Frontend do
     do:
       {:error,
        Error.new(:invalid_input, "expected app JSON, its Model, its Ash project and its frontend")}
+
+  @doc """
+  The visibility index `compile/5` reads an element's `is visible` with
+  (`ElementVisibility.index/3`), for
+  `BubbleEx.Target.Elixir.FrontendWorkflows.map/3`'s `:element_visibility`
+  option (WTF-588): the workflows' conditions read it as the pages do.
+  """
+  @spec visibility_index(map(), Model.t(), Normalized.t()) :: ElementVisibility.t()
+  def visibility_index(app, %Model{} = model, %Normalized{} = frontend) when is_map(app),
+    do: ElementVisibility.index(app, frontend, env(app, model))
 
   @doc """
   The `:element_condition` residue of `frontend` (`BubbleEx.Plan.Residue`):
@@ -598,6 +608,9 @@ defmodule BubbleEx.Target.Elixir.Frontend do
         end
     end)
   end
+
+  defp env(app, model),
+    do: Env.new(model, tree: Tree.build(app), searches: :page, loading_status: :constant)
 
   # A condition is a yes/no expression; compiled as a value (not shown).
   defp compile_condition(condition, env, project, opts) when is_map(condition) do

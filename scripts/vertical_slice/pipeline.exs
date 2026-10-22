@@ -112,7 +112,8 @@ defmodule VerticalSlice.Pipeline do
         frontend: frontend,
         backend: backend,
         page_data: page_data,
-        api_clients: clients
+        api_clients: clients,
+        element_visibility: Frontend.visibility_index(app, model, frontend)
       )
 
     # The plan knows what the lowerings and their bindings left.

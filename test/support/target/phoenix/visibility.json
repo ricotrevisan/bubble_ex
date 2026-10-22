@@ -430,6 +430,16 @@
           "default_val": false,
           "display": "Flag",
           "value": "boolean"
+        },
+        "met_": {
+          "default_val": false,
+          "display": "Met",
+          "value": "boolean"
+        },
+        "seen_": {
+          "default_val": false,
+          "display": "Seen",
+          "value": "boolean"
         }
       },
       "elements": {
@@ -1968,6 +1978,132 @@
             }
           }
         },
+        "bVisMet": {
+          "id": "bVisMet",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 62,
+            "text": {
+              "entries": {
+                "0": "Met"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "type": "Text",
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "custom.met_",
+                  "next": {
+                    "name": "is_true",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bVis"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bVisOnly": {
+          "id": "bVisOnly",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 63,
+            "text": {
+              "entries": {
+                "0": "Only when the group shows"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bVisSeen": {
+          "id": "bVisSeen",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 61,
+            "text": {
+              "entries": {
+                "0": "Seen"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300,
+            "is_visible": false
+          },
+          "type": "Text",
+          "states": {
+            "0": {
+              "condition": {
+                "next": {
+                  "name": "custom.seen_",
+                  "next": {
+                    "name": "is_true",
+                    "type": "Message"
+                  },
+                  "type": "Message"
+                },
+                "properties": {
+                  "element_id": "bVis"
+                },
+                "type": "GetElement"
+              },
+              "properties": {
+                "is_visible": true
+              },
+              "type": "State"
+            }
+          }
+        },
+        "bVisStep": {
+          "id": "bVisStep",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 64,
+            "text": {
+              "entries": {
+                "0": "Step when its text is hidden"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
+        "bVisTouched": {
+          "id": "bVisTouched",
+          "properties": {
+            "height": 40,
+            "min_height_css": "40px",
+            "order": 65,
+            "text": {
+              "entries": {
+                "0": "Only when a step showed it"
+              },
+              "type": "TextExpression"
+            },
+            "width": 300
+          },
+          "type": "Button"
+        },
         "bVisG": {
           "elements": {
             "bVisGT": {
@@ -2357,6 +2493,118 @@
       },
       "type": "Page",
       "workflows": {
+        "wVisDo": {
+          "actions": {
+            "0": {
+              "id": "aVisDo1",
+              "properties": {
+                "custom_state": "custom.met_",
+                "element_id": "bVis",
+                "value": true
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wVisDo",
+          "properties": {
+            "condition": {
+              "next": {
+                "name": "is_visible",
+                "type": "Message"
+              },
+              "properties": {
+                "element_id": "bVisG"
+              },
+              "type": "GetElement"
+            },
+            "run_when": "every_time"
+          },
+          "type": "ConditionTrue"
+        },
+        "wVisOnly": {
+          "actions": {
+            "0": {
+              "id": "aVisOnly1",
+              "properties": {
+                "custom_state": "custom.seen_",
+                "element_id": "bVis",
+                "value": true
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wVisOnly",
+          "properties": {
+            "condition": {
+              "next": {
+                "name": "is_visible",
+                "type": "Message"
+              },
+              "properties": {
+                "element_id": "bVisG"
+              },
+              "type": "GetElement"
+            },
+            "element_id": "bVisOnly"
+          },
+          "type": "ButtonClicked"
+        },
+        "wVisStep": {
+          "actions": {
+            "0": {
+              "id": "aVisStep1",
+              "properties": {
+                "custom_state": "custom.seen_",
+                "element_id": "bVis",
+                "value": true,
+                "condition": {
+                  "next": {
+                    "name": "isnt_visible",
+                    "type": "Message"
+                  },
+                  "properties": {
+                    "element_id": "bVisGT"
+                  },
+                  "type": "GetElement"
+                }
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wVisStep",
+          "properties": {
+            "element_id": "bVisStep"
+          },
+          "type": "ButtonClicked"
+        },
+        "wVisTouched": {
+          "actions": {
+            "0": {
+              "id": "aVisTouched1",
+              "properties": {
+                "custom_state": "custom.seen_",
+                "element_id": "bVis",
+                "value": true
+              },
+              "type": "SetCustomState"
+            }
+          },
+          "id": "wVisTouched",
+          "properties": {
+            "condition": {
+              "next": {
+                "name": "is_visible",
+                "type": "Message"
+              },
+              "properties": {
+                "element_id": "bWf"
+              },
+              "type": "GetElement"
+            },
+            "element_id": "bVisTouched"
+          },
+          "type": "ButtonClicked"
+        },
         "wFlag": {
           "actions": {
             "0": {

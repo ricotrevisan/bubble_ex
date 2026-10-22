@@ -56,6 +56,12 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
   The inlined conditions read their own inputs, so the page decides the
   reader with what it keeps, as for any other condition: an input it does
   not keep or load is marked there instead.
+
+  Workflow conditions read it too (WTF-588,
+  `BubbleEx.Target.Elixir.FrontendWorkflows`): an "Only when" or "Do
+  when" condition is inlined with the reader shown whenever it is tested,
+  the clicked or changed element for that event's own condition, else
+  the page.
   """
 
   alias BubbleEx.Expression

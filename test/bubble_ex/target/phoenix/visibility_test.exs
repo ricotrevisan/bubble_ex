@@ -780,9 +780,9 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     {:ok, report} = Phoenix.frontend_report(project, Keyword.delete(opts, :frontend_workflows))
 
     # Without the workflows the page keeps no custom state, input value or
-    # URL and loads no data: bFlagged's, bFlagOff's, bOpen's,
-    # bCellNoProject's, bHasProject's, bTabOpen's, bCardTab's,
-    # bBadgeTab's and the width's (bWidth, bNarrowTab, bBadgeNarrow and
+    # URL and loads no data: bFlagged's, bFlagOff's, bVisSeen's,
+    # bVisMet's, bOpen's, bCellNoProject's, bHasProject's, bTabOpen's,
+    # bCardTab's, bBadgeTab's and the width's (bWidth, bNarrowTab, bBadgeNarrow and
     # the cells page's five, and its three breakpoint tests), the page
     # name's (bHostIs, bHostInIs, bPageName) and the date/time's (bNow,
     # bNowEmpty) conditionals are marked too (bKeep's only repeats its
@@ -798,7 +798,7 @@ defmodule BubbleEx.Target.Phoenix.VisibilityTest do
     # without workflows does not keep: marked.
     assert %{
              "visibility_conditions_compiled" => 18,
-             "visibility_conditions_marked" => 28,
+             "visibility_conditions_marked" => 30,
              "text_conditions_compiled" => 2,
              "text_conditions_marked" => 8,
              "conditions_other_properties" => 4

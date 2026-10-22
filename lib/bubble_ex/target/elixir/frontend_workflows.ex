@@ -42,9 +42,27 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   group's data and a cell's thing are what the page loads; an element a
   "Display data" / "Display list" step sets (WTF-492) holds what the step
   showed, re-read as the current user. Anything else (an element's
-  built-in states such as `is visible`, other page data) is
+  built-in states such as `is hovered`, other page data) is
   `:unavailable_input` residue: the generated pages do not load or track
   it.
+
+  With `:element_visibility`, an element's `is visible` (and `isn't
+  visible`) in an "Only when" condition, a workflow's or a step's, or a
+  "Do when" condition, is the visibility the page computes for it
+  (WTF-588), as an element's conditionals read it
+  (`BubbleEx.Target.Elixir.Frontend.ElementVisibility`, WTF-578): folded
+  from its conditionals and its ancestors' up to one shown whenever the
+  condition is tested, and its conditions' inputs bound like the
+  condition's own. A click's or an input change's own condition is tested
+  as the user acts on the element, so it and what holds it are shown; any
+  other condition on a page (a step's included: an earlier step may have
+  hidden the element acted on) is held by the page only. The read stays
+  `:unavailable_input` residue when the browser may change it (a step
+  shows, hides, toggles or animates it or an ancestor on the way, in the
+  browser or from the server; a breakpoint, a hover rule, an overlay, a
+  repeating group's cell on the way), and in a reusable element's
+  workflow, other than a click's or an input change's own condition: the
+  instance's own visibility is its host page's.
 
   ## Residue added here
 
@@ -89,6 +107,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   alias BubbleEx.Target.Ash.Workflows, as: BackendWorkflows
   alias BubbleEx.Target.Ash.Workflows.Spec, as: BackendSpec
   alias BubbleEx.Target.Elixir, as: ElixirTarget
+  alias BubbleEx.Target.Elixir.Frontend.ElementVisibility
   alias BubbleEx.Target.Elixir.FrontendWorkflows.{Data, Spec}
   alias BubbleEx.Workflows.Frontend
   alias BubbleEx.Workflows.Frontend.{Step, Workflow}
@@ -156,6 +175,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
       page loads its data sources (`BubbleEx.Target.Elixir.FrontendWorkflows.Data`)
       and its workflows read what it loads; without it, they are
       `:unavailable_input` residue
+    * `:element_visibility` - the index of the pages' and reusable
+      elements' visibility
+      (`BubbleEx.Target.Elixir.Frontend.visibility_index/3`, WTF-588): an
+      "Only when" or "Do when" condition reads an element's `is visible`
+      as the page computes it (see Values); without it, that read is
+      `:unavailable_input` residue
     * `:api_clients` - the `BubbleEx.Target.ApiClients.Spec` the app
       renders (WTF-533): an API Connector step calls its generated client
       on the server, in the LiveView process (only the step's non-private
@@ -198,6 +223,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         namespace: namespace,
         runtime: namespace <> ".Bubble.Runtime",
         project: project,
+        element_visibility: Keyword.get(opts, :element_visibility),
         lookup: lookup(project),
         elements: elements,
         raw_elements: lowered.elements,
@@ -1100,9 +1126,12 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # so the search is read then. Not a "Do when condition is true"
   # workflow's: the page tests it again when its own data changes, not
   # when the search's records do, as Bubble would.
-  defp condition(%Workflow{kind: :condition_true} = w, ctx), do: compile(w.condition, w.id, ctx)
+  defp condition(%Workflow{kind: :condition_true} = w, ctx),
+    do: compile(visibility(w.condition, :workflow, ctx), w.id, ctx)
 
   defp condition(%Workflow{condition: expr, id: id}, ctx) do
+    expr = visibility(expr, :workflow, ctx)
+
     with {nil, [_ | _] = residue} = uncompiled <- compile(expr, id, ctx),
          true <- Enum.any?(residue, &(&1.reason == :uncompiled_expression)) do
       case Data.condition(expr, id, ctx, %{compile: &compile/3, bind: &bind/2}) do
@@ -1113,6 +1142,41 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     else
       {_compiled, _residue} = compiled -> compiled
       false -> compile(expr, id, ctx)
+    end
+  end
+
+  # An element's "is visible" in an "Only when" condition (WTF-588): the
+  # visibility the page computes for it (`ElementVisibility.inline/4`, as
+  # an element's conditionals read it, WTF-578), from where the condition
+  # is tested (`visibility_reader/2`). A read the page cannot decide stays,
+  # and is `:unavailable_input` residue as before.
+  defp visibility(%Expr{ir: %IR{} = ir} = expr, at, ctx) do
+    with %{} = index <- Map.get(ctx, :element_visibility),
+         reader when is_binary(reader) <- visibility_reader(at, ctx) do
+      %{expr | ir: ElementVisibility.inline(ir, reader, MapSet.new(), index)}
+    else
+      _ -> expr
+    end
+  end
+
+  defp visibility(expr, _at, _ctx), do: expr
+
+  # What holds the condition when it is tested: what is shown then is
+  # visible. A click's or an input change's own condition is tested as the
+  # user clicks or changes the element, which is shown then, and so is
+  # everything that holds it. Any other condition (another event's, a
+  # step's, which earlier steps may have hidden the element before) is
+  # held by its page only, which is always shown. A reusable element's is
+  # held by the instance, whose visibility is its host page's: nil, its
+  # reads stay.
+  defp visibility_reader(:workflow, %{workflow: %Workflow{kind: kind, element: element}})
+       when kind in [:click, :input_change] and is_binary(element),
+       do: element
+
+  defp visibility_reader(_at, %{surface: surface} = ctx) do
+    case ctx.raw_elements[surface] do
+      %{kind: :page} -> surface
+      _ -> nil
     end
   end
 
@@ -1394,7 +1458,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   end
 
   defp bound_step(s, base, ctx) do
-    {condition, cr} = compile(s.condition, s.id, ctx)
+    {condition, cr} = compile(visibility(s.condition, :step, ctx), s.id, ctx)
     {args, ar} = args(s.op, s.args, s.id, ctx)
     step = %{base | condition: condition, args: args}
     residue = Residue.sort(Enum.uniq(cr ++ ar ++ collisions(step)))

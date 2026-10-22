@@ -62,7 +62,11 @@ frontend = fn app, model, project, backend, clients ->
           frontend: frontend,
           backend: backend,
           page_data: page_data,
-          api_clients: clients
+          api_clients: clients,
+          # Their conditions read an element's "is visible" as the pages
+          # do (WTF-588).
+          element_visibility:
+            BubbleEx.Target.Elixir.Frontend.visibility_index(app, model, frontend)
         )
 
       [frontend: frontend, expressions: expressions, frontend_workflows: workflows]
