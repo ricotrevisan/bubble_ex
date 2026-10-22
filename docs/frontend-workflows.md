@@ -178,6 +178,7 @@ another element, is `:unsupported_event` residue.
 | Bubble | Generated |
 |--------|-----------|
 | Show / Hide / Toggle, Set focus, Scroll to | `<Web>.Bubble` JS commands (browser) or `bubble:exec` operations pushed to the page's hook (server) |
+| Animate an element (WTF-603) | the same, as `<Web>.Bubble.animate/5`: Velocity UI's fade and slide transitions and `callout.shake` (velocity-animate 1.5.2, `velocity.ui.js`, from the effects Bubble runs). An entrance ("…In") shows the element as it starts, as a show step does; an exit ("…Out") hides it once it ends, as a hide step does (until then it is still shown, and a later show, hide, toggle or animation of the element cuts it short); a callout only moves it. The hook runs the motion (opacity and translate frames, easing "ease" per part) as a Web Animation, for the step's duration when "customize duration" is checked (Bubble's editor applies the field only then), else the effect's default. A server-side workflow's entrance on an overlay rendered only while open renders its contents with the event, as a show does; one run in the browser before they are rendered opens it once they arrive, then runs its motion. Any other effect (or none set) is `:unsupported_option` residue: the workflow refuses to run |
 | Set state(s) | the page's state map, per instance |
 | Reset relevant inputs, Reset a group | the page's input map back to first values, and the browser's inputs; a reset group or popup also forgets what "Display data" showed in it and in the elements inside it, a reset reusable-element instance everything shown in its scope (WTF-492) |
 | Display data in a group / popup, Display list in a repeating group | the element's data, kept by the page per instance (per cell in a repeating group's cell) until a reset or the page's next load, in place of its own data source, whatever that source reads meanwhile; an empty value shows empty (replay 2026-10-07); a thing is kept as its unique ID and read again as the current user (WTF-492, below) |
@@ -299,8 +300,10 @@ may run (WTF-520):
   may run as the page loads) opens it, as one that runs as the page
   loads, and it must run whole too. A popup whose conditions set its visibility
   may be opened by them, which the page does not follow, and so may one
-  an action this target does not lower names (an animation, a plugin's
-  action): what its workflows set stays unloaded. When a workflow that
+  an action this target does not lower names (an animation of an effect
+  it does not lower, a plugin's action): what its workflows set stays
+  unloaded. An animation it lowers (WTF-603) counts as the step it acts
+  as: an entrance as a show, an exit as a hide, a callout as neither. When a workflow that
   opens (closes) the popup, or one calling it, shows data in an element
   the popup's "is opened" ("is closed") workflow resets (it or a group
   around it, the popup included) or shows data in too, that element is
@@ -627,8 +630,8 @@ on the server. On closing, the page resets nothing it did not reset
 before. An overlay stays rendered as before (hidden, opened in the
 browser, no round trip) when something inside it keeps state only the
 browser has (`BubbleEx.Target.Phoenix.Overlays`): an element a show,
-hide, toggle, focus or scroll step of its surface targets (the overlay
-itself excepted), a control whose value the page does not render from
+hide, toggle, animate, focus or scroll step of its surface targets (the
+overlay itself excepted), a control whose value the page does not render from
 what it keeps (a checkbox or a dropdown, tracked or not: the page renders
 their first value; radio buttons, a date, a file, a slider, a search, or
 a text input the page does not track), or a reusable instance whose
@@ -778,6 +781,20 @@ the data to a page with no type of content (the path segment), a date
 inside a dynamic text a page workflow writes (a custom state, a field),
 and a value a workflow sends to an API call take the same display text;
 a backend workflow's in UTC.
+
+**Animations (WTF-603), not replayed.** The effects, their frames and
+default durations are read from Velocity UI's source, and that only
+transitions show or hide from Bubble's documentation of the action. Not
+measured: what Bubble's "is visible" says while an exit runs (here the
+element is visible until the exit ends, as Velocity hides it then, but
+the server never decides it: an animated element's "is visible" stays
+the browser's, as for a show or hide step); whether a show, hide,
+toggle or animation of the element while its animation runs cuts it
+short (here it does; a focus, scroll or reset does not); Velocity's own
+inline styles left after an effect (here none: the element's own styles
+come back, so an element with its own opacity below 1 ends an entrance
+at that opacity, not at Velocity's `1`); and an exit's effect on a Popup's own
+close (here it closes as a hide step closes it, once the exit ends).
 
 **A show or hide step, then "Set state" in the same workflow.** The
 replay measured a state change and a step in separate workflows. Here a

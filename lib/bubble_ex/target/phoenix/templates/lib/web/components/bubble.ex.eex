@@ -52,6 +52,14 @@ defmodule <%= @web %>.Bubble do
       (`data-bubble-events`) has the hook report each time it actually
       opens or closes, by a step or Escape (WTF-520,
       `bubble:popup`, below)
+    * `animate/5` runs Bubble's "Animate an element" (WTF-603) on one
+      element: a transition shows (an entrance, as it starts) or hides (an
+      exit, once it ends) the element as `show/3` and `hide/3` do, with
+      Velocity UI's motion (opacity and translate frames, the step's
+      duration, easing "ease") as a Web Animation; a callout only moves it.
+      A later show, hide, toggle or animation of the element ends a
+      running animation first, so an exit cut short never hides it
+      afterwards
     * an overlay rendered only while open (WTF-559, `data-bubble-lazy`):
       the page renders its contents while it keeps it open (`open?/3`,
       `contents/1`); the hook asks for them (`bubble:overlay`) before it
@@ -254,6 +262,19 @@ defmodule <%= @web %>.Bubble do
   @doc "Opens element `id` of instance `scope` if it is closed, else closes it."
   def toggle(js \\ %JS{}, scope, id),
     do: JS.dispatch(js, "bubble:toggle", to: selector(scope, id))
+
+  @doc """
+  Animates element `id` of instance `scope` (WTF-603): `visibility`
+  (`:show`, `:hide` or nil) is what the transition does to it, `motion`
+  its frames, duration and easing (`%{frames: [...], duration: ms,
+  easing: "ease"}`).
+  """
+  def animate(js \\ %JS{}, scope, id, visibility, motion),
+    do:
+      JS.dispatch(js, "bubble:animate",
+        to: selector(scope, id),
+        detail: %{visibility: visibility, motion: motion}
+      )
 
   @doc "Focuses element `id` of instance `scope` (or its first focusable element)."
   def focus(js \\ %JS{}, scope, id), do: JS.dispatch(js, "bubble:focus", to: selector(scope, id))
@@ -868,7 +889,16 @@ defmodule <%= @web %>.Bubble do
         'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), ' +
         'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
       const OPS = { show: "bubble:show", hide: "bubble:hide", toggle: "bubble:toggle",
-                    focus: "bubble:focus", scroll: "bubble:scroll", reset: "bubble:reset" }
+                    animate: "bubble:animate", focus: "bubble:focus", scroll: "bubble:scroll",
+                    reset: "bubble:reset" }
+      // An animation's frame as a Web Animations keyframe: opacity and a
+      // translate in px (every frame carries the transform when any does).
+      const keyframe = (frame, moves) => {
+        const k = {}
+        if (typeof frame.opacity === "number") k.opacity = frame.opacity
+        if (moves) k.transform = `translate(${Number(frame.translate_x) || 0}px, ${Number(frame.translate_y) || 0}px)`
+        return k
+      }
       // Open and shown: not hidden itself, not inside a hidden ancestor (no
       // layout boxes), not invisible.
       const isOpen = (el) =>
@@ -919,9 +949,29 @@ defmodule <%= @web %>.Bubble do
               this.conditionsChanged(this.conditions.takeRecords())
               fn(el)
             })
-          on("bubble:show", step((el) => this.show(el)))
-          on("bubble:hide", step((el) => this.hide(el)))
-          on("bubble:toggle", step((el) => (el.hidden ? this.show(el) : this.hide(el))))
+          // An animation still running gives way to a later show, hide or
+          // toggle of its element (WTF-603).
+          on("bubble:show", step((el) => { this.stopMotion(el); this.show(el) }))
+          on("bubble:hide", step((el) => { this.stopMotion(el, true); this.hide(el) }))
+          on("bubble:toggle", step((el) => {
+            this.stopMotion(el, !el.hidden)
+            el.hidden ? this.show(el) : this.hide(el)
+          }))
+          // Bubble's "Animate an element" (WTF-603): its transition shows or
+          // hides the element as a show or hide step does, with its motion.
+          this.motions = new WeakMap()
+          this.running = new Set()
+          const animate = (e) => {
+            if (!(e.target instanceof HTMLElement)) return
+            const el = e.target
+            const detail = e.detail || {}
+            this.run(() => {
+              this.conditionsChanged(this.conditions.takeRecords())
+              this.animate(el, detail.visibility, detail.motion)
+            })
+          }
+          window.addEventListener("bubble:animate", animate)
+          this.listeners.push(["bubble:animate", animate])
           on("bubble:focus", (el) =>
             this.run(() => (el.matches(FOCUSABLE) ? el : focusable(el) || el).focus())
           )
@@ -1104,6 +1154,8 @@ defmodule <%= @web %>.Bubble do
           } catch (_e) {}
         },
         destroyed() {
+          this.running.forEach(({ animation }) => animation.cancel())
+          this.running.clear()
           this.conditions.disconnect()
           this.listeners.forEach(([name, listener]) => window.removeEventListener(name, listener))
           clearTimeout(this.noticeTimer)
@@ -1155,9 +1207,62 @@ defmodule <%= @web %>.Bubble do
           }
           const event = OPS[op.op]
           if (!event || typeof op.to !== "string") return
+          const detail = op.op === "animate" ? { visibility: op.visibility, motion: op.motion } : null
           document.querySelectorAll(op.to).forEach((el) =>
-            el.dispatchEvent(new CustomEvent(event, { bubbles: true }))
+            el.dispatchEvent(new CustomEvent(event, { bubbles: true, detail }))
           )
+        },
+        // Velocity UI's transitions, as Bubble runs them: an entrance shows
+        // the element as it starts, an exit hides it once it ends (until
+        // then it is still shown); a callout only moves it. An overlay
+        // whose contents are being loaded runs its entrance's motion once
+        // it opened (the steps after it wait, `load`).
+        animate(el, visibility, motion) {
+          this.stopMotion(el, visibility === "hide")
+          if (visibility === "show") this.show(el)
+          if (visibility === "show" && el.hidden && this.loading === el) {
+            return this.run(() => this.animate(el, null, motion))
+          }
+          if (visibility === "hide" && el.hidden) return this.hide(el)
+          const frames = (motion && Array.isArray(motion.frames)) ? motion.frames : []
+          const duration = Math.max(0, Number(motion && motion.duration) || 0)
+          if (frames.length < 2 || duration === 0 || el.hidden || typeof el.animate !== "function") {
+            if (visibility === "hide") this.hide(el)
+            return
+          }
+          const moves = frames.some((f) => "translate_x" in f || "translate_y" in f)
+          const easing = (motion && motion.easing) || "ease"
+          const keyframes = frames.map((f) => ({ ...keyframe(f, moves), easing }))
+          const animation = el.animate(keyframes, { duration, fill: visibility === "hide" ? "forwards" : "none" })
+          const running = { el, animation, visibility }
+          this.motions.set(el, running)
+          this.running.add(running)
+          // An exit's hide is a step: it waits behind an overlay still
+          // loading, as the steps do, and sees the render it runs after.
+          animation.onfinish = () =>
+            this.run(() => {
+              if (this.motions.get(el) !== running) return
+              this.motions.delete(el)
+              this.running.delete(running)
+              this.conditionsChanged(this.conditions.takeRecords())
+              if (visibility === "hide") this.hide(el)
+              animation.cancel()
+            })
+        },
+        // Ends an element's running animation where it is, without its
+        // transition's end (a later show, hide, toggle or animation of the
+        // element decides). A Popup's exit cut short by a step that leaves
+        // it open (a show, an entrance, a callout) never closes it: the
+        // server forgets the "is closed" report the exit's step expected.
+        // One cut short by a step that closes it (`closing`) leaves that
+        // report to the close that follows, which takes it.
+        stopMotion(el, closing = false) {
+          const running = this.motions && this.motions.get(el)
+          if (!running) return
+          this.motions.delete(el)
+          this.running.delete(running)
+          running.animation.cancel()
+          if (running.visibility === "hide" && !closing) this.popupEvent(el, "closed", true)
         },
         show(el) {
           const overlay = el.getAttribute("data-overlay")
