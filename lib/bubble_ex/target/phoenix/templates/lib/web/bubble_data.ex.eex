@@ -197,8 +197,13 @@ defmodule <%= @web %>.BubbleData do
   values (`customer_id in ^values`; with two or three keys, the cells' own
   combinations of them) and gives each cell the records whose keys are
   its own, in the search's order. Cells whose other constraints differ
-  (whether a value is empty) are read in one query each way. A first item
-  is the first record per key (`DISTINCT ON`). Otherwise each cell's page
+  (whether a value is empty) are read in one query each way. A search
+  that also leaves out a record of the cell by its unique ID ("unique ID
+  is not Current cell's thing's", WTF-593) is read without that
+  constraint, and each cell's records are its keys' less that one; such a
+  cell needs one record more of the query. A first item
+  is the first record per key (`DISTINCT ON`; with such an exclusion, a
+  page of one). Otherwise each cell's page
   size is its own: the query reads at most the sum of the cells' page
   sizes (plus one), and the cells a heavier one left short are read again
   together, the limit doubled each round. A `count` reads the keys of at
@@ -1202,7 +1207,16 @@ defmodule <%= @web %>.BubbleData do
     states = Map.get(socket.assigns, :bubble_states) || %{}
 
     if batch? do
-      init = {data, states, %{actor: nil, actor_paths: MapSet.new(), loaded: %{}}}
+      # The cells' things, their relationships loaded for every cell at once
+      # (`cell_loads`, `load_source/5`): each cell's `load_value/3` finds them.
+      batch =
+        keep_loaded(
+          %{actor: nil, actor_paths: MapSet.new(), loaded: %{}},
+          for(%{cell: {item, _}} <- units, do: item),
+          Map.get(source, :cell_loads, [])
+        )
+
+      init = {data, states, batch}
 
       Enum.reduce(Map.get(source, :preloads, []), init, fn
         {:actor, loads}, {data, states, batch} ->
@@ -2436,7 +2450,10 @@ defmodule <%= @web %>.BubbleData do
   cell (`keys`: `{pin, attribute, kind, unless}`, `kind` `:eq` on a
   thing's unique ID, `{:eq, enum}` on an option of `enum`'s set, or `:in`
   on unique IDs, a key holding only
-  where the pin `unless` is not yes), the yes/no pins making it match
+  where the pin `unless` is not yes), the records it leaves out
+  (`excludes`: `{pin, primary key, kind, unless}`, the cell's unique ID
+  under `is_distinct_from`, `:distinct`, or `!=`, `:neq`; WTF-593), the
+  yes/no pins making it match
   nothing (`void`: `{pin, :yes}` when yes, `{pin, :no}` unless yes), its sort's attributes (`sort`), how
   much of it is taken (`take`, `page_size`, as `read/4`'s) and the
   relationships read through its records (`loads`). `query` is the cell's
@@ -2580,9 +2597,48 @@ defmodule <%= @web %>.BubbleData do
     end
   end
 
-  # The pins every cell of a group has alike: all but its keys.
-  defp shared_pins(request),
-    do: Map.drop(request.pins, for({var, _attr, _kind, _unless} <- request.keys, do: var))
+  # The pins every cell of a group has alike: all but its keys and its
+  # exclusions' values.
+  defp shared_pins(request) do
+    varying = for {var, _attr, _kind, _unless} <- request.keys ++ excludes(request), do: var
+    Map.drop(request.pins, varying)
+  end
+
+  defp excludes(request), do: Map.get(request, :excludes, [])
+
+  # The exclusions that hold in a group (WTF-593): `unless` is a shared pin.
+  defp active_excludes(request) do
+    for {var, attr, kind, unless} <- excludes(request),
+        is_nil(unless) or Map.get(request.pins, unless) != true,
+        do: {var, attr, kind}
+  end
+
+  # Whether a cell's exclusions can be applied to the batch's records: one
+  # unique ID each, or an empty one where it excludes nothing
+  # (`:distinct`, `is_distinct_from`). An empty one under `!=` (`:neq`,
+  # which matches nothing then) reads the cell's own query.
+  defp excludable?(request, excludes) do
+    Enum.all?(excludes, fn {var, _attr, kind} ->
+      case request.pins[var] do
+        value when is_binary(value) -> true
+        nil -> kind == :distinct
+        _ -> false
+      end
+    end)
+  end
+
+  # A cell's records less those its exclusions name (each its own unique
+  # ID, the resource's primary key: compared exactly, as in the database).
+  defp excluded(rows, _request, []), do: rows
+
+  defp excluded(rows, request, excludes) do
+    ids =
+      for {var, attr, _kind} <- excludes,
+          is_binary(request.pins[var]),
+          do: {attr, request.pins[var]}
+
+    Enum.reject(rows, fn row -> Enum.any?(ids, fn {attr, id} -> Map.get(row, attr) == id end) end)
+  end
 
   # The cells of one search whose pins differ only in their keys: their
   # keys hold or not alike (`unless` is a shared pin). A cell with a key
@@ -2599,10 +2655,10 @@ defmodule <%= @web %>.BubbleData do
     {void, group} =
       Enum.split_with(group, fn r -> Enum.any?(Map.get(r, :void, []), &void?(&1, r.pins)) end)
 
+    excludes = active_excludes(first)
+
     {keyed, alone} =
-      Enum.split_with(group, fn r ->
-        active != [] and Enum.all?(active, fn {var, _, kind} -> keyed?(r.pins[var], kind) end)
-      end)
+      Enum.split_with(group, fn r -> keyed_all?(r, active) and excludable?(r, excludes) end)
 
     {none, keyed} =
       Enum.split_with(keyed, fn r ->
@@ -2630,11 +2686,12 @@ defmodule <%= @web %>.BubbleData do
           |> chunks(active, max_batched())
           |> Enum.reduce(%{}, fn
             {:alone, r}, acc -> Map.merge(acc, read_alone([r], actor))
-            {:chunk, rs}, acc -> Map.merge(acc, batch_results(rs, active, first, actor))
+            {:chunk, rs}, acc ->
+              Map.merge(acc, batch_results(rs, {active, excludes}, first, actor))
           end)
 
         true ->
-          batch_results(keyed, active, first, actor)
+          batch_results(keyed, {active, excludes}, first, actor)
       end
 
     found = Enum.reduce(none ++ void, found, &Map.put(&2, &1.key, none(&1.take)))
@@ -2681,6 +2738,10 @@ defmodule <%= @web %>.BubbleData do
       {r.key,
        once({:cell_alone, r.key}, actor, fn -> r.query.() |> read(ctx, r.take, r.page_size) end)}
     end)
+  end
+
+  defp keyed_all?(request, active) do
+    active != [] and Enum.all?(active, fn {var, _, kind} -> keyed?(request.pins[var], kind) end)
   end
 
   defp keyed?(value, :eq), do: is_binary(value)
@@ -2783,31 +2844,38 @@ defmodule <%= @web %>.BubbleData do
   # `%{key => value}` for each request, as its own query would read it. A
   # read that fails leaves every cell of it empty (logged), as each cell's
   # own read would.
-  defp batch_results(requests, active, first, actor) do
+  # With exclusions (`excludes`, WTF-593), each cell's records are those of
+  # its keys less its own: a first item is not the first per key (the
+  # cell's own may be it), so it is read like a page of one.
+  defp batch_results(requests, {active, excludes}, first, actor) do
     query = batch_query(requests, active, first)
 
     case query do
       %Ash.Query{context: %{bubble_listed: n}} when is_integer(n) ->
-        listed_results(query, requests, active, first, actor)
+        listed_results(query, requests, {active, excludes}, first, actor)
 
       _ when first.take == :count ->
-        count_results(query, requests, active, actor)
+        count_results(query, requests, {active, excludes}, actor)
 
       _ when first.take in [:first, {:item, 1}] ->
-        if Enum.all?(active, fn {_var, _attr, kind} -> kind == :eq or match?({:eq, _}, kind) end),
+        if excludes == [] and first_keys?(active),
           do: first_results(query, requests, active, actor),
-          else: round_results(requests, active, first, actor, %{}, 1)
+          else: round_results(requests, {active, excludes}, first, actor, %{}, 1)
 
       _ ->
-        round_results(requests, active, first, actor, %{}, 1)
+        round_results(requests, {active, excludes}, first, actor, %{}, 1)
     end
   end
 
+  # A first item per key (`DISTINCT ON`) needs keys compared for equality.
+  defp first_keys?(active),
+    do: Enum.all?(active, fn {_var, _attr, kind} -> kind == :eq or match?({:eq, _}, kind) end)
+
   # A count: the records' keys, counted per cell. Past `max_batched/0` the
   # cells' counts are read on their own (logged once).
-  defp count_results(query, requests, active, actor) do
+  defp count_results(query, requests, {active, excludes}, actor) do
     [pk | _] = Ash.Resource.Info.primary_key(query.resource)
-    attrs = Enum.uniq([pk | for({_var, attr, _kind} <- active, do: attr)])
+    attrs = Enum.uniq([pk | for({_var, attr, _kind} <- active ++ excludes, do: attr)])
     cap = max_batched()
     query = query |> Ash.Query.select(attrs) |> Ash.Query.limit(cap + 1)
 
@@ -2821,9 +2889,13 @@ defmodule <%= @web %>.BubbleData do
         read_alone(requests, actor)
 
       {:ok, rows} ->
+        by_key = Map.new(requests, &{&1.key, &1})
+
         rows
         |> by_cell(requests, active)
-        |> Map.new(fn {key, mine} -> {key, cell_count(length(mine), query)} end)
+        |> Map.new(fn {key, mine} ->
+          {key, cell_count(length(excluded(mine, by_key[key], excludes)), query)}
+        end)
 
       {:error, error} ->
         failed(query, error)
@@ -2866,7 +2938,7 @@ defmodule <%= @web %>.BubbleData do
   # query reads no more than their IDs, in the search's order only:
   # `listed_batch/2`), each cell's in its own list's order among equal
   # sort keys.
-  defp listed_results(query, requests, active, first, actor) do
+  defp listed_results(query, requests, {active, excludes}, first, actor) do
     query = Ash.Query.limit(query, max(query.context.bubble_listed, 1))
     [pk | _] = Ash.Resource.Info.primary_key(query.resource)
     by_key = Map.new(requests, &{&1.key, &1})
@@ -2877,7 +2949,7 @@ defmodule <%= @web %>.BubbleData do
         |> by_cell(requests, active)
         |> Map.new(fn {key, mine} ->
           r = by_key[key]
-          mine = list_order(mine, r, pk, active, first.sort)
+          mine = mine |> excluded(r, excludes) |> list_order(r, pk, active, first.sort)
 
           if r.take == :count,
             do: {key, cell_count(length(mine), query)},
@@ -2914,14 +2986,13 @@ defmodule <%= @web %>.BubbleData do
   # queries (logged).
   defp round_results([], _active, _first, _actor, acc, _round), do: acc
 
-  defp round_results(requests, active, first, actor, acc, round) do
+  defp round_results(requests, {active, excludes}, first, actor, acc, round) do
     # Doubled each round, never past `max_batched/0` (plus one): past it a
-    # round may settle no cell, and they read their own queries.
-    limit =
-      min(
-        (requests |> Enum.map(&needed(&1, false)) |> Enum.sum()) * 2 ** (round - 1) + 1,
-        max_batched() + 1
-      )
+    # round may settle no cell, and they read their own queries. A cell
+    # needs one record more per exclusion (WTF-593): its own may be among
+    # them.
+    need = requests |> Enum.map(&(needed(&1, false) + length(excludes))) |> Enum.sum()
+    limit = min(need * 2 ** (round - 1) + 1, max_batched() + 1)
 
     query = requests |> batch_query(active, first) |> Ash.Query.limit(limit)
     by_key = Map.new(requests, &{&1.key, &1})
@@ -2935,7 +3006,7 @@ defmodule <%= @web %>.BubbleData do
           |> by_cell(requests, active)
           |> Enum.reduce({acc, []}, fn {key, mine}, {acc, left} ->
             r = by_key[key]
-            mine = Enum.take(mine, needed(r, false))
+            mine = mine |> excluded(r, excludes) |> Enum.take(needed(r, false))
 
             if full? and length(mine) < needed(r, false),
               do: {acc, [r | left]},
@@ -2955,7 +3026,7 @@ defmodule <%= @web %>.BubbleData do
             Map.merge(acc, read_alone(left, actor))
 
           true ->
-            round_results(left, active, first, actor, acc, round + 1)
+            round_results(left, {active, excludes}, first, actor, acc, round + 1)
         end
 
       {:error, error} ->

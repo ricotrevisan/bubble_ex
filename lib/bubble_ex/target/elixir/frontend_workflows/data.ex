@@ -1169,48 +1169,70 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   #   * a key under an empty constraint dropped (`^empty == true or key`:
   #     the key holds only where the value is not empty, `unless`);
   #   * anything else reading only yes/no pins (whether a value is empty):
-  #     cells are grouped by them, at most three groups per pin.
+  #     cells are grouped by them, at most three groups per pin;
+  #   * an exclusion (WTF-593): `is_distinct_from(pk, ^pin)` or `pk !=
+  #     ^pin` on the searched resource's primary key (`q.pk`, its unique
+  #     ID), the pin one unique ID (a thing or a text), maybe under an
+  #     empty constraint dropped (`^empty == true or exclusion`). "Unique
+  #     ID is not the cell's own thing's": dropped from the batched query,
+  #     each cell's own record left out of its records after it.
   #
   # One query reads every cell's records at once (`batch.filter`: each key
-  # `attribute in ^values`, the cells' values), and each cell's are those
-  # whose attributes equal its keys: a key is a part of the conjunction,
+  # `attribute in ^values`, the cells' values; no exclusion), and each
+  # cell's are those whose attributes equal its keys, less the record its
+  # exclusions name: a key and an exclusion are parts of the conjunction,
   # so a record matches a cell's search exactly when it matches the
-  # batched one and the cell's keys. Anything else (an ordering or a text
-  # comparison with the cell, a cell's value under `or`, Bubble's random
-  # sort) is `:error`: the source stays residue.
+  # batched one, the cell's keys and its exclusions. Anything else (an
+  # ordering or a text comparison with the cell, a cell's value under
+  # `or`, Bubble's random sort) is `:error`: the source stays residue.
   @spec cell_batch(map(), %{String.t() => boolean()}) :: {:ok, map()} | :error
   def cell_batch(%{filter: %Expr{} = filter} = q, vary) do
     by_var = Map.new(q.pins, &{&1.var, &1})
     varies? = &Map.get(vary, &1, false)
+    pk = Map.get(q, :pk)
 
-    parts = Enum.map(conjuncts(filter.expr), &batch_conjunct(&1, by_var, varies?))
-    keys = for {:key, key} <- parts, do: key
+    parts =
+      Enum.map(conjuncts(filter.expr), fn node ->
+        {node, batch_conjunct(node, pk, by_var, varies?)}
+      end)
+
+    keys = for {_node, {:key, key}} <- parts, do: key
+    excludes = for {_node, {:exclude, exclude}} <- parts, do: exclude
     key_vars = MapSet.new(keys, & &1.var)
-    counts = filter.expr |> pins_in() |> Enum.frequencies()
+    dropped = for {node, {:exclude, _}} <- parts, do: node
 
-    # What else differs from cell to cell: yes/no values only, never a key.
-    others =
-      for({:other, vars} <- parts, v <- vars, varies?.(v), do: v) ++
-        for %{unless: u} <- keys, is_binary(u), do: u
-
-    sound? =
-      q.sort != [:random] and length(keys) in 1..3 and
-        Enum.all?(keys, &(Map.get(counts, &1.var) == 1)) and
-        Enum.all?(others, &yes_no?(&1, key_vars, by_var)) and
-        not listed_unkeyed?(q, key_vars, varies?)
-
-    if sound?,
+    if sound_batch?(q, parts, keys, excludes, by_var, varies?),
       do:
         {:ok,
          %{
            keys: keys,
+           excludes: excludes,
            void: void_pins(filter.expr, varies?),
-           filter: %{filter | expr: batch_expr(filter.expr, key_vars)}
+           filter: %{
+             filter
+             | expr: filter.expr |> without(dropped) |> batch_expr(key_vars)
+           }
          }},
       else: :error
   end
 
   def cell_batch(_q, _vary), do: :error
+
+  # One to three keys, each pin of a key or an exclusion read once, and
+  # nothing else differing from cell to cell but yes/no values.
+  defp sound_batch?(q, parts, keys, excludes, by_var, varies?) do
+    key_vars = MapSet.new(keys, & &1.var)
+    counts = q.filter.expr |> pins_in() |> Enum.frequencies()
+
+    others =
+      for({_node, {:other, vars}} <- parts, v <- vars, varies?.(v), do: v) ++
+        for %{unless: u} <- keys ++ excludes, is_binary(u), do: u
+
+    q.sort != [:random] and length(keys) in 1..3 and
+      Enum.all?(keys ++ excludes, &(Map.get(counts, &1.var) == 1)) and
+      Enum.all?(others, &yes_no?(&1, key_vars, by_var)) and
+      not listed_unkeyed?(q, key_vars, varies?)
+  end
 
   # The yes/no pins that make the whole search match nothing (a part of
   # its conjunction: an empty value a search does not ignore), as `{pin,
@@ -1246,7 +1268,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp conjuncts({:and, nodes}), do: Enum.flat_map(nodes, &conjuncts/1)
   defp conjuncts(node), do: [node]
 
-  defp batch_conjunct(node, by_var, varies?) do
+  defp batch_conjunct(node, pk, by_var, varies?) do
     vars = pins_in(node)
 
     cond do
@@ -1256,9 +1278,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
       key = key_atom(node, by_var, varies?) ->
         {:key, Map.put(key, :unless, nil)}
 
+      exclude = exclude_atom(node, pk, by_var, varies?) ->
+        {:exclude, Map.put(exclude, :unless, nil)}
+
       match?({:or, [_, _]}, node) ->
         {:or, [a, b]} = node
-        guarded_key(a, b, by_var, varies?) || guarded_key(b, a, by_var, varies?) || other(vars)
+
+        guarded(a, b, pk, by_var, varies?) || guarded(b, a, pk, by_var, varies?) ||
+          other(vars)
 
       true ->
         other(vars)
@@ -1267,16 +1294,63 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
 
   defp other(vars), do: {:other, vars}
 
-  # `^empty == true or key`: the key holds where the value is not empty.
-  defp guarded_key(guard, node, by_var, varies?) do
+  # `^empty == true or key` (or an exclusion): it holds where the value is
+  # not empty.
+  defp guarded(guard, node, pk, by_var, varies?) do
     with var when is_binary(var) <- guard_var(guard),
-         true <- varies?.(var),
-         %{} = key <- key_atom(node, by_var, varies?) do
-      {:key, Map.put(key, :unless, var)}
+         true <- varies?.(var) do
+      cond do
+        key = key_atom(node, by_var, varies?) ->
+          {:key, Map.put(key, :unless, var)}
+
+        exclude = exclude_atom(node, pk, by_var, varies?) ->
+          {:exclude, Map.put(exclude, :unless, var)}
+
+        true ->
+          nil
+      end
     else
       _ -> nil
     end
   end
+
+  # An exclusion (WTF-593): the searched record's own unique ID (its
+  # primary key `pk`) is not a unique ID that differs from cell to cell
+  # (a thing's, or a text). `is_distinct_from` excludes nothing where the
+  # value is empty (`:distinct`); `!=` matches nothing then (`:neq`).
+  defp exclude_atom({:call, "is_distinct_from", [a, b]}, pk, by_var, varies?),
+    do: exclude_atom(a, b, :distinct, pk, by_var, varies?)
+
+  defp exclude_atom({:op, "!=", a, b}, pk, by_var, varies?),
+    do: exclude_atom(a, b, :neq, pk, by_var, varies?)
+
+  defp exclude_atom(_node, _pk, _by_var, _varies?), do: nil
+
+  defp exclude_atom({:ref, [], pk}, {:pin, var}, kind, pk, by_var, varies?)
+       when is_binary(pk) do
+    pin = by_var[var]
+
+    if varies?.(var) and (pin.ref == :one or (pin.ref == nil and Map.get(pin, :type) == "text")),
+      do: %{var: var, attr: pk, kind: kind}
+  end
+
+  defp exclude_atom({:pin, _} = pin, {:ref, [], _} = ref, kind, pk, by_var, varies?),
+    do: exclude_atom(ref, pin, kind, pk, by_var, varies?)
+
+  defp exclude_atom(_a, _b, _kind, _pk, _by_var, _varies?), do: nil
+
+  # The filter less the conjunction's parts `dropped` (the exclusions).
+  defp without(expr, []), do: expr
+
+  defp without({:and, nodes}, dropped) do
+    case nodes |> Enum.reject(&(&1 in dropped)) |> Enum.map(&without(&1, dropped)) do
+      [] -> {:value, true}
+      [node] -> node
+      nodes -> {:and, nodes}
+    end
+  end
+
+  defp without(node, dropped), do: if(node in dropped, do: {:value, true}, else: node)
 
   defp guard_var({:pin, var}), do: var
   defp guard_var({:op, "==", {:pin, var}, {:value, true}}), do: var
@@ -2075,6 +2149,19 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
   defp compared({:arg, name}, {:ref, [], attr}, name), do: [attr]
   defp compared(a, b, name), do: compared_attributes(a, name) ++ compared_attributes(b, name)
 
+  # The searched resource's primary key (its unique ID), when it has one
+  # attribute: a cell's search excluding the cell's own record by it is
+  # batched (`cell_batch/2`, WTF-593).
+  defp primary_key(resource, ctx) do
+    with %{attributes: attributes} <-
+           Enum.find(ctx.project.resources, &(&1.module == resource)),
+         [%{name: name}] <- Enum.filter(attributes, & &1.primary_key?) do
+      name
+    else
+      _ -> nil
+    end
+  end
+
   # A list's things' IDs for a listed query, else what the pin holds.
   defp pin_ref(arg, hoisted), do: if(pinned?(arg, hoisted), do: :listed, else: ref_kind(arg.type))
 
@@ -2127,7 +2214,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Data do
         sort: expr.sort,
         actor_loads: expr.actor_loads,
         take: take,
-        pins: pins
+        pins: pins,
+        pk: primary_key(expr.resource, ctx)
       }
 
       {:ok, query, acc}

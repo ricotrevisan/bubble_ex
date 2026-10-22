@@ -6,6 +6,23 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **A search in a repeating group's cell that leaves out the cell's own
+  record is read for every cell together (WTF-593).** A constraint
+  "unique ID is not <a unique ID from the cell>" (`is_distinct_from` or
+  `!=` on the searched resource's primary key, maybe under an ignored
+  empty constraint) used to keep the search unloaded
+  (`:page_data_in_cell`). It is now an exclusion (`batch.excludes`): the
+  batched query reads the cells' keys without it, and each cell's records
+  are its own less the record it names, compared exactly. Counts and lists
+  are exact. A first item is not the first per key (the cell's own record
+  may be it), so it is read like a page of one. Each cell then needs one
+  more record of the query, so the per-round limit counts one more per
+  exclusion. A cell whose value is not one unique ID (or is empty under
+  `!=`) reads its own query. The batch is the same search, read as the
+  current user. The relationships a cell's search pins read through the
+  cell's thing are now loaded for every cell at once (`cell_loads`), not
+  once per cell.
+
 - **"Animate an element" lowered for Phoenix (WTF-603).** Velocity UI's
   fade and slide transitions and `callout.shake` run in the page's hook
   (`<Web>.Bubble.animate/5`, a `bubble:exec` `animate` operation from a

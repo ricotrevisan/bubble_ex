@@ -365,6 +365,24 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
       %{spec: spec} = spec(app(), :enforced)
       assert %{residue: [], read: {:query, %{batch: %{keys: [_]}}}} = data(spec, "bCount")
     end
+
+    test "a search leaving out the cell's own record is batched, in both modes (WTF-593)" do
+      for privacy <- [:omit, :enforced] do
+        %{spec: spec} = spec(app(), privacy)
+
+        assert %{residue: [], read: {:query, %{pk: "id", batch: batch}}} = data(spec, "bSib")
+
+        assert %{keys: [%{attr: "customer_id"}], excludes: [%{attr: "id", kind: :distinct}]} =
+                 batch
+
+        # Under an empty constraint dropped: unless the unique ID is empty.
+        assert %{residue: [], read: {:query, %{batch: %{excludes: [%{unless: u}]}}}} =
+                 data(spec, "bNext")
+
+        assert is_binary(u)
+        assert %{residue: [], read: {:value, %{queries: [%{batch: _}]}}} = data(spec, "bPeer")
+      end
+    end
   end
 
   describe "cell_batch/2" do
@@ -469,6 +487,77 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
       assert {:or, [_, {:op, "in", {:ref, [], "customer_id"}, {:pin, "k"}}]} = f.expr
     end
 
+    test "a cell's own record left out by its unique ID is an exclusion, not batched (WTF-593)" do
+      key = {:call, "is_not_distinct_from", [{:ref, [], "customer_id"}, {:pin, "k"}]}
+      own = {:call, "is_distinct_from", [{:ref, [], "id"}, {:pin, "x"}]}
+      q = query({:and, [key, own]}, [pin("k", :one), pin("x", nil, "text")]) |> Map.put(:pk, "id")
+      vary = %{"k" => true, "x" => true}
+
+      assert {:ok, %{keys: [%{var: "k"}], excludes: [x], filter: f}} = Data.cell_batch(q, vary)
+      assert x == %{var: "x", attr: "id", kind: :distinct, unless: nil}
+      # The batched query reads every cell's records, none left out.
+      assert {:op, "in", {:ref, [], "customer_id"}, {:pin, "k"}} = f.expr
+
+      # `!=` matches nothing where the value is empty: `:neq`.
+      neq = {:op, "!=", {:ref, [], "id"}, {:pin, "x"}}
+
+      assert {:ok, %{excludes: [%{kind: :neq}]}} =
+               Data.cell_batch(%{q | filter: %{q.filter | expr: {:and, [key, neq]}}}, vary)
+
+      # A thing (its unique ID) is one too.
+      assert {:ok, %{excludes: [%{var: "x"}]}} =
+               Data.cell_batch(%{q | pins: [pin("k", :one), pin("x", :one)]}, vary)
+    end
+
+    test "an exclusion guarded by its empty value holds unless empty (WTF-593)" do
+      key = {:op, "==", {:ref, [], "customer_id"}, {:pin, "k"}}
+
+      own =
+        {:or,
+         [
+           {:op, "==", {:pin, "e"}, {:value, true}},
+           {:call, "is_distinct_from", [{:ref, [], "id"}, {:pin, "x"}]}
+         ]}
+
+      pins = [pin("e", nil, "boolean"), pin("k", :one), pin("x", nil, "text")]
+      q = query({:and, [key, own]}, pins) |> Map.put(:pk, "id")
+
+      assert {:ok, %{excludes: [%{var: "x", unless: "e"}], filter: f}} =
+               Data.cell_batch(q, %{"e" => true, "k" => true, "x" => true})
+
+      assert {:op, "in", {:ref, [], "customer_id"}, {:pin, "k"}} = f.expr
+    end
+
+    test "an exclusion that is not the cell's unique ID, or with no key, is not batched" do
+      key = {:op, "==", {:ref, [], "customer_id"}, {:pin, "k"}}
+      own = {:call, "is_distinct_from", [{:ref, [], "id"}, {:pin, "x"}]}
+      pins = [pin("k", :one), pin("x", nil, "text")]
+      vary = %{"k" => true, "x" => true}
+      q = query({:and, [key, own]}, pins) |> Map.put(:pk, "id")
+
+      # Not the primary key (or none known): a comparison like any other.
+      assert :error = Data.cell_batch(Map.delete(q, :pk), vary)
+      assert :error = Data.cell_batch(%{q | pk: "uid"}, vary)
+
+      other = {:call, "is_distinct_from", [{:ref, [], "owner_id"}, {:pin, "x"}]}
+
+      assert :error =
+               Data.cell_batch(%{q | filter: %{q.filter | expr: {:and, [key, other]}}}, vary)
+
+      # A list, a number: not one unique ID.
+      for x <- [pin("x", :many), pin("x", nil, "number")] do
+        assert :error = Data.cell_batch(%{q | pins: [pin("k", :one), x]}, vary)
+      end
+
+      # Under `or` or `not`, or used twice.
+      for expr <- [{:or, [key, own]}, {:and, [key, {:not, own}]}, {:and, [key, own, own]}] do
+        assert :error = Data.cell_batch(%{q | filter: %{q.filter | expr: expr}}, vary)
+      end
+
+      # An exclusion alone keys nothing.
+      assert :error = Data.cell_batch(%{q | filter: %{q.filter | expr: own}}, %{"x" => true})
+    end
+
     test "the records a list holds are keyed by their IDs; random order is not batched" do
       expr = {:op, "in", {:ref, [], "id"}, {:pin, "ids"}}
       q = query(expr, [pin("ids", :listed)]) |> Map.put(:listed, "ids")
@@ -509,6 +598,13 @@ defmodule BubbleEx.Target.Phoenix.CellSearchesTest do
 
       assert runtime =~
                "defp keyed?(value, {:eq, enum}), do: is_binary(value) and value in enum.values()"
+
+      # A cell's own record left out (WTF-593): not in the batch, whose
+      # function does not bind its value; left out of each cell's records.
+      orders = files["lib/shop_web/live/orders_live/workflows.ex"]
+      assert orders =~ ~r/excludes: \[\{:pin_\d+, :id, :distinct, nil\}\]/
+      assert orders =~ ~r/fn %\{[^}]*pin_(\d+): _pin_\1[^}]*\} ->/
+      assert runtime =~ "defp excluded(rows, request, excludes) do"
     end
 
     test "the fixture's tag, only in cells: rendered per cell, its unbatched search marked" do
