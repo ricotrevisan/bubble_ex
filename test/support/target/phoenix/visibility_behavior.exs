@@ -10,6 +10,8 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
   # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
   use PhxCheckWeb.BubbleBehavior
 
+  alias PhxCheckWeb.IndexLive.Workflows, as: IndexWorkflows
+
   @u1 "1700000000000x100000000000000001"
   @p1 "1700000000000x200000000000000001"
   @t1 "1700000000000x300000000000000001"
@@ -564,6 +566,36 @@ defmodule PhxCheckWeb.VisibilityBehaviorTest do
 
     render_hook(view, "bubble:overlay", %{"scope" => "", "element" => "bOvPop", "open" => false})
     assert hidden?(view, "bOvPopRead")
+  end
+
+  # WTF-588: an element's "is visible" in a workflow's or a step's
+  # condition, and a "Do when" condition, is its visibility as the page
+  # computes it. bVisG shows for a signed-in user; bVisGT is inside it.
+  test "a workflow's condition reading an element's visibility follows it",
+       %{conn: conn, user: user} do
+    data_access_on()
+    {:ok, view, _html} = live(conn, "/")
+    # "Do when bVisG is visible" has not run.
+    assert hidden?(view, "bVisMet")
+    # "Only when bVisG is visible": not run.
+    click(view, "bVisOnly")
+    assert hidden?(view, "bVisSeen")
+    # A step "only when bVisGT isn't visible": its group is hidden, so it is.
+    click(view, "bVisStep")
+    refute hidden?(view, "bVisSeen")
+
+    {:ok, view, _html} = live(sign_in(conn, user), "/")
+    refute hidden?(view, "bVisMet")
+    click(view, "bVisStep")
+    assert hidden?(view, "bVisSeen")
+    click(view, "bVisOnly")
+    refute hidden?(view, "bVisSeen")
+  end
+
+  test "a workflow reading the visibility of what a step shows is refused" do
+    workflows = IndexWorkflows.__bubble__(:workflows)
+    assert workflows["wVisTouched"].blocked != []
+    assert workflows["wVisOnly"].blocked == []
   end
 
   test "a floating group's conditionals decide it and what reads it", %{conn: conn, user: user} do

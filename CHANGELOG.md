@@ -6,6 +6,23 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **Workflow conditions read an element's "is visible" (WTF-588).** With
+  the new `:element_visibility` option of `FrontendWorkflows.map/3`
+  (`Frontend.visibility_index/3`, which the slice pipeline and the
+  compile check pass), a page's workflow or step "Only when", and "Do
+  when" condition, read an element's `is visible` / `isn't visible` as
+  the visibility the page computes for it, as element conditionals do
+  (WTF-578): folded from its conditionals and its ancestors' up to the
+  page. The clicked element is not taken as shown: the server does not
+  check that a browser's event comes from a shown element. The read
+  stays `:unavailable_input` when a step shows, hides, toggles or
+  animates the element or an ancestor on the way, an overlay, a cell, a
+  breakpoint or a hover rule is on the way, a conditional does not
+  compile for a workflow (a repeating group's `is loading`), or the
+  workflow is a reusable element's: the instance's visibility is its host
+  page's. New cases in the `phoenix_visibility` compile-check fixture and
+  its behavior tests.
+
 - **A search in a repeating group's cell that leaves out the cell's own
   record is read for every cell together (WTF-593).** A constraint
   "unique ID is not <a unique ID from the cell>" (`is_distinct_from` or

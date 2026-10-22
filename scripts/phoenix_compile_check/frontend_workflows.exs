@@ -41,7 +41,8 @@ app = fixture |> File.read!() |> Jason.decode!()
   FrontendWorkflows.map(lowered, project,
     namespace: "PhxCheck",
     frontend: frontend,
-    backend: backend
+    backend: backend,
+    element_visibility: BubbleEx.Target.Elixir.Frontend.visibility_index(app, model, frontend)
   )
 
 workflow_tasks = for t <- plan.tasks, t.kind == :workflow, into: MapSet.new(), do: t.id
