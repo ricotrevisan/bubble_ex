@@ -952,9 +952,9 @@ defmodule <%= @web %>.Bubble do
           // An animation still running gives way to a later show, hide or
           // toggle of its element (WTF-603).
           on("bubble:show", step((el) => { this.stopMotion(el); this.show(el) }))
-          on("bubble:hide", step((el) => { this.stopMotion(el); this.hide(el) }))
+          on("bubble:hide", step((el) => { this.stopMotion(el, true); this.hide(el) }))
           on("bubble:toggle", step((el) => {
-            this.stopMotion(el)
+            this.stopMotion(el, !el.hidden)
             el.hidden ? this.show(el) : this.hide(el)
           }))
           // Bubble's "Animate an element" (WTF-603): its transition shows or
@@ -1218,7 +1218,7 @@ defmodule <%= @web %>.Bubble do
         // whose contents are being loaded runs its entrance's motion once
         // it opened (the steps after it wait, `load`).
         animate(el, visibility, motion) {
-          this.stopMotion(el)
+          this.stopMotion(el, visibility === "hide")
           if (visibility === "show") this.show(el)
           if (visibility === "show" && el.hidden && this.loading === el) {
             return this.run(() => this.animate(el, null, motion))
@@ -1251,15 +1251,18 @@ defmodule <%= @web %>.Bubble do
         },
         // Ends an element's running animation where it is, without its
         // transition's end (a later show, hide, toggle or animation of the
-        // element decides). A Popup's exit cut short never closes it: the
+        // element decides). A Popup's exit cut short by a step that leaves
+        // it open (a show, an entrance, a callout) never closes it: the
         // server forgets the "is closed" report the exit's step expected.
-        stopMotion(el) {
+        // One cut short by a step that closes it (`closing`) leaves that
+        // report to the close that follows, which takes it.
+        stopMotion(el, closing = false) {
           const running = this.motions && this.motions.get(el)
           if (!running) return
           this.motions.delete(el)
           this.running.delete(running)
           running.animation.cancel()
-          if (running.visibility === "hide") this.popupEvent(el, "closed", true)
+          if (running.visibility === "hide" && !closing) this.popupEvent(el, "closed", true)
         },
         show(el) {
           const overlay = el.getAttribute("data-overlay")

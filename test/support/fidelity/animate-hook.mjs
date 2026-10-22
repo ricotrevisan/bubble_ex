@@ -190,8 +190,8 @@ try {
     "an exit of a closed popup runs nothing"
   );
 
-  // A hide during a Popup's exit closes it once: the exit cut short reports
-  // nothing that runs (skipped), the hide reports it closed.
+  // A hide during a Popup's exit closes it once: one "closed" report, which
+  // takes what the exit's step expected (no skipped report before it).
   await animate("P", fade("show", 50));
   await page.waitForTimeout(100);
   await take();
@@ -199,11 +199,17 @@ try {
   await page.waitForTimeout(50);
   await step("P", "bubble:hide");
   await page.waitForTimeout(400);
-  assert.deepEqual(
-    await take(),
-    [["bubble:popup", { scope: "", element: "P", event: "closed", skipped: true }], report("P", "closed")],
-    "a hide during an exit: closed once"
-  );
+  assert.deepEqual(await take(), [report("P", "closed")], "a hide during an exit: closed once");
+
+  // So does a second exit cutting the first: closed once, when it ends.
+  await animate("P", fade("show", 50));
+  await page.waitForTimeout(100);
+  await take();
+  await animate("P", fade("hide", 300));
+  await page.waitForTimeout(50);
+  await animate("P", fade("hide", 100));
+  await page.waitForTimeout(400);
+  assert.deepEqual(await take(), [report("P", "closed")], "an exit cutting an exit: closed once");
 
   // A show during its exit keeps it open; the exit's expected "is closed"
   // is forgotten (skipped).
