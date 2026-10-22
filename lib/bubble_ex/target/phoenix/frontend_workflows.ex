@@ -1251,10 +1251,19 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       "[" <>
         Enum.map_join(q.sort, ", ", fn {a, _dir} -> atom(a) end) <> "]"
 
-    # The whole search: two that differ only in their sort, take or list
-    # are never one.
+    # The whole search: two that differ only in their sort, take, list or
+    # exclusions (WTF-593: not in the batched filter) are never one.
+    whole =
+      case Map.get(batch, :excludes, []) do
+        [] ->
+          {q.resource, batch.filter, q.sort, q.take, Map.get(q, :listed), page_size, loads}
+
+        excludes ->
+          {q.resource, q.filter, excludes, q.sort, q.take, Map.get(q, :listed), page_size, loads}
+      end
+
     ref =
-      {q.resource, batch.filter, q.sort, q.take, Map.get(q, :listed), page_size, loads}
+      whole
       |> :erlang.term_to_binary()
       |> then(&:crypto.hash(:sha256, &1))
       |> Base.encode16(case: :lower)

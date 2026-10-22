@@ -22,8 +22,9 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
   # round of cells, never one per cell. The orders page (WTF-593) lists
   # every order; each cell searches its customer's orders whose unique ID
   # is not its own: their count, the first of them (the cell's own may be
-  # its customer's first) and the count of the first one, read for every
-  # cell together and each cell's own order left out after it.
+  # its customer's first), the second of them and the count of the first
+  # one, read for every cell together and each cell's own order left out
+  # after it.
   use PhxCheckWeb.ConnCase, async: false
 
   # `live/2` waits for the first load (WTF-559, behavior_helpers.exs).
@@ -457,10 +458,11 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
     {view, render(view)}
   end
 
-  # The orders page's reads of orders: its list, the cells' orders' customers
-  # loaded once for every cell, and the cells' three searches (Sib, Next,
-  # Peer), whatever the number of cells.
-  @sibling_queries 5
+  # The orders page's reads of orders, whatever the number of cells: its
+  # list, the cells' orders' customers loaded once for every cell (with
+  # policies, two reads: the orders, then their customers joined), and the
+  # cells' four searches (Sib, Next, Peer, Second).
+  defp sibling_queries, do: if(enforced?(), do: 7, else: 6)
 
   test "each order's cell leaves its own order out of its customer's (WTF-593)", %{
     conn: conn,
@@ -476,17 +478,19 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
       # Anvil is Acme's first: its cell's first other order is Axe.
       assert shown(html, "Next") == ["Axe", "Anvil", "", "Emu", "Ear"]
       assert shown(html, "Peer") == ~w(1 1 0 1 1)
+      assert shown(html, "Second") == ["", "", "", "", ""]
     else
       assert shown(html, "Order") == ~w(Anvil Arrow Axe Bell Drum Ear Elk Emu)
       assert shown(html, "Sib") == ~w(2 2 2 0 0 2 2 2)
       assert shown(html, "Next") == ["Arrow", "Anvil", "Anvil", "", "", "Elk", "Ear", "Ear"]
       assert shown(html, "Peer") == ~w(1 1 1 0 0 1 1 1)
+      assert shown(html, "Second") == ["Axe", "Axe", "Arrow", "", "", "Emu", "Emu", "Elk"]
     end
 
     orders = Map.get(by_table, "order", 0)
 
-    assert orders > 0 and orders <= @sibling_queries,
-           "/orders read orders #{orders} times, more than #{@sibling_queries}: #{inspect(by_table)}"
+    assert orders > 0 and orders <= sibling_queries(),
+           "/orders read orders #{orders} times, more than #{sibling_queries()}: #{inspect(by_table)}"
 
     # What the cells' searches pin through each cell's order (its customer)
     # is loaded for every cell at once, not once per cell.
@@ -525,9 +529,41 @@ defmodule PhxCheckWeb.CellSearchesBehaviorTest do
     acme = if enforced?(), do: 11, else: 12
     assert Enum.take(shown(html, "Order"), 2) == ~w(Aa1 Aa2)
     assert Enum.take(shown(html, "Next"), 3) == ~w(Aa2 Aa1 Aa1)
+    assert Enum.take(shown(html, "Second"), 3) == ~w(Aa3 Aa3 Aa2)
     assert Enum.take(shown(html, "Sib"), acme) == List.duplicate("#{acme - 1}", acme)
     assert Enum.take(shown(html, "Peer"), acme) == List.duplicate("1", acme)
     assert Map.get(now, "order", 0) == Map.get(before, "order", 0)
+  end
+
+  test "past :max_batched, cells leaving out their own order read the same (WTF-593)", %{
+    conn: conn,
+    users: users
+  } do
+    # Three key combinations at most per query, three records at most per
+    # read: the cells are read in chunks, a chunk's page rounds fill and
+    # its short cells are read again, a count past the cap reads each cell
+    # on its own. Each cell's own order is still left out.
+    Application.put_env(:phx_check, PhxCheckWeb.BubbleData, max_batched: 3)
+
+    {html, log} =
+      ExUnit.CaptureLog.with_log(fn ->
+        {_view, html} = orders(sign_in(conn, users["Ada"]))
+        html
+      end)
+
+    assert log =~ "past :max_batched (3)"
+
+    if enforced?() do
+      assert shown(html, "Sib") == ~w(1 1 0 1 1)
+      assert shown(html, "Next") == ["Axe", "Anvil", "", "Emu", "Ear"]
+      assert shown(html, "Peer") == ~w(1 1 0 1 1)
+      assert shown(html, "Second") == ["", "", "", "", ""]
+    else
+      assert shown(html, "Sib") == ~w(2 2 2 0 0 2 2 2)
+      assert shown(html, "Next") == ["Arrow", "Anvil", "Anvil", "", "", "Elk", "Ear", "Ear"]
+      assert shown(html, "Peer") == ~w(1 1 1 0 0 1 1 1)
+      assert shown(html, "Second") == ["Axe", "Axe", "Arrow", "", "", "Emu", "Emu", "Elk"]
+    end
   end
 
   test "with data access off, no cell reads anything", %{conn: conn, users: users} do

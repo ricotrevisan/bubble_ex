@@ -1268,7 +1268,9 @@ defmodule <%= @web %>.BubbleData do
     {Map.merge(map, Map.new(Enum.zip(present, loaded))), keep_loaded(batch, loaded, loads)}
   end
 
-  # Each record of `loaded` kept in the batch with the paths read through it.
+  # Each record of `loaded` kept in the batch with the paths read through
+  # it: those read through the very record kept before too, never another
+  # copy's (it may lack them).
   defp keep_loaded(batch, loaded, loads) do
     read =
       loaded
@@ -1279,7 +1281,12 @@ defmodule <%= @web %>.BubbleData do
             acc
 
           key ->
-            paths = acc |> Map.get(key, {record, MapSet.new()}) |> elem(1)
+            paths =
+              case Map.get(acc, key) do
+                {^record, paths} -> paths
+                _ -> MapSet.new()
+              end
+
             Map.put(acc, key, {record, Enum.into(loads, paths)})
         end
       end)
