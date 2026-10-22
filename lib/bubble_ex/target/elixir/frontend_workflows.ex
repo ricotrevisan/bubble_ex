@@ -48,20 +48,19 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   With `:element_visibility`, an element's `is visible` (and `isn't
   visible`) in an "Only when" condition, a workflow's or a step's, or a
-  "Do when" condition, is the visibility the page computes for it
-  (WTF-588), as an element's conditionals read it
+  "Do when" condition of a page, is the visibility the page computes for
+  it (WTF-588), as an element's conditionals read it
   (`BubbleEx.Target.Elixir.Frontend.ElementVisibility`, WTF-578): folded
-  from its conditionals and its ancestors' up to one shown whenever the
-  condition is tested, and its conditions' inputs bound like the
-  condition's own. A click's or an input change's own condition is tested
-  as the user acts on the element, so it and what holds it are shown; any
-  other condition on a page (a step's included: an earlier step may have
-  hidden the element acted on) is held by the page only. The read stays
-  `:unavailable_input` residue when the browser may change it (a step
-  shows, hides, toggles or animates it or an ancestor on the way, in the
-  browser or from the server; a breakpoint, a hover rule, an overlay, a
-  repeating group's cell on the way), and in a reusable element's
-  workflow, other than a click's or an input change's own condition: the
+  from its conditionals and its ancestors' up to the page, and its
+  conditions' inputs bound like the condition's own. The clicked or
+  changed element is not taken as shown: the server does not check that
+  the element of a browser's event is, so a click's own condition decides
+  it too. The read stays `:unavailable_input` residue when the browser may
+  change it (a step shows, hides, toggles or animates it or an ancestor
+  on the way, in the browser or from the server; a breakpoint, a hover
+  rule, an overlay, a repeating group's cell on the way), when a
+  conditional on the way does not compile for a workflow (a repeating
+  group's `is loading`, say), and in a reusable element's workflow: the
   instance's own visibility is its host page's.
 
   ## Residue added here
@@ -1127,10 +1126,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   # workflow's: the page tests it again when its own data changes, not
   # when the search's records do, as Bubble would.
   defp condition(%Workflow{kind: :condition_true} = w, ctx),
-    do: compile(visibility(w.condition, :workflow, ctx), w.id, ctx)
+    do: compile(visibility(w.condition, ctx), w.id, ctx)
 
   defp condition(%Workflow{condition: expr, id: id}, ctx) do
-    expr = visibility(expr, :workflow, ctx)
+    expr = visibility(expr, ctx)
 
     with {nil, [_ | _] = residue} = uncompiled <- compile(expr, id, ctx),
          true <- Enum.any?(residue, &(&1.reason == :uncompiled_expression)) do
@@ -1145,40 +1144,27 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     end
   end
 
-  # An element's "is visible" in an "Only when" condition (WTF-588): the
-  # visibility the page computes for it (`ElementVisibility.inline/4`, as
-  # an element's conditionals read it, WTF-578), from where the condition
-  # is tested (`visibility_reader/2`). A read the page cannot decide stays,
-  # and is `:unavailable_input` residue as before.
-  defp visibility(%Expr{ir: %IR{} = ir} = expr, at, ctx) do
+  # An element's "is visible" in an "Only when" or "Do when" condition
+  # (WTF-588): the visibility the page computes for it
+  # (`ElementVisibility.inline/4`, as an element's conditionals read it,
+  # WTF-578), with only the page held shown. A read the page cannot decide
+  # stays, and is `:unavailable_input` residue as before.
+  #
+  # Not the clicked or changed element and what holds it: the server never
+  # checks that the element of a browser's event is shown (a stale or
+  # forged click, an input committed later), so its own condition must
+  # decide that too. A reusable element's condition is held by its
+  # instance, whose own visibility is its host page's: its reads stay.
+  defp visibility(%Expr{ir: %IR{} = ir} = expr, ctx) do
     with %{} = index <- Map.get(ctx, :element_visibility),
-         reader when is_binary(reader) <- visibility_reader(at, ctx) do
-      %{expr | ir: ElementVisibility.inline(ir, reader, MapSet.new(), index)}
+         %{kind: :page} <- ctx.raw_elements[ctx.surface] do
+      %{expr | ir: ElementVisibility.inline(ir, ctx.surface, MapSet.new(), index)}
     else
       _ -> expr
     end
   end
 
-  defp visibility(expr, _at, _ctx), do: expr
-
-  # What holds the condition when it is tested: what is shown then is
-  # visible. A click's or an input change's own condition is tested as the
-  # user clicks or changes the element, which is shown then, and so is
-  # everything that holds it. Any other condition (another event's, a
-  # step's, which earlier steps may have hidden the element before) is
-  # held by its page only, which is always shown. A reusable element's is
-  # held by the instance, whose visibility is its host page's: nil, its
-  # reads stay.
-  defp visibility_reader(:workflow, %{workflow: %Workflow{kind: kind, element: element}})
-       when kind in [:click, :input_change] and is_binary(element),
-       do: element
-
-  defp visibility_reader(_at, %{surface: surface} = ctx) do
-    case ctx.raw_elements[surface] do
-      %{kind: :page} -> surface
-      _ -> nil
-    end
-  end
+  defp visibility(expr, _ctx), do: expr
 
   defp queries?(%{queries: [_ | _]}), do: true
   defp queries?(_compiled), do: false
@@ -1458,7 +1444,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
   end
 
   defp bound_step(s, base, ctx) do
-    {condition, cr} = compile(visibility(s.condition, :step, ctx), s.id, ctx)
+    {condition, cr} = compile(visibility(s.condition, ctx), s.id, ctx)
     {args, ar} = args(s.op, s.args, s.id, ctx)
     step = %{base | condition: condition, args: args}
     residue = Residue.sort(Enum.uniq(cr ++ ar ++ collisions(step)))

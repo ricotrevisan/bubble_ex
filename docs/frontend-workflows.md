@@ -389,26 +389,27 @@ except as below), other page data, the value of an input the page does
 not track (a placeholder, a date input, one whose first value is
 dynamic).
 
-An element's `is visible` (`isn't visible`) in a workflow's or a step's
-"Only when", or a "Do when" condition, is the visibility the page
+An element's `is visible` (`isn't visible`) in a page's workflow or
+step "Only when", or "Do when" condition, is the visibility the page
 computes for it (WTF-588), as an element's own conditionals read it
 (WTF-578, `ElementVisibility`): folded from its visibility conditionals
-and its ancestors' up to one that is shown whenever the condition is
-tested; their inputs are bound like the condition's own. A click's or an
-input change's own condition is tested as the user acts on the element,
-so the element and what holds it are shown then. Any other condition on
-a page is held by the page only: another event's, or a step's, since an
-earlier step may have hidden the element acted on. The read stays
+and its ancestors' up to the page; their inputs are bound like the
+condition's own. The clicked or changed element is not taken as shown,
+nor what holds it: the server does not check that the element of a
+browser's event is shown (a stale or forged click, an input committed
+later), so "Only when the admin group is visible" on a button inside
+that group still reads the group's conditionals. The read stays
 `:unavailable_input` residue when the browser may change the answer: a
 step shows, hides, toggles or animates the element or an ancestor on the
 way (in the browser or sent by the server, so a "Do when" reading an
 animated element still waits, WTF-604), an overlay (its open state is
 kept only for the page's own conditionals), a repeating group's cell, a
 breakpoint or a hover rule is on the way, or a conditional on the way
-does not compile. In a reusable element's workflow only a click's or an
-input change's own condition reads it: anything else is held by the
-instance, whose own visibility is its host page's. Values (a step's
-value, say) still do not read it.
+does not compile for a workflow (one reading a repeating group's `is
+loading`, a constant no on the page, may be tested in the moment Bubble
+says yes). In a reusable element's workflow it stays residue: the
+instance's own visibility is its host page's. Values (a step's value,
+say) still do not read it.
 
 ## Refusing to run, never a partial run
 

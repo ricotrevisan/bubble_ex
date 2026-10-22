@@ -143,7 +143,7 @@ defmodule BubbleEx.Target.Elixir.Frontend do
 
   def compile(app, %Model{} = model, %Project{} = project, %Normalized{} = frontend, opts)
       when is_map(app) and not is_struct(app) and is_list(opts) do
-    env = env(app, model)
+    env = env(app, model, :constant)
     opts = Keyword.put(opts, :element_visibility, ElementVisibility.index(app, frontend, env))
 
     nodes = Enum.flat_map(frontend.pages ++ frontend.reusables, &nodes/1)
@@ -179,14 +179,16 @@ defmodule BubbleEx.Target.Elixir.Frontend do
        Error.new(:invalid_input, "expected app JSON, its Model, its Ash project and its frontend")}
 
   @doc """
-  The visibility index `compile/5` reads an element's `is visible` with
-  (`ElementVisibility.index/3`), for
+  The visibility index of `frontend` (`ElementVisibility.index/3`) for
   `BubbleEx.Target.Elixir.FrontendWorkflows.map/3`'s `:element_visibility`
-  option (WTF-588): the workflows' conditions read it as the pages do.
+  option (WTF-588): the workflows' conditions read an element's `is
+  visible` as the pages do (`compile/5`), except that a conditional
+  reading a repeating group's `is loading` does not compile there (a
+  workflow's condition may be tested in the moment Bubble says yes).
   """
   @spec visibility_index(map(), Model.t(), Normalized.t()) :: ElementVisibility.t()
   def visibility_index(app, %Model{} = model, %Normalized{} = frontend) when is_map(app),
-    do: ElementVisibility.index(app, frontend, env(app, model))
+    do: ElementVisibility.index(app, frontend, env(app, model, :residue))
 
   @doc """
   The `:element_condition` residue of `frontend` (`BubbleEx.Plan.Residue`):
@@ -609,8 +611,8 @@ defmodule BubbleEx.Target.Elixir.Frontend do
     end)
   end
 
-  defp env(app, model),
-    do: Env.new(model, tree: Tree.build(app), searches: :page, loading_status: :constant)
+  defp env(app, model, loading_status),
+    do: Env.new(model, tree: Tree.build(app), searches: :page, loading_status: loading_status)
 
   # A condition is a yes/no expression; compiled as a value (not shown).
   defp compile_condition(condition, env, project, opts) when is_map(condition) do

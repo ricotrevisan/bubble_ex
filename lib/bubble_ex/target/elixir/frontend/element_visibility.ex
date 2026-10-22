@@ -58,10 +58,8 @@ defmodule BubbleEx.Target.Elixir.Frontend.ElementVisibility do
   not keep or load is marked there instead.
 
   Workflow conditions read it too (WTF-588,
-  `BubbleEx.Target.Elixir.FrontendWorkflows`): an "Only when" or "Do
-  when" condition is inlined with the reader shown whenever it is tested,
-  the clicked or changed element for that event's own condition, else
-  the page.
+  `BubbleEx.Target.Elixir.FrontendWorkflows`): a page's "Only when" or
+  "Do when" condition is inlined with the page as its reader.
   """
 
   alias BubbleEx.Expression

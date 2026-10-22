@@ -1,8 +1,7 @@
 defmodule BubbleEx.Target.Elixir.FrontendWorkflowsVisibilityTest do
-  # An element's "is visible" in a workflow's or a step's "Only when", or a
+  # An element's "is visible" in a page's workflow or step "Only when", or
   # "Do when" condition (WTF-588): the visibility the page computes for it
-  # (`ElementVisibility`, WTF-578), from what holds the condition when it
-  # is tested. test/support/target/phoenix/visibility.json, whose
+  # (`ElementVisibility`, WTF-578), folded up to the page. test/support/target/phoenix/visibility.json, whose
   # visibility_behavior.exs runs the same workflows in a generated project.
   use ExUnit.Case, async: true
 
@@ -111,9 +110,10 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsVisibilityTest do
     end
   end
 
-  test "what holds the clicked element is visible for its condition, not for its steps" do
-    # bVisGT is inside bVisG: as it is clicked, bVisG is shown. A step runs
-    # later (an earlier step may hide it): the page holds it.
+  test "the clicked element is not taken as shown: its condition decides what holds it" do
+    # bVisGT is inside bVisG. The server never checks that a click's
+    # element is shown (a stale or forged click), so "Only when bVisG is
+    # visible" reads bVisG's conditionals, for the click and its steps.
     spec =
       app()
       |> put_workflow(["pages", "index"], "wVisHeld", %{
@@ -125,13 +125,61 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsVisibilityTest do
 
     w = workflow(spec, "wVisHeld")
     assert residue(w) == []
-    assert w.condition.bindings == []
-    assert w.condition.source =~ "true"
+    assert binds(w.condition) == [:actor]
     [step] = w.steps
     assert binds(step.condition) == [:actor]
   end
 
-  test "in a reusable element, only a click's own condition reads it" do
+  test "another event's condition reads it too" do
+    spec =
+      app()
+      |> put_workflow(["pages", "index"], "wVisLoad", %{
+        "type" => "PageLoaded",
+        "properties" => %{"condition" => vis("bVisGT", "isnt_visible")},
+        "actions" => %{"0" => set_seen("aVisLoad1", "bVis")}
+      })
+      |> spec()
+
+    w = workflow(spec, "wVisLoad")
+    assert residue(w) == []
+    assert binds(w.condition) == [:actor]
+  end
+
+  test "a popup's open state, and a repeating group's is loading, stay residue" do
+    spec =
+      app()
+      |> put_workflow(["pages", "index"], "wVisPop", %{
+        "type" => "ButtonClicked",
+        "properties" => %{"element_id" => "bVisOnly", "condition" => vis("bOvPop", "is_visible")},
+        "actions" => %{"0" => set_seen("aVisPop1", "bVis")}
+      })
+      |> put_workflow(["pages", "index"], "wVisPopIn", %{
+        "type" => "ButtonClicked",
+        "properties" => %{"element_id" => "bVisOnly", "condition" => vis("bOvPopT", "is_visible")},
+        "actions" => %{"0" => set_seen("aVisPopIn1", "bVis")}
+      })
+      # bLoading is shown while a repeating group "is loading": a constant
+      # no on the page, not compiled for a workflow (WTF-588).
+      |> put_workflow(["pages", "index"], "wVisLoading", %{
+        "type" => "ButtonClicked",
+        "properties" => %{
+          "element_id" => "bVisOnly",
+          "condition" => vis("bLoading", "is_visible")
+        },
+        "actions" => %{"0" => set_seen("aVisLoading1", "bVis")}
+      })
+      |> spec()
+
+    for id <- ~w(wVisPop wVisPopIn wVisLoading) do
+      w = workflow(spec, id)
+      assert w.condition == nil
+
+      assert [%{reason: :unavailable_input, detail: %{inputs: ["element_state:is_visible"]}}] =
+               residue(w)
+    end
+  end
+
+  test "in a reusable element, the reads stay residue" do
     card = ["element_definitions", "card"]
 
     spec =
@@ -156,13 +204,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflowsVisibilityTest do
       })
       |> spec()
 
+    # The instance holds bCardT: its own visibility is its host page's.
     click = workflow(spec, "wCardClick")
-    # The instance holds the button and bCardT: shown as it is clicked.
-    assert click.condition != nil
-    assert binds(click.condition) == [:actor]
-    # Its step: the instance's own visibility is its host page's.
-    assert [%{reason: :unavailable_input, detail: %{inputs: ["element_state:is_visible"]}}] =
-             residue(click)
+    assert click.condition == nil
+
+    assert [%{reason: :unavailable_input}, %{reason: :unavailable_input}] = residue(click)
 
     assert [%{reason: :unavailable_input, detail: %{inputs: ["element_state:is_visible"]}}] =
              spec |> workflow("wCardDo") |> residue()
