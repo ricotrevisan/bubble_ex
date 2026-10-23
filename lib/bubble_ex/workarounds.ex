@@ -52,10 +52,13 @@ defmodule BubbleEx.Workarounds do
   | `:keep_alive` | kept on the page only so its plugin or its events run | `:plugin_event`: the plugin's or event's own lowering |
   | `:spacer` | an empty, unreferenced tiny element that only adds its container's gap | `:css_gap` |
   | `:js_bridge` | runs the app author's code: a code plugin (Toolbox, `BubbleEx.Plugins.Catalog` `:hand_written_code`) or an HTML element with a script or style tag | `:hook`: a client hook |
+  | `:unused` | never visible, and nothing reads, writes, shows or triggers it or its contents (see below) | `:skip`: not generated |
   | `:unknown` | none of the above, or signals that disagree | `:keep`: keep the markup as Bubble has it |
 
   Every entry offers every lowering (`options`), its class's first, so an
-  owner may also reclassify it; `:unknown` suggests `:keep`. A pure
+  owner may also reclassify it; `:unknown` suggests `:keep`. An `:unused`
+  entry offers `:skip` and `:keep` only, and no other class offers
+  `:skip`. A pure
   wrapper (it holds nothing, sets and reads nothing, nothing outside uses
   its contents, and it only contains candidates of one class) takes its
   contents' class. `held` lists the candidates inside an element: one
@@ -66,6 +69,32 @@ defmodule BubbleEx.Workarounds do
   keeps its holder's markup, though the holder's finding still applies
   `page_state`. The holder's type and `held` are part of its proposal: a
   candidate added inside it makes a decision about it stale.
+
+  ### Unused
+
+  An element is `:unused` only when all of these hold, so a doubt keeps
+  its old class:
+
+    * it is never visible, and is no reusable element instance or script
+      and holds none; the only plugins it or its contents use are plugin
+      elements that only draw something (an icon, a chart, an input:
+      `BubbleEx.Plugins.Catalog` equivalents), which do nothing hidden
+    * no expression, condition, data source or workflow outside it reads
+      it or its contents, no step targets them (show, hide, toggle,
+      animate, scroll to, display data, custom states, …), and none of
+      their events triggers a workflow
+    * none of them has an HTML ID attribute (the app's code may find it)
+    * none of their Bubble IDs appears anywhere else in the app JSON (a
+      plugin's or a reusable property's element reference the index does
+      not model), except the editor's change history
+    * every candidate it holds is `:unused` too
+
+  It is `:high` confidence, so it is skipped by default and asks the owner
+  nothing; its entry (and finding evidence) records why. `unused_inside`
+  is the unused candidate holding it, if any: `skipped/1` skips a holder only with
+  every candidate it holds and a held one only with its holder, so an
+  owner's `keep` (or `reject`) on any element of a nest brings the whole
+  nest back exactly as Bubble has it.
 
   `confidence` is `:high` when every signal agrees (e.g. a tiny element
   with a data source that other elements read for its data, with no
@@ -112,14 +141,26 @@ defmodule BubbleEx.Workarounds do
   alias BubbleEx.Index.Symbol
   alias BubbleEx.Plugins.Catalog
 
-  @classes [:value_holder, :keep_alive, :spacer, :js_bridge, :unknown]
+  @classes [:value_holder, :keep_alive, :spacer, :js_bridge, :unused, :unknown]
   @options %{
     value_holder: :page_state,
     keep_alive: :plugin_event,
     spacer: :css_gap,
     js_bridge: :hook,
+    unused: :skip,
     unknown: :keep
   }
+  # What an entry of another class may be lowered as: never skipped.
+  @lowerings [:page_state, :plugin_event, :css_gap, :hook, :keep]
+  # Where an element's Bubble ID may appear without using it: the editor's
+  # change history, and a child's pointer to its parent.
+  @history_roots ["merge_changes"]
+  @parent_pointers ["current_parent"]
+
+  # Plugin elements that draw something (icons, charts, inputs): a hidden or
+  # tiny one is not kept for its plugin to run.
+  @visual ~w(icon_set chart calendar date_time_input select_input autocomplete_input
+             markdown_renderer sortable_list)a
 
   @flow ["column", "row", "relative", "align_to_parent", "align-to-parent"]
   @overlays ["Popup", "GroupFocus"]
@@ -135,8 +176,8 @@ defmodule BubbleEx.Workarounds do
   @size_props ~w(width height min_width_css min_height_css min_width_px min_height_px
                  max_width_css max_height_css single_width single_height fit_width fit_height)
 
-  @type class :: :value_holder | :keep_alive | :spacer | :js_bridge | :unknown
-  @type option :: :page_state | :plugin_event | :css_gap | :hook | :keep
+  @type class :: :value_holder | :keep_alive | :spacer | :js_bridge | :unused | :unknown
+  @type option :: :page_state | :plugin_event | :css_gap | :hook | :skip | :keep
 
   @type entry :: %{
           element: String.t(),
@@ -147,6 +188,7 @@ defmodule BubbleEx.Workarounds do
           signals: [:tiny | :never_visible],
           tiny: :fixed | :min_only | nil,
           inside: Symbol.id() | nil,
+          unused_inside: Symbol.id() | nil,
           setters: [%{action: Symbol.id(), workflow: Symbol.id() | nil, type: String.t()}],
           readers: [%{from: Symbol.id(), reads: [String.t()], inside: boolean()}],
           events: [%{workflow: Symbol.id(), event: String.t() | nil}],
@@ -180,8 +222,16 @@ defmodule BubbleEx.Workarounds do
   @spec options() :: [option()]
   def options, do: Enum.map(@classes, &option/1)
 
+  @doc "The lowerings an entry of `class` offers, its own first."
+  @spec options(class()) :: [option()]
+  def options(:unused), do: [:skip, :keep]
+  def options(class), do: [option(class) | List.delete(@lowerings, option(class))]
+
   @doc "See `BubbleEx.Workarounds.PageState.lowered/1`."
   defdelegate page_state(applied), to: BubbleEx.Workarounds.PageState, as: :lowered
+
+  @doc "See `BubbleEx.Workarounds.Skip.skipped/1`."
+  defdelegate skipped(applied), to: BubbleEx.Workarounds.Skip
 
   @doc "See `BubbleEx.Workarounds.PageState.type?/1`."
   defdelegate page_state_type?(type), to: BubbleEx.Workarounds.PageState, as: :type?
@@ -204,17 +254,29 @@ defmodule BubbleEx.Workarounds do
           do: {id, signals}
 
     children = children_map(elements)
+    named = named_at(app, MapSet.new(Map.values(elements), & &1.bubble_id))
+    env = %{raws: raws, children: children, candidates: candidates, named: named}
 
     facts =
       Map.new(candidates, fn {id, signals} ->
-        {id, facts(app, index, elements[id], raws, children, candidates, signals)}
+        {id, facts(app, index, elements, env, elements[id], signals)}
       end)
 
-    facts
-    |> classify_all(children, candidates)
+    classified = classify_all(facts, children, candidates)
+
+    classified
     |> Map.values()
+    |> Enum.map(&Map.put(&1, :unused_inside, unused_inside(&1, classified)))
     |> Enum.sort_by(& &1.element)
   end
+
+  # The unused candidate holding an unused one (its rule asked for every
+  # candidate it holds to be unused).
+  defp unused_inside(%{class: :unused, inside: inside}, classified) when inside != nil do
+    if match?(%{class: :unused}, classified[inside]), do: inside
+  end
+
+  defp unused_inside(_entry, _classified), do: nil
 
   # --- candidacy ----------------------------------------------------------
 
@@ -340,11 +402,13 @@ defmodule BubbleEx.Workarounds do
 
   # --- facts --------------------------------------------------------------
 
-  defp facts(app, index, %Symbol{} = s, raws, children, candidates, signals) do
+  defp facts(app, index, elements, env, %Symbol{} = s, signals) do
+    %{raws: raws, children: children, candidates: candidates} = env
     raw = raws[s.id]
     props = Payload.properties(raw)
     descendants = descendants(children, s.id)
     within = MapSet.new([s.id | descendants])
+    subtree = Enum.map([s.id | descendants], &elements[&1])
 
     setters =
       index
@@ -425,8 +489,90 @@ defmodule BubbleEx.Workarounds do
       },
       held: descendants |> Enum.filter(&Map.has_key?(candidates, &1)) |> Enum.sort(),
       script: Enum.any?([s.id | descendants], &script?(raws[&1])),
-      child_ids: Map.get(children, s.id, [])
+      child_ids: Map.get(children, s.id, []),
+      html_id: Enum.any?([s.id | descendants], &html_id?(raws[&1])),
+      instances: Enum.any?([s.id | descendants], &(Payload.type(raws[&1]) == "CustomElement")),
+      drawing_plugins_only: drawing_plugins_only?(index, [s.id | descendants], raws),
+      named_elsewhere: named_elsewhere?(env.named, s, subtree)
     }
+  end
+
+  # Whether every plugin the elements use is the plugin of a plugin element
+  # that only draws something (`@visual`): hidden, it does nothing.
+  defp drawing_plugins_only?(index, ids, raws) do
+    Enum.all?(ids, fn id ->
+      own = own_plugin(Payload.type(raws[id]))
+
+      index
+      |> Index.references_from(id, [:uses_plugin])
+      |> Enum.all?(&(own != nil and &1.to == "plugin:" <> own.plugin and drawing?(own)))
+    end)
+  end
+
+  defp drawing?(%{plugin: plugin, code: code}), do: Catalog.equivalent(plugin, code) in @visual
+
+  # An HTML ID attribute: the app's code may find the element by it.
+  defp html_id?(raw) when is_map(raw) do
+    props = Payload.properties(raw)
+    Enum.any?(["html_id", "unique_id"], &(props[&1] not in [nil, ""]))
+  end
+
+  defp html_id?(_raw), do: false
+
+  # Whether the Bubble ID of the element or of its contents appears in the
+  # app JSON outside the element: a reference the index may not model.
+  defp named_elsewhere?(named, %Symbol{path: path}, subtree) do
+    Enum.any?(subtree, fn %Symbol{bubble_id: id} ->
+      named
+      |> Map.get(id, [])
+      |> Enum.any?(&(not within_path?(&1, path) and not harmless_mention?(&1)))
+    end)
+  end
+
+  defp within_path?(at, path), do: at == path or String.starts_with?(at, path <> "/")
+
+  defp harmless_mention?(at) do
+    keys = String.split(at, "/", trim: true)
+    List.first(keys) in @history_roots or List.last(keys) in @parent_pointers
+  end
+
+  # Bubble ID -> the JSON pointers of the strings (and map keys) naming
+  # it, as a whole word, anywhere in the app JSON.
+  defp named_at(app, ids) do
+    app
+    |> mentions([], ids, [])
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
+
+  defp mentions(%{} = map, at, ids, acc) do
+    Enum.reduce(map, acc, fn {k, v}, acc ->
+      here = [to_string(k) | at]
+      acc = if is_binary(k), do: words(k, here, ids, acc), else: acc
+      mentions(v, here, ids, acc)
+    end)
+  end
+
+  defp mentions(list, at, ids, acc) when is_list(list) do
+    list
+    |> Enum.with_index()
+    |> Enum.reduce(acc, fn {v, i}, acc -> mentions(v, [Integer.to_string(i) | at], ids, acc) end)
+  end
+
+  defp mentions(s, at, ids, acc) when is_binary(s), do: words(s, at, ids, acc)
+  defp mentions(_value, _at, _ids, acc), do: acc
+
+  defp words(s, at, ids, acc) do
+    s
+    |> String.split(~r/[^A-Za-z0-9]+/, trim: true)
+    |> Enum.filter(&MapSet.member?(ids, &1))
+    |> Enum.uniq()
+    |> Enum.reduce(acc, fn id, acc -> [{id, pointer_of(at)} | acc] end)
+  end
+
+  defp pointer_of(at) do
+    at
+    |> Enum.reverse()
+    |> Enum.map_join(&("/" <> (&1 |> String.replace("~", "~0") |> String.replace("/", "~1"))))
   end
 
   # Whether something outside the element reads, sets or listens to one of
@@ -564,18 +710,35 @@ defmodule BubbleEx.Workarounds do
 
   defp finish(f, {class, confidence, reason}) do
     f
-    |> Map.drop([:own_plugin, :child_ids, :shown_by_condition])
+    |> Map.drop([
+      :own_plugin,
+      :child_ids,
+      :shown_by_condition,
+      :html_id,
+      :named_elsewhere,
+      :drawing_plugins_only,
+      :instances
+    ])
     |> Map.merge(%{
       class: class,
       confidence: confidence,
       reason: reason,
       option: option(class),
-      options: [option(class) | List.delete(options(), option(class))]
+      options: options(class)
     })
   end
 
   # The first rule that matches decides; a reason says why.
-  @rules [:grows, :dom_reads, :js_bridge, :plugin_element, :triggered, :value_holder, :wrapper] ++
+  @rules [
+           :unused,
+           :grows,
+           :dom_reads,
+           :js_bridge,
+           :plugin_element,
+           :triggered,
+           :value_holder,
+           :wrapper
+         ] ++
            [:events, :plugins_inside, :unread, :spacer]
 
   defp classify(f, done) do
@@ -595,6 +758,14 @@ defmodule BubbleEx.Workarounds do
 
     Enum.find_value(@rules, fn rule -> rule(rule, f, g) end) ||
       {:unknown, :low, unknown_reason(f)}
+  end
+
+  defp rule(:unused, f, g) do
+    if unused?(f, g.done),
+      do:
+        {:unused, :high,
+         "never visible, and nothing reads, sets, shows or triggers it or its contents" <>
+           if(f.held == [], do: "", else: " (#{length(f.held)} unused inside)")}
   end
 
   defp rule(:grows, _f, %{grows: [_ | _] = grows}),
@@ -650,11 +821,6 @@ defmodule BubbleEx.Workarounds do
   end
 
   defp rule(_rule, _f, _g), do: nil
-
-  # Plugin elements that draw something (icons, charts, inputs): a hidden or
-  # tiny one is not kept for its plugin to run.
-  @visual ~w(icon_set chart calendar date_time_input select_input autocomplete_input
-             markdown_renderer sortable_list)a
 
   defp plugin_element(f, value_reads) do
     %{plugin: plugin, code: code} = f.own_plugin
@@ -758,7 +924,8 @@ defmodule BubbleEx.Workarounds do
       Enum.all?(f.setters, &(&1.type in @wrapper_steps))
   end
 
-  defp wrapped([class], kids) when class != :unknown do
+  # Only its own rule makes an element unused (a wrapper may show).
+  defp wrapped([class], kids) when class not in [:unknown, :unused] do
     confidence = kids |> Enum.map(& &1.confidence) |> Enum.min_by(&rank/1)
 
     {class, confidence,
@@ -789,6 +956,18 @@ defmodule BubbleEx.Workarounds do
       true ->
         "tiny, with contents (#{f.contents.elements} elements)"
     end
+  end
+
+  # See "Unused" in the moduledoc: every signal must say nothing uses it.
+  defp unused?(f, done) do
+    Enum.all?([
+      :never_visible in f.signals,
+      f.drawing_plugins_only,
+      f.setters == [] and f.events == [],
+      Enum.all?(f.readers, & &1.inside),
+      not Enum.any?([f.instances, f.script, f.html_id, f.named_elsewhere, f.contents.used]),
+      Enum.all?(f.held, &match?(%{class: :unused}, done[&1]))
+    ])
   end
 
   defp value_read?("custom." <> _), do: true

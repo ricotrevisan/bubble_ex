@@ -13,7 +13,7 @@ defmodule BubbleEx.Target.Phoenix.WorkaroundsTest do
 
   @now ~U[2026-10-21 00:00:00Z]
 
-  defp render(decide \\ fn _findings -> [] end) do
+  defp render(decide \\ fn _findings -> [] end, only \\ fn _applied -> true end) do
     app = app()
     {:ok, model} = Model.build(app)
     {:ok, index} = Index.build(app, model: model)
@@ -51,7 +51,7 @@ defmodule BubbleEx.Target.Phoenix.WorkaroundsTest do
       frontend: frontend,
       workflows: workflows,
       frontend_workflows: spec,
-      workarounds: Enum.filter(applied, &(&1.transform == :lower_workaround))
+      workarounds: Enum.filter(applied, &(&1.transform == :lower_workaround and only.(&1)))
     ]
 
     {:ok, files} = Phoenix.render(project, opts)
@@ -117,6 +117,29 @@ defmodule BubbleEx.Target.Phoenix.WorkaroundsTest do
     {page, _report} = render(keep)
     refute tag(page, "eVars") =~ "data-bubble-workaround"
     refute tag(page, "eList") =~ "data-bubble-workaround"
+  end
+
+  test "an unused element is not generated; the owner's keep brings it back as it was" do
+    {page, _report} = render()
+    refute page =~ ~s(data-bubble-id="eDead")
+    refute page =~ ~s(data-bubble-id="eDeadText")
+    refute page =~ "never seen"
+
+    {kept, _report} = render(keep("eDead"))
+    assert kept =~ ~s(data-bubble-id="eDead")
+    assert kept =~ "never seen"
+
+    # Exactly the markup of a run that never skipped it.
+    {unskipped, _report} = render(fn _ -> [] end, &(&1.subject != %{element: "eDead"}))
+    assert kept == unskipped
+  end
+
+  defp keep(id) do
+    fn findings ->
+      f = Enum.find(findings, &(&1.subject == %{element: id}))
+      {:ok, d} = Decision.for_finding(f, :modify, %{"option" => "keep"})
+      [d]
+    end
   end
 
   test "other lowerings keep the markup for now" do

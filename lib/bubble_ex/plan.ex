@@ -261,7 +261,9 @@ defmodule BubbleEx.Plan do
       a finding below `:high` confidence that applies nothing counts as
       undecided, a rejected one too. The contents of a value holder
       lowered to page state (`BubbleEx.Workarounds.page_state/1`) are not
-      rendered, so no surface or fragment traces them
+      rendered, nor are skipped unused elements and their contents
+      (`BubbleEx.Workarounds.skipped/1`), so no surface or fragment traces
+      them
   """
   @spec build(Model.t(), Index.t(), Normalized.t() | nil, [Applied.t()], keyword()) ::
           {:ok, t()} | {:error, Error.t()}

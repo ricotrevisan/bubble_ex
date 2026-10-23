@@ -23,7 +23,7 @@ defmodule BubbleEx.Finding.Kinds do
     {:plugin, :decision, [:replace_plugin],
      "a marketplace plugin the app installs or uses; drop it, replace it with a known native equivalent or rebuild it"},
     {:workaround_element, :default, [:lower_workaround],
-     "a tiny or never-visible element that works around Bubble (a value holder, keep-alive, spacer or JS bridge); lower it to its intent"}
+     "a tiny or never-visible element that works around Bubble (a value holder, keep-alive, spacer, JS bridge or unused element); lower it to its intent"}
   ]
 
   @categories [:decision, :hint, :default]
@@ -85,8 +85,9 @@ defmodule BubbleEx.Finding.Kinds do
       state and the element renders as its own empty element,
       `BubbleEx.Workarounds.page_state/1`), `:plugin_event` (a
       keep-alive: its plugin's or event's own lowering), `:css_gap` (a
-      spacer), `:hook` (a JS bridge: a client hook) or `:keep` (keep the
-      markup as Bubble has it)
+      spacer), `:hook` (a JS bridge: a client hook), `:skip` (an unused
+      element: not generated, `BubbleEx.Workarounds.skipped/1`) or `:keep`
+      (keep the markup as Bubble has it)
   """
 
   @type category :: :decision | :hint | :default

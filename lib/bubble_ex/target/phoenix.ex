@@ -253,8 +253,10 @@ defmodule BubbleEx.Target.Phoenix do
       Floating Group or Repeating Group, with every candidate it holds
       lowered too: `BubbleEx.Workarounds.page_state/1`) renders as its own
       empty element: its value stays page state (`@bubble_data`,
-      `@bubble_states`), its contents are not rendered. Other options keep
-      the markup for now; none by default
+      `@bubble_states`), its contents are not rendered. An unused element
+      skipped (`:skip`, WTF-606: `BubbleEx.Workarounds.skipped/1`) is not
+      generated, nor are its contents. Other options keep the markup for
+      now; none by default
   """
 
   alias BubbleEx.{CanonicalJson, Error}
@@ -450,8 +452,8 @@ defmodule BubbleEx.Target.Phoenix do
          :ok <- check_claims(project, clients),
          {:ok, frontend} <- frontend(opts),
          :ok <- asset_store(opts),
-         {:ok, page_state} <- workarounds(opts),
-         frontend = without_dropped_pages(frontend, project),
+         {:ok, page_state, skipped} <- workarounds(opts),
+         frontend = frontend |> without_dropped_pages(project) |> without_skipped(skipped),
          :ok <- frontend_workflows(opts, frontend),
          :ok <- api_calls_bound(opts, clients),
          {:ok, workflows} <- workflow_files(Keyword.get(opts, :workflows), ctx),
@@ -590,11 +592,12 @@ defmodule BubbleEx.Target.Phoenix do
   def frontend_report(%Project{} = project, opts) do
     with {:ok, ctx} <- context(project, opts),
          {:ok, %Normalized{} = frontend} <- frontend(opts),
-         {:ok, page_state} <- workarounds(opts) do
+         {:ok, page_state, skipped} <- workarounds(opts) do
       # The pages' workflow modules name the join topics (as in render/2).
       ctx = Map.put_new(ctx, :join_topics, join_topics(project))
       opts = Keyword.put(opts, :page_state, page_state)
-      {:ok, pages(without_dropped_pages(frontend, project), ctx, opts).report}
+      frontend = frontend |> without_dropped_pages(project) |> without_skipped(skipped)
+      {:ok, pages(frontend, ctx, opts).report}
     else
       {:ok, nil} -> invalid("frontend_report/2 needs the frontend: option")
       error -> error
@@ -774,6 +777,34 @@ defmodule BubbleEx.Target.Phoenix do
       }
   end
 
+  # Unused elements skipped (WTF-606) are not generated: they and their
+  # contents leave the frontend before anything reads it.
+  defp without_skipped(nil, _skipped), do: nil
+
+  defp without_skipped(%Normalized{} = frontend, skipped) do
+    if MapSet.size(skipped) == 0,
+      do: frontend,
+      else: %{
+        frontend
+        | pages: Enum.map(frontend.pages, &prune(&1, skipped)),
+          reusables: Enum.map(frontend.reusables, &prune(&1, skipped))
+      }
+  end
+
+  defp prune(%{children: children} = node, skipped) when is_list(children) do
+    kept =
+      for child <- children,
+          not MapSet.member?(skipped, skipped_id(child)),
+          do: prune(child, skipped)
+
+    %{node | children: kept}
+  end
+
+  defp prune(node, _skipped), do: node
+
+  defp skipped_id(%{source: %{bubble_id: id}}) when is_binary(id), do: id
+  defp skipped_id(_node), do: nil
+
   defp page_id(%{source: %{bubble_id: id}}) when is_binary(id) and id != "", do: id
   defp page_id(%{map_key: key}), do: key
 
@@ -845,7 +876,8 @@ defmodule BubbleEx.Target.Phoenix do
     end
   end
 
-  # The Bubble IDs of the value holders lowered to page state.
+  # The Bubble IDs of the value holders lowered to page state, and of the
+  # unused elements skipped.
   defp workarounds(opts) do
     case Keyword.get(opts, :workarounds, []) do
       list when is_list(list) ->
@@ -853,7 +885,9 @@ defmodule BubbleEx.Target.Phoenix do
              list,
              &match?(%Applied{transform: :lower_workaround, subject: %{element: _}}, &1)
            ),
-           do: {:ok, BubbleEx.Workarounds.PageState.lowered(list)},
+           do:
+             {:ok, BubbleEx.Workarounds.PageState.lowered(list),
+              BubbleEx.Workarounds.Skip.skipped(list)},
            else:
              invalid(
                "workarounds: must be applied lower_workaround decisions (Decision.applicable/2)"
