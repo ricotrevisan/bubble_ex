@@ -6,6 +6,22 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **The owner's list of workflows that cannot run (WTF-607).** A workflow
+  runs whole or not at all: when its event, its "Only when" condition or
+  one of its steps was not converted, or it runs a workflow that cannot
+  run, the runtime refuses it before its first step, so the steps before
+  the one that blocks it do not run either (as before; the behavior test
+  "a workflow with a step that was not lowered runs no step at all"
+  covers it). `Phoenix.render/2` now writes the generated
+  `.wtf/blocked_workflows.md` for the owner: one line per refused
+  workflow (page or reusable element, event, the first step that blocks
+  it with Bubble's action name, or the workflows it runs), grouped by
+  why, largest group first, after a summary table, with what they can do
+  (change it in Bubble, decide the plugin in the migration plan, or drop
+  the workflow in the decisions file). `BubbleEx.Target.Phoenix.BlockedWorkflows`
+  (`notes/3`, `markdown/1`, `counts/1`); the vertical slice's
+  `slice.json` counts them by reason (`blocked_workflows`).
+
 - **`:rounded to` compiles, and `:to days`/`:to hours` round as Bubble
   does (WTF-609, WTF-598).** Both were checked against a live Bubble page
   (observed on Bubble 2026-10-23). A number's `:rounded to` (`round` with
