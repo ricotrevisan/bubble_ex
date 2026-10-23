@@ -15,7 +15,7 @@ defmodule BubbleEx.Decision.Params do
   | `:text_to_reference` | `target_type` - the data type symbol (`"data_type:<key>"`) the IDs reference: one of the finding's `evidence.target_types`, only when the finding named none |
   | `:add_indexes` | `drop` - indexes (from 0) into `proposal.indexes` not to create |
   | `:replace_plugin` | `option` - `:drop`, `:replace_native` or `:rebuild`: one of the finding's `proposal.options`; `delete_workflows` - with `drop` only: workflows the plugin's events trigger that run other actions too (`evidence.rewire`) to delete instead of re-triggering |
-  | `:lower_workaround` | `option` - `:page_state`, `:plugin_event`, `:css_gap`, `:hook` or `:keep`: one of the finding's `proposal.options` (`BubbleEx.Workarounds`) |
+  | `:lower_workaround` | `option` - `:page_state`, `:plugin_event`, `:css_gap`, `:hook`, `:skip` (an unused element only) or `:keep`: one of the finding's `proposal.options` (`BubbleEx.Workarounds`) |
   | `:membership_policy`, `:derive_reverse_relationship` | none |
 
   A `:plugin` finding has no source-faithful mapping to fall back to (a

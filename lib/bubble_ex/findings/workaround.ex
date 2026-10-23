@@ -47,20 +47,28 @@ defmodule BubbleEx.Findings.Workaround do
         contents: entry.contents,
         script: entry.script
       },
-      proposal: %{
-        transform: :lower_workaround,
-        element: entry.symbol,
-        type: entry.type,
-        holds: entry.held,
-        class: entry.class,
-        option: entry.option,
-        options: entry.options
-      },
+      proposal: proposal(entry),
       confidence: entry.confidence,
       confidence_reason: entry.reason,
       affects: Context.affects(ctx, [entry.symbol | readers], maintainers),
       message: message(entry)
     )
+  end
+
+  # An unused element names the unused one holding it (`Workarounds.skipped/1`
+  # skips them together); other proposals are as they were.
+  defp proposal(entry) do
+    proposal = %{
+      transform: :lower_workaround,
+      element: entry.symbol,
+      type: entry.type,
+      holds: entry.held,
+      class: entry.class,
+      option: entry.option,
+      options: entry.options
+    }
+
+    if entry.class == :unused, do: Map.put(proposal, :inside, entry.unused_inside), else: proposal
   end
 
   defp message(entry) do
@@ -75,6 +83,9 @@ defmodule BubbleEx.Findings.Workaround do
       case entry.class do
         :unknown ->
           "what it is for is unclear (#{entry.reason}); keep its markup unless the owner decides"
+
+        :unused ->
+          "unused (#{entry.reason}); it is not generated unless the owner keeps it"
 
         class ->
           "a #{class |> Atom.to_string() |> String.replace("_", " ")} (#{entry.reason}); lower it as #{entry.option}"

@@ -207,7 +207,8 @@ defmodule BubbleEx.Plan.Builder do
           do: a.id
 
     # The contents of value holders lowered to page state are not rendered
-    # (WTF-586): no traceability, no question about them.
+    # (WTF-586), nor are skipped unused elements (WTF-606): no
+    # traceability, no question about them.
     Map.merge(ctx, %{
       lowered_contents: lowered_contents(index, applied),
       touched: touched,
@@ -220,10 +221,19 @@ defmodule BubbleEx.Plan.Builder do
     })
   end
 
+  # …and unused elements skipped (WTF-606), with their contents: they are
+  # not generated.
   defp lowered_contents(index, applied) do
-    for holder <- BubbleEx.Workarounds.PageState.lowered(applied),
-        id <- descendants(index, Symbol.id(:element, holder), [:element]),
-        into: MapSet.new(),
+    contents =
+      for holder <- BubbleEx.Workarounds.PageState.lowered(applied),
+          id <- descendants(index, Symbol.id(:element, holder), [:element]),
+          into: MapSet.new(),
+          do: id
+
+    for element <- BubbleEx.Workarounds.Skip.skipped(applied),
+        id = Symbol.id(:element, element),
+        id <- [id | descendants(index, id, [:element])],
+        into: contents,
         do: id
   end
 

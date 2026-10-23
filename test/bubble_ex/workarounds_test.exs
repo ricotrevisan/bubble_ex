@@ -43,7 +43,7 @@ defmodule BubbleEx.WorkaroundsTest do
                "eJs" => {:js_bridge, :high},
                "eScript" => {:js_bridge, :high},
                "eHover" => {:unknown, :low},
-               "eDead" => {:unknown, :low},
+               "eDead" => {:unused, :high},
                "eState" => {:value_holder, :high},
                "eGrow" => {:unknown, :low}
              }
@@ -70,8 +70,11 @@ defmodule BubbleEx.WorkaroundsTest do
                options: [:page_state, :plugin_event, :css_gap, :hook, :keep]
              } = entries["eState"]
 
-      # An unclear one suggests keeping the markup, and offers every lowering.
-      assert [:keep, :page_state, :plugin_event, :css_gap, :hook] = entries["eDead"].options
+      # An unclear one suggests keeping the markup, and offers every lowering
+      # but skipping.
+      assert [:keep, :page_state, :plugin_event, :css_gap, :hook] = entries["eGrow"].options
+      # An unused one is skipped, or kept.
+      assert %{option: :skip, options: [:skip, :keep], unused_inside: nil} = entries["eDead"]
       assert entries["eVars"].held == ["element:eList"]
       refute entries["eVars"].contents.used
 
@@ -151,6 +154,278 @@ defmodule BubbleEx.WorkaroundsTest do
     end
   end
 
+  describe "unused elements" do
+    defp hidden(id, order, extra \\ %{}) do
+      Map.merge(
+        %{
+          "id" => id,
+          "type" => "Group",
+          "properties" => %{
+            "order" => order,
+            "is_visible" => false,
+            "width" => 200,
+            "height" => 50
+          }
+        },
+        extra
+      )
+    end
+
+    defp with_elements(fun), do: update_in(app(), ["pages", "index", "elements"], fun)
+
+    defp entries(app) do
+      {:ok, index} = Index.build(app)
+      app |> Workarounds.catalog(index) |> Map.new(&{&1.element, &1})
+    end
+
+    defp applied(app, decide) do
+      {:ok, model} = Model.build(app)
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, %{findings: findings}} = Findings.analyze(app, model: model, index: index)
+      decisions = decide.(findings)
+      {:ok, resolved} = Decision.resolve(decisions, findings, index: index, now: @now)
+      Decision.applicable(resolved, findings)
+    end
+
+    defp keep(id) do
+      fn findings ->
+        f = Enum.find(findings, &(&1.subject == %{element: id}))
+        {:ok, d} = Decision.for_finding(f, :modify, %{"option" => "keep"})
+        [d]
+      end
+    end
+
+    defp nest do
+      with_elements(fn els ->
+        Map.put(
+          els,
+          "eOuter",
+          hidden("eOuter", 40, %{
+            "elements" => %{
+              "eInner" => hidden("eInner", 1, %{"elements" => %{"eLeaf" => text("eLeaf", 1)}})
+            }
+          })
+        )
+      end)
+    end
+
+    defp text(id, order),
+      do: %{
+        "id" => id,
+        "type" => "Text",
+        "properties" => %{"order" => order, "text" => "hidden", "width" => 100, "height" => 20}
+      }
+
+    test "a never-visible element nothing reads, sets, shows or triggers is unused" do
+      e = entries(app())["eDead"]
+
+      assert %{class: :unused, confidence: :high, readers: [], setters: [], events: []} = e
+      assert e.reason =~ "nothing reads, sets, shows or triggers it"
+
+      # A fetched payload's ID index and editor history name it: no use.
+      app =
+        app()
+        |> Map.put("_index", %{"id_to_path" => %{"eDead" => "%p3.pHome.%el.eDead"}})
+        |> Map.put("merge_changes", [%{"id" => "eDead"}])
+
+      assert entries(app)["eDead"].class == :unused
+    end
+
+    test "any use keeps an element out of the class" do
+      app =
+        with_elements(fn els ->
+          els
+          # its HTML ID attribute: the app's code may find it
+          |> Map.put("eId", hidden("eId", 41) |> put_in(["properties", "html_id"], "panel"))
+          # a plugin element names it outside the index's references
+          |> Map.put("eNamed", hidden("eNamed", 42))
+          |> Map.put("eRef", %{
+            "id" => "eRef",
+            "type" => "Text",
+            "properties" => %{"order" => 43, "text" => "x", "target" => "eNamed"}
+          })
+          # its contents trigger a workflow
+          |> Map.put(
+            "eClick",
+            hidden("eClick", 44, %{"elements" => %{"eClickBtn" => text("eClickBtn", 1)}})
+          )
+          # a reusable element instance: its workflows run inside it
+          |> Map.put("eInst", %{
+            "id" => "eInst",
+            "type" => "CustomElement",
+            "properties" => %{
+              "order" => 45,
+              "is_visible" => false,
+              "width" => 200,
+              "height" => 50
+            }
+          })
+          # …or holds one
+          |> Map.put(
+            "eInstIn",
+            hidden("eInstIn", 47, %{
+              "elements" => %{
+                "eInst2" => %{
+                  "id" => "eInst2",
+                  "type" => "CustomElement",
+                  "properties" => %{"order" => 1, "width" => 200, "height" => 50}
+                }
+              }
+            })
+          )
+          # a script
+          |> Map.put("eHtml", %{
+            "id" => "eHtml",
+            "type" => "HTML",
+            "properties" => %{
+              "order" => 46,
+              "is_visible" => false,
+              "html" => "<script>go()</script>"
+            }
+          })
+        end)
+        |> put_in(["pages", "index", "workflows", "w2"], %{
+          "id" => "wClick",
+          "type" => "ButtonClicked",
+          "properties" => %{"element_id" => "eClickBtn"},
+          "actions" => %{}
+        })
+
+      entries = entries(app)
+
+      for id <- ~w(eId eNamed eClick eInst eInstIn eHtml),
+          do: refute(entries[id].class == :unused, "#{id} is not unused")
+
+      # Holding a value nobody reads, hidden: unused; set by a step: not.
+      assert entries["eDead"].class == :unused
+      assert entries["eState"].class == :value_holder
+    end
+
+    test "a nest of unused elements is skipped, or kept, as a whole" do
+      app = nest()
+      entries = entries(app)
+
+      assert %{class: :unused, held: ["element:eInner"], unused_inside: nil} = entries["eOuter"]
+      assert %{class: :unused, unused_inside: "element:eOuter"} = entries["eInner"]
+
+      skipped = Workarounds.skipped(applied(app, fn _ -> [] end))
+      assert "eOuter" in skipped and "eInner" in skipped and "eDead" in skipped
+
+      for id <- ~w(eOuter eInner) do
+        skipped = Workarounds.skipped(applied(app, keep(id)))
+        refute "eOuter" in skipped
+        refute "eInner" in skipped
+        assert "eDead" in skipped
+      end
+    end
+
+    test "a value holder lowers to page state with the unused elements it holds" do
+      app =
+        with_elements(fn els ->
+          els
+          |> Map.put("eVals", %{
+            "id" => "eVals",
+            "type" => "Group",
+            "properties" => %{
+              "order" => 50,
+              "single_width" => true,
+              "single_height" => true,
+              "width" => 10,
+              "height" => 10,
+              "data_source" => %{"type" => "CurrentUser"}
+            },
+            "elements" => %{"eHid" => hidden("eHid", 1)}
+          })
+          |> Map.put("eValsText", %{
+            "id" => "eValsText",
+            "type" => "Text",
+            "properties" => %{
+              "order" => 51,
+              "text" => %{
+                "type" => "TextExpression",
+                "entries" => %{
+                  "0" => %{
+                    "type" => "GetElement",
+                    "properties" => %{"element_id" => "eVals"},
+                    "next" => %{"type" => "Message", "name" => "get_group_data"}
+                  }
+                }
+              }
+            }
+          })
+        end)
+
+      entries = entries(app)
+      assert %{class: :value_holder, confidence: :high} = entries["eVals"]
+      assert entries["eHid"].class == :unused
+
+      assert "eVals" in Workarounds.page_state(applied(app, fn _ -> [] end))
+
+      # The owner keeps what it holds: the holder keeps its markup too.
+      kept = applied(app, keep("eHid"))
+      refute "eVals" in Workarounds.page_state(kept)
+      refute "eHid" in Workarounds.skipped(kept)
+    end
+
+    test "a tiny wrapper of unused elements only is a spacer" do
+      app =
+        with_elements(fn els ->
+          Map.put(els, "eWrap", %{
+            "id" => "eWrap",
+            "type" => "Group",
+            "properties" => %{
+              "order" => 52,
+              "single_width" => true,
+              "single_height" => true,
+              "width" => 10,
+              "height" => 10
+            },
+            "elements" => %{"eGone" => hidden("eGone", 1)}
+          })
+        end)
+
+      entries = entries(app)
+      assert entries["eGone"].class == :unused
+      assert %{class: :spacer, confidence: :high} = entries["eWrap"]
+      assert entries["eWrap"].reason =~ "only wraps 1 unused element (eGone)"
+    end
+
+    test "the finding names its unused holder; a reject keeps it too" do
+      app = nest()
+      {:ok, model} = Model.build(app)
+      {:ok, index} = Index.build(app, model: model)
+      {:ok, %{findings: findings}} = Findings.analyze(app, model: model, index: index)
+      inner = Enum.find(findings, &(&1.subject == %{element: "eInner"}))
+
+      assert %{class: :unused, option: :skip, options: [:skip, :keep], inside: "element:eOuter"} =
+               inner.proposal
+
+      assert inner.message =~ "not generated unless the owner keeps it"
+      # Other classes' proposals do not name a holder.
+      refute Map.has_key?(
+               Enum.find(findings, &(&1.subject == %{element: "eGap"})).proposal,
+               :inside
+             )
+
+      # Only an unused element may be skipped.
+      gap = Enum.find(findings, &(&1.subject == %{element: "eGap"}))
+
+      assert {:error, %Error{kind: :invalid_input}} =
+               Decision.for_finding(gap, :modify, %{"option" => "skip"})
+
+      reject = fn fs ->
+        {:ok, d} =
+          Decision.for_finding(Enum.find(fs, &(&1.subject == %{element: "eOuter"})), :reject)
+
+        [d]
+      end
+
+      skipped = Workarounds.skipped(applied(app, reject))
+      refute "eOuter" in skipped
+      refute "eInner" in skipped
+    end
+  end
+
   describe ":workaround_element findings and decisions" do
     test "one :default finding per element, keyed by its ID" do
       %{findings: findings} = findings()
@@ -185,7 +460,7 @@ defmodule BubbleEx.WorkaroundsTest do
       applied = Decision.applicable(resolved, findings)
 
       assert applied |> Enum.map(& &1.subject.element) |> Enum.sort() ==
-               ~w(eGap eJs eList eScript eState eTip eVars)
+               ~w(eDead eGap eJs eList eScript eState eTip eVars)
 
       assert Enum.all?(applied, & &1.automatic)
 
@@ -194,7 +469,7 @@ defmodule BubbleEx.WorkaroundsTest do
             f = Enum.find(findings, &(&1.id == id)),
             do: f.subject.element
 
-      assert Enum.sort(asked) == ~w(eDead eGrow eHolder eHover)
+      assert Enum.sort(asked) == ~w(eGrow eHolder eHover)
     end
 
     test "the owner answers a question or overrides a default, keyed to the element" do
@@ -252,7 +527,7 @@ defmodule BubbleEx.WorkaroundsTest do
       questions = Enum.filter(plan.tasks, &String.starts_with?(&1.id, "decision:workaround/"))
 
       assert questions |> Enum.map(& &1.id) |> Enum.sort() ==
-               Enum.map(~w(eDead eGrow eHolder eHover), &("decision:workaround/" <> &1))
+               Enum.map(~w(eGrow eHolder eHover), &("decision:workaround/" <> &1))
 
       assert Enum.all?(
                questions,
@@ -299,6 +574,11 @@ defmodule BubbleEx.WorkaroundsTest do
 
       refute "element:eList" in accepted
       assert "element:eVars" in accepted
+
+      # A skipped unused element and its contents are not generated either.
+      refute "element:eDead" in elements
+      refute "element:eDeadText" in elements
+      refute "element:eDead" in accepted
     end
 
     test "findings: must be findings" do

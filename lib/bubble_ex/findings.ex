@@ -22,7 +22,7 @@ defmodule BubbleEx.Findings do
   | `:search_index` | hint | per data type, the indexes (access patterns) its searches need |
   | `:number_type` | decision | an integer for a number field whose every write is integral |
   | `:plugin` | decision | per marketplace plugin: drop it, replace it with a known native equivalent, or rebuild it |
-  | `:workaround_element` | default | per tiny or never-visible element (`BubbleEx.Workarounds`): its class (value holder, keep-alive, spacer, JS bridge or unknown) and the lowering it suggests; applied by default at `:high` confidence, otherwise an owner question |
+  | `:workaround_element` | default | per tiny or never-visible element (`BubbleEx.Workarounds`): its class (value holder, keep-alive, spacer, JS bridge, unused or unknown) and the lowering it suggests; applied by default at `:high` confidence, otherwise an owner question |
 
   A `:plugin` finding covers one plugin (installed or used) as a whole: its
   evidence lists the members used (element, action and event types, with
