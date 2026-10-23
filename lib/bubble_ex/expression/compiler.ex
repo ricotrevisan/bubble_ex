@@ -70,8 +70,9 @@ defmodule BubbleEx.Expression.Compiler do
 
   A number's `:ceiling` and `:floor` (Bubble's `ceil` and `floor`) are
   `:ceiling` and `:floor` (WTF-598); on anything but a number they are
-  not compiled. `:rounded to` (`round`, with a number of decimals) is not
-  compiled yet: how Bubble rounds a half is not pinned down.
+  not compiled. A number's `:rounded to` (`round`, with a number of
+  decimals) is `:round_to`, rounded as Bubble rounds (WTF-609); on
+  anything but a number it is not compiled.
   """
 
   alias BubbleEx.{Diagnostic, Error, Expression, Model}
@@ -147,7 +148,8 @@ defmodule BubbleEx.Expression.Compiler do
   }
   # Operators only a number has (WTF-598).
   @number_operators ~w(ceil floor)
-  # A date interval's conversions: exact units (WTF-594).
+  # A date interval's conversions (WTF-594), rounded as Bubble rounds them
+  # (WTF-609).
   @interval_units %{
     "to_days" => :day,
     "to_hours" => :hour,
@@ -570,6 +572,12 @@ defmodule BubbleEx.Expression.Compiler do
     with {:ok, amount, diags} <- operand_arg(raw, :args, path, ctx) do
       {:ok, IR.node(:date_add, [subject, amount, Map.fetch!(@date_units, name)], "date"), diags}
     end
+  end
+
+  # `:rounded to` a number of decimals: a number's only (WTF-609).
+  defp raw_operator("round", raw, %IR{type: "number"} = subject, path, ctx) do
+    with {:ok, places, diags} <- operand_arg(raw, :args, path, ctx),
+         do: {:ok, IR.node(:round_to, [subject, places], "number"), diags}
   end
 
   defp raw_operator("truncated", raw, subject, path, ctx) do

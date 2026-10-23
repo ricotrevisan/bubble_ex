@@ -6,6 +6,21 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **`:rounded to` compiles, and `:to days`/`:to hours` round as Bubble
+  does (WTF-609, WTF-598).** Both were checked against a live Bubble page
+  (observed on Bubble 2026-10-23). A number's `:rounded to` (`round` with
+  a number of decimals) is `:round_to` in the IR and the runtime's
+  `round_to/2`: JavaScript's `Math.round(x * 10 ** places) / 10 **
+  places`. A half goes toward positive infinity (2.5 is 3, -2.5 is -2),
+  and the scaling is done on the float, so 1.005 to 2 decimals is 1 and
+  2.675 is 2.68. All 21 observed cases match. On anything but a number it
+  is not compiled. `(a - b) :to days` and `:to hours` now round to tenths
+  and `:to minutes` and `:to seconds` to whole units, as Bubble shows
+  them: 27 hours are 1.1 days, 80 minutes are 1.3 hours, 90.5 seconds are
+  2 minutes. #282 had made them exact. So days between two local
+  midnights across a clock change are whole again. The private
+  compile-count snapshot gains 11 compiled expressions.
+
 - **Reusable-element workflows read their instance's visibility on the
   page (WTF-605).** A reusable element's workflow or step "Only when",
   and "Do when" condition, read "This reusable element is visible" (and

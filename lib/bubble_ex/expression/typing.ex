@@ -120,6 +120,7 @@ defmodule BubbleEx.Expression.Typing do
     "format_number" => "text",
     "format_boolean" => "text",
     "truncated" => "text",
+    "round" => "number",
     "find_replace" => "text",
     "split_by" => "list.text"
   }
