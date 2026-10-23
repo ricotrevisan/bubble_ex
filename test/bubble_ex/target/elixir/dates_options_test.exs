@@ -94,7 +94,7 @@ defmodule BubbleEx.Target.Elixir.DatesOptionsTest do
       assert run(compiled, %{values | "page" => %{due: nil}}) == nil
     end
 
-    test "is exact: fractions of a unit, negative when the right side is later", %{rt: rt} do
+    test "fractions of a unit, negative when the right side is later", %{rt: rt} do
       a = ~U[2026-10-21 12:00:00Z]
       b = ~U[2026-10-20 00:00:00Z]
       assert rt.date_diff(a, b, :day) == 1.5
@@ -105,12 +105,38 @@ defmodule BubbleEx.Target.Elixir.DatesOptionsTest do
       assert rt.date_diff(~N[2026-10-21 12:00:00], b, :hour) == 36
     end
 
-    test "days across a clock change are not whole, as an interval is milliseconds", %{rt: rt} do
+    # Observed on Bubble 2026-10-23: `(later - earlier) :to days` (hours,
+    # minutes, seconds) shown in a text element, for each difference.
+    @observed [
+      {{1, 3, 0, 0}, %{day: 1.1, hour: 27, minute: 1620, second: 97_200}},
+      {{0, 1, 20, 0}, %{day: 0.1, hour: 1.3, minute: 80, second: 4800}},
+      {{0, 1, 15, 0}, %{day: 0.1, hour: 1.3, minute: 75, second: 4500}},
+      {{1, 1, 12, 0}, %{day: 1.1, hour: 25.2, minute: 1512, second: 90_720}},
+      {{0, 1, 3, 0}, %{day: 0, hour: 1.1, minute: 63, second: 3780}},
+      {{0, 0, 1, 30.5}, %{day: 0, hour: 0, minute: 2, second: 91}},
+      {{2, 0, 0, 0}, %{day: 2, hour: 48, minute: 2880, second: 172_800}},
+      {{-1, -3, 0, 0}, %{day: -1.1, hour: -27, minute: -1620}}
+    ]
+
+    test "rounded as Bubble: tenths of days and hours, whole minutes and seconds", %{rt: rt} do
+      start = ~U[2026-01-01 00:00:00.000Z]
+
+      for {{d, h, m, s}, shown} <- @observed, {unit, value} <- shown do
+        ms = round(((d * 24 + h) * 60 + m) * 60_000 + s * 1000)
+        later = DateTime.add(start, ms, :millisecond)
+
+        assert rt.text(rt.date_diff(later, start, unit)) == rt.text(value),
+               "#{inspect({d, h, m, s})} :to #{unit}: Bubble shows #{value}"
+      end
+    end
+
+    test "days across a clock change round to whole days", %{rt: rt} do
       # 2026-03-08 is the US daylight saving change: 23 hours between the
-      # two local midnights of New York.
+      # two local midnights of New York, 0.958 days, shown as 1.
       before = ~U[2026-03-08 05:00:00Z]
       later = ~U[2026-03-09 04:00:00Z]
-      assert rt.date_diff(later, before, :day) == 23 / 24
+      assert rt.date_diff(later, before, :day) == 1
+      assert rt.date_diff(later, before, :hour) == 23
     end
 
     test "a stored interval's to days is not compiled" do
