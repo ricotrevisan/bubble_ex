@@ -63,9 +63,10 @@ defmodule BubbleEx.Target.Elixir do
   | `default(x, d)` | `defaulting to`: `x` unless it is empty (as `empty?/1`; a reference is its loaded record, nil when unset or gone), else `d`; a field of it reads through whichever holds |
   | `lowercase/uppercase/trim/capitalize_words/text_length/json_encode/url_encode/is_email/abs/round/to_text/to_number(x)` | the operators |
   | `ceiling(x)`, `floor(x)` | a number's `:ceiling` and `:floor` (WTF-598): the nearest whole number up or down, as JavaScript's `Math.ceil` and `Math.floor` (toward positive and negative infinity) |
+  | `round_to(x, places)` | a number's `:rounded to` (WTF-609): JavaScript's `Math.round(x * 10 ** places) / 10 ** places`, as Bubble rounds (a half toward positive infinity) |
   | `format_date(x, format[, zone])`, `format_number(x, options)`, `date_floor(x, unit[, zone])`, `date_part(x, unit[, zone])`, `date_add(x, n, unit)` | Bubble's date and number formats and calendar operators (`BubbleEx.Target.Elixir.Formats`); `zone` only when the expression names one |
   | `format_boolean(x, yes, no)`, `truncate(x, n)`, `replace(x, find, replace, regex?)`, `split(x, sep)`, `text_contains?(a, b)`, `text_contains_words?(a, b)` | the other formatting and text operators |
-  | `date_diff(a, b, unit)` | `(a - b) :to days` … `:to seconds` (WTF-594): exact, milliseconds over the unit's; a date interval is read only so (any other use of one is not compiled) |
+  | `date_diff(a, b, unit)` | `(a - b) :to days` … `:to seconds` (WTF-594): milliseconds over the unit's, rounded as Bubble rounds them, to tenths of days and hours and to whole minutes and seconds (WTF-609); a date interval is read only so (any other use of one is not compiled) |
   | `range_start/range_end/range_middle(r)` | a date range's `min`, `max` and `average` (WTF-597) |
 
   List algebra (`:merged with`, `:unique elements`, `:minus list`,
@@ -471,8 +472,9 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   # A date interval (`date - date`, WTF-594) as a number of days, hours,
-  # minutes or seconds: exact, `(a - b) / unit`, so not whole across a
-  # clock change. Any other interval (a stored one) is not compiled.
+  # minutes or seconds: `(a - b) / unit`, rounded as Bubble rounds it
+  # (tenths of days and hours, whole minutes and seconds, WTF-609). Any
+  # other interval (a stored one) is not compiled.
   defp value(%IR{op: :interval_to, args: [%IR{op: :sub, args: [a, b]}, unit]}, st) do
     {[x, y], st} = Enum.map_reduce([a, b], st, &value/2)
     runtime(st, :date_diff, [x, y, lit(unit)])
@@ -583,7 +585,7 @@ defmodule BubbleEx.Target.Elixir do
   end
 
   defp value(%IR{op: op, args: args}, st)
-       when op in [:format_boolean, :truncate, :split] do
+       when op in [:format_boolean, :truncate, :split, :round_to] do
     {parts, st} = Enum.map_reduce(args, st, &value/2)
     runtime(st, op, parts)
   end

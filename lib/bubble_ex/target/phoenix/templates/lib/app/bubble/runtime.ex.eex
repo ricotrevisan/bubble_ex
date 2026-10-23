@@ -218,6 +218,68 @@ defmodule <%= @module %>.Bubble.Runtime do
       if Decimal.eq?(n, 0), do: Decimal.new(0), else: n
     end
   end
+
+  @doc """
+  A number's `:rounded to` `places` decimals, as Bubble rounds (observed
+  WTF-609): JavaScript's `Math.round(x * 10 ** places) / 10 ** places` on
+  the float. A half goes toward positive infinity (2.5 is 3, -2.5 is -2,
+  -1.25 to 1 decimal is -1.2), and the scaling is the float's, so 1.005 to
+  2 decimals is 1 (1.005 * 100 is 100.49999999999999) while 2.675 is 2.68.
+  A whole result is an integer (never `-0`); a Decimal is rounded as its
+  float and stays a Decimal. Empty when the number or `places` is empty
+  or not a number (what Bubble does then was not observed).
+  """
+  # An integer or Decimal too large to have a fraction stays as it is
+  # (also one beyond a float's range, which Bubble's numbers never are).
+  def round_to(x, places) when is_integer(x) do
+    if Kernel.abs(x) >= 9_007_199_254_740_992, do: x, else: round_to(x * 1.0, places)
+  end
+
+  def round_to(%Decimal{} = x, places) do
+    if Decimal.inf?(x) or Decimal.nan?(x) or
+         Decimal.gte?(Decimal.abs(x), 9_007_199_254_740_992) do
+      x
+    else
+      case round_to(Decimal.to_float(x), places) do
+        n when is_integer(n) -> Decimal.new(n)
+        n when is_float(n) -> Decimal.from_float(n)
+        other -> other
+      end
+    end
+  end
+
+  def round_to(x, %Decimal{} = places), do: round_to(x, Decimal.to_float(places))
+
+  def round_to(x, places) when is_float(x) and is_number(places) do
+    # A float of 2^53 or more has no fraction: it stays as it is.
+    if Kernel.abs(x) >= 9_007_199_254_740_992.0 do
+      x
+    else
+      try do
+        scale = :math.pow(10, places)
+        whole_or_float(js_round(x * scale) / scale)
+      rescue
+        ArithmeticError -> x
+      end
+    end
+  end
+
+  def round_to(_x, _places), do: nil
+
+  # JavaScript's Math.round: the nearest integer, a half toward positive
+  # infinity. `x - floor(x)` is exact for a float, so 0.49999999999999994
+  # stays 0.
+  defp js_round(x) do
+    floor = Float.floor(x)
+    if x - floor >= 0.5, do: floor + 1.0, else: floor
+  end
+
+  defp whole_or_float(n) do
+    if n == Float.round(n) and Kernel.abs(n) < 9_007_199_254_740_992.0,
+      do: Kernel.trunc(n),
+      else: n
+  end
+
   def to_text(x), do: text(x)
 
   def to_number(x) when ci?(x), do: x |> plain() |> to_number()
@@ -788,18 +850,26 @@ defmodule <%= @module %>.Bubble.Runtime do
 
   @unit_ms %{day: 86_400_000, hour: 3_600_000, minute: 60_000, second: 1000}
 
+  # Bubble rounds `:to days` and `:to hours` to tenths, `:to minutes` and
+  # `:to seconds` to whole units (WTF-609). A negative half (-90.5 seconds)
+  # is taken to round as `:rounded to` does, toward positive infinity
+  # (-90): only positive halves were observed.
+  @unit_places %{day: 1, hour: 1, minute: 0, second: 0}
+
   @doc """
   A date minus a date (a date interval) as a number of `unit`s (`:day`,
-  `:hour`, `:minute`, `:second`): exact, the milliseconds between them
-  over the unit's, so days across a clock change are not whole (as in
-  Bubble, where an interval is milliseconds). Empty when either is empty.
+  `:hour`, `:minute`, `:second`), as Bubble shows it: the milliseconds
+  between them over the unit's, rounded as `round_to/2` rounds, to tenths
+  of a day or an hour and to whole minutes and seconds (27 hours are 1.1
+  days, 80 minutes 1.3 hours, 90.5 seconds 2 minutes and 91 seconds).
+  Bubble's interval is milliseconds, so days across a clock change are
+  not whole until rounded (23 hours are 1 day). Empty when either is empty.
   """
   def date_diff(a, b, unit) do
     with x when is_integer(x) <- unix_ms(a),
          y when is_integer(y) <- unix_ms(b),
          %{^unit => ms} <- @unit_ms do
-      n = (x - y) / ms
-      if n == trunc(n), do: trunc(n), else: n
+      round_to((x - y) / ms, Map.fetch!(@unit_places, unit))
     else
       _ -> nil
     end

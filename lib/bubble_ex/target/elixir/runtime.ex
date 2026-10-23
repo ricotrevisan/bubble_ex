@@ -80,6 +80,12 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @callback ceiling(value()) :: value()
   @doc "A number's `:floor`: the nearest whole number at or below it (`Math.floor`)."
   @callback floor(value()) :: value()
+  @doc """
+  A number's `:rounded to` `places` decimals, as Bubble (WTF-609):
+  JavaScript's `Math.round(x * 10 ** places) / 10 ** places`, a half
+  toward positive infinity; empty when either is empty.
+  """
+  @callback round_to(value(), value()) :: value()
   @callback to_text(value()) :: value()
   @callback to_number(value()) :: value()
   @doc """
@@ -109,7 +115,9 @@ defmodule BubbleEx.Target.Elixir.Runtime do
   @callback date_part(value(), String.t(), value()) :: value()
   @doc """
   `(a - b) :to days` … `:to seconds`: a date minus a date as a number of
-  `unit`s, exact (milliseconds over the unit's); empty when either is.
+  `unit`s (milliseconds over the unit's), rounded as Bubble rounds them:
+  to tenths of a day or an hour, to whole minutes and seconds (WTF-609);
+  empty when either is.
   """
   @callback date_diff(value(), value(), :day | :hour | :minute | :second) :: value()
   @doc "A date range's start (Bubble's `min`); empty for an empty range."

@@ -53,8 +53,8 @@ defmodule BubbleEx.Target.Elixir.FormatsTzTest do
       assert days.(now, due) == 6
 
       # Across the clock change of 2026-03-08 the local midnights are 71
-      # hours apart: not whole days, as an interval is milliseconds.
-      assert days.(~U[2026-03-10 17:00:00Z], ~U[2026-03-07 17:00:00Z]) == 71 / 24
+      # hours apart, 2.958 days, which Bubble rounds to tenths: 3.
+      assert days.(~U[2026-03-10 17:00:00Z], ~U[2026-03-07 17:00:00Z]) == 3
     end
   end
 
