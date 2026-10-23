@@ -251,7 +251,7 @@ defmodule BubbleEx.Target.Phoenix do
       (`BubbleEx.Decision.applicable/2` entries of `:workaround_element`
       findings, WTF-586). A value holder lowered as `:page_state` (a Group,
       Floating Group or Repeating Group, with every candidate it holds
-      lowered too: `BubbleEx.Workarounds.page_state/1`) renders as its own
+      lowered too, or skipped: `BubbleEx.Workarounds.page_state/1`) renders as its own
       empty element: its value stays page state (`@bubble_data`,
       `@bubble_states`), its contents are not rendered. An unused element
       skipped (`:skip`, WTF-606: `BubbleEx.Workarounds.skipped/1`) is not
