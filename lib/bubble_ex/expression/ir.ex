@@ -40,13 +40,14 @@ defmodule BubbleEx.Expression.IR do
   | `:merge`, `:minus_list`, `:intersect`, `:plus_item`, `:minus_item` | `[list, other]` | list algebra |
   | `:sort` | `[list, field, descending?]` | `:sorted` / a search's sort by one field (on a list of options, an attribute); a sort by several keys nests, the primary one outermost; `field` is nil for `:sorted` on a list of texts, numbers or dates |
   | `:add`, `:sub`, `:mul`, `:div`, `:mod` | `[left, right]` | arithmetic; `:sub` of two dates is a date interval (type `"dateinterval"`) |
-  | `:interval_to` | `[interval, unit]` | a date interval's `:to days` … `:to seconds` (`to_days`, …): a number of `unit`s (`:day`, `:hour`, `:minute`, `:second`), exact, not rounded |
+  | `:interval_to` | `[interval, unit]` | a date interval's `:to days` … `:to seconds` (`to_days`, …): a number of `unit`s (`:day`, `:hour`, `:minute`, `:second`), as Bubble rounds it: to tenths of days and hours, to whole minutes and seconds (WTF-609) |
   | `:range_start`, `:range_end`, `:range_middle` | `[range]` | a date range's start, end and middle (Bubble's `min`, `max`, `average`) |
   | `:concat` | `[part, …]` | dynamic text: parts in order, each shown as text |
   | `:fallback` | `[x, default]` | `x defaulting to default` |
   | `:if` | `[condition, then, else]` | a conditional state's value: `then` while `condition` is yes (an empty condition is no), else `else` (an input's initial content with the states that set it, WTF-520) |
   | `:lowercase`, `:uppercase`, `:trim`, `:capitalize_words`, `:text_length`, `:json_encode`, `:url_encode`, `:is_email`, `:abs`, `:round`, `:to_text` | `[x]` | text and number operators |
   | `:ceiling`, `:floor` | `[x]` | a number's `:ceiling` and `:floor` (`ceil`, `floor`): the nearest whole number up or down (WTF-598) |
+  | `:round_to` | `[x, places]` | a number's `:rounded to` (`round`): Bubble's rounding, `Math.round(x * 10 ** places) / 10 ** places` in JavaScript, a half toward positive infinity (WTF-609) |
   | `:to_number` | `[x]` | `converted to number` |
   | `:format_date` | `[date, format, zone]` | `formatted as` a date: `format` is Bubble's pattern (a named format is its own pattern, `custom` its `custom_format`; `"iso_date"` for ISO 8601; nil for Bubble's default); `zone` (see below) |
   | `:format_number` | `[number, options]` | `formatted as` a number; `options` are Bubble's settings with readable keys (`formatting_type`, `decimal_place`, `thousand_separator`, `currency_symbol`) |

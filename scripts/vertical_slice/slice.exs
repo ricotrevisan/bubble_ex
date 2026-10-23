@@ -365,6 +365,13 @@ case System.argv() do
       },
       "plan" => %{"tasks" => length(built.plan.tasks), "plan_sha256" => built.plan.plan_sha256},
       "workarounds" => Cli.workaround_counts(built),
+      # The workflows the runtime refuses, by why (WTF-607): the owner's
+      # .wtf/blocked_workflows.md.
+      "blocked_workflows" =>
+        BubbleEx.Target.Phoenix.BlockedWorkflows.notes(built.spec, built.backend,
+          frontend: built.frontend
+        )
+        |> BubbleEx.Target.Phoenix.BlockedWorkflows.counts(),
       "structural_at_generation" => structural,
       "files" => map_size(files)
     }
