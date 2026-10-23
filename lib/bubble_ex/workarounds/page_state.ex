@@ -13,8 +13,9 @@ defmodule BubbleEx.Workarounds.PageState do
   The Bubble IDs of the elements lowered to page state by `applied`
   (`BubbleEx.Decision.Applied` entries of `:workaround_element` findings):
   option `:page_state`, a Group, Floating Group or Repeating Group, and
-  every candidate it holds (`proposal.holds`) lowered too. Their contents
-  are not rendered.
+  every candidate it holds (`proposal.holds`) lowered too, or skipped
+  (an unused element, `BubbleEx.Workarounds.Skip.skipped/1`: gone
+  either way). Their contents are not rendered.
   """
   @spec lowered([map()]) :: MapSet.t(String.t())
   def lowered(applied) when is_list(applied) do
@@ -24,8 +25,10 @@ defmodule BubbleEx.Workarounds.PageState do
           into: %{},
           do: {p.element, Map.get(p, :holds, [])}
 
+    skipped = MapSet.new(BubbleEx.Workarounds.Skip.skipped(applied), &("element:" <> &1))
+
     chosen
-    |> settle()
+    |> settle(skipped)
     |> MapSet.new(fn "element:" <> id -> id end)
   end
 
@@ -33,9 +36,14 @@ defmodule BubbleEx.Workarounds.PageState do
   @spec type?(term()) :: boolean()
   def type?(type), do: type in @types
 
-  # Drops holders whose held candidates are not all lowered, until none.
-  defp settle(chosen) do
-    kept = Map.filter(chosen, fn {_, holds} -> Enum.all?(holds, &Map.has_key?(chosen, &1)) end)
-    if map_size(kept) == map_size(chosen), do: Map.keys(kept), else: settle(kept)
+  # Drops holders whose held candidates are not all lowered (or skipped),
+  # until none.
+  defp settle(chosen, skipped) do
+    kept =
+      Map.filter(chosen, fn {_, holds} ->
+        Enum.all?(holds, &(Map.has_key?(chosen, &1) or MapSet.member?(skipped, &1)))
+      end)
+
+    if map_size(kept) == map_size(chosen), do: Map.keys(kept), else: settle(kept, skipped)
   end
 end

@@ -86,7 +86,8 @@ defmodule BubbleEx.Workarounds do
     * none of them has an HTML ID attribute (the app's code may find it)
     * none of their Bubble IDs appears anywhere else in the app JSON (a
       plugin's or a reusable property's element reference the index does
-      not model), except the editor's change history
+      not model), except the editor's change history, a payload's
+      `_index` and a child's pointer to its parent
     * every candidate it holds is `:unused` too
 
   It is `:high` confidence, so it is skipped by default and asks the owner
@@ -153,8 +154,9 @@ defmodule BubbleEx.Workarounds do
   # What an entry of another class may be lowered as: never skipped.
   @lowerings [:page_state, :plugin_event, :css_gap, :hook, :keep]
   # Where an element's Bubble ID may appear without using it: the editor's
-  # change history, and a child's pointer to its parent.
-  @history_roots ["merge_changes"]
+  # change history, a payload's ID-to-path index, and a child's pointer to
+  # its parent.
+  @history_roots ["merge_changes", "_index"]
   @parent_pointers ["current_parent"]
 
   # Plugin elements that draw something (icons, charts, inputs): a hidden or
@@ -914,7 +916,7 @@ defmodule BubbleEx.Workarounds do
     kids = Enum.map(f.child_ids, &done[&1])
 
     if wrapper?(f) and Enum.all?(kids, & &1),
-      do: kids |> Enum.map(& &1.class) |> Enum.uniq() |> wrapped(kids)
+      do: kids |> Enum.map(& &1.class) |> Enum.uniq() |> wrapped(kids, f)
   end
 
   defp wrapper?(f) do
@@ -924,8 +926,18 @@ defmodule BubbleEx.Workarounds do
       Enum.all?(f.setters, &(&1.type in @wrapper_steps))
   end
 
-  # Only its own rule makes an element unused (a wrapper may show).
-  defp wrapped([class], kids) when class not in [:unknown, :unused] do
+  # Only its own rule makes an element unused (a wrapper may show); a tiny
+  # one wrapping only unused elements is empty once they are skipped: a
+  # spacer, as it was when they were spacers themselves.
+  defp wrapped([:unused], kids, f) do
+    if :tiny in f.signals,
+      do:
+        {:spacer, :high,
+         "a tiny element that only wraps #{length(kids)} unused element#{plural(kids)} (" <>
+           Enum.map_join(kids, ", ", & &1.element) <> ")"}
+  end
+
+  defp wrapped([class], kids, _f) when class != :unknown do
     confidence = kids |> Enum.map(& &1.confidence) |> Enum.min_by(&rank/1)
 
     {class, confidence,
@@ -933,7 +945,7 @@ defmodule BubbleEx.Workarounds do
        Enum.map_join(kids, ", ", & &1.element) <> ")"}
   end
 
-  defp wrapped(_classes, _kids), do: nil
+  defp wrapped(_classes, _kids, _f), do: nil
 
   defp rank(:low), do: 0
   defp rank(:medium), do: 1

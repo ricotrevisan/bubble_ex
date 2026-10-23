@@ -221,6 +221,14 @@ defmodule BubbleEx.WorkaroundsTest do
 
       assert %{class: :unused, confidence: :high, readers: [], setters: [], events: []} = e
       assert e.reason =~ "nothing reads, sets, shows or triggers it"
+
+      # A fetched payload's ID index and editor history name it: no use.
+      app =
+        app()
+        |> Map.put("_index", %{"id_to_path" => %{"eDead" => "%p3.pHome.%el.eDead"}})
+        |> Map.put("merge_changes", [%{"id" => "eDead"}])
+
+      assert entries(app)["eDead"].class == :unused
     end
 
     test "any use keeps an element out of the class" do
@@ -309,6 +317,77 @@ defmodule BubbleEx.WorkaroundsTest do
         refute "eInner" in skipped
         assert "eDead" in skipped
       end
+    end
+
+    test "a value holder lowers to page state with the unused elements it holds" do
+      app =
+        with_elements(fn els ->
+          els
+          |> Map.put("eVals", %{
+            "id" => "eVals",
+            "type" => "Group",
+            "properties" => %{
+              "order" => 50,
+              "single_width" => true,
+              "single_height" => true,
+              "width" => 10,
+              "height" => 10,
+              "data_source" => %{"type" => "CurrentUser"}
+            },
+            "elements" => %{"eHid" => hidden("eHid", 1)}
+          })
+          |> Map.put("eValsText", %{
+            "id" => "eValsText",
+            "type" => "Text",
+            "properties" => %{
+              "order" => 51,
+              "text" => %{
+                "type" => "TextExpression",
+                "entries" => %{
+                  "0" => %{
+                    "type" => "GetElement",
+                    "properties" => %{"element_id" => "eVals"},
+                    "next" => %{"type" => "Message", "name" => "get_group_data"}
+                  }
+                }
+              }
+            }
+          })
+        end)
+
+      entries = entries(app)
+      assert %{class: :value_holder, confidence: :high} = entries["eVals"]
+      assert entries["eHid"].class == :unused
+
+      assert "eVals" in Workarounds.page_state(applied(app, fn _ -> [] end))
+
+      # The owner keeps what it holds: the holder keeps its markup too.
+      kept = applied(app, keep("eHid"))
+      refute "eVals" in Workarounds.page_state(kept)
+      refute "eHid" in Workarounds.skipped(kept)
+    end
+
+    test "a tiny wrapper of unused elements only is a spacer" do
+      app =
+        with_elements(fn els ->
+          Map.put(els, "eWrap", %{
+            "id" => "eWrap",
+            "type" => "Group",
+            "properties" => %{
+              "order" => 52,
+              "single_width" => true,
+              "single_height" => true,
+              "width" => 10,
+              "height" => 10
+            },
+            "elements" => %{"eGone" => hidden("eGone", 1)}
+          })
+        end)
+
+      entries = entries(app)
+      assert entries["eGone"].class == :unused
+      assert %{class: :spacer, confidence: :high} = entries["eWrap"]
+      assert entries["eWrap"].reason =~ "only wraps 1 unused element (eGone)"
     end
 
     test "the finding names its unused holder; a reject keeps it too" do
