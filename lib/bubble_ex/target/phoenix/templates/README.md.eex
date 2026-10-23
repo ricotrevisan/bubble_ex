@@ -45,6 +45,10 @@ Tailwind theme tokens in `assets/css/bubble.css`, the name map
 by hand: a hand edit is detected and blocks regeneration. Change the
 Bubble app or record an owner decision instead.
 
+`.wtf/blocked_workflows.md` (generated too) lists the Bubble workflows
+that cannot run yet, why, and what you can do about each: a workflow runs
+whole or not at all, so one part that was not converted stops all of it.
+
 Every other file (this README, `mix.exs`, the config, the router, layouts,
 controllers, the magic-link sender, tests) is **owned**: scaffolded once,
 then yours. Regeneration never overwrites it.

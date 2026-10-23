@@ -255,6 +255,14 @@ defmodule BubbleEx.Target.Phoenix do
       empty element: its value stays page state (`@bubble_data`,
       `@bubble_states`), its contents are not rendered. Other options keep
       the markup for now; none by default
+
+  ## Workflows that cannot run (WTF-607)
+
+  With `workflows:` or `frontend_workflows:`, the generated
+  `.wtf/blocked_workflows.md` lists, for the owner, every workflow the
+  runtime refuses before its first step (one of its parts was not
+  converted, or it runs one that cannot run), grouped by why, with what
+  they can do about it (`BubbleEx.Target.Phoenix.BlockedWorkflows`).
   """
 
   alias BubbleEx.{CanonicalJson, Error}
@@ -268,6 +276,7 @@ defmodule BubbleEx.Target.Phoenix do
 
   alias BubbleEx.Target.Phoenix.{
     ApiClients,
+    BlockedWorkflows,
     Formatter,
     IndexSnapshots,
     Manifest,
@@ -483,6 +492,7 @@ defmodule BubbleEx.Target.Phoenix do
           |> Map.new(fn {path, content} -> {path, mark_generated(path, content, false)} end)
         )
 
+      generated = put_blocked_workflows(generated, frontend, opts)
       owned = ctx |> owned_files() |> Map.merge(pages.owned)
 
       # Every authorization bypass the generator writes, per file and
@@ -1054,6 +1064,20 @@ defmodule BubbleEx.Target.Phoenix do
       IndexSnapshots.script_path(),
       mark_generated(IndexSnapshots.script_path(), IndexSnapshots.script(), false)
     )
+  end
+
+  # The owner's report of the workflows that cannot run (WTF-607).
+  defp put_blocked_workflows(generated, frontend, opts) do
+    flows = Keyword.get(opts, :frontend_workflows)
+    backend = Keyword.get(opts, :workflows)
+
+    if flows || backend do
+      notes = BlockedWorkflows.notes(flows, backend, frontend: frontend)
+
+      Map.put(generated, BlockedWorkflows.path(), BlockedWorkflows.markdown(notes))
+    else
+      generated
+    end
   end
 
   # --- backend workflows (WTF-373) ---------------------------------------------------
