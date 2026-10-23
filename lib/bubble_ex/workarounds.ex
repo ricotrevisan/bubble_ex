@@ -51,7 +51,7 @@ defmodule BubbleEx.Workarounds do
   | `:value_holder` | holds a value (its data source, a "Display data" step or custom states) that other elements read | `:page_state`: the value is page state, the element renders as its own empty element (`page_state/1`) |
   | `:keep_alive` | kept on the page only so its plugin or its events run | `:plugin_event`: the plugin's or event's own lowering |
   | `:spacer` | an empty, unreferenced tiny element that only adds its container's gap | `:css_gap` |
-  | `:js_bridge` | runs the app author's code: a code plugin (Toolbox, `BubbleEx.Plugins.Catalog` `:hand_written_code`) or an HTML element with a script or style tag | `:hook`: a client hook |
+  | `:js_bridge` | runs the app author's code: a code plugin (Toolbox, `BubbleEx.Plugins.Catalog` `:hand_written_code`) or an HTML element with a script or style tag | `:hook`: a client hook (page-only scripts only, see below) |
   | `:unused` | never visible, and nothing reads, writes, shows or triggers it or its contents (see below) | `:skip`: not generated |
   | `:unknown` | none of the above, or signals that disagree | `:keep`: keep the markup as Bubble has it |
 
@@ -89,6 +89,26 @@ defmodule BubbleEx.Workarounds do
       not model), except the editor's change history, a payload's
       `_index` and a child's pointer to its parent
     * every candidate it holds is `:unused` too
+
+  ### JS bridges
+
+  A JS bridge's scripts (`js`, WTF-608: its own and its contents', from
+  `BubbleEx.Js.Scripts`) decide what becomes of it:
+
+    * every script is page-only (`BubbleEx.Js`), or it is a "Javascript to
+      Bubble" element (its publish function only publishes to the page):
+      `:high`, lowered as `:hook`, a client hook runs it
+    * a script is not page-only: `:low`, an owner question with a rewrite
+      brief (`js.brief`, `BubbleEx.Js.Brief`) for the developer who ports
+      it; it suggests `:keep` and offers no `:hook` (nothing runs it)
+    * no script (a style tag only): `:high`, `:keep`, no `:hook`
+
+  `js` is `nil` for any other class, else `%{verdict, scripts, brief}`:
+  `verdict` `:page_only` or `:owner` (nil without a script), `scripts` the
+  elements holding them (`%{element, kind, verdict, reasons}`), `brief` nil
+  unless `:owner`.
+
+  ### Unused (skipping)
 
   It is `:high` confidence, so it is skipped by default and asks the owner
   nothing; its entry (and finding evidence) records why. `unused_inside`
@@ -140,6 +160,8 @@ defmodule BubbleEx.Workarounds do
   alias BubbleEx.Frontend.Payload
   alias BubbleEx.Index
   alias BubbleEx.Index.Symbol
+  alias BubbleEx.Js
+  alias BubbleEx.Js.{Brief, Scripts}
   alias BubbleEx.Plugins.Catalog
 
   @classes [:value_holder, :keep_alive, :spacer, :js_bridge, :unused, :unknown]
@@ -205,6 +227,7 @@ defmodule BubbleEx.Workarounds do
           },
           held: [Symbol.id()],
           script: boolean(),
+          js: map() | nil,
           class: class(),
           confidence: :high | :medium | :low,
           reason: String.t(),
@@ -257,7 +280,15 @@ defmodule BubbleEx.Workarounds do
 
     children = children_map(elements)
     named = named_at(app, MapSet.new(Map.values(elements), & &1.bubble_id))
-    env = %{raws: raws, children: children, candidates: candidates, named: named}
+    scripts = Scripts.collect(app, index)
+
+    env = %{
+      raws: raws,
+      children: children,
+      candidates: candidates,
+      named: named,
+      scripts: scripts
+    }
 
     facts =
       Map.new(candidates, fn {id, signals} ->
@@ -491,6 +522,7 @@ defmodule BubbleEx.Workarounds do
       },
       held: descendants |> Enum.filter(&Map.has_key?(candidates, &1)) |> Enum.sort(),
       script: Enum.any?([s.id | descendants], &script?(raws[&1])),
+      scripts: scripts_in(env.scripts, [s | Enum.map(descendants, &elements[&1])]),
       child_ids: Map.get(children, s.id, []),
       html_id: Enum.any?([s.id | descendants], &html_id?(raws[&1])),
       instances: Enum.any?([s.id | descendants], &(Payload.type(raws[&1]) == "CustomElement")),
@@ -512,6 +544,28 @@ defmodule BubbleEx.Workarounds do
   end
 
   defp drawing?(%{plugin: plugin, code: code}), do: Catalog.equivalent(plugin, code) in @visual
+
+  # The scripts of the elements (`BubbleEx.Js.Scripts`): an element's own
+  # (HTML, a Toolbox code element), and a "Javascript to Bubble" element's
+  # publish function (page-only by definition: it publishes to the page).
+  defp scripts_in(scripts, symbols) do
+    for %Symbol{bubble_id: id} <- symbols,
+        entry = script_entry(scripts, id),
+        do: entry
+  end
+
+  defp script_entry(scripts, id) do
+    cond do
+      e = scripts.elements[id] ->
+        %{element: id, kind: e.kind, analysis: e.analysis}
+
+      Map.has_key?(scripts.publishers, id) ->
+        %{element: id, kind: :publisher, analysis: %Js{verdict: :page_only}}
+
+      true ->
+        nil
+    end
+  end
 
   # An HTML ID attribute: the app's code may find the element by it.
   defp html_id?(raw) when is_map(raw) do
@@ -711,6 +765,15 @@ defmodule BubbleEx.Workarounds do
   end
 
   defp finish(f, {class, confidence, reason}) do
+    js = if class == :js_bridge, do: js(f.scripts)
+
+    {option, options} =
+      case js do
+        %{verdict: :page_only} -> {option(class), options(class)}
+        %{} -> {:keep, [:keep | List.delete(@lowerings, :hook) |> List.delete(:keep)]}
+        nil -> {option(class), options(class)}
+      end
+
     f
     |> Map.drop([
       :own_plugin,
@@ -719,15 +782,59 @@ defmodule BubbleEx.Workarounds do
       :html_id,
       :named_elsewhere,
       :drawing_plugins_only,
-      :instances
+      :instances,
+      :scripts
     ])
     |> Map.merge(%{
       class: class,
       confidence: confidence,
       reason: reason,
-      option: option(class),
-      options: options(class)
+      js: js,
+      option: option,
+      options: options
     })
+  end
+
+  # A JS bridge's scripts: page-only when every one is; the brief of those
+  # that are not.
+  defp js(scripts) do
+    owner = Enum.filter(scripts, &(&1.analysis.verdict == :owner))
+
+    verdict =
+      cond do
+        scripts == [] -> nil
+        owner == [] -> :page_only
+        true -> :owner
+      end
+
+    %{
+      verdict: verdict,
+      scripts:
+        Enum.map(scripts, fn s ->
+          %{
+            element: s.element,
+            kind: s.kind,
+            verdict: s.analysis.verdict,
+            reasons: Enum.map(s.analysis.reasons, &Brief.why/1)
+          }
+        end),
+      brief:
+        case owner do
+          [] -> nil
+          [one] -> Brief.build(one.analysis, one.kind)
+          [first | _] -> Brief.build(merged(Enum.map(owner, & &1.analysis)), first.kind)
+        end
+    }
+  end
+
+  defp merged(analyses) do
+    %Js{
+      verdict: :owner,
+      reads: analyses |> Enum.flat_map(& &1.reads) |> Enum.uniq() |> Enum.sort(),
+      publishes: analyses |> Enum.flat_map(& &1.publishes) |> Enum.uniq() |> Enum.sort(),
+      uses: analyses |> Enum.flat_map(& &1.uses) |> Enum.uniq() |> Enum.sort(),
+      reasons: analyses |> Enum.flat_map(& &1.reasons) |> Enum.uniq() |> Enum.sort()
+    }
   end
 
   # The first rule that matches decides; a reason says why.
@@ -895,6 +1002,7 @@ defmodule BubbleEx.Workarounds do
     Enum.join(for({true, text} <- sources, do: text), ", ")
   end
 
+  # See "JS bridges" in the moduledoc: its scripts decide.
   defp js_bridge(f) do
     code? = code_plugin?(f.own_plugin)
 
@@ -903,11 +1011,28 @@ defmodule BubbleEx.Workarounds do
         do: "a code plugin element (#{f.own_plugin.plugin})",
         else: "a script or style tag"
 
-    if code? or (f.events == [] and f.readers == []),
-      do: {:js_bridge, :high, "it runs the app author's code: #{what}"},
-      else:
+    owner = Enum.filter(f.scripts, &(&1.analysis.verdict == :owner))
+
+    cond do
+      owner != [] ->
+        [first | _] = owner
+
+        {:js_bridge, :low,
+         "it runs the app author's code (#{what}) that a developer has to port: " <>
+           (first.analysis.reasons |> Enum.take(2) |> Enum.map_join("; ", &Brief.why/1))}
+
+      f.scripts == [] ->
+        {:js_bridge, :high, "it runs no script of the app author's (#{what}): its markup is kept"}
+
+      code? or (f.events == [] and f.readers == []) ->
+        {:js_bridge, :high,
+         "it runs the app author's code (#{what}), page-only: a client hook runs it"}
+
+      true ->
         {:js_bridge, :medium,
-         "it runs the app author's code (#{what}), and other elements use it"}
+         "it runs the app author's code (#{what}), page-only: a client hook runs it; " <>
+           "other elements use it"}
+    end
   end
 
   # A wrapper that holds, sets, reads and listens to nothing itself takes

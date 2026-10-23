@@ -1,0 +1,175 @@
+defmodule <%= @web %>.BubbleScripts do
+  @moduledoc """
+  The app author's page-only JavaScript (WTF-608), run by a hook the page's
+  runtime renders once (`<%= @web %>.Bubble.runtime/1`). Generated: every
+  conversion writes it again.
+
+    * a Toolbox "Run javascript" step whose script only touches the page
+      (`BubbleEx.Js`) runs here: the workflow computes its inputs on the
+      server, as the current user, and sends them with the run's other
+      browser steps (`<%= @web %>.BubbleWorkflows.script/4`); the script gets
+      them as `properties.param1`… (a thing as an object whose `get("_id")`
+      is its unique ID, and nothing else; a list as `length()` /
+      `get(start, count)`; a date as a `Date`). Its text is the app's,
+      checked when the app was converted, never built from data
+    * an HTML element whose scripts only touch the page runs them when it
+      is shown (in the page, not inside a hidden element), once per element
+      the page renders, as Bubble runs an HTML element's code when it
+      draws it
+    * a Toolbox "Javascript to Bubble" element's `bubble_fn_<suffix>` is
+      defined on `window`, as in Bubble: it sends the page what it is given
+      (`bubble:publish`), which the page treats like an input's value from
+      the browser: it keeps what fits the element's declared types (a thing
+      only as a unique ID it reads again as the current user), sets the
+      element's states and runs the element's event's workflows
+
+  A script that throws is logged in the browser's console; the others run
+  on.
+  """
+
+  use Phoenix.Component
+
+  @doc "The scripts' hook: render it once per page."
+  def scripts(assigns) do
+    ~H"""
+    <div id="bubble-scripts" phx-hook=".BubbleScripts" hidden></div>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".BubbleScripts">
+      // The page-only scripts, by "Run javascript" action.
+      const SCRIPTS = {
+<%= for s <- @scripts do %>        <%= s.key %>: function (properties) {
+<%= s.body %>
+        },
+<% end %>      }
+      // The page-only scripts of HTML elements, by element: run once per
+      // element in the page, when it is shown (not inside a hidden one).
+      const ELEMENTS = {
+<%= for e <- @elements do %>        <%= e.key %>: [
+<%= for s <- e.scripts do %>          function () {
+<%= s.body %>
+          },
+<% end %>        ],
+<% end %>      }
+      const NAMES = <%= @names %>
+      const OUTPUTS = ["output1", "output2", "output3", "output4",
+                       "outputlist1", "outputlist2", "outputlist3", "outputlist4"]
+      const MAX_ITEMS = 1000
+      const MAX_DEPTH = 3
+      const SUFFIX = /^[A-Za-z0-9_]{1,64}$/
+      // What a script was given as a thing or a list, for what it publishes.
+      const things = new WeakMap()
+      const lists = new WeakMap()
+      const thing = (id) => {
+        const t = Object.freeze({ get: (field) => (field === "_id" ? id : null) })
+        things.set(t, id)
+        return t
+      }
+      const list = (items) => {
+        const l = Object.freeze({
+          length: () => items.length,
+          get: (start, count) => items.slice(start, start + count)
+        })
+        lists.set(l, items)
+        return l
+      }
+      // An input as the server sent it: a thing `{thing: id}`, a date
+      // `{date: ms}`, a list, or a text, number or yes/no.
+      const input = (value) => {
+        if (Array.isArray(value)) return list(value.map(input))
+        if (value && typeof value === "object") {
+          if (typeof value.thing === "string") return thing(value.thing)
+          if (typeof value.date === "number") return new Date(value.date)
+          return null
+        }
+        return value === undefined ? null : value
+      }
+      // A published value as data: never an object the server would have
+      // to trust.
+      const output = (value, depth = 0) => {
+        if (value === undefined || value === null) return null
+        if (typeof value === "string" || typeof value === "boolean") return value
+        if (typeof value === "number") return Number.isFinite(value) ? value : null
+        if (value instanceof Date) return isNaN(value.getTime()) ? null : { date: value.getTime() }
+        if (things.has(value)) return { thing: things.get(value) }
+        if (lists.has(value)) return output(lists.get(value), depth)
+        if (Array.isArray(value) && depth < MAX_DEPTH)
+          return value.slice(0, MAX_ITEMS).map((v) => output(v, depth + 1))
+        return null
+      }
+      const published = (value) => {
+        const plain = value && typeof value === "object" && !Array.isArray(value) &&
+          !(value instanceof Date) && !things.has(value) && !lists.has(value)
+        if (!plain) return { value: output(value) }
+        const outputs = {}
+        for (const key of OUTPUTS)
+          if (Object.prototype.hasOwnProperty.call(value, key)) outputs[key] = output(value[key])
+        return { outputs }
+      }
+
+      export default {
+        mounted() {
+          this.el.addEventListener("bubble:script", (e) => this.run(e.detail || {}))
+          this.define()
+          this.ran = new WeakSet()
+          this.scheduled = false
+          if (Object.keys(ELEMENTS).length > 0) {
+            this.observer = new MutationObserver(() => this.schedule())
+            this.observer.observe(document.body, {
+              subtree: true, childList: true, attributes: true, attributeFilter: ["hidden"]
+            })
+            this.shown()
+          }
+        },
+        destroyed() {
+          if (this.observer) this.observer.disconnect()
+        },
+        schedule() {
+          if (this.scheduled) return
+          this.scheduled = true
+          requestAnimationFrame(() => { this.scheduled = false; this.shown() })
+        },
+        // The HTML elements with scripts now shown, each DOM element once.
+        shown() {
+          for (const id of Object.keys(ELEMENTS)) {
+            document.querySelectorAll(`[data-bubble-id="${CSS.escape(id)}"]`).forEach((el) => {
+              if (this.ran.has(el) || el.closest("[hidden]") || el.getClientRects().length === 0) return
+              this.ran.add(el)
+              for (const fn of ELEMENTS[id]) {
+                try { fn() } catch (error) { console.error("bubble: a script failed", error) }
+              }
+            })
+          }
+        },
+        reconnected() {
+          this.define()
+        },
+        // The page's publishers, as the page lists them.
+        define() {
+          this.pushEvent("bubble:publishers", {}, (reply) => {
+            for (const p of (reply && reply.publishers) || []) {
+              if (typeof p.suffix !== "string" || !SUFFIX.test(p.suffix)) continue
+              const scope = String(p.scope)
+              const element = String(p.element)
+              window["bubble_fn_" + p.suffix] = (value) =>
+                this.pushEvent("bubble:publish", { scope, element, ...published(value) })
+            }
+          })
+        },
+        run({ key, params }) {
+          if (typeof key !== "string" || !Object.prototype.hasOwnProperty.call(SCRIPTS, key)) return
+          const properties = {}
+          for (const name of NAMES)
+            if (params && Object.prototype.hasOwnProperty.call(params, name))
+              properties[name] = input(params[name])
+          try {
+            const result = SCRIPTS[key](properties)
+            if (result && typeof result.then === "function")
+              result.catch((error) => console.error("bubble: a script failed", error))
+          } catch (error) {
+            console.error("bubble: a script failed", error)
+          }
+        }
+      }
+    </script>
+    """
+  end
+end

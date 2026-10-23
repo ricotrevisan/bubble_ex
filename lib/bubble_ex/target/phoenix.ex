@@ -255,8 +255,9 @@ defmodule BubbleEx.Target.Phoenix do
       empty element: its value stays page state (`@bubble_data`,
       `@bubble_states`), its contents are not rendered. An unused element
       skipped (`:skip`, WTF-606: `BubbleEx.Workarounds.skipped/1`) is not
-      generated, nor are its contents. Other options keep the markup for
-      now; none by default
+      generated, nor are its contents. An HTML element's page-only scripts
+      (WTF-608) run unless its decision lowers it as anything but `:hook`.
+      Other options keep the markup for now; none by default
 
   ## Workflows that cannot run (WTF-607)
 
@@ -462,6 +463,7 @@ defmodule BubbleEx.Target.Phoenix do
          {:ok, frontend} <- frontend(opts),
          :ok <- asset_store(opts),
          {:ok, page_state, skipped} <- workarounds(opts),
+         opts = without_unhooked_scripts(opts),
          frontend = frontend |> without_dropped_pages(project) |> without_skipped(skipped),
          :ok <- frontend_workflows(opts, frontend),
          :ok <- api_calls_bound(opts, clients),
@@ -883,6 +885,26 @@ defmodule BubbleEx.Target.Phoenix do
       nil -> :ok
       %BubbleEx.Frontend.StaticAssets.Store{} -> :ok
       _ -> invalid("asset_store: must be a BubbleEx.Frontend.StaticAssets.Store (load_store/1)")
+    end
+  end
+
+  # An HTML element's page-only scripts (WTF-608) run unless the owner's
+  # decision on the element lowers it otherwise (`keep`, a `reject`, …).
+  defp without_unhooked_scripts(opts) do
+    case {Keyword.get(opts, :frontend_workflows), Keyword.get(opts, :workarounds, [])} do
+      {%FlowSpec{element_scripts: scripts} = spec, list} when scripts != %{} and is_list(list) ->
+        unhooked =
+          for %Applied{subject: %{element: e}, proposal: p} <- list,
+              Map.get(p, :option) != :hook,
+              do: e
+
+        Keyword.put(opts, :frontend_workflows, %{
+          spec
+          | element_scripts: Map.drop(scripts, unhooked)
+        })
+
+      _ ->
+        opts
     end
   end
 

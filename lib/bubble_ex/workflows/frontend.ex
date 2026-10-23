@@ -34,6 +34,7 @@ defmodule BubbleEx.Workflows.Frontend do
   | A popup is opened / closed | `:popup_opened` / `:popup_closed` | `element` |
   | User is logged in / out | `:logged_in` / `:logged_out` | |
   | Do every N seconds (`DoInterval`) | `:do_every` | `interval` |
+  | A Toolbox "Javascript to Bubble" element's event (WTF-608) | `:js_publish` | `element` (the publisher, `publishers`) |
 
   Anything else is `:unsupported` with `:unsupported_event` or
   `:plugin_event` residue. A workflow disabled in the editor
@@ -69,6 +70,32 @@ defmodule BubbleEx.Workflows.Frontend do
   | Terminate this workflow | `:terminate` | `returns` |
   | Add a pause before next action (`PauseWFClient`) | `:pause` | `length` (milliseconds) |
   | an API Connector call (`apiconnector2-<group>.<call>`, WTF-533) | `:api_call` | `group`, `call`, `params`, `ignored` (`BubbleEx.Workflows.Lowering`); a target runs it on the server |
+  | Toolbox's "Run javascript" (WTF-608) | `:run_js` | `script` (the action's Bubble ID), `source` (the script, static), `implicit` (names it assigns without declaring them), `params` (`%{name, value}`: `param1`… / `paramlist1`…), `publishes` (suffixes), `async?`; a target runs it in the browser, after the step's server-side values are computed |
+
+  ## Scripts (WTF-608)
+
+  A "Run javascript" step lowers only when its script is page-only
+  (`BubbleEx.Js`, through `BubbleEx.Js.Scripts`, which analyzes every
+  script of the app together), each input is a text, number, yes/no,
+  date or thing (or a list of them: a thing is passed as its unique ID,
+  never its fields), and no later step of its workflow reads the states of
+  a "Javascript to Bubble" element it publishes to (in Bubble the publish
+  lands before them; here it lands after the run). Otherwise the step is
+  `:script_action` residue whose `detail` holds why (`why`) and the
+  developer's rewrite brief (`brief`, `BubbleEx.Js.Brief`).
+
+  A "Javascript to Bubble" element with a static suffix is a publisher
+  (`publishers`, by element Bubble ID: `%{surface, suffix, trigger?,
+  outputs}`, each output `%{name, state, type}`: `value` or `output1`…,
+  the element state Bubble reads it as, `get_<code>`, and its type). Its
+  states are kept like custom states (`states`), and its event is a
+  `:js_publish` workflow: the page's hook publishes, the page sets the
+  states and runs the workflows.
+
+  An HTML element whose `<script>` tags are all page-only, and that holds
+  nothing else, is listed in `element_scripts` (`%{surface, scripts}`,
+  each `%{source, implicit}`): a target runs them when the element is
+  shown, as Bubble runs an HTML element's code when it draws it.
 
   Every step may carry a `condition` ("Only when"). A custom event called
   or scheduled must belong to the same page or reusable element, as in
@@ -90,6 +117,8 @@ defmodule BubbleEx.Workflows.Frontend do
   """
 
   alias BubbleEx.{Diagnostic, Error, Index, Model}
+  alias BubbleEx.Js.{Brief, Scripts}
+  alias BubbleEx.Model.Type
   alias BubbleEx.Expression.{Env, IR, Sites, Tree}
   alias BubbleEx.Index.Symbol
   alias BubbleEx.Plan.Residue
@@ -100,7 +129,12 @@ defmodule BubbleEx.Workflows.Frontend do
 
   import Lowering, only: [map: 1, text: 1, type_text: 1, ordered: 1]
 
-  defstruct workflows: [], elements: %{}, states: [], diagnostics: []
+  defstruct workflows: [],
+            elements: %{},
+            states: [],
+            publishers: %{},
+            element_scripts: %{},
+            diagnostics: []
 
   @type element :: %{
           surface: String.t(),
@@ -123,6 +157,8 @@ defmodule BubbleEx.Workflows.Frontend do
           workflows: [Workflow.t()],
           elements: %{String.t() => element()},
           states: [state()],
+          publishers: %{String.t() => map()},
+          element_scripts: %{String.t() => map()},
           diagnostics: [Diagnostic.t()]
         }
 
@@ -139,7 +175,7 @@ defmodule BubbleEx.Workflows.Frontend do
     "DoInterval" => :do_every
   }
 
-  @element_events [:click, :input_change, :popup_opened, :popup_closed]
+  @element_events [:click, :input_change, :popup_opened, :popup_closed, :js_publish]
 
   # Event members with a lowering, or without semantics (captions, the
   # editor's display name, colors, folders, debugger breakpoints).
@@ -209,8 +245,12 @@ defmodule BubbleEx.Workflows.Frontend do
     terminate: ~w(return_values),
     # `hide_status_bar` hides Bubble's page loading bar during the pause:
     # generated pages show none.
-    pause: ~w(length hide_status_bar)
+    pause: ~w(length hide_status_bar),
+    run_js: Scripts.run_js_members()
   }
+
+  # A "Run javascript" input's types: passed to the script as data.
+  @script_types ~w(text number boolean date user)
 
   @ignored_members ~w(condition breakpoint element_id_friendly name)
 
@@ -269,10 +309,13 @@ defmodule BubbleEx.Workflows.Frontend do
           into: %{},
           do: {s.bubble_id, {raw, pointer_path(s.path)}}
 
+    scripts = Scripts.collect(app, index)
+
     ctx = %{
       model: model,
       index: index,
       tree: tree,
+      scripts: scripts,
       buttons: buttons,
       surfaces: surfaces,
       pages: for({id, %{kind: :page}} <- surfaces, into: %{}, do: {bubble(id), id}),
@@ -293,12 +336,15 @@ defmodule BubbleEx.Workflows.Frontend do
       |> Diagnostic.normalize()
 
     elements = elements(tree, surfaces)
+    publishers = publishers(scripts, tree, elements)
 
     {:ok,
      %__MODULE__{
        workflows: workflows,
        elements: elements,
-       states: states(tree, elements, env),
+       states: states(tree, elements, env) ++ publisher_states(publishers),
+       publishers: publishers,
+       element_scripts: element_scripts(scripts, elements),
        diagnostics: diagnostics
      }}
   end
@@ -378,7 +424,7 @@ defmodule BubbleEx.Workflows.Frontend do
     env = Sites.workflow_env(raw, path, host, env)
     props = Source.member_props(map(Source.value(raw, ~w(properties %p))))
     event_type = Source.value(raw, ~w(type %x))
-    kind = Map.get(@kinds, event_type, :unsupported)
+    kind = Map.get(@kinds, event_type) || plugin_kind(event_type, raw, symbol.parent, ctx)
     id = symbol.id
 
     ctx =
@@ -410,6 +456,7 @@ defmodule BubbleEx.Workflows.Frontend do
       |> actions(path)
       |> Enum.with_index(1)
       |> Enum.map(fn {{action, apath}, n} -> step(action, apath, n, env, ctx) end)
+      |> published_reads(ctx)
 
     %Workflow{
       id: id,
@@ -606,6 +653,7 @@ defmodule BubbleEx.Workflows.Frontend do
     id = Symbol.id(:action, bubble_id)
     op = if is_binary(type), do: Map.get(@ops, type) || Lowering.data_op(type)
     op = if Lowering.api_call?(type), do: :api_call, else: op
+    op = if Scripts.kind(type) == :run_js, do: :run_js, else: op
     ppath = path ++ ["properties"]
     condition = Lowering.expr(props["condition"], ppath ++ ["condition"], env)
 
@@ -621,7 +669,9 @@ defmodule BubbleEx.Workflows.Frontend do
     }
 
     if op do
-      {args, residue} = lower(op, props, ppath, id, env, Map.put(ctx, :type, type))
+      {args, residue} =
+        lower(op, props, ppath, id, env, Map.merge(ctx, %{type: type, action: bubble_id}))
+
       options = unknown_members(op, props)
       exprs = [condition | Lowering.exprs_of(args)]
 
@@ -675,6 +725,38 @@ defmodule BubbleEx.Workflows.Frontend do
   end
 
   # --- operations --------------------------------------------------------------------
+
+  # Toolbox's "Run javascript" (WTF-608): see "Scripts" in the moduledoc.
+  defp lower(:run_js, props, path, id, env, ctx) do
+    analysis = Map.get(ctx.scripts.actions, ctx.action) || BubbleEx.Js.analyze("", dynamic: true)
+
+    params =
+      for {name, key} <- Scripts.params(props),
+          do: %{name: name, value: Lowering.expr(props[key], path ++ [key], env)}
+
+    bad_types =
+      for %{name: name, value: %Expr{ir: %IR{type: type}}} <- params,
+          not script_type?(type),
+          do: {:param_type, "#{name} (#{type_text(type)})"}
+
+    source =
+      case Scripts.script(props) do
+        {:ok, text} -> text
+        _ -> nil
+      end
+
+    args = %{
+      script: ctx.action,
+      source: source,
+      implicit: analysis.implicit,
+      params: params,
+      publishes: analysis.publishes,
+      async?: Scripts.async?(props)
+    }
+
+    reasons = analysis.reasons ++ bad_types
+    {args, script_residue(id, analysis, reasons, params)}
+  end
 
   defp lower(op, props, _path, id, _env, ctx)
        when op in [:show, :hide, :toggle, :focus, :scroll_to, :reset_group] do
@@ -1107,6 +1189,154 @@ defmodule BubbleEx.Workflows.Frontend do
       _ ->
         nil
     end
+  end
+
+  # --- scripts (WTF-608) -------------------------------------------------------------
+
+  defp script_type?(nil), do: true
+
+  defp script_type?(type) when is_binary(type) do
+    item = Type.list_item(type) || type
+    item in @script_types or match?({:data_type, _}, Type.reference(item))
+  end
+
+  defp script_type?(_type), do: false
+
+  defp script_residue(_id, _analysis, [], _params), do: []
+
+  defp script_residue(id, analysis, reasons, params) do
+    analysis = %{analysis | verdict: :owner, reasons: Enum.uniq(reasons)}
+
+    inputs =
+      for %{name: name, value: value} <- params do
+        type = with %Expr{ir: %IR{type: t}} <- value, do: t
+        %{name: name, type: if(is_binary(type), do: type_text(type)), path: value && value.path}
+      end
+
+    [
+      Residue.entry(id, :script_action, %{
+        why: Enum.map(analysis.reasons, &Brief.why/1),
+        brief: Brief.build(analysis, :run_js, inputs)
+      })
+    ]
+  end
+
+  # A "Run javascript" step whose script publishes to a "Javascript to
+  # Bubble" element whose states a later step of the workflow reads: in
+  # Bubble the publish lands first; here after the run.
+  defp published_reads(steps, ctx) do
+    steps
+    |> Enum.with_index()
+    |> Enum.map(fn
+      {%Step{op: :run_js, residue: [], args: %{publishes: [_ | _]}} = step, i} ->
+        published_read(step, Enum.drop(steps, i + 1), ctx)
+
+      {step, _i} ->
+        step
+    end)
+  end
+
+  defp published_read(step, later, ctx) do
+    publishers = ctx.scripts.publishers
+
+    read =
+      Enum.find(step.args.publishes, fn suffix ->
+        elements = for {e, %{suffix: ^suffix}} <- publishers, into: MapSet.new(), do: e
+        Enum.any?(Enum.flat_map(later, &step_exprs/1), &reads_any?(&1, elements))
+      end)
+
+    if read do
+      analysis = ctx.scripts.actions[step.bubble_id] || %BubbleEx.Js{}
+      reasons = [{:reads_published, read}]
+      %{step | residue: script_residue(step.id, analysis, reasons, step.args.params)}
+    else
+      step
+    end
+  end
+
+  defp step_exprs(%Step{condition: c, args: args}), do: [c | Lowering.exprs_of(args)]
+
+  defp reads_any?(%Expr{ir: %IR{} = ir}, elements) do
+    Enum.any?(IR.inputs(ir), fn
+      {:element_state, %{"element" => e}} -> MapSet.member?(elements, e)
+      _ -> false
+    end)
+  end
+
+  defp reads_any?(_expr, _elements), do: false
+
+  # A Toolbox "Javascript to Bubble" element's event, on one of its
+  # surface's publishers.
+  defp plugin_kind(type, raw, surface, ctx) do
+    with :publish_event <- Scripts.kind(type),
+         props = Source.member_props(map(Source.value(raw, ~w(properties %p)))),
+         element when is_binary(element) <- text(props["element_id"]),
+         %{surface: ^surface} <- ctx.scripts.publishers[element] do
+      :js_publish
+    else
+      _ -> :unsupported
+    end
+  end
+
+  # The publishers of the surfaces lowered (not in a repeating group's
+  # cell: a cell's would need a scope per cell), with the types of the
+  # states they publish (the plugin's definition's, as expressions read
+  # them).
+  defp publishers(scripts, tree, elements) do
+    for {id, p} <- scripts.publishers,
+        Map.has_key?(elements, id),
+        not in_cell?(id, elements),
+        node = Tree.node(tree, id),
+        into: %{} do
+      outputs =
+        for {name, code} <- p.outputs,
+            state = "get_" <> code,
+            type = Map.get(node.plugin_states || %{}, state),
+            do: %{name: name, state: state, type: type}
+
+      {id,
+       %{surface: elements[id].surface, suffix: p.suffix, trigger?: p.trigger?, outputs: outputs}}
+    end
+  end
+
+  defp in_cell?(id, elements) do
+    case elements[id] do
+      %{parent: parent} when is_binary(parent) ->
+        match?(%{repeats: true}, elements[parent]) or in_cell?(parent, elements)
+
+      _ ->
+        false
+    end
+  end
+
+  # The page-only scripts of HTML elements of the surfaces lowered
+  # (`element_scripts`, by element Bubble ID: `%{surface, scripts}`, each
+  # `%{source, implicit}`, in the element's order).
+  defp element_scripts(scripts, elements) do
+    suffixes = scripts.publishers |> Map.values() |> Enum.map(& &1.suffix)
+
+    for {id, %{kind: :html, analysis: %{verdict: :page_only}, sources: sources}} <-
+          scripts.elements,
+        Map.has_key?(elements, id),
+        into: %{} do
+      {id,
+       %{
+         surface: elements[id].surface,
+         scripts:
+           Enum.map(sources, fn source ->
+             %{
+               source: source,
+               implicit: BubbleEx.Js.analyze(source, publishes: suffixes).implicit
+             }
+           end)
+       }}
+    end
+  end
+
+  defp publisher_states(publishers) do
+    for {id, p} <- Enum.sort(publishers),
+        o <- p.outputs,
+        do: %{element: id, state: o.state, type: o.type, default: nil}
   end
 
   # --- elements and custom states -------------------------------------------------------

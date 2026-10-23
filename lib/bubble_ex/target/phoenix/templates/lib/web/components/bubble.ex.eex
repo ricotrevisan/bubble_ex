@@ -883,7 +883,8 @@ defmodule <%= @web %>.Bubble do
       style={notice_style()}
     >
     </div>
-    <script :type={Phoenix.LiveView.ColocatedHook} name=".BubbleRuntime">
+<%= if @scripts? do %>    <<%= @web %>.BubbleScripts.scripts />
+<% end %>    <script :type={Phoenix.LiveView.ColocatedHook} name=".BubbleRuntime">
       const OVERLAYS = '[data-overlay="popup"], [data-overlay="group_focus"]'
       const FOCUSABLE =
         'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), ' +
@@ -1204,7 +1205,16 @@ defmodule <%= @web %>.Bubble do
             const url = safeUrl(op.url)
             if (url) window.open(url, "_blank", "noopener,noreferrer")
             return
-          }
+          }<%= if @scripts? do %>
+          // A page-only "Run javascript" (WTF-608), in order with the
+          // other steps: the scripts' hook runs it.
+          if (op.op === "script") {
+            this.run(() => {
+              const scripts = document.getElementById("bubble-scripts")
+              if (scripts) scripts.dispatchEvent(new CustomEvent("bubble:script", { detail: op }))
+            })
+            return
+          }<% end %>
           const event = OPS[op.op]
           if (!event || typeof op.to !== "string") return
           const detail = op.op === "animate" ? { visibility: op.visibility, motion: op.motion } : null

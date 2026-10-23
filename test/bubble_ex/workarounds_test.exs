@@ -42,11 +42,28 @@ defmodule BubbleEx.WorkaroundsTest do
                "eTip" => {:keep_alive, :high},
                "eJs" => {:js_bridge, :high},
                "eScript" => {:js_bridge, :high},
+               "eNet" => {:js_bridge, :low},
                "eHover" => {:unknown, :low},
                "eDead" => {:unused, :high},
                "eState" => {:value_holder, :high},
                "eGrow" => {:unknown, :low}
              }
+    end
+
+    test "a JS bridge's scripts decide: page-only is a hook, the rest a brief for a developer" do
+      entries = catalog()
+
+      assert %{option: :hook, js: %{verdict: :page_only, brief: nil}} = entries["eJs"]
+      assert [%{element: "eJs", kind: :publisher}] = entries["eJs"].js.scripts
+      assert %{option: :hook, js: %{verdict: :page_only}} = entries["eScript"]
+
+      net = entries["eNet"]
+      assert %{class: :js_bridge, confidence: :low, option: :keep} = net
+      refute :hook in net.options
+      assert net.reason =~ "a developer has to port"
+      assert %{verdict: :owner, brief: brief} = net.js
+      assert "it makes a network request (fetch)" in brief.why
+      assert brief.shape =~ "Make the request on the server"
     end
 
     test "an element a step or a conditional shows is not a candidate" do
@@ -451,7 +468,7 @@ defmodule BubbleEx.WorkaroundsTest do
              ]
 
       assert "page:pHome" in f.affects.readers.pages
-      assert length(findings) == 11
+      assert length(findings) == 12
     end
 
     test "sure findings apply by default; the rest are the owner's questions" do
@@ -469,7 +486,7 @@ defmodule BubbleEx.WorkaroundsTest do
             f = Enum.find(findings, &(&1.id == id)),
             do: f.subject.element
 
-      assert Enum.sort(asked) == ~w(eGrow eHolder eHover)
+      assert Enum.sort(asked) == ~w(eGrow eHolder eHover eNet)
     end
 
     test "the owner answers a question or overrides a default, keyed to the element" do
@@ -527,7 +544,7 @@ defmodule BubbleEx.WorkaroundsTest do
       questions = Enum.filter(plan.tasks, &String.starts_with?(&1.id, "decision:workaround/"))
 
       assert questions |> Enum.map(& &1.id) |> Enum.sort() ==
-               Enum.map(~w(eGrow eHolder eHover), &("decision:workaround/" <> &1))
+               Enum.map(~w(eGrow eHolder eHover eNet), &("decision:workaround/" <> &1))
 
       assert Enum.all?(
                questions,

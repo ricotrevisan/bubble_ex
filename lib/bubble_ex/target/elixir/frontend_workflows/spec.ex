@@ -32,6 +32,9 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
       instance of a reusable element whose workflows read its own
       visibility (`{:instance_visible, _}`) is listed, and so is every
       instance of a reusable element holding one
+    * `element_scripts` - the page-only scripts of HTML elements
+      (WTF-608), by element Bubble ID: `%{surface, scripts}` (see
+      `BubbleEx.Workflows.Frontend`), run when the element is shown
     * `diagnostics` - the lowering's and this binding's
 
   A workflow: `%{workflow, symbol, name, surface, kind, element, cell,
@@ -93,7 +96,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
               unset_sources: MapSet.new()
             },
             cells: %{},
-            visible: %{}
+            visible: %{},
+            element_scripts: %{}
 
   @type t :: %__MODULE__{}
 
@@ -183,6 +187,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
 
   defp values(:pause, args), do: [args[:length]]
   defp values(op, args) when op in [:display_data, :display_list], do: [args[:value]]
+
+  defp values(:run_js, args), do: Enum.map(args[:params] || [], & &1.value)
 
   defp values(:schedule_custom, args),
     do: [args[:delay] | Enum.map(args[:params] || [], & &1.value)]
@@ -274,12 +280,14 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
       )
       when is_binary(e) and is_binary(s) do
     case {spec.elements[e], s} do
-      {%{surface: ^surface} = el, "custom." <> _} ->
-        key = state_key(e, el, s)
-        if state?(spec, key) and not unloaded_path?(spec, key.path), do: {:state, key}
-
       {%{surface: ^surface, instance_of: nil, root?: false}, "get_data"} ->
         input_read(spec.surfaces[surface], e, cell)
+
+      # A custom state, or a "Javascript to Bubble" element's state
+      # (WTF-608), kept like one: what its publish set. No other built-in
+      # state is listed among the surface's states.
+      {%{surface: ^surface} = el, _} ->
+        if String.starts_with?(s, ["custom.", "get_"]), do: state_read(spec, e, el, s)
 
       _ ->
         nil
@@ -287,6 +295,11 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
   end
 
   def read(_spec, _surface, _input, _cell), do: nil
+
+  defp state_read(spec, e, el, s) do
+    key = state_key(e, el, s)
+    if state?(spec, key) and not unloaded_path?(spec, key.path), do: {:state, key}
+  end
 
   # An input the page tracks, or (WTF-520) one in a repeating group's
   # cell, read in that same cell: each cell keeps its own value.
@@ -836,6 +849,38 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows.Spec do
       Enum.any?(Map.get(s, :data, []), &(&1.residue == [] and reads_api?(&1)))
     end)
   end
+
+  @doc """
+  The page-only scripts the generated steps run (WTF-608): every bound
+  "Run javascript" step's (`%{script, source, implicit}`), by action
+  Bubble ID, once each.
+  """
+  @spec scripts(t()) :: [map()]
+  def scripts(%__MODULE__{} = spec) do
+    for w <- workflows(spec),
+        %{op: :run_js, residue: [], args: %{source: source} = args} <- w.steps,
+        is_binary(source) do
+      %{script: args.script, source: source, implicit: args.implicit}
+    end
+    |> Enum.uniq_by(& &1.script)
+    |> Enum.sort_by(& &1.script)
+  end
+
+  def scripts(_spec), do: []
+
+  @doc "Whether a surface has a \"Javascript to Bubble\" publisher the page defines (WTF-608)."
+  @spec publishers?(t()) :: boolean()
+  def publishers?(%__MODULE__{surfaces: surfaces}),
+    do: Enum.any?(surfaces, fn {_id, s} -> Map.get(s, :publishers, %{}) != %{} end)
+
+  def publishers?(_spec), do: false
+
+  @doc "Whether the pages need the scripts hook: a script to run or a publisher."
+  @spec scripts?(t()) :: boolean()
+  def scripts?(%__MODULE__{} = spec),
+    do: scripts(spec) != [] or publishers?(spec) or spec.element_scripts != %{}
+
+  def scripts?(_spec), do: false
 
   @doc """
   The elements outside repeating group cells whose own data source (a
