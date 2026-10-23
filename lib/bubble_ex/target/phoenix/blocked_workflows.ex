@@ -17,15 +17,17 @@ defmodule BubbleEx.Target.Phoenix.BlockedWorkflows do
   (`BubbleEx.Target.Elixir.FrontendWorkflows.Spec`) and the backend ones
   (`BubbleEx.Target.Ash.Workflows.Spec`): one note per workflow that is
   not native (`native?/1` of its Spec) and not disabled in the editor,
-  for the **first** thing that blocks it: its event or condition, else its
-  first step that was not converted, else the workflows it calls that
-  cannot run. A note:
+  for the **first** thing that blocks it, in Bubble order: its event or
+  condition, else its first step that was not converted or that triggers
+  or schedules a workflow that cannot run. A note:
 
       %{workflow, symbol, where, event, name, blocker, reason, detail, plugin}
 
     * `where` - `{:page | :reusable, name}` or `{:backend, nil}`
     * `blocker` - `:event` (the event or the "Only when" condition),
-      `{:step, index, type}` (Bubble's action type) or `{:calls, names}`
+      `{:step, index, type}` (Bubble's action type) or `{:calls, index,
+      type, names}` (the step running workflows that cannot run, by name;
+      `index` nil when no step names them)
     * `reason` - the group: a `BubbleEx.Plan.Residue` reason, the first by
       `reasons/0` order when a step has several, or `:calls_blocked`
     * `detail` - what the reason names (constructs, inputs, options), for
@@ -82,7 +84,10 @@ defmodule BubbleEx.Target.Phoenix.BlockedWorkflows do
           where: {:page | :reusable, String.t()} | {:backend, nil},
           event: String.t(),
           name: String.t() | nil,
-          blocker: :event | {:step, pos_integer(), String.t() | nil} | {:calls, [String.t()]},
+          blocker:
+            :event
+            | {:step, pos_integer(), String.t() | nil}
+            | {:calls, pos_integer() | nil, String.t() | nil, [String.t()]},
           reason: atom(),
           detail: [String.t()],
           plugin: String.t() | nil
@@ -166,8 +171,13 @@ defmodule BubbleEx.Target.Phoenix.BlockedWorkflows do
     #{count(length(notes))} of this app cannot run in the converted app. A workflow
     runs whole or not at all: when one part of it could not be converted,
     none of its steps run, not even the steps before that part (in Bubble
-    they would). When a page triggers one, it shows "This action isn't
-    available yet." and nothing else happens.
+    they would). When a click or an input change triggers one, the page
+    shows "This action isn't available yet." instead.
+
+    This list is from the latest conversion, not from the code: the
+    workflow files are yours after the first conversion, so a workflow you
+    fix in Bubble later also needs its file updated by a developer, and one
+    a developer wrote by hand stays listed here.
 
     Each workflow is listed once, under the first thing that stops it. Fix
     that and it may show up under the next one. For each, you can:
@@ -206,24 +216,45 @@ defmodule BubbleEx.Target.Phoenix.BlockedWorkflows do
     })
   end
 
+  # The first thing that stops it, in Bubble order: its event or
+  # condition, then its steps, each either not converted or running a
+  # workflow that cannot run.
+  defp blocker(%{residue: [_ | _] = residue}, _callee_names), do: {:event, residue}
+
   defp blocker(w, callee_names) do
-    step = w.steps |> Enum.sort_by(& &1.index) |> Enum.find(&(&1.residue != []))
+    blocked = for "workflow:" <> id <- Map.get(w, :blocked_by, []), into: MapSet.new(), do: id
+    name = &Map.get(callee_names, &1, "workflow:" <> &1)
+
+    step =
+      w.steps
+      |> Enum.sort_by(& &1.index)
+      |> Enum.find(&(&1.residue != [] or Enum.any?(step_callees(&1), fn id -> id in blocked end)))
 
     cond do
-      w.residue != [] ->
-        {:event, w.residue}
-
-      step ->
+      step && step.residue != [] ->
         {{:step, step.index, step.type}, step.residue}
 
-      true ->
-        callees =
-          for "workflow:" <> id <- Map.get(w, :blocked_by, []),
-              do: Map.get(callee_names, id, "workflow:" <> id)
+      step ->
+        callees = step |> step_callees() |> Enum.filter(&(&1 in blocked)) |> Enum.map(name)
+        {{:calls, step.index, step.type, Enum.sort(callees)}, []}
 
-        {{:calls, Enum.sort(callees)}, []}
+      true ->
+        {{:calls, nil, nil, blocked |> Enum.map(name) |> Enum.sort()}, []}
     end
   end
+
+  # The workflows a step triggers or schedules (Bubble IDs): a custom
+  # event (page) or a backend workflow (page or backend).
+  defp step_callees(%{args: args}) when is_map(args) do
+    [Map.get(args, :callee), Map.get(args, :backend), Map.get(args, :workflow)]
+    |> Enum.flat_map(fn
+      %{workflow: id} when is_binary(id) -> [id]
+      id when is_binary(id) -> [id]
+      _ -> []
+    end)
+  end
+
+  defp step_callees(_step), do: []
 
   defp primary([]), do: nil
 
@@ -268,7 +299,13 @@ defmodule BubbleEx.Target.Phoenix.BlockedWorkflows do
         {w.workflow, quoted(w.name) || frontend_event(w, names)}
       end)
 
-    back = Map.new(backend, &{&1.workflow, "backend workflow " <> (quoted(&1.bubble_name) || "")})
+    back =
+      Map.new(
+        backend,
+        &{&1.workflow,
+         Enum.join(["backend workflow", quoted(&1.bubble_name) || &1.workflow], " ")}
+      )
+
     Map.merge(front, back)
   end
 
@@ -381,7 +418,11 @@ defmodule BubbleEx.Target.Phoenix.BlockedWorkflows do
   defp blocked_at(%{blocker: {:step, index, type}} = n),
     do: "step #{index}, #{action(type, n.plugin)}"
 
-  defp blocked_at(%{blocker: {:calls, names}}), do: "it runs #{Enum.join(names, ", ")}"
+  defp blocked_at(%{blocker: {:calls, nil, _type, names}}),
+    do: "it runs #{Enum.join(names, ", ")}"
+
+  defp blocked_at(%{blocker: {:calls, index, type, names}}),
+    do: "step #{index}, #{action(type, nil)}, runs #{Enum.join(names, ", ")}"
 
   # What the developer needs: the plugin's ID (its plan question is
   # `decision:plugin/<id>`), or what the reason names.
@@ -412,17 +453,18 @@ defmodule BubbleEx.Target.Phoenix.BlockedWorkflows do
       "ResetInputs" => "Reset relevant inputs",
       "ResetGroup" => "Reset a group/popup",
       "DisplayGroupData" => "Display data in a group/popup",
+      "DisplayListData" => "Display list in a repeating group",
       "OpenURL" => "Open an external website",
       "ChangePage" => "Go to page",
       "RefreshPage" => "Refresh the page",
       "GoBack" => "Go to previous page",
       "NewThing" => "Create a new thing",
       "ChangeThing" => "Make changes to a thing",
-      "MultipleChange" => "Make changes to a list of things",
+      "ChangeListOfThings" => "Make changes to a list of things",
       "DeleteThing" => "Delete thing",
       "DeleteListOfThings" => "Delete a list of things",
       "CopyListOfThings" => "Copy a list of things",
-      "ChangeCurrentUser" => "Make changes to current user",
+      "MakeChangeCurrentUser" => "Make changes to current user",
       "SetCustomState" => "Set state",
       "TriggerCustomEvent" => "Trigger a custom event",
       "TriggerCustomEventFromReusable" => "Trigger a custom event from a reusable element",
@@ -440,7 +482,8 @@ defmodule BubbleEx.Target.Phoenix.BlockedWorkflows do
       "DeleteUploadedFile" => "Delete an uploaded file",
       "SendEmail" => "Send email",
       "AlertShowMessage" => "Show message in an alert",
-      "PauseWorkflow" => "Add a pause before next action",
+      "PauseWFClient" => "Add a pause before next action",
+      "SendPasswordResetEmail" => "Send password reset email",
       "SignUp" => "Sign the user up",
       "LogIn" => "Log the user in",
       "LogOut" => "Log the user out",
@@ -584,7 +627,8 @@ defmodule BubbleEx.Target.Phoenix.BlockedWorkflows do
     do:
       {"it triggers or schedules a workflow that cannot run itself (named in each line). It " <>
          "runs whole or not at all, so it waits for that one.",
-       "fix the workflow it runs (listed elsewhere in this report): this one then runs too."}
+       "fix the workflow it runs (listed elsewhere in this report, unless it is disabled in " <>
+         "the Bubble editor: then enable it, or remove the step): this one then runs too."}
 
   defp explain(_reason),
     do:
