@@ -238,6 +238,7 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         present: present,
         templates: templates,
         nodes: nodes,
+        publishers: lowered.publishers,
         custom_events:
           for(
             w <- lowered.workflows,
@@ -313,7 +314,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
              inputs: Map.get(inputs, id, %{}),
              cell_inputs: Map.get(ctx.cell_inputs, id, %{}),
              initial: ctx.initial |> Enum.filter(&(elements[&1].surface == id)) |> Enum.sort(),
-             data: Map.get(data, id, [])
+             data: Map.get(data, id, []),
+             publishers: publishers(id, workflows, ctx)
            }}
         end)
 
@@ -332,7 +334,8 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
         diagnostics: diagnostics,
         data_index: ctx.data,
         cells: Data.cell_instances(in_cells, data, ctx.data, nested),
-        visible: visible_instances(ctx, surfaces)
+        visible: visible_instances(ctx, surfaces),
+        element_scripts: lowered.element_scripts
       }
 
       {:ok, Spec.with_unset_sources(spec, page_data)}
@@ -1486,7 +1489,99 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
     end
   end
 
+  # A "Javascript to Bubble" element's event (WTF-608): a publisher of the
+  # workflow's surface outside a runtime container's template, whose
+  # outputs the page can keep.
+  defp event_residue(%Workflow{kind: :js_publish, element: element} = w, ctx) do
+    publisher = ctx.publishers[element]
+
+    cond do
+      Map.has_key?(ctx.templates, element) ->
+        [
+          Residue.entry(w.id, :trigger_in_runtime_template, %{
+            element: "element:" <> element,
+            container: "element:" <> ctx.templates[element]
+          })
+        ]
+
+      publisher == nil ->
+        [Residue.entry(w.id, :unsupported_event, %{type: w.event_type, target: "phoenix"})]
+
+      (bad = Enum.reject(publisher.outputs, &output_kind(&1.type, ctx))) != [] ->
+        [
+          Residue.entry(w.id, :unsupported_option, %{
+            options: Enum.map(bad, &"#{&1.name} (#{&1.type || "untyped"})")
+          })
+        ]
+
+      true ->
+        []
+    end
+  end
+
   defp event_residue(_w, _ctx), do: []
+
+  # The publishers of surface `id` (WTF-608): what the page's hook may
+  # publish to, the states each output sets (with the kind of value and,
+  # for a thing, the resource it is read as), and the event's workflows.
+  defp publishers(id, workflows, ctx) do
+    for {element, p} <- ctx.publishers,
+        bubble(p.surface) == id,
+        not Map.has_key?(ctx.templates, element),
+        outputs = for(o <- p.outputs, kind = output_kind(o.type, ctx), do: {o, kind}),
+        length(outputs) == length(p.outputs),
+        into: %{} do
+      {element,
+       %{
+         suffix: p.suffix,
+         outputs:
+           Enum.map(outputs, fn {o, {kind, list?, resource}} ->
+             %{name: o.name, state: o.state, kind: kind, list?: list?, resource: resource}
+           end),
+         workflows: if(p.trigger?, do: published_workflows(workflows, element), else: [])
+       }}
+    end
+  end
+
+  defp published_workflows(workflows, element) do
+    for w <- workflows,
+        w.kind == :js_publish,
+        w.element == element,
+        not w.disabled?,
+        do: w.workflow
+  end
+
+  # What a published output holds: `{kind, list?, resource}` for a text,
+  # number, yes/no, date or a thing of a mapped type (or a list of one);
+  # nil for anything else (an option, a file, an untyped state).
+  defp output_kind(type, ctx) when is_binary(type) do
+    item = Type.list_item(type)
+    list? = item != nil
+    item = item || type
+
+    case {item, Type.reference(item)} do
+      {basic, _} when basic in ~w(text number boolean date) ->
+        {String.to_existing_atom(basic), list?, nil}
+
+      {_, {:data_type, key}} ->
+        thing_output(key, list?, ctx)
+
+      {"user", _} ->
+        thing_output("user", list?, ctx)
+
+      _ ->
+        nil
+    end
+  end
+
+  defp output_kind(_type, _ctx), do: nil
+
+  defp thing_output(key, list?, ctx) do
+    case resource_of(key, ctx) do
+      %{module: module} -> {:thing, list?, "#{ctx.namespace}.#{module}"}
+      nil -> nil
+    end
+  end
 
   # An element of a runtime container's template the page does not wire:
   # in a repeating group's cell the page renders per cell (WTF-520) it is
@@ -1836,6 +1931,20 @@ defmodule BubbleEx.Target.Elixir.FrontendWorkflows do
 
   defp args(:api_call, args, id, ctx),
     do: BackendWorkflows.api_step(args, id, ctx.api_calls, &compile(&1, &2, ctx))
+
+  # Toolbox's "Run javascript" (WTF-608): its inputs computed on the
+  # server, as the current user; the script runs in the browser.
+  defp args(:run_js, args, id, ctx) do
+    {params, residue} = values(args.params, :name, id, ctx)
+
+    {%{
+       script: args.script,
+       source: args.source,
+       implicit: args.implicit,
+       params: params,
+       async?: args.async?
+     }, residue}
+  end
 
   defp args(:pause, args, id, ctx) do
     {length, residue} = compile(args.length, id, ctx)

@@ -45,7 +45,8 @@ defmodule BubbleEx.Findings.Workaround do
         properties: entry.properties,
         conditionals: entry.conditionals,
         contents: entry.contents,
-        script: entry.script
+        script: entry.script,
+        js: entry.js
       },
       proposal: proposal(entry),
       confidence: entry.confidence,
@@ -86,6 +87,10 @@ defmodule BubbleEx.Findings.Workaround do
 
         :unused ->
           "unused (#{entry.reason}); it is not generated unless the owner keeps it"
+
+        :js_bridge when entry.option == :keep ->
+          "a JS bridge (#{entry.reason}); nothing runs its script: a developer ports it " <>
+            "(see the brief in its evidence)"
 
         class ->
           "a #{class |> Atom.to_string() |> String.replace("_", " ")} (#{entry.reason}); lower it as #{entry.option}"

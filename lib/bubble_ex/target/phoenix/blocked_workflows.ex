@@ -50,6 +50,7 @@ defmodule BubbleEx.Target.Phoenix.BlockedWorkflows do
   # on most directly first.
   @reasons [
     :plugin_action,
+    :script_action,
     :plugin_event,
     :trigger_dropped,
     :reads_dropped_plugin,
@@ -280,7 +281,7 @@ defmodule BubbleEx.Target.Phoenix.BlockedWorkflows do
 
     ([element] ++
        Enum.flat_map(
-         [:constructs, :inputs, :options, :reference, :type, :symbol, :reads, :call],
+         [:constructs, :inputs, :options, :reference, :type, :symbol, :reads, :call, :why],
          &List.wrap(Map.get(detail, &1))
        ))
     |> Enum.reject(&is_nil/1)
@@ -321,6 +322,9 @@ defmodule BubbleEx.Target.Phoenix.BlockedWorkflows do
   defp event_text(%{kind: :input_change}, element), do: "when #{element}'s value is changed"
   defp event_text(%{kind: :popup_opened}, element), do: "when popup #{element} is opened"
   defp event_text(%{kind: :popup_closed}, element), do: "when popup #{element} is closed"
+
+  defp event_text(%{kind: :js_publish}, element),
+    do: "when Javascript to Bubble element #{element} publishes"
 
   defp event_text(%{kind: :condition_true, run_when: :once}, _element),
     do: "when a condition is true (just once)"
@@ -497,6 +501,7 @@ defmodule BubbleEx.Target.Phoenix.BlockedWorkflows do
   end
 
   defp title(:plugin_action), do: "A step uses a plugin action"
+  defp title(:script_action), do: "A step runs JavaScript a developer has to port"
   defp title(:plugin_event), do: "It is started by a plugin's event"
   defp title(:trigger_dropped), do: "It was started by a plugin you dropped"
   defp title(:reads_dropped_plugin), do: "It reads a plugin you dropped"
@@ -528,6 +533,14 @@ defmodule BubbleEx.Target.Phoenix.BlockedWorkflows do
        "decide about the plugin (drop it, replace it with a native equivalent, or have it " <>
          "rebuilt): it is an owner question in the migration plan " <>
          "(`mix wtf.task show decision:plugin/<plugin ID>`), " <> @change <> "."}
+
+  defp explain(:script_action),
+    do:
+      {"the step runs JavaScript (Toolbox's \"Run javascript\") that does more than change the " <>
+         "page: it calls the network or code the app doesn't define, or it builds code from " <>
+         "data. The conversion runs only scripts that touch the page alone; this one is not run.",
+       "have a developer port the script (the line says why; the migration plan's residue " <>
+         "for the step holds a rewrite brief), " <> @change <> "."}
 
   defp explain(:plugin_event),
     do:

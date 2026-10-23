@@ -76,16 +76,69 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
 
     %{
       owned: Map.put(owned, test, format(tests(spec, ctx))),
-      generated: %{
-        "lib/#{ctx.app}_web/bubble_workflows.ex" =>
-          format(Templates.render("lib/web/bubble_workflows.ex", assigns)),
-        # The page data (WTF-420).
-        "lib/#{ctx.app}_web/bubble_data.ex" =>
-          format(Templates.render("lib/web/bubble_data.ex", assigns)),
-        "lib/#{ctx.app}/bubble/changes.ex" =>
-          format(Templates.render("lib/app/bubble/changes.ex", assigns))
-      }
+      generated:
+        %{
+          "lib/#{ctx.app}_web/bubble_workflows.ex" =>
+            format(Templates.render("lib/web/bubble_workflows.ex", assigns)),
+          # The page data (WTF-420).
+          "lib/#{ctx.app}_web/bubble_data.ex" =>
+            format(Templates.render("lib/web/bubble_data.ex", assigns)),
+          "lib/#{ctx.app}/bubble/changes.ex" =>
+            format(Templates.render("lib/app/bubble/changes.ex", assigns))
+        }
+        |> Map.merge(scripts_file(spec, ctx))
     }
+  end
+
+  # A script as the body of its function in the hook, every line indented
+  # past the template's own, trailing spaces and repeated blank lines
+  # dropped (so formatting it again changes nothing; no text spans lines,
+  # `BubbleEx.Js`), its implicit globals declared first.
+  defp script_body(%{source: source, implicit: implicit}) do
+    lines = if implicit == [], do: [], else: ["let " <> Enum.join(implicit, ", ") <> ";"]
+
+    (lines ++ String.split(source, ~r/\r\n|\r|\n/))
+    |> Enum.map(&String.trim_trailing/1)
+    |> Enum.chunk_by(&(&1 == ""))
+    |> Enum.flat_map(fn
+      ["" | _] -> [""]
+      lines -> Enum.map(lines, &("          " <> &1))
+    end)
+    |> Enum.drop_while(&(&1 == ""))
+    |> Enum.reverse()
+    |> Enum.drop_while(&(&1 == ""))
+    |> Enum.reverse()
+    |> Enum.join("\n")
+  end
+
+  # The app author's page-only scripts and the publishers' hook (WTF-608),
+  # when the pages have any.
+  defp scripts_file(spec, ctx) do
+    if Spec.scripts?(spec) do
+      scripts =
+        Enum.map(Spec.scripts(spec), fn s ->
+          %{key: Jason.encode!(s.script), body: script_body(s)}
+        end)
+
+      elements =
+        for {id, e} <- Enum.sort(spec.element_scripts) do
+          %{key: Jason.encode!(id), scripts: Enum.map(e.scripts, &%{body: script_body(&1)})}
+        end
+
+      %{
+        "lib/#{ctx.app}_web/components/bubble_scripts.ex" =>
+          format(
+            Templates.render("lib/web/components/bubble_scripts.ex", %{
+              web: ctx.web,
+              scripts: scripts,
+              elements: elements,
+              names: Jason.encode!(BubbleEx.Js.params())
+            })
+          )
+      }
+    else
+      %{}
+    end
   end
 
   @doc "Whether a surface of `spec` needs a Workflows module."
@@ -334,9 +387,39 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
       cell_clicks: #{cell_map_source(cell_clicks)},
       cell_changes: #{cell_map_source(cell_changes)},
       cell_inputs: #{cell_inputs_source(cell_inputs)},
-      cell_lists: #{cell_lists_source(cell_lists)}#{page_width_source(surface, s)}
+      cell_lists: #{cell_lists_source(cell_lists)}#{page_width_source(surface, s)}#{publishers_source(surface)}
     }
     """
+  end
+
+  defp output_source(o),
+    do:
+      "{#{literal(o.name)}, #{literal(o.state)}, #{inspect(o.kind)}, #{o.list?}, " <>
+        "#{o.resource || "nil"}}"
+
+  # The surface's "Javascript to Bubble" publishers (WTF-608), listed only
+  # when it has any: their suffix, the states each output sets (name,
+  # state, kind, list?, the resource a thing is read as) and the event's
+  # wired workflows.
+  defp publishers_source(surface) do
+    case Map.get(surface, :publishers, %{}) do
+      none when none == %{} ->
+        ""
+
+      publishers ->
+        wired = for w <- surface.workflows, Spec.wired?(w), into: MapSet.new(), do: w.workflow
+
+        entries =
+          Enum.map_join(Enum.sort(publishers), ", ", fn {element, p} ->
+            outputs = Enum.map_join(p.outputs, ", ", &output_source/1)
+            workflows = p.workflows |> Enum.filter(&MapSet.member?(wired, &1)) |> Enum.sort()
+
+            "#{literal(element)} => %{suffix: #{literal(p.suffix)}, outputs: [#{outputs}], " <>
+              "workflows: [#{Enum.map_join(workflows, ", ", &literal/1)}]}"
+          end)
+
+        ",\n  publishers: %{#{entries}}"
+    end
   end
 
   # Whether the surface reads the viewport's width (WTF-520): a loaded
@@ -620,6 +703,13 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
     do:
       "BubbleWorkflows.schedule_custom(ctx, #{id}, #{callee_module(args.callee, env.ctx)}, " <>
         "#{literal(args.callee.workflow)}, [], #{src(args.delay)}, #{keyed(args.params, :param)})"
+
+  # A page-only "Run javascript" (WTF-608): its inputs, computed here, go
+  # to the page's scripts hook with the run's other browser steps.
+  defp op(:run_js, args, id, _env) do
+    params = Enum.map_join(args.params, ", ", fn p -> "{#{literal(p.name)}, #{src(p.value)}}" end)
+    "BubbleWorkflows.script(ctx, #{id}, #{literal(args.script)}, [#{params}])"
+  end
 
   defp op(:pause, args, id, _env),
     do: "BubbleWorkflows.pause(ctx, #{id}, #{src(args.length)})"
@@ -1686,6 +1776,7 @@ defmodule BubbleEx.Target.Phoenix.FrontendWorkflows do
   defp event_text(%{kind: :condition_true, run_when: r}), do: "condition true (#{r})"
   defp event_text(%{kind: :custom_event}), do: "custom event"
   defp event_text(%{kind: :do_every}), do: "do every N seconds"
+  defp event_text(%{kind: :js_publish, element: e}), do: "published by element #{e}"
   defp event_text(%{kind: kind}), do: Atom.to_string(kind)
 
   # A string literal: `inspect/1`, never truncated.

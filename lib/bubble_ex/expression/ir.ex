@@ -121,4 +121,13 @@ defmodule BubbleEx.Expression.IR do
   defp nested_ops(%__MODULE__{} = ir), do: ops(ir)
   defp nested_ops(list) when is_list(list), do: Enum.flat_map(list, &nested_ops/1)
   defp nested_ops(_), do: []
+
+  @doc "Every input `{kind, ref}` `ir` reads, depth first."
+  @spec inputs(t()) :: [{atom(), term()}]
+  def inputs(%__MODULE__{op: :input, args: [kind, ref]}), do: [{kind, ref}]
+  def inputs(%__MODULE__{args: args}), do: Enum.flat_map(args, &nested_inputs/1)
+
+  defp nested_inputs(%__MODULE__{} = ir), do: inputs(ir)
+  defp nested_inputs(list) when is_list(list), do: Enum.flat_map(list, &nested_inputs/1)
+  defp nested_inputs(_), do: []
 end

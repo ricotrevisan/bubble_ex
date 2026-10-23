@@ -4,7 +4,8 @@ defmodule BubbleEx.Test.WorkaroundsFixture do
   # An invented app for the workaround elements (WTF-586): one page in a
   # Column, with a floating "variables" group holding a list, a 0x0 group
   # holding the current user (with a text inside), an empty 0x0 spacer, a
-  # 0x0 tooltip plugin element, a 1x1 Toolbox element, a script, a hover
+  # 0x0 tooltip plugin element, a 1x1 Toolbox element (a Javascript to
+  # Bubble publisher), a page-only script, a script that fetches, a hover
   # target, a hidden group nothing shows, a hidden group a step shows, a
   # hidden group a conditional shows, a hidden group holding a custom state
   # a button sets, and a 1x1 element a conditional grows.
@@ -82,12 +83,20 @@ defmodule BubbleEx.Test.WorkaroundsFixture do
       "eJs" => %{
         "id" => "eJs",
         "type" => @toolbox <> "-AAP",
-        "properties" => tiny(%{"order" => 7, "width" => 1, "height" => 1})
+        "properties" =>
+          tiny(%{"order" => 7, "width" => 1, "height" => 1, "AAQ" => "ready", "AAR" => true})
       },
       "eScript" => %{
         "id" => "eScript",
         "type" => "HTML",
-        "properties" => tiny(%{"order" => 8, "html" => "<script>window.x = 1</script>"})
+        "properties" =>
+          tiny(%{"order" => 8, "html" => "<script>document.body.dataset.ready = '1'</script>"})
+      },
+      "eNet" => %{
+        "id" => "eNet",
+        "type" => "HTML",
+        "properties" =>
+          tiny(%{"order" => 18, "html" => "<script>fetch('/track?u=' + window.x)</script>"})
       },
       "eHover" => %{"id" => "eHover", "type" => "Group", "properties" => tiny(%{"order" => 9})},
       "eHoverText" => text("eHoverText", 10, read("eHover", "is_hovered")),

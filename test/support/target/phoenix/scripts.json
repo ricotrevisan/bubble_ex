@@ -1,0 +1,207 @@
+{
+ "_id": "scripts-fixture",
+ "_comment": "Toolbox scripts (WTF-608): a page-only Run javascript that publishes to a Javascript to Bubble element, one that fetches (a developer ports it), the publisher's event setting a custom state from what it published, an HTML element whose script only touches the page, and one whose script reads a global another plugin defines. All data invented. test/bubble_ex/target/phoenix/scripts_test.exs",
+ "__bubble_ex_plugin_states__": {
+  "1488796042609x768734193128308700-AAP": {
+   "AAV": {
+    "value": "custom_data_AAT",
+    "is_list": false
+   }
+  }
+ },
+ "user_types": {
+  "user": {
+   "display": "User",
+   "fields": {
+    "email": {
+     "display": "email",
+     "value": "text"
+    }
+   }
+  }
+ },
+ "pages": {
+  "index": {
+   "id": "bHome",
+   "name": "index",
+   "type": "Page",
+   "properties": {
+    "title": "Home"
+   },
+   "custom_states": {
+    "picked_": {
+     "display": "Picked",
+     "value": "text"
+    }
+   },
+   "elements": {
+    "bPub": {
+     "id": "bPub",
+     "type": "1488796042609x768734193128308700-AAP",
+     "properties": {
+      "order": 1,
+      "width": 1,
+      "height": 1,
+      "AAQ": "picked",
+      "AAR": true,
+      "AAS": true,
+      "AAT": "text"
+     }
+    },
+    "bGo": {
+     "id": "bGo",
+     "type": "Button",
+     "properties": {
+      "order": 2,
+      "width": 100,
+      "height": 40,
+      "text": {
+       "type": "TextExpression",
+       "entries": {
+        "0": "Go"
+       }
+      }
+     }
+    },
+    "bNet": {
+     "id": "bNet",
+     "type": "Button",
+     "properties": {
+      "order": 3,
+      "width": 100,
+      "height": 40,
+      "text": {
+       "type": "TextExpression",
+       "entries": {
+        "0": "Track"
+       }
+      }
+     }
+    },
+    "bShown": {
+     "id": "bShown",
+     "type": "Text",
+     "properties": {
+      "order": 4,
+      "width": 300,
+      "height": 40,
+      "text": {
+       "type": "TextExpression",
+       "entries": {
+        "0": "Picked: ",
+        "1": {
+         "type": "GetElement",
+         "properties": {
+          "element_id": "bHome"
+         },
+         "next": {
+          "type": "Message",
+          "name": "custom.picked_"
+         }
+        }
+       }
+      }
+     }
+    },
+    "bHtml": {
+     "id": "bHtml",
+     "type": "HTML",
+     "properties": {
+      "order": 5,
+      "width": 10,
+      "height": 10,
+      "html": "<script>document.body.dataset.html = 'shown'</script>"
+     }
+    },
+    "bLib": {
+     "id": "bLib",
+     "type": "HTML",
+     "properties": {
+      "order": 6,
+      "width": 10,
+      "height": 10,
+      "html": "<script>jQuery('.x').hide()</script>"
+     }
+    }
+   },
+   "workflows": {
+    "wGo": {
+     "id": "wGo",
+     "type": "ButtonClicked",
+     "properties": {
+      "element_id": "bGo"
+     },
+     "actions": {
+      "0": {
+       "id": "aJs",
+       "type": "1488796042609x768734193128308700-AAg",
+       "properties": {
+        "AAh": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "\n\nvar picked = properties.param1   \n\n\n\ndocument.body.dataset.picked = picked\n\t\nbubble_fn_picked(picked);\n\n"
+         }
+        },
+        "ABB": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "blue"
+         }
+        }
+       }
+      }
+     }
+    },
+    "wNet": {
+     "id": "wNet",
+     "type": "ButtonClicked",
+     "properties": {
+      "element_id": "bNet"
+     },
+     "actions": {
+      "0": {
+       "id": "aNet",
+       "type": "1488796042609x768734193128308700-AAg",
+       "properties": {
+        "AAh": "fetch('/track?c=' + properties.param1)",
+        "ABB": {
+         "type": "TextExpression",
+         "entries": {
+          "0": "x"
+         }
+        }
+       }
+      }
+     }
+    },
+    "wPick": {
+     "id": "wPick",
+     "type": "1488796042609x768734193128308700-AAX",
+     "properties": {
+      "element_id": "bPub"
+     },
+     "actions": {
+      "0": {
+       "id": "aPick",
+       "type": "SetCustomState",
+       "properties": {
+        "custom_state": "custom.picked_",
+        "element_id": "bHome",
+        "value": {
+         "type": "GetElement",
+         "properties": {
+          "element_id": "bPub"
+         },
+         "next": {
+          "type": "Message",
+          "name": "get_AAV"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

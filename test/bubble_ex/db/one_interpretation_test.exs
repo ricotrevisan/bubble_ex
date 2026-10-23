@@ -62,6 +62,10 @@ defmodule BubbleEx.Db.OneInterpretationTest do
       "the generated input-change event's own `value` member, not the data model",
     "lib/bubble_ex/workarounds.ex" =>
       "the names of element reads (`get_group_data`, an input's `value`, a custom state `custom.<id>`) that say whether another element reads a value it holds; not the data model",
+    "lib/bubble_ex/js.ex" =>
+      "JavaScript's own `Object.values` among the members an app author's script may call (WTF-608), not the data model",
+    "lib/bubble_ex/js/scripts.ex" =>
+      "a Toolbox \"Javascript to Bubble\" element's published `value` (the name its publish function takes, WTF-608), not the data model",
     "lib/bubble_ex/plugins/states.ex" =>
       "plugin definitions' element states (their own `value`, a type) and the `list.` wrapping of a list state, as the expression tree types custom states; not the data model",
     "lib/bubble_ex/index/plugins.ex" =>

@@ -6022,7 +6022,8 @@ defmodule BubbleEx.Target.Phoenix.Pages do
       modals: modals,
       viewer_loads: source(viewer_loads),
       option_lists: source(FlowSpec.option_lists(Map.get(base, :flows))),
-      api_data?: api_data?(Map.get(base, :flows))
+      api_data?: api_data?(Map.get(base, :flows)),
+      scripts?: FlowSpec.scripts?(Map.get(base, :flows))
     })
   end
 

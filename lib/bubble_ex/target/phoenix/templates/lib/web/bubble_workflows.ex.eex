@@ -18,6 +18,19 @@ defmodule <%= @web %>.BubbleWorkflows do
   renders in a scope (reusable-element instance) it renders. Anything
   else is ignored.
 
+  A Toolbox "Javascript to Bubble" element (WTF-608, `publishers` in
+  `__bubble__(:surface)`) is published to by its `bubble_fn_<suffix>`,
+  which the page's scripts hook defines (`<%= @web %>.BubbleScripts`) from
+  the page's list (`bubble:publishers`, the static instances it renders,
+  not their cells): `bubble:publish` with the scope and element, and a
+  `value` or `outputs`. Like an input's value, what the browser sends is
+  only data: each output keeps what fits its declared type (a text up to
+  `:max_input_bytes`, a number, a yes/no, a date as milliseconds, a thing
+  as a unique ID read again through Ash as the current user, nothing with
+  data access off; a list of at most 1000), anything else is empty. The
+  element's states take the values and its event's workflows run, as a
+  root run, like a click.
+
   A Popup's "is opened" and "is closed" workflows run when the page's hook
   reports that it opened or closed it (`popups` in
   `__bubble__(:surface)`): by a step (in the browser or sent by the
@@ -225,7 +238,7 @@ defmodule <%= @web %>.BubbleWorkflows do
 
   @max_rounds 10
   # The events that wait for a page's first load (WTF-559), and how many may.
-  @waiting_events ["bubble:click", "bubble:change", "bubble:commit", "bubble:popup"]
+  @waiting_events ["bubble:click", "bubble:change", "bubble:commit", "bubble:popup", "bubble:publish"]
   @max_waiting 100
   # Input changes still wait past @max_waiting (the page keeps the value
   # the browser shows), up to this.
@@ -765,7 +778,107 @@ defmodule <%= @web %>.BubbleWorkflows do
     end
   end
 
+  # The page's "Javascript to Bubble" publishers (WTF-608): the scripts
+  # hook defines their functions from this list.
+  defp event_now(socket, page, "bubble:publishers", _params) do
+    publishers =
+      for {scope, module} <- surfaces(page),
+          {element, %{suffix: suffix}} <- Map.get(module.__bubble__(:surface), :publishers, %{}),
+          do: %{scope: scope, element: element, suffix: suffix}
+
+    {:reply, %{publishers: publishers}, socket}
+  end
+
+  # A publisher's function called in the browser (WTF-608): its states
+  # take what fits, and its event's workflows run as a root run.
+  defp event_now(socket, page, "bubble:publish", %{"scope" => scope, "element" => element} = params)
+      when is_binary(scope) and is_binary(element) do
+    # Only the static instances the page lists publishers for, never a
+    # cell's (`bubble:publishers`).
+    with {^scope, module} <- List.keyfind(surfaces(page), scope, 0),
+         %{} = publisher <- Map.get(Map.get(module.__bubble__(:surface), :publishers, %{}), element) do
+<%= if @enforced? do %>      socket = refresh_actor(socket)
+<% end %>      actor = <%= if @enforced? do %>current_actor(socket)<% else %>socket.assigns[:current_user]<% end %>
+
+      states =
+        Enum.reduce(publisher.outputs, socket.assigns.bubble_states, fn {name, state, kind, list?, resource}, acc ->
+          raw = if name == "value", do: Map.get(params, "value"), else: get_in_map(params, ["outputs", name])
+          Map.put(acc, {scope, element, state}, published(raw, kind, list?, resource, actor))
+        end)
+
+      socket =
+        socket
+        |> assign(:bubble_states, states)
+        |> assign(:bubble_refused, false)
+        |> BubbleData.mark_stale()
+
+      runs = if publisher.workflows == [], do: [], else: [{module, scope, publisher.workflows, %{}}]
+      {:noreply, socket |> event(page, runs) |> notice()}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   defp event_now(socket, _page, _event, _params), do: {:noreply, socket}
+
+  defp get_in_map(map, [key | rest]) when is_map(map), do: get_in_map(Map.get(map, key), rest)
+  defp get_in_map(value, []), do: value
+  defp get_in_map(_value, _keys), do: nil
+
+  @max_published 1000
+
+  # A published value as its declared type (WTF-608); anything else is
+  # empty. A thing is read again as the current user, by its unique ID.
+  defp published(value, kind, true, resource, actor) when is_list(value) do
+    values = value |> Enum.take(@max_published) |> Enum.map(&scalar(&1, kind))
+
+    if kind == :thing do
+      ids = for id <- values, is_binary(id), do: id
+      if ids == [] or not BubbleData.data_access?(), do: [], else: BubbleData.records(%{actor: actor}, resource, ids, true)
+    else
+      Enum.reject(values, &is_nil/1)
+    end
+  end
+
+  defp published(_value, _kind, true, _resource, _actor), do: []
+
+  defp published(value, :thing, false, resource, actor) do
+    case scalar(value, :thing) do
+      id when is_binary(id) ->
+        if BubbleData.data_access?(), do: BubbleData.records(%{actor: actor}, resource, id, false)
+
+      _ ->
+        nil
+    end
+  end
+
+  defp published(value, kind, false, _resource, _actor), do: scalar(value, kind)
+
+  defp scalar(value, :text) when is_binary(value) and byte_size(value) <= @max_input_bytes, do: value
+  defp scalar(value, :text) when is_integer(value) or is_float(value), do: to_string(value)
+  defp scalar(value, :number) when is_integer(value) or is_float(value), do: value
+
+  defp scalar(value, :number) when is_binary(value) and byte_size(value) <= 64 do
+    case coerce(:number, value) do
+      {:ok, n} -> n
+      _ -> nil
+    end
+  end
+
+  defp scalar(value, :boolean) when is_boolean(value), do: value
+
+  defp scalar(%{"date" => ms}, :date) when is_integer(ms), do: date(ms)
+  defp scalar(%{"date" => ms}, :date) when is_float(ms), do: date(trunc(ms))
+  defp scalar(%{"thing" => id}, :thing), do: thing_id(id)
+  defp scalar(id, :thing) when is_binary(id), do: thing_id(id)
+  defp scalar(_value, _kind), do: nil
+
+  defp date(ms) do
+    case DateTime.from_unix(ms, :millisecond) do
+      {:ok, at} -> at
+      _ -> nil
+    end
+  end
 
   # Values a reconnected hook sends for the tracked inputs of an open
   # overlay rendered only while open (WTF-559): each checked as a typed
@@ -2915,6 +3028,32 @@ defmodule <%= @web %>.BubbleWorkflows do
     do: if(Regex.match?(~r/\A[0-9]{1,20}x[0-9]{1,24}\z/, id), do: id)
 
   defp thing_id(_), do: nil
+
+  @doc """
+  A page-only "Run javascript" (WTF-608, `<%= @web %>.BubbleScripts`): the
+  script `key` runs in the browser, after the run's server-side steps, in
+  order with its other browser steps, with `params` (`{name, value}`) as
+  data: a thing as its unique ID only, a date as milliseconds, a list of
+  at most 1000; anything else is empty.
+  """
+  def script(ctx, step, key, params) do
+    values = Map.new(params, fn {name, value} -> {name, js_value(value)} end)
+    ctx = %{ctx | js: [%{op: "script", key: key, params: values} | ctx.js]}
+    {:cont, put_step(ctx, step, nil)}
+  end
+
+  defp js_value(nil), do: nil
+  defp js_value(value) when is_binary(value) or is_boolean(value) or is_number(value), do: value
+  defp js_value(%Decimal{} = n), do: Decimal.to_float(n)
+  defp js_value(%DateTime{} = at), do: %{date: DateTime.to_unix(at, :millisecond)}
+  defp js_value(%NaiveDateTime{} = at), do: js_value(DateTime.from_naive!(at, "Etc/UTC"))
+  defp js_value(%Date{} = day), do: js_value(DateTime.new!(day, ~T[00:00:00], "Etc/UTC"))
+  defp js_value(%Ash.CiString{} = text), do: Ash.CiString.value(text)
+  defp js_value(list) when is_list(list), do: list |> Enum.take(@max_published) |> Enum.map(&js_value/1)
+
+  defp js_value(%{id: id}) when is_binary(id) and byte_size(id) <= 64, do: %{thing: id}
+
+  defp js_value(_value), do: nil
 
   @doc "Open an external website: an http(s) URL or a path of this site; anything else fails the step."
   def open_url(ctx, step, url, new_tab?) do
