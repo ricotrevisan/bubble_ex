@@ -255,7 +255,6 @@ defmodule BubbleEx.HTTP do
     recv_timeout = Keyword.get(options, :recv_timeout)
     max_body_length = Keyword.get(options, :max_body_length)
     bounded_body? = Keyword.get(options, :bounded_body, false)
-    pool_timeout = Keyword.get(options, :pool_timeout)
     proxy = Keyword.get(options, :proxy)
     proxy_auth = Keyword.get(options, :proxy_auth)
 
@@ -266,7 +265,6 @@ defmodule BubbleEx.HTTP do
       |> maybe_put_connect_option(:timeout, timeout)
       |> maybe_put_proxy(proxy)
       |> maybe_put_proxy_headers(proxy_auth)
-      |> maybe_put_pool_timeout(pool_timeout)
 
     header_overrides = []
 
@@ -372,15 +370,6 @@ defmodule BubbleEx.HTTP do
   end
 
   defp maybe_put_proxy_headers(opts, _auth), do: opts
-
-  defp maybe_put_pool_timeout(opts, nil), do: opts
-  # Req/Finch already default to 5s. Avoid passing this deprecated option on
-  # newer Req versions for every ordinary request, while supporting Req 0.5.
-  defp maybe_put_pool_timeout(opts, 5_000), do: opts
-
-  defp maybe_put_pool_timeout(opts, timeout) do
-    Keyword.put(opts, :pool_timeout, timeout)
-  end
 
   defp merge_remaining_options(req_options, options) do
     recognized = [
@@ -528,7 +517,10 @@ defmodule BubbleEx.HTTP do
     |> Keyword.put(:into, bounded_into(max_bytes, deadline, Map.get(control, :sink)))
   end
 
-  defp maybe_put_bounded_into(req_options, _control_options), do: req_options
+  # Req 0.6.1+ decompresses only with `compressed: true`; unbounded bodies keep
+  # the gzip/deflate handling they had on Req 0.5.
+  defp maybe_put_bounded_into(req_options, _control_options),
+    do: Keyword.put_new(req_options, :compressed, true)
 
   defp maybe_put_identity_encoding(req_options, %{bounded_body?: true}) do
     Keyword.update!(req_options, :headers, fn headers ->

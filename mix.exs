@@ -101,7 +101,7 @@ defmodule BubbleEx.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       # usage_rules is a dev-only helper for consulting docs and rules
-      {:usage_rules, "~> 0.1", only: :dev, runtime: false}
+      {:usage_rules, "~> 1.2", only: :dev, runtime: false}
     ]
   end
 
