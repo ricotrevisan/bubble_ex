@@ -20,8 +20,9 @@ defmodule BubbleEx.Apps.Plan do
   claimed, so it only proves a plan together with evidence that the app exists
   (`https://<id>.bubbleapps.io/version-test` serving it). A live `404` is the
   same conclusion for a name that does exist: the live version is simply not
-  served. A marketplace template serves its live version exactly like a paid
-  app, so that status cannot be read from the response: it is supplied as
+  served. `existence_needed?/1` names exactly the responses that proof is
+  required for. A marketplace template serves its live version exactly like a
+  paid app, so that status cannot be read from the response: it is supplied as
   input, never guessed.
 
   The plan belongs to the app, so `:live` must always be the response of the
@@ -121,6 +122,45 @@ defmodule BubbleEx.Apps.Plan do
   end
 
   def live_not_supported?(_live), do: false
+
+  @doc """
+  Whether the live response can only be read together with proof that the app exists.
+
+  `live_not_supported` is Bubble's answer both for free apps and for names
+  nobody claimed, and a `404` says no version is served rather than that the app
+  is absent: those two decide a plan only once `/version-test` serves the app.
+  A redirect to a Bubble page that is neither a dedicated instance nor the
+  customer's own domain proves nothing at all, so existence is the next thing to
+  ask. Every other answer stands on its own: a `200` and a custom-domain
+  redirect are paid, a `400` names an invalid appname, and a `429`, `5xx` or
+  transport failure stays unknown however the app's existence turns out, so it
+  is not worth a request.
+
+  ## Examples
+
+      iex> BubbleEx.Apps.Plan.existence_needed?(%{status: 404, location: nil})
+      true
+
+      iex> BubbleEx.Apps.Plan.existence_needed?(%{status: 200, location: nil})
+      false
+  """
+  @spec existence_needed?(live()) :: boolean()
+  def existence_needed?(live) do
+    live_not_supported?(live) or no_serving_version?(live) or unproven_redirect?(live)
+  end
+
+  defp no_serving_version?(%{status: 404}), do: true
+  defp no_serving_version?(_live), do: false
+
+  defp unproven_redirect?(%{status: status, location: location})
+       when status in @redirect_statuses do
+    case destination(location) do
+      %{host: host} -> bubble_host?(host) and not bubble_is?(host)
+      nil -> false
+    end
+  end
+
+  defp unproven_redirect?(_live), do: false
 
   defp classify_live({:error, reason}, _exists), do: no_evidence(reason_label(reason))
 

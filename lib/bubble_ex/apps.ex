@@ -4,6 +4,12 @@ defmodule BubbleEx.Apps do
 
   This module provides high-level functions for checking, fetching, and analyzing
   Bubble applications. It delegates to specialized modules for specific concerns.
+
+  `fetch_app/2` fetches and parses an app; `fetch_plan/2` answers only the
+  question of its plan and hosting, which is all a catalogue or a fleet
+  reclassification needs. Both read the plan from the app's live response with
+  `BubbleEx.Apps.Plan.classify/1` and share the same helpers, so the rules cannot
+  drift between them.
   """
 
   require Logger
@@ -65,6 +71,18 @@ defmodule BubbleEx.Apps do
           url: String.t() | nil,
           domain: String.t() | nil,
           payload: map() | nil
+        }
+
+  @typedoc """
+  The plan attributes `fetch_plan/2` returns, and the subset of `t:app_attrs/0`
+  that `fetch_app/2` fills from the same classification.
+  """
+  @type plan_attrs :: %{
+          app_plan: app_plan(),
+          plan_basis: String.t(),
+          is_dedicated: boolean(),
+          dedicated_server: String.t() | nil,
+          base_url: String.t() | nil
         }
 
   @doc """
@@ -137,7 +155,88 @@ defmodule BubbleEx.Apps do
   end
 
   @doc """
-  Fetches comprehensive information about a Bubble application.
+  Reads an app's plan and hosting without fetching or parsing the app.
+
+  A fleet-wide reclassification has to answer "what plan is this app on?" for
+  thousands of apps, and their bundles can be a hundred megabytes each. This
+  function asks Bubble only what answers the question: it normalises
+  `url_or_bubble_id` to the app's live origin and probes it once.
+
+  ## Options
+    * `:template_lookup` - A one-arity function taking the app's bubble id and
+      returning whether it is a marketplace template (`boolean()`). Defaults to
+      `Application.get_env(:bubble_ex, :template_lookup)`, then to no templates
+      — the same input `fetch_app/2` uses, and likewise never an HTTP call.
+
+  Every other option is passed to `BubbleEx.HTTP.probe/2` (retries, timeouts,
+  credentials), so a caller can set `max_retries: 0`.
+
+  ## Returned attributes
+
+  Exactly the plan keys of `fetch_app/2`: `:app_plan`
+  (`:template | :dedicated | :free | :paid | nil`), `:plan_basis` (the evidence
+  it rests on), `:is_dedicated`, `:dedicated_server` and `:base_url`.
+
+  `url_or_bubble_id` may be a bubble id (`"my-app"`), a
+  `https://<id>.bubbleapps.io[/...]` URL, a version URL, or any app URL. It is
+  normalised to the live origin the way `fetch_app/2` does it: a
+  `/version-<name>` segment and anything after it name the served version, not
+  the app, so they are dropped (a dedicated instance's `/site/<app>` path is
+  kept).
+
+  ## Requests
+
+  At most two, and never a `dynamic_js` bundle: the live origin, then — only
+  when the live answer cannot stand on its own (`live_not_supported`, a `404`, or
+  a Bubble redirect that is neither a dedicated instance nor the customer's own
+  domain) — one `/version-test` status check, passed to the classification as
+  `exists: :yes` on a `2xx`, `:no` on `400`/`404` and `:unknown` otherwise. A
+  live `200` or a custom-domain redirect needs none.
+
+  ## Errors and unknowns
+
+  An app that answers anything gives `{:ok, attrs}`, so a caller can store the
+  observation: a `429`, `5xx` or unreadable redirect, like an app that answers
+  `400`, comes back with `:app_plan` nil and a `:plan_basis` naming what was
+  missing. A paid plan is never a default. `{:error, %BubbleEx.Error{}}` is
+  reserved for a request that could not be made at all (an input that is not a
+  URL or a bubble id, and a transport failure on the live probe), i.e. no
+  evidence to store.
+
+  ## Examples
+
+      iex> {:ok, %{app_plan: :paid, plan_basis: "live 200"}} = BubbleEx.Apps.fetch_plan("meta")
+  """
+  @spec fetch_plan(String.t(), [fetch_option()]) ::
+          {:ok, plan_attrs()} | {:error, Error.t()}
+  def fetch_plan(url_or_bubble_id, opts \\ []) do
+    Telemetry.span([:apps, :fetch_plan], %{input: url_or_bubble_id}, fn ->
+      result = fetch_plan_result(url_or_bubble_id, opts)
+      {result, fetch_plan_stop_metadata(result)}
+    end)
+  end
+
+  defp fetch_plan_result(url_or_bubble_id, opts) do
+    with {:ok, url} <- Validator.validate_input(url_or_bubble_id) do
+      live_url = live_origin(url)
+      bubble_id = plan_bubble_id(url_or_bubble_id, url)
+      opts = Keyword.put(opts, :credential_origin, live_url)
+
+      case probe_live(live_url, opts) do
+        {:ok, live} -> {:ok, plan_attrs(plan_from_live(live, live_url, bubble_id, opts))}
+        {:error, error} -> {:error, error}
+      end
+    end
+  end
+
+  defp fetch_plan_stop_metadata({:ok, attrs}) do
+    %{app_plan: Map.get(attrs, :app_plan), plan_basis: Map.get(attrs, :plan_basis), error: nil}
+  end
+
+  defp fetch_plan_stop_metadata({:error, error}),
+    do: %{app_plan: nil, plan_basis: nil, error: error}
+
+  @doc """
 
   ## Options
     * `:include_payload` - Include full app payload. Defaults to `false`.
@@ -189,6 +288,10 @@ defmodule BubbleEx.Apps do
   with the `/version-<name>` segment removed, one extra request, fetched
   before the requested URL. `:is_dedicated` follows the hosting evidence, so a
   template on a dedicated instance is still dedicated.
+
+  These five keys are all `fetch_plan/2` returns: it reads the same evidence
+  through the same helpers, without fetching or parsing the app, so give it a
+  fleet that only needs the plan.
   """
 
   @spec fetch_app(String.t(), [fetch_option()]) ::
@@ -268,9 +371,9 @@ defmodule BubbleEx.Apps do
   end
 
   defp live_evidence(live_url, opts) do
-    case HTTP.probe(live_url, opts) do
-      {:ok, probe} ->
-        %{status: probe.status, location: probe.location}
+    case probe_live(live_url, opts) do
+      {:ok, live} ->
+        live
 
       {:error, %Error{context: %{reason: reason}}} ->
         {:error, reason}
@@ -278,6 +381,51 @@ defmodule BubbleEx.Apps do
       {:error, %Error{kind: kind}} ->
         {:error, kind}
     end
+  end
+
+  # The live response as the classifier reads it: a status and its location.
+  defp probe_live(url, opts) do
+    case HTTP.probe(url, opts) do
+      {:ok, probe} -> {:ok, %{status: probe.status, location: probe.location}}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  # A URL that already is a live origin is probed as given; a version URL is
+  # normalised to it first (see `live_url_for/1`).
+  defp live_origin(url), do: live_url_for(url) || url
+
+  # Template evidence needs the app's bubble id, and only a bubble id or a
+  # bubbleapps.io URL carries it before a payload is parsed.
+  defp plan_bubble_id(url_or_bubble_id, url) do
+    if Validator.valid_slug?(url_or_bubble_id) do
+      url_or_bubble_id
+    else
+      Parser.extract_bubble_id_from_url(url)
+    end
+  end
+
+  # The plan-only path: one live probe, plus the existence proof only when the
+  # live answer cannot stand on its own (`Plan.existence_needed?/1`).
+  defp plan_from_live(live, live_url, bubble_id, opts) do
+    exists = if Plan.existence_needed?(live), do: existence(live_url, opts), else: :unknown
+    plan_evidence(live, exists, bubble_id, opts)
+  end
+
+  # Existence is proven on the origin that answered: a version URL's status is
+  # enough, and a 2xx means the app is served there.
+  defp existence(live_url, opts) do
+    case probe_live(test_version_url(live_url), opts) do
+      {:ok, %{status: status}} when status in 200..299 -> :yes
+      {:ok, %{status: status}} when status in [400, 404] -> :no
+      _ -> :unknown
+    end
+  end
+
+  defp test_version_url(live_url) do
+    uri = URI.parse(live_url)
+    base = URI.to_string(%{uri | query: nil, fragment: nil})
+    String.trim_trailing(base, "/") <> "/version-test"
   end
 
   # The live origin of a version URL: the version segment and anything after it
@@ -407,14 +555,26 @@ defmodule BubbleEx.Apps do
     end
   end
 
+  # Both entry points classify from the same evidence and template input, so a
+  # plan-only read and a full fetch cannot answer differently.
+  defp plan_evidence(live, exists, bubble_id, opts) do
+    Plan.classify(%{live: live, exists: exists, template?: template?(bubble_id, opts)})
+  end
+
+  defp plan_attrs(plan) do
+    %{
+      app_plan: plan.plan,
+      plan_basis: plan.basis,
+      is_dedicated: plan.dedicated_server != nil,
+      dedicated_server: plan.dedicated_server,
+      base_url: plan.base_url
+    }
+  end
+
   # A marketplace template cannot be read from the response, so the owner's
   # lookup is the input (never a request).
   defp classify_plan(app_data, live, exists, opts) do
-    Plan.classify(%{
-      live: live,
-      exists: exists,
-      template?: template?(Map.get(app_data, "_id"), opts)
-    })
+    plan_evidence(live, exists, Map.get(app_data, "_id"), opts)
   end
 
   defp template?(bubble_id, opts) when is_binary(bubble_id) do
@@ -672,17 +832,12 @@ defmodule BubbleEx.Apps do
   end
 
   defp build_app_attrs(app_data, initial_payload, opts, plan) do
-    %{
-      app_plan: plan.plan,
-      plan_basis: plan.basis,
-      is_dedicated: plan.dedicated_server != nil,
-      dedicated_server: plan.dedicated_server,
-      base_url: plan.base_url,
+    Map.merge(plan_attrs(plan), %{
       bubble_id: app_data["_id"],
       url: initial_payload.domain,
       title: Parser.extract_title(app_data),
       valid?: true
-    }
+    })
     |> Enricher.maybe_add_db_diagram(app_data, opts)
     |> Enricher.maybe_add_payload(app_data, opts)
     |> Enricher.maybe_add_description(app_data)

@@ -160,4 +160,30 @@ defmodule BubbleEx.Apps.PlanTest do
       refute Plan.live_not_supported?({:error, :timeout})
     end
   end
+
+  describe "existence_needed?/1" do
+    test "live_not_supported and a 404 decide only once the app is known to exist" do
+      assert Plan.existence_needed?(live(302, "https://bubble.io/live_not_supported?appname=x"))
+      assert Plan.existence_needed?(live(404))
+    end
+
+    test "a Bubble redirect that is neither dedicated nor the customer's domain needs it" do
+      assert Plan.existence_needed?(live(302, "https://bubble.io/version-test"))
+      assert Plan.existence_needed?(live(302, "https://myapp.bubbleapps.io/version-test"))
+    end
+
+    test "a decided answer needs nothing more" do
+      refute Plan.existence_needed?(live(200))
+      refute Plan.existence_needed?(live(301, "https://www.example.com/"))
+      refute Plan.existence_needed?(live(302, "https://d121.bubble.is/site/acme"))
+      refute Plan.existence_needed?(live(400))
+    end
+
+    test "an answer that stays unknown is not worth a request" do
+      refute Plan.existence_needed?(live(429))
+      refute Plan.existence_needed?(live(503))
+      refute Plan.existence_needed?(live(302))
+      refute Plan.existence_needed?({:error, :timeout})
+    end
+  end
 end
