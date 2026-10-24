@@ -114,6 +114,53 @@ defmodule BubbleEx.HTTPFetchTest do
     end
   end
 
+  describe "probe/2" do
+    test "reports a redirect with its location without following it" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        conn
+        |> Conn.put_resp_header("location", "https://d121.bubble.is/version-live")
+        |> Conn.resp(302, "")
+      end)
+
+      assert {:ok, probe} = HTTP.probe(@url)
+      assert probe.status == 302
+      assert probe.location == "https://d121.bubble.is/version-live"
+      assert probe.request_url == @url
+    end
+
+    test "reports any status, including error responses" do
+      Req.Test.stub(__MODULE__, fn conn -> Conn.resp(conn, 429, "slow down") end)
+
+      assert {:ok, %{status: 429, location: nil, body: "slow down"}} =
+               HTTP.probe(@url, max_retries: 0)
+    end
+
+    test "converts transport errors" do
+      Req.Test.stub(__MODULE__, fn conn -> Req.Test.transport_error(conn, :timeout) end)
+
+      assert {:error, %Error{kind: :request_failed, context: %{reason: :timeout}}} =
+               HTTP.probe(@url, max_retries: 0)
+    end
+
+    test "page_from_probe/1 reads a probed page as fetch_page/2 would" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        conn
+        |> Conn.put_resp_header("x-bubble-something", "1")
+        |> Conn.resp(200, "<html>hi</html>")
+      end)
+
+      assert {:ok, probe} = HTTP.probe(@url)
+      assert {:ok, %{body: "<html>hi</html>", url: @url}} = HTTP.page_from_probe(probe)
+    end
+
+    test "page_from_probe/1 still rejects a 200 that is not a Bubble page" do
+      Req.Test.stub(__MODULE__, fn conn -> Conn.resp(conn, 200, "<html>nope</html>") end)
+
+      assert {:ok, probe} = HTTP.probe(@url)
+      assert {:error, %Error{kind: :not_a_bubble_app}} = HTTP.page_from_probe(probe)
+    end
+  end
+
   describe "finch option passthrough" do
     test "resolve_finch/1 prefers the option, falls back to nil" do
       assert HTTP.resolve_finch(finch: MyApp.Finch) == MyApp.Finch

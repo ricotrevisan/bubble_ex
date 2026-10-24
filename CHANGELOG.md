@@ -6,6 +6,44 @@ All notable changes to this project are documented here.
 
 ### Added
 
+- **`app_plan` is read from Bubble's live response, not guessed (WTF-625).**
+  `BubbleEx.Apps.fetch_app/2` probes `https://<id>.bubbleapps.io/` without
+  following redirects and classifies the app with the new pure module
+  `BubbleEx.Apps.Plan`: a live `200`, or a `301` to a host outside Bubble
+  (the customer's own domain), is `:paid`; a `302` to `<server>.bubble.is` is
+  `:dedicated`; a `302` to Bubble's `live_not_supported` page, or a `404`
+  while the app is known to exist (`/version-test` serving it), is `:free`;
+  and a marketplace template is `:template`, supplied by the owner through
+  `:template_lookup` (`bubble_id -> boolean`) because a template serves live
+  exactly like a paid app (its dedicated hosting is still reported). The
+  returned attributes gain `:plan_basis`, `:is_dedicated`,
+  `:dedicated_server` and `:base_url`, and the old `:agency` value is gone.
+  Anything else (429, 5xx, a timeout, an unreadable Bubble redirect, the
+  direct-bundle fallback for a dead custom domain) leaves `:app_plan` nil
+  with the missing evidence named in `:plan_basis`: a paid plan is never
+  assumed. The plan is an app-level fact, so fetching a version URL
+  (`https://<id>.bubbleapps.io/version-test`, `/site/<app>/version-test`)
+  classifies from the live origin — the same URL without its
+  `/version-<name>` segment, one extra request — because Bubble serves a
+  version URL for free apps too. `BubbleEx.HTTP.probe/2` is the
+  redirect-free GET behind it (any status, with its `:location`) and
+  `BubbleEx.HTTP.page_from_probe/1` reads a probed 200 exactly as
+  `fetch_page/2` does.
+- **`BubbleEx.Apps.fetch_plan/2`, a plan without the app (WTF-625).**
+  Reclassifying a whole fleet has to answer "what plan is this app on?" for
+  thousands of apps whose bundles can be a hundred megabytes each, so the new
+  `fetch_plan/2` returns only the plan keys `fetch_app/2` returns (`:app_plan`,
+  `:plan_basis`, `:is_dedicated`, `:dedicated_server`, `:base_url`) without
+  fetching or parsing any payload: it normalises a bubble id, a bubbleapps.io
+  URL or any app URL to the live origin (dropping a `/version-<name>` segment,
+  keeping a dedicated `/site/<app>` path), probes it once with
+  `BubbleEx.HTTP.probe/2`, and asks `/version-test` for a status only when the
+  live answer cannot stand on its own. Both `fetch_app/2` and `fetch_plan/2`
+  classify through the same helpers, so the rules cannot drift, and
+  `BubbleEx.Apps.Plan.existence_needed?/1` names the responses that need the
+  extra proof. A 429, 5xx or unreadable redirect is still `:app_plan` nil with
+  the missing evidence in `:plan_basis`; `{:error, %BubbleEx.Error{}}` is
+  reserved for a probe that could not be made at all.
 - **The owner's list of workflows that cannot run (WTF-607).** A workflow
   runs whole or not at all: when its event, its "Only when" condition or
   one of its steps was not converted, or it runs a workflow that cannot
