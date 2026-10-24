@@ -8,7 +8,7 @@ defmodule BubbleEx.Apps do
 
   require Logger
 
-  alias BubbleEx.Apps.{Enricher, Parser, Validator}
+  alias BubbleEx.Apps.{Enricher, Parser, Plan, Validator}
   alias BubbleEx.{Error, HTTP, Telemetry}
 
   # Types
@@ -17,6 +17,7 @@ defmodule BubbleEx.Apps do
           | {:include_static_js, boolean()}
           | {:include_db_diagram, boolean()}
           | {:try_test, boolean()}
+          | {:template_lookup, (String.t() -> boolean())}
           | {:username, String.t()}
           | {:password, String.t()}
           | {:naming, :proper | :id}
@@ -33,7 +34,7 @@ defmodule BubbleEx.Apps do
           | {:max_retries, non_neg_integer()}
           | {:retry_base_delay, pos_integer()}
 
-  @type app_plan :: :free | :paid | :agency | :template | nil
+  @type app_plan :: :free | :paid | :dedicated | :template | nil
 
   @type app_attrs :: %{
           optional(:schema_diagnostics) => [BubbleEx.Diagnostic.t()],
@@ -41,6 +42,10 @@ defmodule BubbleEx.Apps do
           optional(:static_js) => String.t() | nil,
           optional(:static_js_error) => Error.t(),
           app_plan: app_plan(),
+          plan_basis: String.t(),
+          is_dedicated: boolean(),
+          dedicated_server: String.t() | nil,
+          base_url: String.t() | nil,
           bubble_id: String.t(),
           url: String.t() | nil,
           title: String.t() | nil,
@@ -142,7 +147,13 @@ defmodule BubbleEx.Apps do
       fetched, `:static_js` is nil and `:static_js_error` says why; the app
       fetch still succeeds. Defaults to `false`.
     * `:include_db_diagram` - Include database diagram. Defaults to `false`.
-    * `:try_test` - Try test version if live fails. Defaults to `true`.
+    * `:try_test` - Try the test version when the live version proves nothing
+      (`400`/`404`, or Bubble's `live_not_supported` redirect). Defaults to `true`.
+    * `:template_lookup` - A one-arity function taking the app's bubble id and
+      returning whether it is a marketplace template (`boolean()`). Defaults to
+      `Application.get_env(:bubble_ex, :template_lookup)`, then to no templates.
+      A template serves its live version like a paid app, so this is the only
+      way to know; it never performs an HTTP call.
     * `:username` - Username for authentication.
     * `:password` - Password for authentication. Credentials are restricted to the
       original logical origin, including independently fetched dynamic scripts.
@@ -162,7 +173,24 @@ defmodule BubbleEx.Apps do
       This is cooperative; queue consumers should also set an outer job timeout.
     * `:max_retry_delay` - Largest delay allowed inside the caller (default 1,000 ms).
     * `:max_retries` - HTTP retries (default 2); queue consumers should use 0.
+
+  ## Returned attributes
+
+  `:app_plan` (`:template | :dedicated | :free | :paid | nil`), `:plan_basis`
+  (the evidence it rests on), `:is_dedicated`, `:dedicated_server` and
+  `:base_url` come from `BubbleEx.Apps.Plan.classify/1`, which reads the live
+  response instead of guessing. When the response proves nothing (429, 5xx, a
+  timeout, an unreadable Bubble redirect) the plan is `nil` and `:plan_basis`
+  says what was missing; a paid plan is never assumed.
+
+  The plan is an app-level fact, so a version URL
+  (`https://<id>.bubbleapps.io/version-test`, or a dedicated instance's
+  `/site/<app>/version-test`) is classified from the live origin: the same URL
+  with the `/version-<name>` segment removed, one extra request, fetched
+  before the requested URL. `:is_dedicated` follows the hosting evidence, so a
+  template on a dedicated instance is still dedicated.
   """
+
   @spec fetch_app(String.t(), [fetch_option()]) ::
           {:ok, app_attrs()} | {:error, term()}
   def fetch_app(url_or_bubble_id, opts \\ []) do
@@ -201,15 +229,15 @@ defmodule BubbleEx.Apps do
     end
   end
 
-  defp fetch_app_from_url(url, opts) do
-    case HTTP.fetch_page(url, opts) do
-      {:ok, initial_payload} ->
-        with {:ok, dynamic_js_url} <- Parser.extract_dynamic_js_url(initial_payload),
-             {:ok, app_payload} <- fetch_script(dynamic_js_url, opts),
-             {:ok, app_data} <- Parser.parse_app_json(app_payload.body) do
-          attrs = build_app_attrs(app_data, initial_payload, url, opts)
-          {:ok, maybe_add_static_js(attrs, initial_payload, opts)}
-        end
+  # The live response decides the plan before anything is parsed, and it is the
+  # only evidence Bubble gives for it: `Plan.classify/1` turns it into a plan,
+  # and the redirect target (or the test version) is fetched next.
+  defp fetch_app_from_url(url, opts, context \\ %{}) do
+    context = with_live_evidence(url, opts, context)
+
+    case HTTP.probe(url, opts) do
+      {:ok, probe} ->
+        fetch_app_from_probe(probe, url, opts, context)
 
       {:error, %Error{kind: :request_failed, context: %{reason: :nxdomain}} = error} ->
         fetch_app_bundle_directly(url, error, opts)
@@ -218,6 +246,186 @@ defmodule BubbleEx.Apps do
         {:error, error}
     end
   end
+
+  # The plan is a fact about the app, so it is always read from the live origin.
+  # Bubble serves `/version-<name>` (including `/version-test`) for free apps
+  # too, so a version URL is fetched as asked — its payload proves the app
+  # exists — while the same origin without the version segment answers the
+  # plan. That costs one extra request, and only for a version entry point.
+  defp with_live_evidence(url, opts, context) do
+    cond do
+      Map.has_key?(context, :live) ->
+        context
+
+      live_url = live_url_for(url) ->
+        context
+        |> Map.put(:live, live_evidence(live_url, opts))
+        |> Map.put(:live_probe, true)
+
+      true ->
+        context
+    end
+  end
+
+  defp live_evidence(live_url, opts) do
+    case HTTP.probe(live_url, opts) do
+      {:ok, probe} ->
+        %{status: probe.status, location: probe.location}
+
+      {:error, %Error{context: %{reason: reason}}} ->
+        {:error, reason}
+
+      {:error, %Error{kind: kind}} ->
+        {:error, kind}
+    end
+  end
+
+  # The live origin of a version URL: the version segment and anything after it
+  # name the served version, not the app.
+  defp live_url_for(url) do
+    uri = URI.parse(url)
+    segments = String.split(uri.path || "", "/")
+
+    case Enum.find_index(segments, &String.starts_with?(&1, "version-")) do
+      nil ->
+        nil
+
+      index ->
+        path =
+          case segments |> Enum.take(index) |> Enum.join("/") do
+            "" -> "/"
+            path -> path
+          end
+
+        URI.to_string(%{uri | path: path, query: nil, fragment: nil})
+    end
+  end
+
+  # The app serves its live version: parse the probed body, no second request.
+  defp fetch_app_from_probe(%{status: status} = probe, _url, opts, context)
+       when status in 200..299 do
+    case HTTP.page_from_probe(probe) do
+      {:ok, initial_payload} ->
+        fetch_app_payload(initial_payload, opts, live_response(probe, context), exists(context))
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  # A redirect is Bubble's answer to "may this name serve live?". A version
+  # URL's own redirect is never that answer: the context's live evidence is, so
+  # its redirect is followed whatever the live origin said (the plan is already
+  # decided, or honestly unknown, and the fetch still reaches the app).
+  defp fetch_app_from_probe(%{status: status} = probe, url, opts, context)
+       when status in 300..399 do
+    live = live_response(probe, context)
+    classified = Plan.classify(%{live: live, exists: exists(context), template?: false})
+
+    cond do
+      Plan.live_not_supported?(live) ->
+        fetch_app_test_version(live, probe, url, opts)
+
+      classified.plan in [:paid, :dedicated] or Map.get(context, :live_probe, false) ->
+        fetch_app_redirect(live, probe, opts, context, classified)
+
+      true ->
+        {:error, no_plan_error(probe, classified)}
+    end
+  end
+
+  defp fetch_app_from_probe(probe, _url, _opts, _context), do: HTTP.page_from_probe(probe)
+
+  defp fetch_app_redirect(live, probe, opts, context, classified) do
+    redirects = Map.get(context, :redirects, 0)
+
+    if redirects < 2 do
+      context = context |> Map.put_new(:live, live) |> Map.put(:redirects, redirects + 1)
+      follow_redirect(probe, opts, context)
+    else
+      {:error, no_plan_error(probe, classified)}
+    end
+  end
+
+  # The redirect target's host can be dead (a lapsed custom domain) while
+  # bubbleapps.io still serves this page's bundle, so fall back from the page
+  # that redirected, exactly as a direct fetch of it does.
+  defp follow_redirect(probe, opts, context) do
+    case fetch_app_from_url(probe.location, opts, context) do
+      {:error, %Error{kind: :request_failed, context: %{reason: :nxdomain}} = error} ->
+        fetch_app_bundle_directly(probe.request_url, error, opts)
+
+      result ->
+        result
+    end
+  end
+
+  # A `live_not_supported` redirect only says the name has no live entitlement;
+  # the test version is what proves the app exists, and it is also the evidence
+  # `:free` needs.
+  defp fetch_app_test_version(live, probe, url, opts) do
+    if Keyword.get(opts, :try_test, true) and not String.contains?(url, "version-test") do
+      case fetch_app_from_url(build_test_version_url(url, url), opts, %{live: live}) do
+        {:ok, attrs} ->
+          {:ok, attrs}
+
+        {:error, %Error{context: %{status: status} = ctx}} when status in [400, 404] ->
+          {:ok, build_invalid_app_attrs(Map.get(ctx, :url) || url, status)}
+
+        {:error, error} ->
+          {:error, error}
+      end
+    else
+      {:error,
+       no_plan_error(probe, Plan.classify(%{live: live, exists: :unknown, template?: false}))}
+    end
+  end
+
+  defp no_plan_error(probe, classified) do
+    Error.new(:not_a_bubble_app, "the live response gives no plan evidence", %{
+      url: probe.request_url,
+      status: probe.status,
+      plan_basis: classified.basis
+    })
+  end
+
+  # A response carrying the plan of an earlier live request keeps it: what the
+  # fetch in between proves is that the app exists.
+  defp live_response(probe, context) do
+    Map.get_lazy(context, :live, fn -> %{status: probe.status, location: probe.location} end)
+  end
+
+  defp exists(context), do: if(Map.has_key?(context, :live), do: :yes, else: :unknown)
+
+  defp fetch_app_payload(initial_payload, opts, live, exists) do
+    with {:ok, dynamic_js_url} <- Parser.extract_dynamic_js_url(initial_payload),
+         {:ok, app_payload} <- fetch_script(dynamic_js_url, opts),
+         {:ok, app_data} <- Parser.parse_app_json(app_payload.body) do
+      plan = classify_plan(app_data, live, exists, opts)
+      attrs = build_app_attrs(app_data, initial_payload, opts, plan)
+      {:ok, maybe_add_static_js(attrs, initial_payload, opts)}
+    end
+  end
+
+  # A marketplace template cannot be read from the response, so the owner's
+  # lookup is the input (never a request).
+  defp classify_plan(app_data, live, exists, opts) do
+    Plan.classify(%{
+      live: live,
+      exists: exists,
+      template?: template?(Map.get(app_data, "_id"), opts)
+    })
+  end
+
+  defp template?(bubble_id, opts) when is_binary(bubble_id) do
+    lookup =
+      Keyword.get(opts, :template_lookup) ||
+        Application.get_env(:bubble_ex, :template_lookup)
+
+    is_function(lookup, 1) and lookup.(bubble_id) == true
+  end
+
+  defp template?(_bubble_id, _opts), do: false
 
   defp fetch_script(script_url, opts) do
     HTTP.fetch_page(
@@ -241,11 +449,22 @@ defmodule BubbleEx.Apps do
          {:ok, %{"_id" => ^bubble_id} = app_data} <- Parser.parse_app_json(app_payload.body),
          true <- Map.get(app_data, "app_version", version) == version do
       Logger.info("Fetched #{bubble_id} (#{version}) bundle directly; its page redirect is dead")
-      attrs = build_app_attrs(app_data, %{app_payload | domain: host}, url, opts)
+      plan = Plan.classify(bundle_evidence(app_data, page_error, opts))
+      attrs = build_app_attrs(app_data, %{app_payload | domain: host}, opts, plan)
       {:ok, maybe_add_static_js(attrs, nil, opts)}
     else
       _ -> {:error, page_error}
     end
+  end
+
+  # The bundle proves which app it is, but a bundle says nothing about the
+  # live version's plan: the page that would have answered is the one that died.
+  defp bundle_evidence(app_data, %Error{context: %{reason: reason}}, opts) do
+    %{
+      live: {:error, reason},
+      exists: :yes,
+      template?: template?(Map.get(app_data, "_id"), opts)
+    }
   end
 
   # `static.js` is named only by the landing page; the direct bundle fallback
@@ -302,8 +521,9 @@ defmodule BubbleEx.Apps do
   defp maybe_try_test_version(url_or_bubble_id, url, request_url, status_code, opts) do
     if Keyword.get(opts, :try_test, true) && !String.contains?(url, "version-test") do
       test_url = build_test_version_url(url_or_bubble_id, url)
+      live = %{status: status_code, location: nil}
 
-      case fetch_app_from_url(test_url, opts) do
+      case fetch_app_from_url(test_url, opts, %{live: live}) do
         {:ok, attrs} ->
           {:ok, attrs}
 
@@ -451,11 +671,13 @@ defmodule BubbleEx.Apps do
     |> List.first()
   end
 
-  defp build_app_attrs(app_data, initial_payload, url, opts) do
-    username = Keyword.get(opts, :username)
-
+  defp build_app_attrs(app_data, initial_payload, opts, plan) do
     %{
-      app_plan: determine_app_plan(url, username),
+      app_plan: plan.plan,
+      plan_basis: plan.basis,
+      is_dedicated: plan.dedicated_server != nil,
+      dedicated_server: plan.dedicated_server,
+      base_url: plan.base_url,
       bubble_id: app_data["_id"],
       url: initial_payload.domain,
       title: Parser.extract_title(app_data),
@@ -476,17 +698,6 @@ defmodule BubbleEx.Apps do
       notes: message,
       valid?: false
     }
-  end
-
-  defp determine_app_plan(url, username) do
-    is_live = not String.contains?(url, "version-test")
-
-    case {is_live, username} do
-      {true, nil} -> :paid
-      {true, _username} -> :agency
-      {false, nil} -> :free
-      {false, _username} -> :agency
-    end
   end
 
   defp build_api_url(bubble_id, endpoint) do

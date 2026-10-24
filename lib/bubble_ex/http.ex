@@ -28,6 +28,18 @@ defmodule BubbleEx.HTTP do
           bubble_id: String.t() | nil
         }
 
+  @typedoc """
+  One response, reported for any status: what a probe of a Bubble app's live
+  URL needs to read (`:location` is the redirect target, not followed).
+  """
+  @type probe :: %{
+          status: non_neg_integer(),
+          location: String.t() | nil,
+          headers: headers(),
+          body: iodata(),
+          request_url: String.t() | nil
+        }
+
   @default_recv_timeout 10_000
   @default_max_retries 2
   @default_retry_base_delay 250
@@ -663,30 +675,82 @@ defmodule BubbleEx.HTTP do
     http_opts = build_http_options(opts)
 
     case request_with_retry(:get, url, nil, headers, http_opts, opts) do
-      {:ok, %Response{status_code: 200, headers: resp_headers, body: body, request_url: req_url}} ->
-        if has_bubble_header?(resp_headers) do
-          {:ok,
-           %{
-             body: body,
-             url: req_url,
-             domain: extract_domain(resp_headers),
-             bubble_id: extract_bubble_id(resp_headers)
-           }}
-        else
-          {:error,
-           BubbleEx.Error.new(
-             :not_a_bubble_app,
-             "response is missing the x-bubble header",
-             %{url: req_url}
-           )}
-        end
-
-      {:ok, %Response{status_code: status, body: body}} ->
-        {:error, BubbleEx.Error.from_http(status, body, %{url: url})}
-
-      {:error, %Error{reason: reason}} ->
-        {:error, request_failed(url, reason)}
+      {:ok, %Response{} = response} -> page_from_response(response, url)
+      {:error, %Error{reason: reason}} -> {:error, request_failed(url, reason)}
     end
+  end
+
+  @doc """
+  One GET that does not follow redirects, reporting the response for any
+  status (200, 3xx, 4xx, 5xx) with its `location` header.
+
+  Bubble answers "what plan is this app on?" with the first response of its
+  live URL, so the caller needs the redirect itself, not the page it lands on
+  (see `BubbleEx.Apps.Plan`). Retries, auth headers, body limits and the
+  deadline are the ones `fetch_page/2` uses; only redirects differ.
+  """
+  @spec probe(String.t(), keyword()) :: {:ok, probe()} | {:error, BubbleEx.Error.t()}
+  def probe(url, opts \\ []) do
+    headers = build_auth_headers(opts)
+    http_opts = build_http_options(Keyword.put(opts, :follow_redirect, false))
+
+    case request_with_retry(:get, url, nil, headers, http_opts, opts) do
+      {:ok, %Response{} = response} -> {:ok, probe_from_response(response)}
+      {:error, %Error{reason: reason}} -> {:error, request_failed(url, reason)}
+    end
+  end
+
+  @doc """
+  Interprets a `probe/2` result exactly as `fetch_page/2` interprets the same
+  response: a 200 must carry an `x-bubble-*` header to be a Bubble page, and
+  anything else is an HTTP error.
+  """
+  @spec page_from_probe(probe()) :: {:ok, page_result()} | {:error, BubbleEx.Error.t()}
+  def page_from_probe(%{status: status, headers: headers, body: body} = probe) do
+    response = %Response{
+      status_code: status,
+      headers: headers,
+      body: body,
+      request_url: probe.request_url
+    }
+
+    page_from_response(response, probe.request_url)
+  end
+
+  defp probe_from_response(%Response{} = response) do
+    %{
+      status: response.status_code,
+      location: extract_location_header(response.headers),
+      headers: response.headers,
+      body: response.body,
+      request_url: response.request_url
+    }
+  end
+
+  defp page_from_response(
+         %Response{status_code: 200, headers: headers, body: body, request_url: request_url},
+         _url
+       ) do
+    if has_bubble_header?(headers) do
+      {:ok,
+       %{
+         body: body,
+         url: request_url,
+         domain: extract_domain(headers),
+         bubble_id: extract_bubble_id(headers)
+       }}
+    else
+      {:error,
+       BubbleEx.Error.new(
+         :not_a_bubble_app,
+         "response is missing the x-bubble header",
+         %{url: request_url}
+       )}
+    end
+  end
+
+  defp page_from_response(%Response{status_code: status, body: body}, url) do
+    {:error, BubbleEx.Error.from_http(status, body, %{url: url})}
   end
 
   @doc """

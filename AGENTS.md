@@ -28,11 +28,12 @@ The codebase follows a modular architecture with clear separation of concerns:
 ### Core Modules
 - **BubbleEx** - Main public API interface
 - **BubbleEx.Error** - The single error struct returned everywhere: `%BubbleEx.Error{kind, message, context}`
-- **BubbleEx.HTTP** - The one HTTP client (Req-based). Owns retries, redirects, auth, domain/bubble-id extraction, and the high-level `fetch_page`/`fetch_json`/`post_json`/`check_redirect` helpers. `Req.Test`-stubbable for offline tests.
+- **BubbleEx.HTTP** - The one HTTP client (Req-based). Owns retries, redirects, auth, domain/bubble-id extraction, and the high-level `fetch_page`/`probe`/`fetch_json`/`post_json`/`check_redirect` helpers. `Req.Test`-stubbable for offline tests.
 - **BubbleEx.Apps** - App analysis orchestration layer with sub-modules:
   - `Apps.Parser` - Data parsing and JSON extraction
   - `Apps.Validator` - Input validation and sanitization
   - `Apps.Enricher` - Data enhancement and transformation
+  - `Apps.Plan` - Plan and hosting from the live response (`:paid`, `:dedicated`, `:free`, `:template`, else nil); pure, no HTTP, paid is never a default, and a version URL never answers the plan (the live origin does)
 - **BubbleEx.Db** - Table view of the Model (`Db.Reader`, a projection of `BubbleEx.Model`; it parses nothing itself, test-enforced) and schema encoders behind the `Db.Encoder` behaviour: `Db.Dbml` (DBML) and `Db.Sql.Postgres` (PostgreSQL DDL). New targets (SQLite, Convex) register in `Db.Encoder`. Ash is not an encoder: see `BubbleEx.Target.Ash`.
 - **BubbleEx.Expression** - Typed, stack-neutral Bubble expression AST (both key forms), raw nodes + diagnostics for unmodeled pieces, source re-emission and canonical hashing
 - **BubbleEx.Expression.Typing / Compiler** - Types expression ASTs from the Model and the element tree (`Expression.Tree`, `Expression.Env`) and compiles them to the stack-neutral `Expression.IR`; `Expression.Sites` finds every page, reusable and workflow expression with its context. Targets consume the IR: `Target.Ash.Expressions` (filters as `%Target.Ash.Expr{}` data, printed by `Target.Ash.Source.expr/1`; privacy rules and searches) and `Target.Elixir` (value expressions as source; Bubble's date and number formats via the generated runtime, `Target.Elixir.Formats` naming what it only approximates as `:elixir_format_approximated` warnings, WTF-456). `Target.CompileReport` counts what compiles

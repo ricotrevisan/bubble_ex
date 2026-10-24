@@ -63,6 +63,7 @@ defmodule BubbleEx.AppsTest do
     end
 
     @app_json ~S({"_id":"acme-desktop","settings":{"client_safe":{"plugins":{"a":true,"b":{},"c":{}}}}})
+    @version_url "https://acme-desktop.bubbleapps.io/version-test"
 
     defp stub_two_stage_fetch do
       Req.Test.stub(__MODULE__, fn conn ->
@@ -88,6 +89,8 @@ defmodule BubbleEx.AppsTest do
       assert attrs.valid?
       assert attrs.bubble_id == "acme-desktop"
       assert attrs.app_plan == :paid
+      assert attrs.plan_basis == "live 200"
+      refute attrs.is_dedicated
       assert attrs.plugin_count == 3
     end
 
@@ -119,6 +122,242 @@ defmodule BubbleEx.AppsTest do
       Req.Test.stub(__MODULE__, fn conn -> Conn.resp(conn, 200, "<html>not bubble</html>") end)
 
       assert {:error, %BubbleEx.Error{}} = Apps.fetch_app("acme-desktop")
+    end
+
+    test "classifies dedicated hosting from the live redirect" do
+      stub_live_redirect(302, "https://d123.bubble.is/version-live")
+
+      assert {:ok, attrs} = Apps.fetch_app("acme-desktop", max_retries: 0)
+
+      assert attrs.app_plan == :dedicated
+      assert attrs.plan_basis == "live 302 -> d123.bubble.is"
+      assert attrs.is_dedicated
+      assert attrs.dedicated_server == "d123"
+      assert attrs.base_url == "https://d123.bubble.is"
+      assert attrs.plugin_count == 3
+    end
+
+    test "classifies a custom-domain redirect as paid and fetches it" do
+      stub_live_redirect(301, "https://www.custom-app.example/")
+
+      assert {:ok, attrs} = Apps.fetch_app("acme-desktop", max_retries: 0)
+
+      assert attrs.app_plan == :paid
+      assert attrs.plan_basis == "live 301 -> custom domain"
+      refute attrs.is_dedicated
+      assert attrs.base_url == nil
+      assert attrs.plugin_count == 3
+    end
+
+    test "classifies a free app from live_not_supported and the version-test page" do
+      Req.Test.stub(__MODULE__, fn conn ->
+        conn = Conn.put_resp_header(conn, "x-bubble-something", "1")
+        path = conn.request_path || ""
+
+        cond do
+          String.contains?(path, "dynamic_js") ->
+            Conn.resp(conn, 200, "const app = JSON.parse('#{@app_json}');\n")
+
+          path == "/version-test" ->
+            Conn.resp(conn, 200, landing_page())
+
+          true ->
+            conn
+            |> Conn.put_resp_header(
+              "location",
+              "https://bubble.io/live_not_supported?appname=acme-desktop"
+            )
+            |> Conn.send_resp(302, "")
+        end
+      end)
+
+      assert {:ok, attrs} = Apps.fetch_app("acme-desktop", max_retries: 0)
+
+      assert attrs.app_plan == :free
+      assert attrs.plan_basis == "live 302 live_not_supported; version-test serves the app"
+      refute attrs.is_dedicated
+      assert attrs.bubble_id == "acme-desktop"
+    end
+
+    test "reads the plan from the live origin when a version URL is fetched" do
+      counter = stub_version_fetch(fn conn -> Conn.resp(conn, 200, landing_page()) end)
+
+      assert {:ok, attrs} = Apps.fetch_app(@version_url, max_retries: 0)
+
+      assert attrs.app_plan == :paid
+      assert attrs.plan_basis == "live 200"
+      assert attrs.bubble_id == "acme-desktop"
+      assert probes(counter) == 1
+    end
+
+    test "a dead live origin leaves the plan unknown but still fetches the app" do
+      counter = stub_version_fetch(fn conn -> Req.Test.transport_error(conn, :timeout) end)
+
+      assert {:ok, attrs} = Apps.fetch_app(@version_url, max_retries: 0)
+
+      assert attrs.app_plan == nil
+      assert attrs.plan_basis == "no evidence (timeout)"
+      assert attrs.bubble_id == "acme-desktop"
+      assert probes(counter) == 1
+    end
+
+    test "a version URL that serves does not make a free app paid" do
+      counter =
+        stub_version_fetch(fn conn ->
+          conn
+          |> Conn.put_resp_header(
+            "location",
+            "https://bubble.io/live_not_supported?appname=acme-desktop"
+          )
+          |> Conn.send_resp(302, "")
+        end)
+
+      assert {:ok, attrs} = Apps.fetch_app(@version_url, max_retries: 0)
+
+      assert attrs.app_plan == :free
+      assert attrs.plan_basis == "live 302 live_not_supported; version-test serves the app"
+      refute attrs.is_dedicated
+      assert probes(counter) == 1
+    end
+
+    test "a version URL does not hide a live 404" do
+      counter = stub_version_fetch(fn conn -> Conn.resp(conn, 404, "not found") end)
+
+      assert {:ok, attrs} = Apps.fetch_app(@version_url, max_retries: 0)
+
+      assert attrs.app_plan == :free
+      assert attrs.plan_basis == "live 404; version-test serves the app"
+      assert probes(counter) == 1
+    end
+
+    test "a version URL is classified from the live redirect, not its own answer" do
+      counter =
+        stub_version_fetch(fn conn ->
+          conn
+          |> Conn.put_resp_header("location", "https://d123.bubble.is/site/acme")
+          |> Conn.send_resp(302, "")
+        end)
+
+      assert {:ok, attrs} = Apps.fetch_app(@version_url, max_retries: 0)
+
+      assert attrs.app_plan == :dedicated
+      assert attrs.plan_basis == "live 302 -> d123.bubble.is"
+      assert attrs.dedicated_server == "d123"
+      assert attrs.is_dedicated
+      assert probes(counter) == 1
+    end
+
+    test "a live URL costs no extra probe" do
+      counter = stub_version_fetch(fn conn -> Conn.resp(conn, 200, landing_page()) end)
+
+      assert {:ok, %{app_plan: :paid}} = Apps.fetch_app("acme-desktop", max_retries: 0)
+      assert probes(counter) == 1
+    end
+
+    test "strips the version segment from a dedicated instance URL" do
+      counter = stub_version_fetch(fn conn -> Conn.resp(conn, 200, landing_page()) end)
+
+      assert {:ok, attrs} =
+               Apps.fetch_app("https://d123.bubble.is/site/acme/version-test", max_retries: 0)
+
+      assert attrs.app_plan == :paid
+      assert attrs.plan_basis == "live 200"
+      assert probes(counter) == 1
+    end
+
+    test "reads template status from the :template_lookup option" do
+      stub_two_stage_fetch()
+
+      assert {:ok, attrs} =
+               Apps.fetch_app("acme-desktop", template_lookup: &(&1 == "acme-desktop"))
+
+      assert attrs.app_plan == :template
+      assert attrs.plan_basis == "marketplace template"
+    end
+
+    test "falls back to the configured :template_lookup" do
+      stub_two_stage_fetch()
+      Application.put_env(:bubble_ex, :template_lookup, fn _bubble_id -> true end)
+      on_exit(fn -> Application.delete_env(:bubble_ex, :template_lookup) end)
+
+      assert {:ok, %{app_plan: :template}} = Apps.fetch_app("acme-desktop", max_retries: 0)
+    end
+
+    test "a rate-limited live response yields no plan and no app" do
+      Req.Test.stub(__MODULE__, fn conn -> Conn.resp(conn, 429, "slow down") end)
+
+      assert {:error, %BubbleEx.Error{kind: :http_error, context: %{status: 429}}} =
+               Apps.fetch_app("acme-desktop", max_retries: 0)
+    end
+
+    test "a template on a dedicated instance is still dedicated hosting" do
+      stub_live_redirect(302, "https://d123.bubble.is/version-live")
+
+      assert {:ok, attrs} =
+               Apps.fetch_app("acme-desktop",
+                 max_retries: 0,
+                 template_lookup: fn _bubble_id -> true end
+               )
+
+      assert attrs.app_plan == :template
+      assert attrs.plan_basis == "marketplace template"
+      assert attrs.dedicated_server == "d123"
+      assert attrs.is_dedicated
+    end
+
+    defp landing_page do
+      "<html><script src='/package/dynamic_js/1/dynamic.js'></script></html>"
+    end
+
+    # The live origin answers `live_response_fun`; the version URL always serves
+    # the app's bundle, whatever the plan turns out to be. Live-origin probes are
+    # counted so a test can prove how many a fetch made.
+    defp stub_version_fetch(live_response_fun) do
+      {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        conn = Conn.put_resp_header(conn, "x-bubble-something", "1")
+        path = conn.request_path || ""
+
+        cond do
+          String.contains?(path, "dynamic_js") ->
+            Conn.resp(conn, 200, "const app = JSON.parse('#{@app_json}');\n")
+
+          String.contains?(path, "/version-") ->
+            Conn.resp(conn, 200, landing_page())
+
+          true ->
+            Agent.update(counter, &(&1 + 1))
+            live_response_fun.(conn)
+        end
+      end)
+
+      counter
+    end
+
+    defp probes(counter), do: Agent.get(counter, & &1)
+
+    # The live URL redirects; whatever it points at serves the app.
+    defp stub_live_redirect(status, location) do
+      target = URI.parse(location).host
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        conn = Conn.put_resp_header(conn, "x-bubble-something", "1")
+        path = conn.request_path || ""
+
+        cond do
+          String.contains?(path, "dynamic_js") ->
+            Conn.resp(conn, 200, "const app = JSON.parse('#{@app_json}');\n")
+
+          conn.host == target ->
+            Conn.resp(conn, 200, landing_page())
+
+          true ->
+            conn
+            |> Conn.put_resp_header("location", location)
+            |> Conn.send_resp(status, "")
+        end
+      end)
     end
   end
 
